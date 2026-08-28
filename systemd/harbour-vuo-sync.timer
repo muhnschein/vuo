@@ -1,0 +1,17 @@
+[Unit]
+Description=Vuo background feed sync timer
+
+[Timer]
+# Not a fixed wall-clock schedule: every device would then wake at the same
+# instant and hit the user's server together.
+OnBootSec=5min
+OnUnitActiveSec=30min
+# Spread across a window so repeated wakeups do not align with other timers,
+# which is what turns a periodic sync into a battery complaint.
+RandomizedDelaySec=5min
+# If the phone was suspended through a scheduled run, do it on wake rather
+# than skipping until the next interval.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

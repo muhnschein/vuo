@@ -1,0 +1,13 @@
+---
+source: crates/vuo-core/tests/content_snapshots.rs
+expression: render(&document)
+---
+  p: Someone said this.
+    p: And they were quoting this.
+      p: Which quoted this.
+  p: Back out one level.
+rule
+li[ordered 1, indent 0]: First
+li[bullet, indent 1]: Nested bullet
+li[bullet, indent 1]: Another
+li[ordered 2, indent 0]: Second

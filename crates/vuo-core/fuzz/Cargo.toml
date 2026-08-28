@@ -1,0 +1,31 @@
+[package]
+name = "vuo-core-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+# Its own workspace on purpose: cargo-fuzz builds with nightly and its own
+# flags, and pulling it into the main workspace would drag libfuzzer-sys into
+# every ordinary `cargo build`.
+[workspace]
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+vuo-core = { path = ".." }
+serde_json = "1"
+url = "2.5"
+
+[[bin]]
+name = "content_transform"
+path = "fuzz_targets/content_transform.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "entry_deserialise"
+path = "fuzz_targets/entry_deserialise.rs"
+test = false
+doc = false

@@ -1,0 +1,11 @@
+---
+source: crates/vuo-core/tests/content_snapshots.rs
+expression: render(&document)
+---
+p: Unclosed paragraph
+p: Stray close
+p: <b>Overlapping </b><b><i>inline</i></b> markup
+li[bullet, indent 0]: No closing tags
+li[bullet, indent 0]: At all
+li[bullet, indent 0]: Whatsoever Link with a valueless href
+table: 1 rows

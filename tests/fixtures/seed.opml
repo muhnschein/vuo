@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  A fixed OPML for the ephemeral-Miniflux CI job.
+
+  Deliberately small and deliberately pointed at stable, low-traffic feeds:
+  the job verifies Vuo's contract with the SERVER, not the content of anyone's
+  blog, so the feeds only need to exist and produce entries.
+-->
+<opml version="2.0">
+  <head><title>Vuo CI fixtures</title></head>
+  <body>
+    <outline text="Reference" title="Reference">
+      <outline type="rss" text="Miniflux releases" title="Miniflux releases"
+               xmlUrl="https://github.com/miniflux/v2/releases.atom"
+               htmlUrl="https://github.com/miniflux/v2/releases"/>
+      <outline type="rss" text="Rust blog" title="Rust blog"
+               xmlUrl="https://blog.rust-lang.org/feed.xml"
+               htmlUrl="https://blog.rust-lang.org/"/>
+    </outline>
+  </body>
+</opml>

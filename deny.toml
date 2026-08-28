@@ -1,0 +1,70 @@
+# cargo-deny configuration.
+#
+# Runs inside `make check`, not as a separate nightly ritual. The rationale is
+# in docs/scope.md §8.3: the SailfishOS Rust floor already constrains
+# dependency upgrades, so learning early that an advisory applies to a version
+# that cannot be bumped is strictly better than learning it at release.
+
+[advisories]
+db-urls = ["https://github.com/rustsec/advisory-db"]
+yanked = "deny"
+ignore = []
+
+[licenses]
+# Vuo is GPL-3.0-or-later, so permissive dependency licences are compatible.
+# Copyleft dependencies are not automatically a problem, but they should be a
+# deliberate decision rather than something a transitive bump introduces.
+version = 2
+allow = [
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "BSL-1.0",
+    "CC0-1.0",
+    "ISC",
+    "MIT",
+    "MIT-0",
+    "MPL-2.0",
+    "Unicode-3.0",
+    "Unicode-DFS-2016",
+    "Zlib",
+    # Vuo's own crates. The SPDX id is the "-or-later" form, which is a
+    # different identifier from bare "GPL-3.0" -- allowing only the latter
+    # rejects the workspace's own members, which is how this was found.
+    "GPL-3.0-or-later",
+]
+confidence-threshold = 0.9
+exceptions = []
+# An allowance that nothing currently uses is a warning by default. Keeping a
+# slightly wider list than today's dependency graph is deliberate: the list
+# says which licences are acceptable, not which happen to be present this week.
+unused-allowed-license = "allow"
+
+[[licenses.clarify]]
+name = "ring"
+expression = "MIT AND ISC AND OpenSSL"
+license-files = [{ path = "LICENSE", hash = 0xbd0eed23 }]
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+# Vuo's own crates depend on each other by path and carry no version
+# requirement, which is normal inside a workspace and is not the supply-chain
+# hazard `wildcards` exists to catch.
+allow-wildcard-paths = true
+highlight = "all"
+deny = [
+    # §9.1: TLS verification is not optional and gets no toggle. A dependency
+    # that pulls in a second TLS stack is a way for one to appear.
+    { name = "openssl" },
+    { name = "openssl-sys" },
+    { name = "native-tls" },
+]
+skip = []
+skip-tree = []
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

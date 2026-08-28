@@ -1,0 +1,15 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Vuo
+Comment=Miniflux feed reader
+Icon=harbour-vuo
+Exec=harbour-vuo
+Terminal=false
+Categories=Qt;Network;News;
+
+# Sailfish-specific: run under the QML booster so start-up is not a cold Qt
+# initialisation every time, and keep a single instance so that opening a
+# shared link reuses the running app rather than starting a second copy.
+X-Nemo-Application-Type=silica-qt5
+X-Nemo-Single-Instance=yes

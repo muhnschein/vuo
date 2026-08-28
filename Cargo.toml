@@ -1,0 +1,52 @@
+[workspace]
+resolver = "2"
+members = ["crates/vuo-core", "crates/vuo-shim", "crates/harbour-vuo"]
+
+# vuo-shim and harbour-vuo link against Qt and only build where Qt development
+# headers are present. `cargo build` at the workspace root would therefore fail
+# on a bare CI runner, so the default members are the Qt-free set. Build them
+# explicitly with `-p vuo-shim` / `-p harbour-vuo` (see `make shim`).
+default-members = ["crates/vuo-core"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+# The SailfishOS SDK ships an older Rust than current stable. Every crate in
+# the workspace pins the same floor, and `make msrv` re-checks against it so a
+# dependency bump cannot silently break the device build. See docs/toolchain.md.
+rust-version = "1.75"
+license = "GPL-3.0-or-later"
+# Not destined for crates.io. This also lets cargo-deny's `allow-wildcard-paths`
+# apply: the option deliberately does not cover publishable crates, because
+# crates.io rejects path dependencies -- but Vuo's crates depend on each other
+# by path on purpose and are not the supply-chain hazard `wildcards` catches.
+publish = false
+repository = "https://github.com/muhnschein/vuo"
+authors = ["Vuo contributors"]
+
+[workspace.lints.rust]
+unsafe_code = "deny"
+missing_debug_implementations = "warn"
+rust_2018_idioms = { level = "warn", priority = -1 }
+unreachable_pub = "warn"
+
+[workspace.lints.clippy]
+# Foreign input reaches this program from arbitrary websites by way of a
+# Miniflux instance. Panicking on it is not a safe failure mode: unwinding out
+# of Rust into Qt's C++ frames is undefined behaviour. See docs/scope.md §9.5.
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+indexing_slicing = "deny"
+integer_division = "warn"
+todo = "deny"
+unimplemented = "deny"
+
+[profile.release]
+# The device build is size-sensitive; a phone does not need 16 codegen units'
+# worth of parallel compilation more than it needs a smaller binary.
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

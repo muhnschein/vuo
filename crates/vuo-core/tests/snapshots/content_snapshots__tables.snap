@@ -1,0 +1,7 @@
+---
+source: crates/vuo-core/tests/content_snapshots.rs
+expression: render(&document)
+---
+p: Benchmarks:
+table: 3 rows
+p: Measured on a warm cache.

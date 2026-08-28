@@ -1,0 +1,10 @@
+---
+source: crates/vuo-core/tests/content_snapshots.rs
+expression: render(&document)
+---
+p: Most feed HTML looks like this: a few paragraphs, a link, an image with a caption, and a bit of emphasis.
+p: The harbour at dusk.
+p: Read <a href="https://example.com/more">the rest of it</a>, or see the <i>earlier</i> post for <b>context</b>.
+li[bullet, indent 0]: One
+li[bullet, indent 0]: Two
+li[bullet, indent 0]: Three
