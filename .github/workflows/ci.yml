@@ -108,7 +108,15 @@ jobs:
           # RUSTUP_TOOLCHAIN takes precedence over the toolchain file.
           RUSTUP_TOOLCHAIN: nightly
         run: |
+          # cargo-fuzz defaults --target to the triple IT was built for, and
+          # the prebuilt binary install-action fetches is musl-static. A
+          # sanitizer cannot be linked against a static libc, so the build
+          # fails with "sanitizer is incompatible with statically linked libc"
+          # and, confusingly, "can't find crate for `core`". Pin the target to
+          # the actual host instead of inheriting the tool's own.
+          HOST=$(rustc -vV | sed -n 's/^host: //p')
+          echo "fuzzing for host target $HOST"
           cd crates/vuo-core/fuzz
           for target in content_transform entry_deserialise; do
-            cargo fuzz run "$target" -- -max_total_time=60 -rss_limit_mb=4096
+            cargo fuzz run --target "$HOST" "$target" -- -max_total_time=60 -rss_limit_mb=4096
           done
