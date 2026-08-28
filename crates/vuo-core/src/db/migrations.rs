@@ -275,10 +275,76 @@ mod tests {
         }
     }
 
+    /// Queue two rows and read them back, whatever the schema version.
+    fn seed_outbox(conn: &Connection) {
+        conn.execute(
+            "INSERT INTO outbox (entry_id, field, value, queued_at) VALUES (?1, ?2, ?3, ?4)",
+            rusqlite::params![7_i64, "status", "read", 1_700_000_000_i64],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO outbox (entry_id, field, value, queued_at) VALUES (?1, ?2, ?3, ?4)",
+            rusqlite::params![9_i64, "starred", "1", 1_700_000_001_i64],
+        )
+        .unwrap();
+    }
+
+    fn read_outbox(conn: &Connection) -> Vec<(i64, String, String)> {
+        let mut stmt = conn
+            .prepare("SELECT entry_id, field, value FROM outbox ORDER BY entry_id, field")
+            .unwrap();
+        let rows = stmt
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+            .unwrap()
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .unwrap();
+        rows
+    }
+
+    #[test]
+    fn the_real_migrations_run_forward_over_a_populated_outbox() {
+        // §9.4: "Migrations must preserve the outbox." The mirror can be
+        // re-fetched; queued marks and stars cannot.
+        //
+        // This runs the REAL `MIGRATIONS` -- not the synthetic list the
+        // machinery tests use -- forward from every shipped version over a
+        // populated queue. `no_migration_drops_the_outbox` below is only a
+        // text scan, and a text scan cannot see `DELETE FROM main.outbox`:
+        // adding exactly that to migration 2 left the whole suite green.
+        for k in 1..MIGRATIONS.len() {
+            let stopped_at = MIGRATIONS[k - 1].version;
+            let mut conn = Connection::open_in_memory().unwrap();
+
+            // Build the database as the release that shipped `stopped_at` left it.
+            apply(&mut conn, &MIGRATIONS[..k]).unwrap();
+            assert_eq!(current_version(&conn).unwrap(), stopped_at);
+            seed_outbox(&conn);
+            let before = read_outbox(&conn);
+            assert_eq!(before.len(), 2, "the fixture must actually queue something");
+
+            // Then upgrade it the way a user's phone would.
+            migrate(&mut conn).unwrap();
+
+            assert_eq!(
+                current_version(&conn).unwrap(),
+                target_version(),
+                "upgrading from version {stopped_at} did not reach the target"
+            );
+            assert_eq!(
+                read_outbox(&conn),
+                before,
+                "upgrading from version {stopped_at} changed the outbox. Every queued \
+                 mark and star on the device would be gone."
+            );
+        }
+    }
+
     #[test]
     fn no_migration_drops_the_outbox() {
-        // §9.4: the mirror can be re-fetched, the outbox cannot. This is a
-        // structural guard against a future migration doing the easy thing.
+        // A cheap text scan on top of the behavioural test above. It catches
+        // the unqualified forms at review time, before anyone runs anything;
+        // it is NOT the guarantee, because a schema-qualified name walks
+        // straight past it.
         for m in MIGRATIONS {
             // Normalise whitespace so a statement split across lines, or
             // written with a quoted identifier, cannot slip past.

@@ -117,9 +117,11 @@ msrv:
 ## fuzz-quick: short fuzz run over the two parsers, as PR CI does
 fuzz-quick:
 	@echo "== fuzz (60s per target) =="
+	scripts/fuzz-seed.sh content_transform entry_deserialise
 	cd crates/vuo-core/fuzz && \
 		for target in content_transform entry_deserialise; do \
-			$(CARGO) +nightly fuzz run $$target -- -max_total_time=60 || exit 1; \
+			$(CARGO) +nightly fuzz run $$target \
+				-- -max_total_time=60 -dict=$$target.dict || exit 1; \
 		done
 
 ## live-test: opt-in integration test against a real Miniflux instance.

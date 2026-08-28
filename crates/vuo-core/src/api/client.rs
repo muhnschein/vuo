@@ -490,27 +490,52 @@ mod tests {
         url.query().unwrap_or_default().to_owned()
     }
 
+    /// One query parameter, PARSED.
+    ///
+    /// `contains("limit=1000")` is also satisfied by `limit=10000`, and
+    /// `contains("order=id")` by `order=id_something` -- so a substring check
+    /// here passes under exactly the widening it exists to prevent.
+    fn param(q: &EntriesQuery, key: &str) -> Option<String> {
+        let mut url = Url::parse("https://h.example/v1/entries").unwrap();
+        q.apply(&mut url);
+        url.query_pairs()
+            .find(|(k, _)| k == key)
+            .map(|(_, v)| v.into_owned())
+    }
+
     #[test]
     fn limit_can_never_be_zero_or_unbounded() {
         // On 2.2.x limit=0 means UNLIMITED: a full-corpus dump into a phone.
-        assert!(query_string(&EntriesQuery::keyset(0)).contains("limit=1"));
-        assert!(query_string(&EntriesQuery::keyset(999_999)).contains("limit=1000"));
-        assert!(query_string(&EntriesQuery::default()).contains("limit=100"));
+        assert_eq!(
+            param(&EntriesQuery::keyset(0), "limit").as_deref(),
+            Some("1")
+        );
+        assert_eq!(
+            param(&EntriesQuery::keyset(999_999), "limit").as_deref(),
+            Some("1000"),
+            "the server's own ceiling, exactly -- not merely a value starting with 1000"
+        );
+        assert_eq!(
+            param(&EntriesQuery::default(), "limit").as_deref(),
+            Some("100")
+        );
     }
 
     #[test]
     fn direction_is_lowercase() {
         // "ASC" is a 400.
-        assert!(query_string(&EntriesQuery::keyset(10)).contains("direction=asc"));
+        assert_eq!(
+            param(&EntriesQuery::keyset(10), "direction").as_deref(),
+            Some("asc")
+        );
     }
 
     #[test]
     fn the_sync_query_paginates_on_id() {
         // Any other order is unstable and silently skips rows under paging.
         let q = EntriesQuery::keyset(500);
-        let s = query_string(&q);
-        assert!(s.contains("order=id"), "{s}");
-        assert!(s.contains("direction=asc"), "{s}");
+        assert_eq!(param(&q, "order").as_deref(), Some("id"));
+        assert_eq!(param(&q, "direction").as_deref(), Some("asc"));
     }
 
     #[test]

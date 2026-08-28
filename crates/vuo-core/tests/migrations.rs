@@ -119,52 +119,135 @@ fn a_database_from_a_newer_vuo_is_refused_rather_than_corrupted() {
     );
 }
 
+/// Every object in a database's schema, normalised for comparison.
+fn schema_of(conn: &Connection) -> Vec<String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT type, name, sql FROM sqlite_master \
+             WHERE name NOT LIKE 'sqlite_%' ORDER BY type, name",
+        )
+        .expect("read sqlite_master");
+    let mut out: Vec<String> = stmt
+        .query_map([], |r| {
+            let kind: String = r.get(0)?;
+            let name: String = r.get(1)?;
+            let sql: Option<String> = r.get(2)?;
+            // Whitespace differs freely between a CREATE run today and the same
+            // CREATE run by an older release; the shape must not.
+            let sql = sql
+                .unwrap_or_default()
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ");
+            Ok(format!("{kind} {name}: {sql}"))
+        })
+        .expect("map")
+        .collect::<std::result::Result<Vec<_>, _>>()
+        .expect("collect");
+    out.sort();
+    out
+}
+
 #[test]
 fn fixtures_upgrade_without_data_loss() {
-    // Add a case here for each shipped schema version, restoring a REAL
-    // database file produced by that release. See the module docs.
-    let fixtures = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
-    if !fixtures.exists() {
-        // Nothing to test yet: only one schema version has ever shipped.
-        return;
-    }
+    // §8.3: "Test each migration against a fixture database from the previous
+    // version." These are REAL on-disk databases, committed and frozen at the
+    // shape a release produced; scripts/make-schema-fixture.py regenerates one
+    // deliberately.
+    //
+    // The previous version of this test could not fail. `tests/fixtures/` held
+    // an unrelated file, so the "nothing to test yet" early-out did not fire;
+    // the loop then skipped every non-.sqlite entry, so its body never ran; and
+    // `let _ = found;` threw away the one value that would have shown it. It
+    // reported a pass having asserted nothing.
+    let fixtures = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/schema");
+    let mut found: Vec<i64> = Vec::new();
 
-    let mut found = 0usize;
     for entry in std::fs::read_dir(&fixtures)
-        .expect("fixtures dir")
+        .expect("tests/fixtures/schema must exist")
         .flatten()
     {
         let path = entry.path();
         if path.extension().and_then(|e| e.to_str()) != Some("sqlite") {
             continue;
         }
-        found += 1;
 
         // Copy, because migrating mutates and a fixture must stay pristine.
         let dir = tempfile::tempdir().expect("tempdir");
         let working = dir.path().join("fixture.sqlite");
         std::fs::copy(&path, &working).expect("copy fixture");
 
-        let outbox_before: i64 = {
+        let (from_version, outbox_before) = {
             let conn = Connection::open(&working).expect("open fixture");
-            conn.query_row("SELECT COUNT(*) FROM outbox", [], |r| r.get(0))
-                .unwrap_or(0)
+            let version: i64 = conn
+                .query_row("PRAGMA user_version", [], |r| r.get(0))
+                .expect("fixture version");
+            let mut stmt = conn
+                .prepare("SELECT entry_id, field, value FROM outbox ORDER BY entry_id, field")
+                .expect("prepare");
+            let rows: Vec<(i64, String, String)> = stmt
+                .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+                .expect("query")
+                .collect::<std::result::Result<Vec<_>, _>>()
+                .expect("collect");
+            (version, rows)
         };
+        assert!(
+            !outbox_before.is_empty(),
+            "{} queues nothing, so it cannot show that an upgrade preserves the outbox",
+            path.display()
+        );
+        found.push(from_version);
 
         let db = Database::open(&working)
             .unwrap_or_else(|e| panic!("migrating {} failed: {e}", path.display()));
+
         assert_eq!(
             migrations::current_version(db.conn()).expect("version"),
             migrations::target_version(),
             "{} did not reach the current schema",
             path.display()
         );
+
+        let outbox_after: Vec<(i64, String, String)> = {
+            let mut stmt = db
+                .conn()
+                .prepare("SELECT entry_id, field, value FROM outbox ORDER BY entry_id, field")
+                .expect("prepare");
+            stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+                .expect("query")
+                .collect::<std::result::Result<Vec<_>, _>>()
+                .expect("collect")
+        };
         assert_eq!(
-            outbox::len(db.conn()).expect("outbox"),
+            outbox_after,
             outbox_before,
-            "migrating {} lost pending user actions",
+            "migrating {} lost or altered pending user actions",
             path.display()
         );
+
+        // And the upgraded database must be indistinguishable from a fresh
+        // one. This is the property only a FROZEN on-disk fixture can check:
+        // an upgrade from v1 skips migration 1 entirely, so if migration 1's
+        // text has since been edited in place -- the cardinal migration
+        // mistake -- the two schemas diverge here, and nowhere else.
+        let fresh_dir = tempfile::tempdir().expect("tempdir");
+        let fresh_path = fresh_dir.path().join("fresh.sqlite");
+        let fresh = Database::open(&fresh_path).expect("fresh database");
+        assert_eq!(
+            schema_of(db.conn()),
+            schema_of(fresh.conn()),
+            "a database upgraded from version {from_version} does not have the same schema as \
+             a freshly created one. Either a shipped migration was edited in place, or a later \
+             migration does not reproduce what the initial schema now creates."
+        );
     }
-    let _ = found;
+
+    found.sort_unstable();
+    let expected: Vec<i64> = (1..migrations::target_version()).collect();
+    assert_eq!(
+        found, expected,
+        "§8.3 wants a fixture for every schema version that has shipped before the current one. \
+         Regenerate with scripts/make-schema-fixture.py <version>."
+    );
 }

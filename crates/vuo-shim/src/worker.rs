@@ -402,6 +402,21 @@ pub struct AppPaths {
 }
 
 impl AppPaths {
+    /// The standard layout under an explicit base directory.
+    ///
+    /// Split out from [`AppPaths::resolve`] so that the layout and the
+    /// configured-or-not decision can be tested without mutating process-wide
+    /// environment, which no test in a threaded runner can do safely.
+    #[must_use]
+    pub fn under(base: impl Into<PathBuf>) -> Self {
+        let base = base.into();
+        AppPaths {
+            database: base.join("vuo.sqlite"),
+            account: base.join("account.json"),
+            ca_certificate: base.join("ca.pem"),
+        }
+    }
+
     /// Resolve the standard locations, honouring `XDG_DATA_HOME`.
     #[must_use]
     pub fn resolve() -> Option<Self> {
@@ -409,22 +424,23 @@ impl AppPaths {
             .map(PathBuf::from)
             .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local/share")))?
             .join("harbour-vuo");
-        Some(AppPaths {
-            database: base.join("vuo.sqlite"),
-            account: base.join("account.json"),
-            ca_certificate: base.join("ca.pem"),
-        })
+        Some(Self::under(base))
     }
 
-    /// Resolve paths and confirm an account has been configured.
+    /// `Some` only once an account has been written.
     ///
     /// Returns `None` when the app has never been set up, which is not an
     /// error: a background timer firing before first run should do nothing
     /// quietly.
     #[must_use]
+    pub fn configured(self) -> Option<Self> {
+        self.account.exists().then_some(self)
+    }
+
+    /// Resolve paths and confirm an account has been configured.
+    #[must_use]
     pub fn from_env() -> Option<Self> {
-        let paths = Self::resolve()?;
-        paths.account.exists().then_some(paths)
+        Self::resolve()?.configured()
     }
 }
 
@@ -573,11 +589,37 @@ mod tests {
         assert!(err.to_string().contains("could not be read"), "{err}");
     }
 
+    /// A real self-signed CA, so the fixture is one `Transport::new` accepts.
+    ///
+    /// The previous fixture was the single line `-----BEGIN CERTIFICATE-----`,
+    /// which `reqwest::Certificate::from_pem` rejects -- so the configuration
+    /// the test blessed could not in fact build a client.
+    const TEST_CA_PEM: &str = "\
+-----BEGIN CERTIFICATE-----\n\
+MIIDDzCCAfegAwIBAgIUdRtsISsyGOb74MwXRLNVZV3gzOkwDQYJKoZIhvcNAQEL\n\
+BQAwFjEUMBIGA1UEAwwLVnVvIFRlc3QgQ0EwIBcNMjYwODI4MTgyNjU5WhgPMjEy\n\
+NjA4MDQxODI2NTlaMBYxFDASBgNVBAMMC1Z1byBUZXN0IENBMIIBIjANBgkqhkiG\n\
+9w0BAQEFAAOCAQ8AMIIBCgKCAQEAsw3RlnIknfUGFlQnR2Nz21l9//UnOCboAvZV\n\
+iOaXzQYaFjepYSTTdYcrNjuvxh5SmThKr8LyT2RygxkjI/jo6TFT/PeaqD4NkMsH\n\
+4lLxRFGHnsBtq8pGUJOYsG9DdRGvLaCQti5spfkNiElD0QxzH6ZPwGWRKJYi1szG\n\
+KNrIe6lYInC1tfI7Twxhte1vMTEeITrZR1FnNkV24Fki4dPZeYr3IAHDJCkYzBqQ\n\
+Z5MGjwCB1AJ3gB3oeFbgVmy0Lh8mIz7erGEMD8VfOQ1M2gaglymCRy2dpps/OMa9\n\
+iy1zXnGT8xdmI0H3DCg8JQR2DBSP7k/KZH+q3WZOky6FZiU1wwIDAQABo1MwUTAd\n\
+BgNVHQ4EFgQUDg3uic6vnPmu8XcrbFHI0vZ+HfowHwYDVR0jBBgwFoAUDg3uic6v\n\
+nPmu8XcrbFHI0vZ+HfowDwYDVR0TAQH/BAUwAwEB/zANBgkqhkiG9w0BAQsFAAOC\n\
+AQEAIAHzIceTVXtzNzAb66/mU3q51jv7luE9P13FbC76NM9+GbUWoQckroKvd3lt\n\
+XZ+Diiv3gxfRbgOjMa1SaJcBMyWi5iEkM2/Ljc1zYAPR3RhfhDUdUPukwmcPy74u\n\
+gL0usN+U5YUBGaFwvRgvO/9Vrxhgw4o5QI1AwXMq49e0B3S9F502etJUpbCaXfND\n\
+1HvfrW3DQouGqouD0RbbTyEjBpsoI2HZKN2irYq81VBhgDX/NKs1lySVYoz9/JPM\n\
+B/ICqFxm4tqVyVqqaxdhkS/DJcUPIyEhhwLStjHyLGh364xT06vcDdcRmGyuCSlb\n\
+EQBBQIobIy41+aQiMsM0XBYH3Q==\n\
+-----END CERTIFICATE-----\n";
+
     #[test]
     fn a_configured_ca_reaches_the_transport() {
         let dir = tempfile::tempdir().expect("tempdir");
         let ca = dir.path().join("ca.pem");
-        std::fs::write(&ca, b"-----BEGIN CERTIFICATE-----\n").expect("write");
+        std::fs::write(&ca, TEST_CA_PEM).expect("write");
         let paths = AppPaths {
             database: dir.path().join("db.sqlite"),
             account: dir.path().join("account.json"),
@@ -594,6 +636,16 @@ mod tests {
             config.extra_ca_pem.is_some(),
             "the CA setting must actually reach the client"
         );
+
+        // And the config must be one a client can be built from. Stopping at
+        // the struct field blesses a configuration that `Transport::new`
+        // refuses, which is the opposite of what this test's name claims.
+        vuo_core::api::Transport::new(
+            url::Url::parse("https://h.example/").expect("url"),
+            vuo_core::redact::ApiToken::new("t"),
+            &config,
+        )
+        .expect("a configured CA must produce a usable transport");
 
         // And off by default.
         let off = Account {
@@ -648,12 +700,26 @@ mod tests {
     #[test]
     fn an_unconfigured_device_reports_no_paths_rather_than_failing() {
         // A timer that fires before first run must do nothing, quietly.
+        //
+        // This has to go through `AppPaths::configured` -- the decision
+        // `from_env` returns through. Building an `AppPaths` literal pointing
+        // at a file that does not exist and asserting `!path.exists()`, as
+        // this test used to, is an assertion about `std::path::Path` and
+        // passes with `configured` replaced by `Some(self)`.
         let dir = tempfile::tempdir().expect("tempdir");
-        let paths = AppPaths {
-            database: dir.path().join("db.sqlite"),
-            account: dir.path().join("missing.json"),
-            ca_certificate: dir.path().join("ca.pem"),
-        };
-        assert!(!paths.account.exists());
+        let base = dir.path().join("harbour-vuo");
+        std::fs::create_dir_all(&base).expect("mkdir");
+
+        assert!(
+            AppPaths::under(&base).configured().is_none(),
+            "with no account file a background sync must not start"
+        );
+
+        std::fs::write(base.join("account.json"), "{}").expect("write");
+        let paths = AppPaths::under(&base)
+            .configured()
+            .expect("an account file means configured");
+        assert_eq!(paths.database, base.join("vuo.sqlite"));
+        assert_eq!(paths.ca_certificate, base.join("ca.pem"));
     }
 }

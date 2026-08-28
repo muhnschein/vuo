@@ -1,4 +1,6 @@
 target/
+# The WORKING corpus, which the fuzzer grows without bound. The committed
+# starting points live in seeds/ and are copied in by scripts/fuzz-seed.sh.
 corpus/
 artifacts/
 coverage/

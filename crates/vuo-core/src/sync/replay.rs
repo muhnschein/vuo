@@ -64,7 +64,7 @@ pub async fn flush(db: &mut Database, client: &MinifluxClient) -> Result<ReplayO
                 outcome.auth_failed = true;
                 return Ok(outcome);
             }
-            Err(e) if e.is_permanently_rejected() => {
+            Err(e) if would_discard(&e) => {
                 // The server rejected the payload itself, so resending it will
                 // be rejected identically forever. Dropping is the least-bad
                 // option: keeping it would retry endlessly and block every
@@ -101,8 +101,12 @@ pub async fn flush(db: &mut Database, client: &MinifluxClient) -> Result<ReplayO
     Ok(outcome)
 }
 
-/// Whether a batch should be retried, exposed for testing the classifier
-/// without a server.
+/// Whether a batch should be retried on a later pass.
+///
+/// Note this is NOT the complement of [`would_discard`], and the gap between
+/// them is the point: an error that is neither retried nor discarded stays
+/// queued and waits for a human. Treating the two as complements is what made
+/// a mistyped server URL silently delete queued marks and stars.
 #[must_use]
 pub fn should_retry(error: &Error) -> bool {
     !error.is_auth_failure() && error.is_transient()
@@ -110,9 +114,10 @@ pub fn should_retry(error: &Error) -> bool {
 
 /// Whether a batch would be DISCARDED, losing the user's intent.
 ///
-/// Separate from [`should_retry`] on purpose: the two are not complements, and
-/// treating them as such is what made a misconfigured server URL silently
-/// delete queued marks and stars.
+/// [`flush`] matches on this directly rather than repeating the condition. It
+/// used to repeat it, which meant the unit tests below were exercising a
+/// parallel copy of the rule: restoring the historical bug in `flush` left
+/// every one of them green.
 #[must_use]
 pub fn would_discard(error: &Error) -> bool {
     !error.is_auth_failure() && error.is_permanently_rejected()
@@ -168,7 +173,13 @@ mod tests {
     }
 
     #[test]
-    fn revoked_credentials_stop_the_flush() {
+    fn a_401_and_a_403_classify_as_auth_failures() {
+        // Named for what it checks. It used to be called
+        // `revoked_credentials_stop_the_flush`, promising a `flush` behaviour
+        // it never invoked: removing the early return from flush's auth arm,
+        // so a revoked key hammers the server with every later batch, left it
+        // green. That claim is tested end to end in
+        // tests/outbox_reconciliation.rs, which does catch that mutation.
         for status in [401, 403] {
             assert!(!should_retry(&http(status)));
             assert!(http(status).is_auth_failure());

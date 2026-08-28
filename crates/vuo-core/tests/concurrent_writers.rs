@@ -21,7 +21,7 @@
     clippy::indexing_slicing
 )]
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use vuo_core::db::{outbox, store, Database};
 
@@ -147,24 +147,45 @@ fn a_second_writer_waits_rather_than_corrupting() {
     let mut timer = Database::open(&path).expect("timer");
     seed(&mut ui, 1);
 
-    // Keep the timeout short so a regression fails fast instead of hanging.
-    timer
-        .conn()
-        .busy_timeout(Duration::from_millis(50))
-        .expect("timeout");
+    // Short enough that a regression fails fast instead of hanging, long
+    // enough that "it waited" is unambiguous on a loaded machine.
+    const BUSY: Duration = Duration::from_millis(300);
+    timer.conn().busy_timeout(BUSY).expect("timeout");
 
     let held = ui
         .conn_mut()
         .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
         .expect("begin");
 
+    let started = Instant::now();
     let blocked = timer.with_tx(|tx| {
+        // Read first. Without a read there is no snapshot to fail on, and a
+        // DEFERRED transaction would simply block on the write lock like an
+        // IMMEDIATE one -- so a write-only probe cannot tell the two apart at
+        // all. Read-then-write is also what the real callers do ("mark this
+        // feed read" reads the unread ids, then queues them).
+        let _: i64 = tx.query_row("SELECT COUNT(*) FROM entries", [], |r| r.get(0))?;
         tx.execute("UPDATE entries SET title = 'x' WHERE id = 1", [])?;
         Ok(())
     });
+    let waited = started.elapsed();
+
     assert!(
         blocked.is_err(),
         "the second writer must wait, not proceed on a stale snapshot"
+    );
+    // `is_err()` alone does not separate the fix from the bug: BOTH produce an
+    // error. Under BEGIN IMMEDIATE the loser blocks on busy_timeout and only
+    // then gives up; under BEGIN DEFERRED it takes a snapshot, fails on the
+    // write with SQLITE_BUSY_SNAPSHOT, and returns essentially instantly --
+    // busy_timeout does not apply to that. The elapsed time is what tells them
+    // apart, and asserting only `is_err()` left this test green under exactly
+    // the defect the module header describes.
+    assert!(
+        waited >= BUSY - Duration::from_millis(50),
+        "the second writer returned after {waited:?} without waiting out the {BUSY:?} \
+         busy_timeout, which is the SQLITE_BUSY_SNAPSHOT signature of a DEFERRED \
+         transaction rather than a writer politely queueing"
     );
 
     held.execute("UPDATE entries SET status = 'read' WHERE id = 1", [])
@@ -178,6 +199,25 @@ fn a_second_writer_waits_rather_than_corrupting() {
             Ok(())
         })
         .expect("the second writer succeeds once the lock is released");
+}
+
+#[test]
+fn an_opened_database_carries_a_busy_timeout() {
+    // `Database::configure` calls the 5-second busy_timeout "the difference
+    // between a working app and one that fails to launch when the timer
+    // fires", and nothing tested it: setting it to 0 ms left the entire crate
+    // suite green, because every test that needs a timeout sets its own.
+    let dir = tempfile::tempdir().expect("tempdir");
+    let db = Database::open(&dir.path().join("mirror.sqlite")).expect("open");
+    let timeout: i64 = db
+        .conn()
+        .query_row("PRAGMA busy_timeout", [], |r| r.get(0))
+        .expect("read busy_timeout");
+    assert!(
+        timeout >= 1000,
+        "an opened mirror must wait for a concurrent writer, not fail immediately; \
+         busy_timeout is {timeout} ms"
+    );
 }
 
 #[test]
