@@ -26,6 +26,11 @@ fuzz_target!(|data: &[u8]| {
         Ok(u) => u,
         Err(_) => return,
     };
+    // `..Default::default()` on purpose: an exhaustive literal here means that
+    // adding a cap to `Limits` breaks the fuzz build, and the fuzz crate is a
+    // separate workspace that `make check` does not compile — so the breakage
+    // only surfaces in CI. Spreading the default keeps new caps working
+    // immediately at their production value.
     let limits = Limits {
         // Smaller than production so the fuzzer explores the truncation paths
         // often rather than once in a thousand runs.
@@ -35,6 +40,7 @@ fuzz_target!(|data: &[u8]| {
         max_text_bytes: 64 * 1024,
         max_quote_depth: 4,
         max_list_indent: 4,
+        ..Limits::default()
     };
     let ctx = TransformContext {
         base_url: url::Url::parse("https://blog.example/post/").ok(),

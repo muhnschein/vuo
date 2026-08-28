@@ -24,12 +24,12 @@ ARCH ?= aarch64
 HAVE_QT := $(shell test -x "$(QMAKE)" && echo yes)
 
 .PHONY: all check fmt fmt-check clippy test qmllint qml-load shim deny \
-        packaging msrv fuzz-quick live-test rpm vendor clean help
+        fuzz-check packaging msrv fuzz-quick live-test rpm vendor clean help
 
 all: check
 
 ## check: everything CI runs. No phone, no server, no network.
-check: fmt-check clippy test qmllint qml-load packaging deny
+check: fmt-check clippy test qmllint qml-load fuzz-check packaging deny
 	@echo "== make check passed =="
 
 ## fmt: format the workspace
@@ -81,6 +81,16 @@ endif
 ## shim: build the Qt-linked shim explicitly
 shim:
 	$(CARGO) build -p vuo-shim
+
+## fuzz-check: type-check the fuzz targets.
+##
+## The fuzz crate is a SEPARATE workspace (cargo-fuzz needs its own flags), so
+## nothing else in `make check` compiles it -- which meant adding a field to a
+## struct a fuzz target constructs broke only in CI. This is a plain
+## `cargo check`, no nightly and no sanitizer, so it runs anywhere.
+fuzz-check:
+	@echo "== fuzz targets type-check =="
+	cd crates/vuo-core/fuzz && $(CARGO) check --all-targets
 
 ## packaging: spec, desktop entry and installed-file checks (no SDK needed)
 packaging:

@@ -17,13 +17,20 @@ use vuo_core::api::{convert, wire};
 fuzz_target!(|data: &[u8]| {
     // Whole-response shape: the envelope plus a page of entries.
     if let Ok(response) = serde_json::from_slice::<wire::EntriesResponse>(data) {
-        let (valid, rejected) = convert::entries(response.entries);
+        let page = convert::entries(response.entries);
         // A rejection must always be item-local, never something that would
         // abort the whole sync.
-        for error in &rejected {
+        for error in &page.rejected {
             assert!(error.is_item_local(), "a bad entry escalated to a sync failure: {error}");
         }
-        for entry in &valid {
+        // Nothing may appear as both usable and deleted.
+        for id in &page.removed {
+            assert!(
+                !page.valid.iter().any(|e| e.id == *id),
+                "an entry was reported as both valid and removed"
+            );
+        }
+        for entry in &page.valid {
             // Anything that reached the domain type must satisfy its
             // invariants: no non-http(s) URL can have survived.
             for url in [entry.url.as_ref(), entry.comments_url.as_ref()].into_iter().flatten() {
