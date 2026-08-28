@@ -1,11 +1,11 @@
 [workspace]
 resolver = "2"
-members = ["crates/vuo-core", "crates/vuo-shim"]
+members = ["crates/vuo-core", "crates/vuo-shim", "crates/harbour-vuo"]
 
-# vuo-shim links against Qt and only builds where Qt development headers are
-# present. `cargo build` at the workspace root would therefore fail on a bare
-# CI runner, so the default members are the Qt-free set. Build the shim
-# explicitly with `-p vuo-shim` (see `make shim`).
+# vuo-shim and harbour-vuo link against Qt and only build where Qt development
+# headers are present. `cargo build` at the workspace root would therefore fail
+# on a bare CI runner, so the default members are the Qt-free set. Build them
+# explicitly with `-p vuo-shim` / `-p harbour-vuo` (see `make shim`).
 default-members = ["crates/vuo-core"]
 
 [workspace.package]
@@ -16,6 +16,11 @@ edition = "2021"
 # dependency bump cannot silently break the device build. See docs/toolchain.md.
 rust-version = "1.75"
 license = "GPL-3.0-or-later"
+# Not destined for crates.io. This also lets cargo-deny's `allow-wildcard-paths`
+# apply: the option deliberately does not cover publishable crates, because
+# crates.io rejects path dependencies -- but Vuo's crates depend on each other
+# by path on purpose and are not the supply-chain hazard `wildcards` catches.
+publish = false
 repository = "https://github.com/muhnschein/vuo"
 authors = ["Vuo contributors"]
 

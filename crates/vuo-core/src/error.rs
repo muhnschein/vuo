@@ -160,7 +160,9 @@ impl Error {
                 // A refused redirect and an oversized body are properties of
                 // what the server sent, not of the moment. Retrying replays
                 // the same refusal.
-                TransportKind::RedirectRefused | TransportKind::BodyTooLarge | TransportKind::Cancelled
+                TransportKind::RedirectRefused
+                    | TransportKind::BodyTooLarge
+                    | TransportKind::Cancelled
             ),
             Error::Http { status, .. } => *status == 429 || (500..600).contains(status),
             // A locked database is the common SQLite failure and it clears.
@@ -175,12 +177,22 @@ impl Error {
     /// which no amount of retrying addresses.
     #[must_use]
     pub fn is_auth_failure(&self) -> bool {
-        matches!(self, Error::Http { status: 401 | 403, .. })
+        matches!(
+            self,
+            Error::Http {
+                status: 401 | 403,
+                ..
+            }
+        )
     }
 
     /// Build an [`Error::Item`] for a rejected entry.
     pub(crate) fn item(kind: &'static str, id: Option<i64>, reason: impl Into<String>) -> Self {
-        Error::Item { kind, id, reason: reason.into() }
+        Error::Item {
+            kind,
+            id,
+            reason: reason.into(),
+        }
     }
 }
 
@@ -208,12 +220,31 @@ mod tests {
 
     #[test]
     fn http_errors_classify_retryability() {
-        let permanent = Error::Http { status: 400, endpoint: ep(), message: None };
-        let auth = Error::Http { status: 401, endpoint: ep(), message: None };
-        let throttled = Error::Http { status: 429, endpoint: ep(), message: None };
-        let server = Error::Http { status: 503, endpoint: ep(), message: None };
+        let permanent = Error::Http {
+            status: 400,
+            endpoint: ep(),
+            message: None,
+        };
+        let auth = Error::Http {
+            status: 401,
+            endpoint: ep(),
+            message: None,
+        };
+        let throttled = Error::Http {
+            status: 429,
+            endpoint: ep(),
+            message: None,
+        };
+        let server = Error::Http {
+            status: 503,
+            endpoint: ep(),
+            message: None,
+        };
 
-        assert!(!permanent.is_transient(), "a 400 will fail identically on replay");
+        assert!(
+            !permanent.is_transient(),
+            "a 400 will fail identically on replay"
+        );
         assert!(!auth.is_transient());
         assert!(auth.is_auth_failure());
         assert!(throttled.is_transient(), "429 is the one retryable 4xx");
@@ -223,10 +254,21 @@ mod tests {
     #[test]
     fn policy_refusals_are_not_transient() {
         for kind in [TransportKind::RedirectRefused, TransportKind::BodyTooLarge] {
-            let e = Error::Transport { endpoint: ep(), kind, detail: String::new() };
-            assert!(!e.is_transient(), "{kind} is a property of the response, not the moment");
+            let e = Error::Transport {
+                endpoint: ep(),
+                kind,
+                detail: String::new(),
+            };
+            assert!(
+                !e.is_transient(),
+                "{kind} is a property of the response, not the moment"
+            );
         }
-        let e = Error::Transport { endpoint: ep(), kind: TransportKind::Timeout, detail: String::new() };
+        let e = Error::Transport {
+            endpoint: ep(),
+            kind: TransportKind::Timeout,
+            detail: String::new(),
+        };
         assert!(e.is_transient());
     }
 
@@ -240,8 +282,16 @@ mod tests {
     #[test]
     fn rendered_errors_never_carry_credentials() {
         let cases = [
-            Error::Transport { endpoint: ep(), kind: TransportKind::Tls, detail: "handshake".into() },
-            Error::Http { status: 500, endpoint: ep(), message: Some("boom".into()) },
+            Error::Transport {
+                endpoint: ep(),
+                kind: TransportKind::Tls,
+                detail: "handshake".into(),
+            },
+            Error::Http {
+                status: 500,
+                endpoint: ep(),
+                message: Some("boom".into()),
+            },
         ];
         for e in cases {
             let shown = e.to_string();

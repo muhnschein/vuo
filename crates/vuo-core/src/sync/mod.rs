@@ -121,7 +121,11 @@ pub async fn sync(
     let next = store::SyncState {
         cursor_changed_after: report.pull.next_cursor.or(state.cursor_changed_after),
         sync_generation: generation,
-        last_full_reconcile_at: if report.reconciled { Some(now) } else { state.last_full_reconcile_at },
+        last_full_reconcile_at: if report.reconciled {
+            Some(now)
+        } else {
+            state.last_full_reconcile_at
+        },
         server_era: Some(era_label(&version).to_owned()),
         server_version: report.server_version.clone(),
     };
@@ -189,8 +193,17 @@ mod tests {
     #[test]
     fn default_options_are_conservative() {
         let o = SyncOptions::default();
-        assert!(o.icons_per_pass > 0 && o.icons_per_pass <= 32, "avoid a thundering herd");
-        assert!(o.reconcile_interval_secs >= 3600, "a full reconcile is not cheap");
-        assert!(!o.skip_replay, "the user's own actions must be sent by default");
+        assert!(
+            o.icons_per_pass > 0 && o.icons_per_pass <= 32,
+            "avoid a thundering herd"
+        );
+        assert!(
+            o.reconcile_interval_secs >= 3600,
+            "a full reconcile is not cheap"
+        );
+        assert!(
+            !o.skip_replay,
+            "the user's own actions must be sent by default"
+        );
     }
 }

@@ -125,7 +125,10 @@ mod tests {
 
     #[test]
     fn a_malformed_request_is_not_retried_forever() {
-        assert!(!should_retry(&http(400)), "a 400 will be rejected identically on replay");
+        assert!(
+            !should_retry(&http(400)),
+            "a 400 will be rejected identically on replay"
+        );
     }
 
     #[test]
@@ -175,7 +178,10 @@ mod tests {
 
     #[test]
     fn an_empty_outbox_produces_no_requests() {
-        assert!(outbox::batches(&[]).is_empty(), "an empty entry_ids list is a hard 400");
+        assert!(
+            outbox::batches(&[]).is_empty(),
+            "an empty entry_ids list is a hard 400"
+        );
     }
 
     #[test]

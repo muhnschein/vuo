@@ -28,7 +28,7 @@ use std::thread;
 
 use vuo_core::api::{MinifluxClient, Transport, TransportConfig};
 use vuo_core::db::outbox::{self, DesiredValue};
-use vuo_core::db::{Database, store};
+use vuo_core::db::{store, Database};
 use vuo_core::model::{EntryId, EntryStatus};
 use vuo_core::redact::ApiToken;
 use vuo_core::sync::{self, SyncOptions};
@@ -47,9 +47,14 @@ pub enum Command {
 #[derive(Debug, Clone)]
 pub enum Event {
     SyncStarted,
-    SyncFinished { unread: i64, changed: bool },
+    SyncFinished {
+        unread: i64,
+        changed: bool,
+    },
     /// Already-redacted, user-presentable text. Rendered as plain text (§9.3).
-    SyncFailed { message: String },
+    SyncFailed {
+        message: String,
+    },
     /// The API key was rejected; the UI should send the user to settings.
     AuthFailed,
 }
@@ -98,7 +103,9 @@ impl Worker {
                 let mut db = match Database::open(&db_path) {
                     Ok(db) => db,
                     Err(e) => {
-                        on_event(Event::SyncFailed { message: e.to_string() });
+                        on_event(Event::SyncFailed {
+                            message: e.to_string(),
+                        });
                         return;
                     }
                 };
@@ -106,7 +113,9 @@ impl Worker {
                 let client = match Transport::new(server, token, &TransportConfig::default()) {
                     Ok(t) => MinifluxClient::new(t),
                     Err(e) => {
-                        on_event(Event::SyncFailed { message: e.to_string() });
+                        on_event(Event::SyncFailed {
+                            message: e.to_string(),
+                        });
                         return;
                     }
                 };
@@ -131,7 +140,9 @@ impl Worker {
                                 Err(e) if e.is_auth_failure() => on_event(Event::AuthFailed),
                                 // The message is already redacted: Error's
                                 // Display never carries a token or userinfo.
-                                Err(e) => on_event(Event::SyncFailed { message: e.to_string() }),
+                                Err(e) => on_event(Event::SyncFailed {
+                                    message: e.to_string(),
+                                }),
                             }
                         }
                         Command::FlushOutbox => {
@@ -139,9 +150,14 @@ impl Worker {
                                 Ok(outcome) if outcome.auth_failed => on_event(Event::AuthFailed),
                                 Ok(_) => {
                                     let unread = store::unread_count(db.conn()).unwrap_or(0);
-                                    on_event(Event::SyncFinished { unread, changed: true });
+                                    on_event(Event::SyncFinished {
+                                        unread,
+                                        changed: true,
+                                    });
                                 }
-                                Err(e) => on_event(Event::SyncFailed { message: e.to_string() }),
+                                Err(e) => on_event(Event::SyncFailed {
+                                    message: e.to_string(),
+                                }),
                             }
                         }
                     }
@@ -173,7 +189,11 @@ impl Drop for Worker {
 /// The write is a fast local transaction, and doing it inline is what lets the
 /// UI update in the same frame as the tap. The server hears about it on the
 /// next flush; that is the whole point of the outbox.
-pub fn apply_local_status(db: &mut Database, id: EntryId, status: EntryStatus) -> vuo_core::Result<()> {
+pub fn apply_local_status(
+    db: &mut Database,
+    id: EntryId,
+    status: EntryStatus,
+) -> vuo_core::Result<()> {
     let now = chrono_now();
     db.with_tx(|tx| outbox::queue(tx, id, DesiredValue::Status(status), now))
 }
@@ -188,7 +208,10 @@ pub fn apply_local_mark_feed_read(db: &mut Database, feed_id: i64) -> vuo_core::
     db.with_tx(|tx| outbox::queue_mark_feed_read(tx, feed_id, now))
 }
 
-pub fn apply_local_mark_category_read(db: &mut Database, category_id: i64) -> vuo_core::Result<usize> {
+pub fn apply_local_mark_category_read(
+    db: &mut Database,
+    category_id: i64,
+) -> vuo_core::Result<usize> {
     let now = chrono_now();
     db.with_tx(|tx| outbox::queue_mark_category_read(tx, category_id, now))
 }
@@ -198,4 +221,165 @@ fn chrono_now() -> i64 {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0)
+}
+
+/// Where Vuo keeps its data and credentials on a device.
+///
+/// §7: *the API key is stored under the app's data directory with restrictive
+/// permissions, relying on Sailfish's home encryption. No custom keyring, no
+/// SQLCipher, unless a concrete threat model justifies it.*
+///
+/// The token deliberately does **not** live in the SQLite mirror. The mirror is
+/// a cache that can be deleted, copied for debugging, or handed to a developer
+/// with a bug report; a credential in it would travel with all of that.
+#[derive(Debug, Clone)]
+pub struct AppPaths {
+    pub database: PathBuf,
+    pub account: PathBuf,
+}
+
+impl AppPaths {
+    /// Resolve the standard locations, honouring `XDG_DATA_HOME`.
+    #[must_use]
+    pub fn resolve() -> Option<Self> {
+        let base = std::env::var_os("XDG_DATA_HOME")
+            .map(PathBuf::from)
+            .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local/share")))?
+            .join("harbour-vuo");
+        Some(AppPaths {
+            database: base.join("vuo.sqlite"),
+            account: base.join("account.json"),
+        })
+    }
+
+    /// Resolve paths and confirm an account has been configured.
+    ///
+    /// Returns `None` when the app has never been set up, which is not an
+    /// error: a background timer firing before first run should do nothing
+    /// quietly.
+    #[must_use]
+    pub fn from_env() -> Option<Self> {
+        let paths = Self::resolve()?;
+        paths.account.exists().then_some(paths)
+    }
+}
+
+/// The stored account. Written with owner-only permissions.
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+pub struct Account {
+    pub server_url: String,
+    pub token: String,
+}
+
+/// Read the account file.
+pub fn load_account(path: &std::path::Path) -> vuo_core::Result<Account> {
+    let raw = std::fs::read_to_string(path)
+        .map_err(|e| vuo_core::Error::Config(format!("could not read the account file: {e}")))?;
+    serde_json::from_str(&raw)
+        .map_err(|_| vuo_core::Error::Config("the account file is malformed".to_owned()))
+}
+
+/// Write the account file with mode 0600.
+///
+/// The permissions are set *before* the secret is written, not after: a file
+/// created world-readable and chmod'ed afterwards is readable for the window
+/// in between, and on a shared device that window is enough.
+pub fn save_account(path: &std::path::Path, account: &Account) -> vuo_core::Result<()> {
+    use std::io::Write as _;
+
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| {
+            vuo_core::Error::Config(format!("could not create the data directory: {e}"))
+        })?;
+    }
+
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt as _;
+        options.mode(0o600);
+    }
+
+    let mut file = options
+        .open(path)
+        .map_err(|e| vuo_core::Error::Config(format!("could not write the account file: {e}")))?;
+    let json = serde_json::to_vec_pretty(account)
+        .map_err(|_| vuo_core::Error::Config("could not encode the account".to_owned()))?;
+    file.write_all(&json)
+        .map_err(|e| vuo_core::Error::Config(format!("could not write the account file: {e}")))?;
+    Ok(())
+}
+
+/// One synchronous sync pass, for the systemd timer.
+pub fn sync_once_blocking(paths: &AppPaths) -> vuo_core::Result<vuo_core::sync::SyncReport> {
+    let account = load_account(&paths.account)?;
+    let server = url::Url::parse(&account.server_url)
+        .map_err(|_| vuo_core::Error::Config("the stored server URL is not a URL".to_owned()))?;
+    let transport = Transport::new(
+        server,
+        ApiToken::new(account.token),
+        &TransportConfig::default(),
+    )?;
+    let client = MinifluxClient::new(transport);
+    let mut db = Database::open(&paths.database)?;
+
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|e| vuo_core::Error::Config(format!("could not start a runtime: {e}")))?;
+    runtime.block_on(sync::sync(&mut db, &client, SyncOptions::default()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_account_file_is_not_world_readable() {
+        // §7 relies on filesystem permissions plus Sailfish's home encryption,
+        // so the permissions have to actually be right.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("account.json");
+        save_account(
+            &path,
+            &Account {
+                server_url: "https://h.example/".into(),
+                token: "secret".into(),
+            },
+        )
+        .expect("write");
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt as _;
+            let mode = std::fs::metadata(&path).expect("stat").permissions().mode() & 0o777;
+            assert_eq!(
+                mode, 0o600,
+                "the API key must not be readable by other users"
+            );
+        }
+
+        let read_back = load_account(&path).expect("read");
+        assert_eq!(read_back.token, "secret");
+    }
+
+    #[test]
+    fn a_malformed_account_file_is_an_error_not_a_panic() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("account.json");
+        std::fs::write(&path, "not json at all").expect("write");
+        assert!(load_account(&path).is_err());
+    }
+
+    #[test]
+    fn an_unconfigured_device_reports_no_paths_rather_than_failing() {
+        // A timer that fires before first run must do nothing, quietly.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let paths = AppPaths {
+            database: dir.path().join("db.sqlite"),
+            account: dir.path().join("missing.json"),
+        };
+        assert!(!paths.account.exists());
+    }
 }

@@ -13,6 +13,14 @@
 //!
 //! Run under `QT_QPA_PLATFORM=offscreen`; `make check` sets it.
 
+// Test code: see the note in vuo-core's lib.rs. The unwrap/panic denials
+// guard foreign-input paths in production, not assertions in tests.
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
 use qmetaobject::*;
 
 /// Everything is done in one test on purpose: `QmlEngine::new()` builds a
@@ -33,12 +41,17 @@ fn every_qml_file_compiles_against_the_silica_stubs() {
     ));
     // So that `import "pages"`-style relative resolution behaves as it does on
     // a device, where everything lives under one datadir.
-    engine.add_import_path(QString::from(root.join("qml").to_string_lossy().to_string()));
+    engine.add_import_path(QString::from(
+        root.join("qml").to_string_lossy().to_string(),
+    ));
 
     let mut files: Vec<std::path::PathBuf> = Vec::new();
     collect_qml(&root.join("qml"), &mut files);
     files.sort();
-    assert!(!files.is_empty(), "no QML found -- the test is not testing anything");
+    assert!(
+        !files.is_empty(),
+        "no QML found -- the test is not testing anything"
+    );
 
     let mut failures: Vec<String> = Vec::new();
     for file in &files {
@@ -68,7 +81,9 @@ fn every_qml_file_compiles_against_the_silica_stubs() {
 }
 
 fn collect_qml(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
-    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_dir() {

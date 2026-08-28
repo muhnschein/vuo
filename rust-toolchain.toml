@@ -1,0 +1,11 @@
+# Pinned so every contributor and every CI runner compiles Vuo the same way.
+#
+# NOTE this is NOT the MSRV. The SailfishOS SDK ships an older Rust (see
+# `rust-version` in the workspace Cargo.toml, and `make msrv`), and the device
+# build uses the SDK's toolchain, not this one. This pin exists so that
+# rustfmt and clippy behave identically everywhere -- a clippy version drift
+# turns `-D warnings` into a lottery.
+[toolchain]
+channel = "stable"
+components = ["rustfmt", "clippy"]
+profile = "minimal"

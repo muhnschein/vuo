@@ -117,8 +117,12 @@ impl EntriesQuery {
     /// The query shape the sync engine uses: an id keyset scan.
     #[must_use]
     pub fn keyset(limit: u32) -> Self {
-        EntriesQuery { order: EntryOrder::Id, direction: SortDirection::Asc, ..Default::default() }
-            .with_limit(limit)
+        EntriesQuery {
+            order: EntryOrder::Id,
+            direction: SortDirection::Asc,
+            ..Default::default()
+        }
+        .with_limit(limit)
     }
 
     /// Clamps into `1..=1000`. Zero and negative values cannot be expressed.
@@ -266,7 +270,11 @@ impl MinifluxClient {
             .ok()
             .map(|e| e.error_message)
             .filter(|m| !m.is_empty());
-        Err(Error::Http { status: response.status, endpoint: safe.clone(), message })
+        Err(Error::Http {
+            status: response.status,
+            endpoint: safe.clone(),
+            message,
+        })
     }
 
     // ------------------------------------------------------------ discovery
@@ -293,7 +301,10 @@ impl MinifluxClient {
         self.get_json(self.url("/v1/feeds")?).await
     }
 
-    pub async fn entries(&self, query: &EntriesQuery) -> Result<(wire::EntriesResponse, Option<chrono::DateTime<chrono::Utc>>)> {
+    pub async fn entries(
+        &self,
+        query: &EntriesQuery,
+    ) -> Result<(wire::EntriesResponse, Option<chrono::DateTime<chrono::Utc>>)> {
         let mut url = self.url("/v1/entries")?;
         query.apply(&mut url);
         let safe = SafeUrl::from(&url);
@@ -304,20 +315,27 @@ impl MinifluxClient {
     }
 
     pub async fn entry(&self, id: EntryId) -> Result<wire::Entry> {
-        self.get_json(self.url(&format!("/v1/entries/{}", id.get()))?).await
+        self.get_json(self.url(&format!("/v1/entries/{}", id.get()))?)
+            .await
     }
 
     /// `GET /v1/entries/ids`. Present only from 2.3.2; check
     /// [`ServerVersion::has_entry_ids_endpoint`] before calling.
-    pub async fn entry_ids(&self, query: &EntriesQuery, offset: u32) -> Result<wire::EntryIdsResponse> {
+    pub async fn entry_ids(
+        &self,
+        query: &EntriesQuery,
+        offset: u32,
+    ) -> Result<wire::EntryIdsResponse> {
         let mut url = self.url("/v1/entries/ids")?;
         query.apply(&mut url);
-        url.query_pairs_mut().append_pair("offset", &offset.to_string());
+        url.query_pairs_mut()
+            .append_pair("offset", &offset.to_string());
         self.get_json(url).await
     }
 
     pub async fn feed_icon(&self, feed_id: i64) -> Result<wire::Icon> {
-        self.get_json(self.url(&format!("/v1/feeds/{feed_id}/icon"))?).await
+        self.get_json(self.url(&format!("/v1/feeds/{feed_id}/icon"))?)
+            .await
     }
 
     pub async fn counters(&self) -> Result<wire::FeedCounters> {
@@ -332,7 +350,8 @@ impl MinifluxClient {
     /// this GET persist the scrape server-side, which must not happen
     /// speculatively.
     pub async fn fetch_original_content(&self, id: EntryId) -> Result<wire::EntryContentResponse> {
-        self.get_json(self.url(&format!("/v1/entries/{}/fetch-content", id.get()))?).await
+        self.get_json(self.url(&format!("/v1/entries/{}/fetch-content", id.get()))?)
+            .await
     }
 
     // -------------------------------------------------------------- writing
@@ -351,7 +370,9 @@ impl MinifluxClient {
         if ids.is_empty() {
             // A hard 400 server-side; refuse locally so it is not mistaken for
             // a server fault by the outbox's retry classifier.
-            return Err(Error::Config("refusing to send an empty entry id list".to_owned()));
+            return Err(Error::Config(
+                "refusing to send an empty entry id list".to_owned(),
+            ));
         }
 
         let (status, starred) = match mutation {
@@ -368,7 +389,10 @@ impl MinifluxClient {
 
         let url = self.url("/v1/entries")?;
         let safe = SafeUrl::from(&url);
-        let response = self.transport.send(reqwest::Method::PUT, url, Some(payload)).await?;
+        let response = self
+            .transport
+            .send(reqwest::Method::PUT, url, Some(payload))
+            .await?;
         Self::check_status(&response, &safe)
     }
 
@@ -380,17 +404,20 @@ impl MinifluxClient {
     /// is why the outbox expands mark-all into concrete entry ids instead of
     /// queueing this call. See [`crate::outbox`].
     pub async fn mark_feed_read(&self, feed_id: i64) -> Result<()> {
-        self.put_empty(&format!("/v1/feeds/{feed_id}/mark-all-as-read")).await
+        self.put_empty(&format!("/v1/feeds/{feed_id}/mark-all-as-read"))
+            .await
     }
 
     pub async fn mark_category_read(&self, category_id: i64) -> Result<()> {
-        self.put_empty(&format!("/v1/categories/{category_id}/mark-all-as-read")).await
+        self.put_empty(&format!("/v1/categories/{category_id}/mark-all-as-read"))
+            .await
     }
 
     /// `PUT /v1/users/{id}/mark-all-as-read`. The id must be the authenticated
     /// user's own or the server answers 403.
     pub async fn mark_user_read(&self, user_id: i64) -> Result<()> {
-        self.put_empty(&format!("/v1/users/{user_id}/mark-all-as-read")).await
+        self.put_empty(&format!("/v1/users/{user_id}/mark-all-as-read"))
+            .await
     }
 
     /// `PUT /v1/feeds/{id}/refresh` — ask the server to poll a feed now.
@@ -398,7 +425,8 @@ impl MinifluxClient {
     /// Note what this is *not*: Vuo never fetches a feed URL itself. §3 makes
     /// local feed fetching the single most important boundary in the project.
     pub async fn refresh_feed(&self, feed_id: i64) -> Result<()> {
-        self.put_empty(&format!("/v1/feeds/{feed_id}/refresh")).await
+        self.put_empty(&format!("/v1/feeds/{feed_id}/refresh"))
+            .await
     }
 
     async fn put_empty(&self, path: &str) -> Result<()> {
@@ -425,11 +453,17 @@ impl MinifluxClient {
             feed_id: i64,
         }
 
-        let payload = serde_json::to_vec(&Req { feed_url, category_id })
-            .map_err(|_| Error::Protocol("could not encode the subscribe request".to_owned()))?;
+        let payload = serde_json::to_vec(&Req {
+            feed_url,
+            category_id,
+        })
+        .map_err(|_| Error::Protocol("could not encode the subscribe request".to_owned()))?;
         let url = self.url("/v1/feeds")?;
         let safe = SafeUrl::from(&url);
-        let response = self.transport.send(reqwest::Method::POST, url, Some(payload)).await?;
+        let response = self
+            .transport
+            .send(reqwest::Method::POST, url, Some(payload))
+            .await?;
         let resp: Resp = Self::decode(response, &safe)?;
         Ok(resp.feed_id)
     }
@@ -438,7 +472,10 @@ impl MinifluxClient {
     pub async fn delete_feed(&self, feed_id: i64) -> Result<()> {
         let url = self.url(&format!("/v1/feeds/{feed_id}"))?;
         let safe = SafeUrl::from(&url);
-        let response = self.transport.send(reqwest::Method::DELETE, url, None).await?;
+        let response = self
+            .transport
+            .send(reqwest::Method::DELETE, url, None)
+            .await?;
         Self::check_status(&response, &safe)
     }
 }
@@ -479,9 +516,17 @@ mod tests {
     #[test]
     fn an_unset_cursor_omits_the_parameter_entirely() {
         // Sending changed_after=0 would mean "everything since 1970".
-        assert!(!query_string(&EntriesQuery::keyset(10).changed_after(None)).contains("changed_after"));
-        assert!(!query_string(&EntriesQuery::keyset(10).changed_after(Some(0))).contains("changed_after"));
-        assert!(query_string(&EntriesQuery::keyset(10).changed_after(Some(42))).contains("changed_after=42"));
+        assert!(
+            !query_string(&EntriesQuery::keyset(10).changed_after(None)).contains("changed_after")
+        );
+        assert!(
+            !query_string(&EntriesQuery::keyset(10).changed_after(Some(0)))
+                .contains("changed_after")
+        );
+        assert!(
+            query_string(&EntriesQuery::keyset(10).changed_after(Some(42)))
+                .contains("changed_after=42")
+        );
     }
 
     #[test]
@@ -490,13 +535,20 @@ mod tests {
             .with_status(EntryStatus::Read)
             .with_status(EntryStatus::Unread);
         let s = query_string(&q);
-        assert!(s.contains("status=read") && s.contains("status=unread"), "{s}");
+        assert!(
+            s.contains("status=read") && s.contains("status=unread"),
+            "{s}"
+        );
     }
 
     #[test]
     fn starred_is_exactly_true_or_false() {
-        assert!(query_string(&EntriesQuery::keyset(10).starred(Some(true))).contains("starred=true"));
-        assert!(query_string(&EntriesQuery::keyset(10).starred(Some(false))).contains("starred=false"));
+        assert!(
+            query_string(&EntriesQuery::keyset(10).starred(Some(true))).contains("starred=true")
+        );
+        assert!(
+            query_string(&EntriesQuery::keyset(10).starred(Some(false))).contains("starred=false")
+        );
         assert!(!query_string(&EntriesQuery::keyset(10).starred(None)).contains("starred"));
     }
 
@@ -504,6 +556,9 @@ mod tests {
     fn keyset_cursor_is_after_entry_id_not_offset() {
         let s = query_string(&EntriesQuery::keyset(10).after_entry_id(Some(EntryId(77))));
         assert!(s.contains("after_entry_id=77"), "{s}");
-        assert!(!s.contains("offset"), "offset pagination is unsafe here: {s}");
+        assert!(
+            !s.contains("offset"),
+            "offset pagination is unsafe here: {s}"
+        );
     }
 }

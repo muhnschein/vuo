@@ -63,7 +63,11 @@ impl From<&Entry> for EntryRow {
             starred: e.starred,
             published: e.published_at.map(|t| t.timestamp()).unwrap_or(0),
             reading_time: e.reading_time,
-            url: e.url.as_ref().map(|u| u.as_str().to_owned()).unwrap_or_default(),
+            url: e
+                .url
+                .as_ref()
+                .map(|u| u.as_str().to_owned())
+                .unwrap_or_default(),
         }
     }
 }
@@ -171,7 +175,9 @@ impl EntryModel {
 
     /// Update one row in place after a local mutation, without a full reload.
     pub fn mark_row(&mut self, id: EntryId, unread: Option<bool>, starred: Option<bool>) {
-        let Some(index) = self.rows.iter().position(|r| r.id == id.get()) else { return };
+        let Some(index) = self.rows.iter().position(|r| r.id == id.get()) else {
+            return;
+        };
         if let Some(row) = self.rows.get_mut(index) {
             if let Some(u) = unread {
                 row.unread = u;
@@ -182,7 +188,7 @@ impl EntryModel {
         }
         let Ok(i) = i32::try_from(index) else { return };
         let model_index = (self as &mut dyn QAbstractListModel).row_index(i);
-        (self as &mut dyn QAbstractListModel).data_changed(model_index.clone(), model_index);
+        (self as &mut dyn QAbstractListModel).data_changed(model_index, model_index);
     }
 
     #[must_use]
@@ -200,8 +206,12 @@ impl QAbstractListModel for EntryModel {
         // Bounds-checked rather than indexed: this is called by Qt with
         // whatever index a delegate asks for, and `clippy::indexing_slicing`
         // is denied for exactly this shape of code.
-        let Ok(i) = usize::try_from(index.row()) else { return QVariant::default() };
-        let Some(row) = self.rows.get(i) else { return QVariant::default() };
+        let Ok(i) = usize::try_from(index.row()) else {
+            return QVariant::default();
+        };
+        let Some(row) = self.rows.get(i) else {
+            return QVariant::default();
+        };
 
         match role {
             ROLE_ID => row.id.into(),
@@ -272,7 +282,11 @@ impl FeedModel {
     }
 
     fn feed_id_at(&self, row: i32) -> i64 {
-        usize::try_from(row).ok().and_then(|i| self.rows.get(i)).map(|r| r.id).unwrap_or(0)
+        usize::try_from(row)
+            .ok()
+            .and_then(|i| self.rows.get(i))
+            .map(|r| r.id)
+            .unwrap_or(0)
     }
 
     pub fn reload(&mut self) {
@@ -310,8 +324,12 @@ impl QAbstractListModel for FeedModel {
     }
 
     fn data(&self, index: QModelIndex, role: i32) -> QVariant {
-        let Ok(i) = usize::try_from(index.row()) else { return QVariant::default() };
-        let Some(row) = self.rows.get(i) else { return QVariant::default() };
+        let Ok(i) = usize::try_from(index.row()) else {
+            return QVariant::default();
+        };
+        let Some(row) = self.rows.get(i) else {
+            return QVariant::default();
+        };
         match role {
             ROLE_ID => row.id.into(),
             ROLE_FEED_TITLE => QString::from(row.title.clone()).into(),

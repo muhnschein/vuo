@@ -27,7 +27,18 @@ use crate::content::MediaUrl;
 macro_rules! id_type {
     ($name:ident, $doc:literal) => {
         #[doc = $doc]
-        #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize)]
+        #[derive(
+            Debug,
+            Clone,
+            Copy,
+            PartialEq,
+            Eq,
+            PartialOrd,
+            Ord,
+            Hash,
+            serde::Serialize,
+            serde::Deserialize,
+        )]
         pub struct $name(pub i64);
 
         impl $name {
@@ -45,7 +56,10 @@ macro_rules! id_type {
     };
 }
 
-id_type!(EntryId, "A server-assigned entry identifier. Not assumed positive or monotonic.");
+id_type!(
+    EntryId,
+    "A server-assigned entry identifier. Not assumed positive or monotonic."
+);
 id_type!(FeedId, "A server-assigned feed identifier.");
 id_type!(CategoryId, "A server-assigned category identifier.");
 id_type!(IconId, "A server-assigned icon identifier.");
@@ -208,15 +222,17 @@ impl ServerVersion {
     #[must_use]
     pub fn parse(raw: &str) -> Option<Self> {
         let trimmed = raw.trim().trim_start_matches('v');
-        let core = trimmed
-            .split(|c: char| c == '-' || c == '+' || c == ' ')
-            .next()
-            .unwrap_or(trimmed);
+        let core = trimmed.split(['-', '+', ' ']).next().unwrap_or(trimmed);
         let mut parts = core.split('.');
         let major = parts.next()?.parse().ok()?;
         let minor = parts.next().unwrap_or("0").parse().unwrap_or(0);
         let patch = parts.next().unwrap_or("0").parse().unwrap_or(0);
-        Some(ServerVersion { raw: raw.trim().to_owned(), major, minor, patch })
+        Some(ServerVersion {
+            raw: raw.trim().to_owned(),
+            major,
+            minor,
+            patch,
+        })
     }
 
     fn at_least(&self, major: u32, minor: u32, patch: u32) -> bool {
@@ -256,7 +272,12 @@ impl Default for ServerVersion {
     fn default() -> Self {
         // Assume the oldest behaviour Vuo supports when the server will not
         // say. Assuming the newest would mean using endpoints that 404.
-        ServerVersion { raw: "unknown".to_owned(), major: 2, minor: 0, patch: 0 }
+        ServerVersion {
+            raw: "unknown".to_owned(),
+            major: 2,
+            minor: 0,
+            patch: 0,
+        }
     }
 }
 
@@ -297,7 +318,10 @@ mod tests {
         let old = ServerVersion::parse("2.2.7").unwrap();
 
         assert!(new.has_entry_ids_endpoint());
-        assert!(!older.has_entry_ids_endpoint(), "/v1/entries/ids lands in 2.3.2");
+        assert!(
+            !older.has_entry_ids_endpoint(),
+            "/v1/entries/ids lands in 2.3.2"
+        );
         assert!(!old.has_entry_ids_endpoint());
 
         assert!(new.enforces_entry_limit_cap());
@@ -314,6 +338,10 @@ mod tests {
     #[test]
     fn limit_is_never_unbounded_even_on_permissive_servers() {
         let old = ServerVersion::parse("2.2.0").unwrap();
-        assert_eq!(old.max_entry_limit(), 1000, "a phone must not request the whole corpus");
+        assert_eq!(
+            old.max_entry_limit(),
+            1000,
+            "a phone must not request the whole corpus"
+        );
     }
 }

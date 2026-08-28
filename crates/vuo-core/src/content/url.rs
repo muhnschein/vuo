@@ -219,7 +219,11 @@ impl MediaPolicy {
     pub fn decide_with_consent(&self, url: &MediaUrl, consented: &[Url]) -> MediaDecision {
         match self {
             MediaPolicy::Direct => MediaDecision::Fetch(url.clone()),
-            MediaPolicy::ProxyThroughInstance { instance, extra_trusted, fallback } => {
+            MediaPolicy::ProxyThroughInstance {
+                instance,
+                extra_trusted,
+                fallback,
+            } => {
                 // Classify by parsed ORIGIN, never by looking for "/proxy/" in
                 // the path: any third-party host can serve a /proxy/ path, and
                 // matching on the string would trust it.
@@ -262,7 +266,10 @@ mod tests {
             "not a url at all",
             "",
         ] {
-            assert!(MediaUrl::parse(raw).is_none(), "should have rejected {raw:?}");
+            assert!(
+                MediaUrl::parse(raw).is_none(),
+                "should have rejected {raw:?}"
+            );
         }
     }
 
@@ -279,7 +286,10 @@ mod tests {
         // The guarantee must survive a round trip through storage, not just
         // through `parse`.
         let err = serde_json::from_str::<MediaUrl>("\"javascript:alert(1)\"");
-        assert!(err.is_err(), "deserialize must not bypass scheme validation");
+        assert!(
+            err.is_err(),
+            "deserialize must not bypass scheme validation"
+        );
 
         let ok: MediaUrl = serde_json::from_str("\"https://example.com/a\"").unwrap();
         assert_eq!(ok.as_str(), "https://example.com/a");
@@ -320,7 +330,10 @@ mod tests {
     fn strict_policy_drops_rather_than_asking() {
         let instance = Url::parse("https://miniflux.example/").unwrap();
         let third_party = MediaUrl::parse("https://tracker.example/pixel.gif").unwrap();
-        assert_eq!(MediaPolicy::strict_for(instance).decide(&third_party), MediaDecision::Drop);
+        assert_eq!(
+            MediaPolicy::strict_for(instance).decide(&third_party),
+            MediaDecision::Drop
+        );
     }
 
     #[test]
@@ -351,7 +364,10 @@ mod tests {
         let instance = Url::parse("https://miniflux.example/").unwrap();
         let policy = MediaPolicy::default_for(instance);
         let impostor = MediaUrl::parse("https://evil.example/proxy/sig/aHR0cA==").unwrap();
-        assert_eq!(policy.decide(&impostor), MediaDecision::NeedsConsent(impostor));
+        assert_eq!(
+            policy.decide(&impostor),
+            MediaDecision::NeedsConsent(impostor)
+        );
     }
 
     #[test]
@@ -375,8 +391,14 @@ mod tests {
             extra_trusted: Vec::new(),
             fallback: UnproxiedMedia::Allow,
         };
-        assert_eq!(lenient.decide(&third_party), MediaDecision::Fetch(third_party.clone()));
-        assert_eq!(MediaPolicy::Direct.decide(&third_party), MediaDecision::Fetch(third_party));
+        assert_eq!(
+            lenient.decide(&third_party),
+            MediaDecision::Fetch(third_party.clone())
+        );
+        assert_eq!(
+            MediaPolicy::Direct.decide(&third_party),
+            MediaDecision::Fetch(third_party)
+        );
     }
 
     #[test]

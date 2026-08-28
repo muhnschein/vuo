@@ -1,5 +1,13 @@
 //! The incremental pull: pagination, the cursor, and deletion detection.
 
+// Test code: see the note in vuo-core's lib.rs. The unwrap/panic denials
+// guard foreign-input paths in production, not assertions in tests.
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
 mod common;
 
 use common::*;
@@ -20,10 +28,14 @@ async fn pagination_uses_a_keyset_and_never_an_offset() {
         .and(path("/v1/entries"))
         .and(query_param("order", "id"))
         .and(query_param("direction", "asc"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(entries_response(
-            (1..=250).map(|i| entry_json(i, 1, "unread", false)).collect(),
-            600,
-        )))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(entries_response(
+                (1..=250)
+                    .map(|i| entry_json(i, 1, "unread", false))
+                    .collect(),
+                600,
+            )),
+        )
         .up_to_n_times(1)
         .mount(&server)
         .await;
@@ -32,10 +44,14 @@ async fn pagination_uses_a_keyset_and_never_an_offset() {
     Mock::given(method("GET"))
         .and(path("/v1/entries"))
         .and(query_param("after_entry_id", "250"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(entries_response(
-            (251..=300).map(|i| entry_json(i, 1, "unread", false)).collect(),
-            350,
-        )))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(entries_response(
+                (251..=300)
+                    .map(|i| entry_json(i, 1, "unread", false))
+                    .collect(),
+                350,
+            )),
+        )
         .mount(&server)
         .await;
 
@@ -48,7 +64,10 @@ async fn pagination_uses_a_keyset_and_never_an_offset() {
 
     for request in server.received_requests().await.unwrap() {
         let query = request.url.query().unwrap_or_default();
-        assert!(!query.contains("offset="), "offset paging is unsafe here: {query}");
+        assert!(
+            !query.contains("offset="),
+            "offset paging is unsafe here: {query}"
+        );
     }
 }
 
@@ -58,8 +77,9 @@ async fn a_page_of_unusable_entries_does_not_end_the_pass() {
     // survived validation -- otherwise one poisoned page truncates the sync.
     let server = MockServer::start().await;
 
-    let mut poisoned: Vec<_> =
-        (1..=250).map(|i| entry_json(i, 1, "unread", false)).collect();
+    let mut poisoned: Vec<_> = (1..=250)
+        .map(|i| entry_json(i, 1, "unread", false))
+        .collect();
     for e in &mut poisoned {
         e["status"] = serde_json::Value::from("nonsense");
     }
@@ -194,7 +214,10 @@ async fn a_torn_id_listing_aborts_the_reconcile_instead_of_deleting() {
     db.with_tx(|tx| {
         tx.execute("INSERT INTO feeds (id, title) VALUES (1, 'f')", [])?;
         for i in 1..=5 {
-            tx.execute("INSERT INTO entries (id, feed_id, status) VALUES (?1, 1, 'unread')", [i])?;
+            tx.execute(
+                "INSERT INTO entries (id, feed_id, status) VALUES (?1, 1, 'unread')",
+                [i],
+            )?;
         }
         Ok(())
     })
@@ -222,7 +245,10 @@ async fn a_consistent_id_listing_deletes_what_the_server_dropped() {
     db.with_tx(|tx| {
         tx.execute("INSERT INTO feeds (id, title) VALUES (1, 'f')", [])?;
         for i in 1..=5 {
-            tx.execute("INSERT INTO entries (id, feed_id, status) VALUES (?1, 1, 'unread')", [i])?;
+            tx.execute(
+                "INSERT INTO entries (id, feed_id, status) VALUES (?1, 1, 'unread')",
+                [i],
+            )?;
         }
         // Entry 2 has a pending intent; deleting the entry must take it too,
         // since Miniflux silently ignores unknown ids and the row would
@@ -264,7 +290,10 @@ async fn the_counters_check_finds_diverging_feeds() {
     let client = client_for(&server);
     let mut db = memory_db();
     db.with_tx(|tx| {
-        tx.execute("INSERT INTO feeds (id, title) VALUES (1, 'a'), (2, 'b')", [])?;
+        tx.execute(
+            "INSERT INTO feeds (id, title) VALUES (1, 'a'), (2, 'b')",
+            [],
+        )?;
         // Feed 1 agrees (3 local, 2+1 server). Feed 2 does not (1 local, 4 server).
         for (id, feed) in [(1i64, 1i64), (2, 1), (3, 1), (4, 2)] {
             tx.execute(
@@ -277,5 +306,9 @@ async fn the_counters_check_finds_diverging_feeds() {
     .unwrap();
 
     let diverging = pull::diverging_feeds(&db, &client).await.unwrap();
-    assert_eq!(diverging, vec![2], "only the feed whose counts disagree needs work");
+    assert_eq!(
+        diverging,
+        vec![2],
+        "only the feed whose counts disagree needs work"
+    );
 }

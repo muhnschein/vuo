@@ -1,0 +1,8 @@
+---
+source: crates/vuo-core/tests/content_snapshots.rs
+expression: render(&document)
+---
+p: Ordinary opening line.
+p: Click here
+p: &lt;script&gt;this one is only text&lt;/script&gt;
+p: Event handlers are attributes we never read.

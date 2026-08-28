@@ -1,0 +1,8 @@
+---
+source: crates/vuo-core/tests/content_snapshots.rs
+expression: render(&document)
+---
+p: A post about code:
+code[rust]: "fn main() {\n    let xs = vec![1, 2, 3];\n    println!(\"{xs:?}\");   // <- entities inside pre\n}"
+p: And some inline let x = 1; too.
+code[none]: "plain preformatted\n   with   deliberate     spacing"

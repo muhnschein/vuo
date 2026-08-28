@@ -197,7 +197,12 @@ impl Transport {
     }
 
     /// Perform a request, following redirects under an explicit policy.
-    pub async fn send(&self, method: reqwest::Method, url: Url, body: Option<Vec<u8>>) -> Result<BoundedResponse> {
+    pub async fn send(
+        &self,
+        method: reqwest::Method,
+        url: Url,
+        body: Option<Vec<u8>>,
+    ) -> Result<BoundedResponse> {
         let mut current = url;
         let mut hops = 0usize;
 
@@ -293,7 +298,11 @@ impl Transport {
             }
 
             let body = self.read_bounded(response, &safe).await?;
-            return Ok(BoundedResponse { status: status.as_u16(), body, server_date });
+            return Ok(BoundedResponse {
+                status: status.as_u16(),
+                body,
+                server_date,
+            });
         }
     }
 
@@ -339,9 +348,10 @@ fn classify(e: reqwest::Error, endpoint: &SafeUrl) -> Error {
         } else {
             TransportKind::Connect
         }
-    } else if e.is_body() || e.is_decode() {
-        TransportKind::Other
     } else {
+        // Body and decode failures are deliberately not distinguished here:
+        // callers act on the retry classification, and both are equally
+        // "the response was unusable".
         TransportKind::Other
     };
 
@@ -405,7 +415,10 @@ mod tests {
             ApiToken::new("t"),
             &config,
         );
-        assert!(t.is_err(), "a bad CA must fail loudly, never fall back to no CA");
+        assert!(
+            t.is_err(),
+            "a bad CA must fail loudly, never fall back to no CA"
+        );
     }
 
     #[test]

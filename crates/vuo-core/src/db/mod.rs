@@ -85,7 +85,10 @@ impl Database {
 
     /// Run `f` inside a transaction, committing on `Ok` and rolling back on
     /// `Err`.
-    pub fn with_tx<T>(&mut self, f: impl FnOnce(&rusqlite::Transaction<'_>) -> Result<T>) -> Result<T> {
+    pub fn with_tx<T>(
+        &mut self,
+        f: impl FnOnce(&rusqlite::Transaction<'_>) -> Result<T>,
+    ) -> Result<T> {
         let tx = self.conn.transaction()?;
         let out = f(&tx)?;
         tx.commit()?;
@@ -100,7 +103,10 @@ mod tests {
     #[test]
     fn a_fresh_database_is_migrated_and_usable() {
         let db = Database::open_in_memory().unwrap();
-        assert_eq!(migrations::current_version(db.conn()).unwrap(), migrations::target_version());
+        assert_eq!(
+            migrations::current_version(db.conn()).unwrap(),
+            migrations::target_version()
+        );
     }
 
     #[test]
@@ -146,9 +152,7 @@ mod tests {
                 if trimmed.starts_with("//") || trimmed.starts_with("///") {
                     continue;
                 }
-                let formatted_sql = ["format!", "&format!"]
-                    .iter()
-                    .any(|m| line.contains(m))
+                let formatted_sql = ["format!", "&format!"].iter().any(|m| line.contains(m))
                     && ["SELECT", "INSERT", "UPDATE", "DELETE", "PRAGMA", "CREATE"]
                         .iter()
                         .any(|kw| line.to_ascii_uppercase().contains(kw));

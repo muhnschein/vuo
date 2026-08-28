@@ -355,12 +355,23 @@ mod tests {
 
     #[test]
     fn update_request_omits_absent_fields() {
-        let req = EntriesUpdateRequest { entry_ids: vec![1, 2], status: Some("read"), starred: None };
+        let req = EntriesUpdateRequest {
+            entry_ids: vec![1, 2],
+            status: Some("read"),
+            starred: None,
+        };
         let json = serde_json::to_string(&req).unwrap();
         assert_eq!(json, r#"{"entry_ids":[1,2],"status":"read"}"#);
 
-        let req = EntriesUpdateRequest { entry_ids: vec![3], status: None, starred: Some(false) };
-        assert_eq!(serde_json::to_string(&req).unwrap(), r#"{"entry_ids":[3],"starred":false}"#);
+        let req = EntriesUpdateRequest {
+            entry_ids: vec![3],
+            status: None,
+            starred: Some(false),
+        };
+        assert_eq!(
+            serde_json::to_string(&req).unwrap(),
+            r#"{"entry_ids":[3],"starred":false}"#
+        );
     }
 
     #[test]

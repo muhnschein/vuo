@@ -32,10 +32,10 @@
 //! hitting one records a [`Truncation`] on the output so the UI can say the
 //! article is incomplete rather than silently presenting a fragment as whole.
 
+use html5ever::tokenizer::states::RawKind;
 use html5ever::tokenizer::{
     BufferQueue, Tag, TagKind, Token, TokenSink, TokenSinkResult, Tokenizer, TokenizerOpts,
 };
-use html5ever::tokenizer::states::RawKind;
 use tendril::StrTendril;
 use url::Url;
 
@@ -123,7 +123,10 @@ pub fn transform(html: &str, ctx: &TransformContext) -> Document {
         while cut > 0 && !html.is_char_boundary(cut) {
             cut -= 1;
         }
-        (html.get(..cut).unwrap_or(""), Some(Truncation::InputTooLarge))
+        (
+            html.get(..cut).unwrap_or(""),
+            Some(Truncation::InputTooLarge),
+        )
     } else {
         (html, None)
     };
@@ -205,8 +208,8 @@ fn classify(name: &str) -> Disposition {
         // -- dropped entirely: their text is not article content ------------
         "script" | "style" | "noscript" | "iframe" | "object" | "embed" | "applet" | "svg"
         | "math" | "template" | "form" | "button" | "input" | "select" | "option" | "textarea"
-        | "canvas" | "map" | "area" | "audio" | "video" | "source" | "track" | "param"
-        | "head" | "meta" | "link" | "title" | "base" => Disposition::Skip,
+        | "canvas" | "map" | "area" | "audio" | "video" | "source" | "track" | "param" | "head"
+        | "meta" | "link" | "title" | "base" => Disposition::Skip,
 
         // -- block structure ------------------------------------------------
         "p" => Disposition::Block(BlockTag::Paragraph),
@@ -274,7 +277,11 @@ struct ListState {
 enum Pending {
     Paragraph,
     Heading(u8),
-    ListItem { ordered: bool, number: Option<u32>, indent: u8 },
+    ListItem {
+        ordered: bool,
+        number: Option<u32>,
+        indent: u8,
+    },
 }
 
 struct Builder {
@@ -338,7 +345,10 @@ impl Builder {
     fn finish(mut self) -> Document {
         self.flush();
         self.close_table();
-        Document { blocks: self.blocks, truncated: self.truncated }
+        Document {
+            blocks: self.blocks,
+            truncated: self.truncated,
+        }
     }
 
     fn at_capacity(&self) -> bool {
@@ -362,7 +372,8 @@ impl Builder {
             self.record_truncation(Truncation::TooMuchText);
             return;
         }
-        self.blocks.push(RenderBlock::quoted(kind, self.quote_depth));
+        self.blocks
+            .push(RenderBlock::quoted(kind, self.quote_depth));
     }
 
     /// Emit whatever inline text has accumulated as the pending block kind.
@@ -395,9 +406,16 @@ impl Builder {
         let kind = match self.pending {
             Pending::Paragraph => BlockKind::Paragraph { spans },
             Pending::Heading(level) => BlockKind::Heading { level, spans },
-            Pending::ListItem { ordered, number, indent } => {
-                BlockKind::ListItem { ordered, number, indent, spans }
-            }
+            Pending::ListItem {
+                ordered,
+                number,
+                indent,
+            } => BlockKind::ListItem {
+                ordered,
+                number,
+                indent,
+                spans,
+            },
         };
         self.push_block(kind);
         self.pending = self.default_pending();
@@ -422,7 +440,9 @@ impl Builder {
 
     fn list_indent(&self) -> u8 {
         let depth = self.lists.len().saturating_sub(1);
-        u8::try_from(depth).unwrap_or(u8::MAX).min(self.ctx.limits.max_list_indent)
+        u8::try_from(depth)
+            .unwrap_or(u8::MAX)
+            .min(self.ctx.limits.max_list_indent)
     }
 
     fn push_text(&mut self, text: &str) {
@@ -431,7 +451,11 @@ impl Builder {
         }
 
         if self.pre_depth > 0 {
-            let budget = self.ctx.limits.max_text_bytes.saturating_sub(self.text_bytes);
+            let budget = self
+                .ctx
+                .limits
+                .max_text_bytes
+                .saturating_sub(self.text_bytes);
             if budget == 0 {
                 self.record_truncation(Truncation::TooMuchText);
                 return;
@@ -467,7 +491,11 @@ impl Builder {
             return;
         }
 
-        let budget = self.ctx.limits.max_text_bytes.saturating_sub(self.text_bytes);
+        let budget = self
+            .ctx
+            .limits
+            .max_text_bytes
+            .saturating_sub(self.text_bytes);
         if budget == 0 {
             self.record_truncation(Truncation::TooMuchText);
             return;
@@ -481,7 +509,11 @@ impl Builder {
             Some(prev) if prev.style == self.style && prev.link == self.link => {
                 prev.text.push_str(&taken);
             }
-            _ => self.spans.push(Span { text: taken, style: self.style, link: self.link.clone() }),
+            _ => self.spans.push(Span {
+                text: taken,
+                style: self.style,
+                link: self.link.clone(),
+            }),
         }
     }
 
@@ -550,7 +582,8 @@ impl Builder {
                         // §9.2: only http(s) survives into a rendered link.
                         // An unparseable or dangerous href yields plain text,
                         // never a link the user can tap.
-                        self.link = attr(tag, "href").and_then(|href| self.resolve(&href));
+                        self.link =
+                            non_empty_attr(tag, "href").and_then(|href| self.resolve(&href));
                     }
                 }
             }
@@ -569,7 +602,12 @@ impl Builder {
         };
 
         if !is_void(&name) && !tag.self_closing {
-            self.open.push(OpenElement { name, disposition, saved_style, saved_link });
+            self.open.push(OpenElement {
+                name,
+                disposition,
+                saved_style,
+                saved_link,
+            });
         } else if let Some(style) = saved_style {
             // A self-closing inline element styles nothing.
             self.style = style;
@@ -591,7 +629,10 @@ impl Builder {
             BlockTag::List { ordered } => {
                 self.flush();
                 if self.lists.len() < usize::from(self.ctx.limits.max_list_indent) {
-                    self.lists.push(ListState { ordered, counter: 0 });
+                    self.lists.push(ListState {
+                        ordered,
+                        counter: 0,
+                    });
                 }
             }
             BlockTag::ListItem => {
@@ -606,11 +647,18 @@ impl Builder {
                     // rather than dropping the user's text.
                     None => (false, None),
                 };
-                self.pending = Pending::ListItem { ordered, number, indent };
+                self.pending = Pending::ListItem {
+                    ordered,
+                    number,
+                    indent,
+                };
             }
             BlockTag::Quote => {
                 self.flush();
-                self.quote_depth = self.quote_depth.saturating_add(1).min(self.ctx.limits.max_quote_depth);
+                self.quote_depth = self
+                    .quote_depth
+                    .saturating_add(1)
+                    .min(self.ctx.limits.max_quote_depth);
             }
             BlockTag::Pre => {
                 self.flush();
@@ -647,7 +695,10 @@ impl Builder {
                         table.current_row = Some(Vec::new());
                     }
                     if let Some(row) = table.current_row.as_mut() {
-                        row.push(TableCell { spans: Vec::new(), header });
+                        row.push(TableCell {
+                            spans: Vec::new(),
+                            header,
+                        });
                     }
                 }
             }
@@ -672,7 +723,7 @@ impl Builder {
                 self.push_block(BlockKind::Rule);
             }
             VoidTag::Image => {
-                let Some(src) = attr(tag, "src").and_then(|s| self.resolve(&s)) else {
+                let Some(src) = non_empty_attr(tag, "src").and_then(|s| self.resolve(&s)) else {
                     return;
                 };
                 // §9.3: the decision is made here, before the URL ever
@@ -686,7 +737,12 @@ impl Builder {
                 self.flush();
                 let alt = attr(tag, "alt").unwrap_or_default();
                 let title = attr(tag, "title").filter(|t| !t.is_empty());
-                self.push_block(BlockKind::Image { src, alt, title, fetch });
+                self.push_block(BlockKind::Image {
+                    src,
+                    alt,
+                    title,
+                    fetch,
+                });
             }
         }
     }
@@ -714,7 +770,9 @@ impl Builder {
 
         // Close everything from the innermost open element down to the match.
         while self.open.len() > index {
-            let Some(element) = self.open.pop() else { break };
+            let Some(element) = self.open.pop() else {
+                break;
+            };
             self.close_element(&element);
             if let Some(skip_from) = self.skip_from {
                 if self.open.len() <= skip_from {
@@ -758,7 +816,10 @@ impl Builder {
                     let trimmed = text.trim_matches('\n');
                     if !trimmed.is_empty() {
                         let owned = trimmed.to_owned();
-                        self.push_block(BlockKind::Code { language, text: owned });
+                        self.push_block(BlockKind::Code {
+                            language,
+                            text: owned,
+                        });
                     }
                     // Inline spans accumulated before <pre> were already
                     // flushed on open; discard anything stray.
@@ -780,7 +841,10 @@ impl Builder {
                 }
             }
             Disposition::Block(BlockTag::TableCell { .. }) => self.flush(),
-            Disposition::Skip | Disposition::Flatten | Disposition::Inline(_) | Disposition::Void(_) => {}
+            Disposition::Skip
+            | Disposition::Flatten
+            | Disposition::Inline(_)
+            | Disposition::Void(_) => {}
         }
     }
 }
@@ -816,8 +880,20 @@ impl TokenSink for Builder {
 fn is_void(name: &str) -> bool {
     matches!(
         name,
-        "area" | "base" | "br" | "col" | "embed" | "hr" | "img" | "input" | "link" | "meta"
-            | "param" | "source" | "track" | "wbr"
+        "area"
+            | "base"
+            | "br"
+            | "col"
+            | "embed"
+            | "hr"
+            | "img"
+            | "input"
+            | "link"
+            | "meta"
+            | "param"
+            | "source"
+            | "track"
+            | "wbr"
     )
 }
 
@@ -826,6 +902,16 @@ fn attr(tag: &Tag, wanted: &str) -> Option<String> {
         .iter()
         .find(|a| a.name.local.as_ref().eq_ignore_ascii_case(wanted))
         .map(|a| a.value.to_string())
+}
+
+/// An attribute that is present but empty, treated as absent.
+///
+/// Real feed markup contains valueless attributes (`<a href>`). Resolving an
+/// empty `href` against the article's own URL yields the article, so the text
+/// would silently become a link back to the page the reader is already on --
+/// worse than no link, because it looks like it goes somewhere.
+fn non_empty_attr(tag: &Tag, wanted: &str) -> Option<String> {
+    attr(tag, wanted).filter(|v| !v.trim().is_empty())
 }
 
 /// Extract a language hint from `<pre class="language-rust">` / `highlight-rust`.
@@ -926,12 +1012,19 @@ mod tests {
     }
 
     fn strict_ctx() -> TransformContext {
-        TransformContext { media: MediaPolicy::strict_for(instance()), ..TransformContext::new(instance()) }
-            .with_base_url(Some(Url::parse("https://blog.example/post/").unwrap()))
+        TransformContext {
+            media: MediaPolicy::strict_for(instance()),
+            ..TransformContext::new(instance())
+        }
+        .with_base_url(Some(Url::parse("https://blog.example/post/").unwrap()))
     }
 
     fn text_of(doc: &Document) -> String {
-        doc.blocks.iter().map(|b| b.plain_text()).collect::<Vec<_>>().join("\n")
+        doc.blocks
+            .iter()
+            .map(|b| b.plain_text())
+            .collect::<Vec<_>>()
+            .join("\n")
     }
 
     // ---------------------------------------------------------------- basics
@@ -960,10 +1053,19 @@ mod tests {
         let BlockKind::Paragraph { spans } = doc.blocks.first().map(|b| &b.kind).unwrap() else {
             panic!("expected a paragraph")
         };
-        let styled: Vec<_> = spans.iter().map(|s| (s.text.as_str(), s.style.bold, s.style.italic)).collect();
+        let styled: Vec<_> = spans
+            .iter()
+            .map(|s| (s.text.as_str(), s.style.bold, s.style.italic))
+            .collect();
         assert_eq!(
             styled,
-            vec![("a", false, false), ("b", true, false), ("c", true, true), ("d", true, false), ("e", false, false)]
+            vec![
+                ("a", false, false),
+                ("b", true, false),
+                ("c", true, true),
+                ("d", true, false),
+                ("e", false, false)
+            ]
         );
     }
 
@@ -977,9 +1079,12 @@ mod tests {
             .blocks
             .iter()
             .filter_map(|b| match &b.kind {
-                BlockKind::ListItem { ordered, number, indent, spans } => {
-                    Some((*ordered, *number, *indent, Span::render_plain_text(spans)))
-                }
+                BlockKind::ListItem {
+                    ordered,
+                    number,
+                    indent,
+                    spans,
+                } => Some((*ordered, *number, *indent, Span::render_plain_text(spans))),
                 _ => None,
             })
             .collect();
@@ -990,7 +1095,10 @@ mod tests {
 
     #[test]
     fn blockquote_depth_is_a_scalar_not_nesting() {
-        let doc = transform("<blockquote><p>a</p><blockquote><p>b</p></blockquote></blockquote>", &lenient_ctx());
+        let doc = transform(
+            "<blockquote><p>a</p><blockquote><p>b</p></blockquote></blockquote>",
+            &lenient_ctx(),
+        );
         let depths: Vec<u8> = doc.blocks.iter().map(|b| b.quote_depth).collect();
         assert_eq!(depths, vec![1, 2]);
     }
@@ -1001,7 +1109,8 @@ mod tests {
             "<pre class=\"language-rust\">fn main() {\n    let x = 1;\n}</pre>",
             &lenient_ctx(),
         );
-        let Some(BlockKind::Code { language, text }) = doc.blocks.first().map(|b| b.kind.clone()) else {
+        let Some(BlockKind::Code { language, text }) = doc.blocks.first().map(|b| b.kind.clone())
+        else {
             panic!("expected a code block, got {:?}", doc.blocks)
         };
         assert_eq!(language.as_deref(), Some("rust"));
@@ -1018,10 +1127,17 @@ mod tests {
             panic!("expected a table, got {:?}", doc.blocks)
         };
         assert_eq!(rows.len(), 2);
-        assert!(rows.first().map(|r| r.iter().all(|c| c.header)).unwrap_or(false));
+        assert!(rows
+            .first()
+            .map(|r| r.iter().all(|c| c.header))
+            .unwrap_or(false));
         let body: Vec<String> = rows
             .get(1)
-            .map(|r| r.iter().map(|c| Span::render_plain_text(&c.spans)).collect())
+            .map(|r| {
+                r.iter()
+                    .map(|c| Span::render_plain_text(&c.spans))
+                    .collect()
+            })
             .unwrap_or_default();
         assert_eq!(body, vec!["a".to_owned(), "b".to_owned()]);
     }
@@ -1049,21 +1165,32 @@ mod tests {
         let BlockKind::Paragraph { spans } = doc.blocks.first().map(|b| &b.kind).unwrap() else {
             panic!("expected a paragraph")
         };
-        assert!(spans.iter().all(|s| !s.style.bold), "forged <b> applied styling");
+        assert!(
+            spans.iter().all(|s| !s.style.bold),
+            "forged <b> applied styling"
+        );
     }
 
     #[test]
     fn unknown_elements_flatten_to_their_text() {
-        let doc = transform("<p>a <blink>b</blink> <custom-elem>c</custom-elem> d</p>", &lenient_ctx());
+        let doc = transform(
+            "<p>a <blink>b</blink> <custom-elem>c</custom-elem> d</p>",
+            &lenient_ctx(),
+        );
         assert_eq!(text_of(&doc), "a b c d");
     }
 
     #[test]
     fn dangerous_link_schemes_render_as_plain_text() {
-        for href in ["javascript:alert(1)", "data:text/html,<script>x</script>", "file:///etc/passwd"] {
+        for href in [
+            "javascript:alert(1)",
+            "data:text/html,<script>x</script>",
+            "file:///etc/passwd",
+        ] {
             let html = format!("<p><a href=\"{href}\">click me</a></p>");
             let doc = transform(&html, &lenient_ctx());
-            let BlockKind::Paragraph { spans } = doc.blocks.first().map(|b| &b.kind).unwrap() else {
+            let BlockKind::Paragraph { spans } = doc.blocks.first().map(|b| &b.kind).unwrap()
+            else {
                 panic!("expected a paragraph")
             };
             assert!(
@@ -1082,7 +1209,10 @@ mod tests {
             panic!("expected a paragraph")
         };
         assert_eq!(
-            spans.first().and_then(|s| s.link.as_ref()).map(|u| u.as_str()),
+            spans
+                .first()
+                .and_then(|s| s.link.as_ref())
+                .map(|u| u.as_str()),
             Some("https://blog.example/x")
         );
     }
@@ -1094,7 +1224,9 @@ mod tests {
             &lenient_ctx(),
         );
         assert!(
-            !doc.blocks.iter().any(|b| matches!(b.kind, BlockKind::Image { .. })),
+            !doc.blocks
+                .iter()
+                .any(|b| matches!(b.kind, BlockKind::Image { .. })),
             "a data: URI became an image"
         );
     }
@@ -1132,7 +1264,10 @@ mod tests {
         let depth = 50_000;
         let html = format!("{}deep{}", "<div>".repeat(depth), "</div>".repeat(depth));
         let doc = transform(&html, &lenient_ctx());
-        assert!(text_of(&doc).contains("deep"), "content lost under deep nesting");
+        assert!(
+            text_of(&doc).contains("deep"),
+            "content lost under deep nesting"
+        );
     }
 
     #[test]
@@ -1145,7 +1280,13 @@ mod tests {
 
     #[test]
     fn oversized_input_is_cut_before_parsing() {
-        let ctx = TransformContext { limits: Limits { max_input_bytes: 1024, ..Limits::default() }, ..lenient_ctx() };
+        let ctx = TransformContext {
+            limits: Limits {
+                max_input_bytes: 1024,
+                ..Limits::default()
+            },
+            ..lenient_ctx()
+        };
         let html = format!("<p>{}</p>", "x".repeat(64 * 1024));
         let doc = transform(&html, &ctx);
         assert_eq!(doc.truncated, Some(Truncation::InputTooLarge));
@@ -1154,7 +1295,13 @@ mod tests {
 
     #[test]
     fn block_count_is_capped_and_reported() {
-        let ctx = TransformContext { limits: Limits { max_blocks: 10, ..Limits::default() }, ..lenient_ctx() };
+        let ctx = TransformContext {
+            limits: Limits {
+                max_blocks: 10,
+                ..Limits::default()
+            },
+            ..lenient_ctx()
+        };
         let html = "<p>x</p>".repeat(500);
         let doc = transform(&html, &ctx);
         assert_eq!(doc.blocks.len(), 10);
@@ -1167,7 +1314,13 @@ mod tests {
 
     #[test]
     fn text_volume_is_capped() {
-        let ctx = TransformContext { limits: Limits { max_text_bytes: 512, ..Limits::default() }, ..lenient_ctx() };
+        let ctx = TransformContext {
+            limits: Limits {
+                max_text_bytes: 512,
+                ..Limits::default()
+            },
+            ..lenient_ctx()
+        };
         let html = format!("<p>{}</p>", "abcd ".repeat(10_000));
         let doc = transform(&html, &ctx);
         assert!(doc.truncated.is_some());
@@ -1177,10 +1330,18 @@ mod tests {
     #[test]
     fn quote_and_list_depth_are_clamped() {
         let ctx = TransformContext {
-            limits: Limits { max_quote_depth: 3, max_list_indent: 2, ..Limits::default() },
+            limits: Limits {
+                max_quote_depth: 3,
+                max_list_indent: 2,
+                ..Limits::default()
+            },
             ..lenient_ctx()
         };
-        let html = format!("{}<p>deep</p>{}", "<blockquote>".repeat(50), "</blockquote>".repeat(50));
+        let html = format!(
+            "{}<p>deep</p>{}",
+            "<blockquote>".repeat(50),
+            "</blockquote>".repeat(50)
+        );
         let doc = transform(&html, &ctx);
         assert!(doc.blocks.iter().all(|b| b.quote_depth <= 3));
 
@@ -1238,5 +1399,50 @@ mod tests {
     fn whitespace_between_tags_collapses() {
         let doc = transform("<p>a\n\n   \tb</p>", &lenient_ctx());
         assert_eq!(text_of(&doc), "a b");
+    }
+}
+
+#[cfg(test)]
+mod empty_attribute_tests {
+    use super::tests_support::*;
+
+    #[test]
+    fn a_valueless_href_is_not_a_link_to_the_article_itself() {
+        let doc = super::transform("<p><a href>text</a></p>", &ctx());
+        let super::BlockKind::Paragraph { spans } = doc.blocks.first().map(|b| &b.kind).unwrap()
+        else {
+            panic!("expected a paragraph")
+        };
+        assert!(
+            spans.iter().all(|s| s.link.is_none()),
+            "an empty href resolved to the article's own URL"
+        );
+        assert_eq!(super::Span::render_plain_text(spans), "text");
+    }
+
+    #[test]
+    fn a_valueless_src_is_not_an_image_of_the_article() {
+        let doc = super::transform("<p><img src alt=\"x\"></p>", &ctx());
+        assert!(!doc
+            .blocks
+            .iter()
+            .any(|b| matches!(b.kind, super::BlockKind::Image { .. })));
+    }
+}
+
+#[cfg(test)]
+mod tests_support {
+    use super::*;
+
+    pub(super) fn ctx() -> TransformContext {
+        TransformContext {
+            base_url: Some(Url::parse("https://blog.example/post/").unwrap()),
+            media: MediaPolicy::ProxyThroughInstance {
+                instance: Url::parse("https://miniflux.example/").unwrap(),
+                extra_trusted: Vec::new(),
+                fallback: crate::content::url::UnproxiedMedia::Allow,
+            },
+            limits: Limits::default(),
+        }
     }
 }

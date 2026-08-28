@@ -156,8 +156,17 @@ pub fn current_version(conn: &Connection) -> Result<i64> {
 /// Runs every pending migration inside one transaction, so a failure leaves
 /// the file exactly as it was rather than half-upgraded.
 pub fn migrate(conn: &mut Connection) -> Result<()> {
+    apply(conn, MIGRATIONS)
+}
+
+/// The migration machinery, parameterised over the step list.
+///
+/// Split out so tests can drive it with a synthetic set and prove the
+/// properties that matter -- ordering, atomicity, and above all that data
+/// survives -- without waiting for a second real migration to exist.
+fn apply(conn: &mut Connection, migrations: &[Migration]) -> Result<()> {
     let from = current_version(conn)?;
-    let target = target_version();
+    let target = migrations.last().map_or(0, |m| m.version);
 
     if from > target {
         // A newer Vuo has already upgraded this database. Refusing is the only
@@ -176,11 +185,12 @@ pub fn migrate(conn: &mut Connection) -> Result<()> {
     }
 
     let tx = conn.transaction()?;
-    for migration in MIGRATIONS.iter().filter(|m| m.version > from) {
-        tx.execute_batch(migration.sql).map_err(|e| Error::Migration {
-            version: migration.version,
-            reason: format!("{} failed: {e}", migration.name),
-        })?;
+    for migration in migrations.iter().filter(|m| m.version > from) {
+        tx.execute_batch(migration.sql)
+            .map_err(|e| Error::Migration {
+                version: migration.version,
+                reason: format!("{} failed: {e}", migration.name),
+            })?;
     }
     // `PRAGMA user_version = ?` is not bindable in raw SQL, but rusqlite's
     // pragma_update takes the value as a parameter, so even this stays out of
@@ -228,7 +238,11 @@ mod tests {
         // Guards against an append that reuses or reorders a version number.
         let mut previous = 0;
         for m in MIGRATIONS {
-            assert!(m.version > previous, "migration versions must ascend: {}", m.version);
+            assert!(
+                m.version > previous,
+                "migration versions must ascend: {}",
+                m.version
+            );
             previous = m.version;
         }
     }
@@ -250,15 +264,115 @@ mod tests {
     #[test]
     fn the_entries_status_check_rejects_removed() {
         let conn = fresh();
-        conn.execute("INSERT INTO feeds (id, title) VALUES (1, 'f')", []).unwrap();
+        conn.execute("INSERT INTO feeds (id, title) VALUES (1, 'f')", [])
+            .unwrap();
         let bad = conn.execute(
             "INSERT INTO entries (id, feed_id, status) VALUES (1, 1, 'removed')",
             [],
         );
-        assert!(bad.is_err(), "'removed' is a deletion, not a status to mirror");
+        assert!(
+            bad.is_err(),
+            "'removed' is a deletion, not a status to mirror"
+        );
 
-        conn.execute("INSERT INTO entries (id, feed_id, status) VALUES (2, 1, 'unread')", [])
+        conn.execute(
+            "INSERT INTO entries (id, feed_id, status) VALUES (2, 1, 'unread')",
+            [],
+        )
+        .unwrap();
+    }
+
+    /// A synthetic second migration, so the machinery can be tested before a
+    /// real one exists.
+    const SYNTHETIC: &[Migration] = &[
+        Migration {
+            version: 1,
+            name: "initial schema",
+            sql: MIGRATIONS[0].sql,
+        },
+        Migration {
+            version: 2,
+            name: "synthetic: add a column",
+            sql: "ALTER TABLE entries ADD COLUMN synthetic TEXT NOT NULL DEFAULT '';",
+        },
+    ];
+
+    #[test]
+    fn a_later_migration_preserves_existing_data_and_the_outbox() {
+        // §9.4's rule, exercised against the real machinery rather than
+        // asserted about it.
+        let mut conn = Connection::open_in_memory().unwrap();
+        apply(&mut conn, &SYNTHETIC[..1]).unwrap();
+        conn.execute("INSERT INTO feeds (id, title) VALUES (1, 'f')", [])
             .unwrap();
+        conn.execute(
+            "INSERT INTO entries (id, feed_id, status) VALUES (7, 1, 'unread')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO outbox (entry_id, field, value, queued_at) VALUES (7,'status','read',1)",
+            [],
+        )
+        .unwrap();
+
+        apply(&mut conn, SYNTHETIC).unwrap();
+
+        assert_eq!(current_version(&conn).unwrap(), 2);
+        let entries: i64 = conn
+            .query_row("SELECT COUNT(*) FROM entries", [], |r| r.get(0))
+            .unwrap();
+        let pending: i64 = conn
+            .query_row("SELECT COUNT(*) FROM outbox", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(entries, 1, "a migration must not lose mirrored rows");
+        assert_eq!(
+            pending, 1,
+            "a migration must never lose pending user actions"
+        );
+    }
+
+    #[test]
+    fn a_failing_migration_leaves_the_database_untouched() {
+        // The whole set runs in one transaction, so a half-upgraded database
+        // with no way back is not a state that can occur.
+        const BROKEN: &[Migration] = &[
+            Migration {
+                version: 1,
+                name: "initial schema",
+                sql: MIGRATIONS[0].sql,
+            },
+            Migration {
+                version: 2,
+                name: "broken",
+                sql: "THIS IS NOT SQL;",
+            },
+        ];
+
+        let mut conn = Connection::open_in_memory().unwrap();
+        apply(&mut conn, &BROKEN[..1]).unwrap();
+        conn.execute("INSERT INTO feeds (id, title) VALUES (1, 'f')", [])
+            .unwrap();
+        conn.execute(
+            "INSERT INTO outbox (entry_id, field, value, queued_at) VALUES (1,'status','read',1)",
+            [],
+        )
+        .unwrap();
+
+        let err = apply(&mut conn, BROKEN).unwrap_err();
+        assert!(matches!(err, Error::Migration { version: 2, .. }));
+        assert_eq!(
+            current_version(&conn).unwrap(),
+            1,
+            "the version must not have advanced"
+        );
+        let pending: i64 = conn
+            .query_row("SELECT COUNT(*) FROM outbox", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(
+            pending, 1,
+            "a failed migration must not take the outbox with it"
+        );
     }
 
     #[test]

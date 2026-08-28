@@ -60,7 +60,10 @@ pub struct BlockRow {
 }
 
 fn row_for(block: &RenderBlock) -> BlockRow {
-    let mut row = BlockRow { quote_depth: i32::from(block.quote_depth), ..BlockRow::default() };
+    let mut row = BlockRow {
+        quote_depth: i32::from(block.quote_depth),
+        ..BlockRow::default()
+    };
     row.plain = block.plain_text();
 
     match &block.kind {
@@ -73,7 +76,12 @@ fn row_for(block: &RenderBlock) -> BlockRow {
             row.kind = "paragraph".to_owned();
             row.text = Span::render_styled_text(spans);
         }
-        BlockKind::ListItem { ordered, number, indent, spans } => {
+        BlockKind::ListItem {
+            ordered,
+            number,
+            indent,
+            spans,
+        } => {
             row.kind = "list_item".to_owned();
             row.ordered = *ordered;
             row.indent = i32::from(*indent);
@@ -90,7 +98,9 @@ fn row_for(block: &RenderBlock) -> BlockRow {
             row.text = text.clone();
             row.code_language = language.clone().unwrap_or_default();
         }
-        BlockKind::Image { src, alt, fetch, .. } => {
+        BlockKind::Image {
+            src, alt, fetch, ..
+        } => {
             row.kind = "image".to_owned();
             row.image_src = src.as_str().to_owned();
             row.image_alt = alt.clone();
@@ -195,8 +205,12 @@ impl QAbstractListModel for ArticleModel {
     }
 
     fn data(&self, index: QModelIndex, role: i32) -> QVariant {
-        let Ok(i) = usize::try_from(index.row()) else { return QVariant::default() };
-        let Some(row) = self.rows.get(i) else { return QVariant::default() };
+        let Ok(i) = usize::try_from(index.row()) else {
+            return QVariant::default();
+        };
+        let Some(row) = self.rows.get(i) else {
+            return QVariant::default();
+        };
         match role {
             ROLE_KIND => QString::from(row.kind.clone()).into(),
             ROLE_TEXT => QString::from(row.text.clone()).into(),

@@ -67,7 +67,11 @@ pub struct Span {
 impl Span {
     #[must_use]
     pub fn plain(text: impl Into<String>) -> Self {
-        Span { text: text.into(), style: SpanStyle::default(), link: None }
+        Span {
+            text: text.into(),
+            style: SpanStyle::default(),
+            link: None,
+        }
     }
 
     /// Render a span sequence as Qt `StyledText`.
@@ -178,8 +182,13 @@ pub struct TableCell {
 #[serde(tag = "kind", rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum BlockKind {
-    Heading { level: u8, spans: Vec<Span> },
-    Paragraph { spans: Vec<Span> },
+    Heading {
+        level: u8,
+        spans: Vec<Span>,
+    },
+    Paragraph {
+        spans: Vec<Span>,
+    },
     ListItem {
         ordered: bool,
         /// The rendered marker number for ordered lists, `None` for bullets.
@@ -190,7 +199,10 @@ pub enum BlockKind {
     },
     /// `<pre>` / `<pre><code>`. Text is verbatim and is *not* span-formatted:
     /// inline markup inside a code block is flattened away rather than honoured.
-    Code { language: Option<String>, text: String },
+    Code {
+        language: Option<String>,
+        text: String,
+    },
     Image {
         src: MediaUrl,
         alt: String,
@@ -206,7 +218,9 @@ pub enum BlockKind {
     },
     /// Fixed three-level nesting: rows of cells of spans. Not self-referential,
     /// so the drop-recursion argument above does not apply.
-    Table { rows: Vec<Vec<TableCell>> },
+    Table {
+        rows: Vec<Vec<TableCell>>,
+    },
     Rule,
 }
 
@@ -222,7 +236,10 @@ pub struct RenderBlock {
 impl RenderBlock {
     #[must_use]
     pub fn new(kind: BlockKind) -> Self {
-        RenderBlock { kind, quote_depth: 0 }
+        RenderBlock {
+            kind,
+            quote_depth: 0,
+        }
     }
 
     #[must_use]
@@ -297,7 +314,11 @@ mod tests {
     fn styled_text_balances_and_nests_tags() {
         let spans = vec![Span {
             text: "hi".into(),
-            style: SpanStyle { bold: true, italic: true, ..Default::default() },
+            style: SpanStyle {
+                bold: true,
+                italic: true,
+                ..Default::default()
+            },
             link: None,
         }];
         assert_eq!(Span::render_styled_text(&spans), "<b><i>hi</i></b>");
@@ -307,7 +328,10 @@ mod tests {
     fn plain_text_renderer_emits_no_markup() {
         let spans = vec![Span {
             text: "a<b>c".into(),
-            style: SpanStyle { bold: true, ..Default::default() },
+            style: SpanStyle {
+                bold: true,
+                ..Default::default()
+            },
             link: None,
         }];
         assert_eq!(Span::render_plain_text(&spans), "a<b>c");
@@ -318,7 +342,10 @@ mod tests {
         // Qt StyledText has no <code>; the flag is surfaced to QML instead.
         let spans = vec![Span {
             text: "x".into(),
-            style: SpanStyle { code: true, ..Default::default() },
+            style: SpanStyle {
+                code: true,
+                ..Default::default()
+            },
             link: None,
         }];
         assert_eq!(Span::render_styled_text(&spans), "x");

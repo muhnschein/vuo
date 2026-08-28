@@ -47,7 +47,11 @@ pub fn entry(w: wire::Entry) -> Result<Entry> {
         // state Vuo mirrors: the row should not exist locally at all. Rejecting
         // it here means the sync skips it, which is exactly right.
         "removed" => {
-            return Err(Error::item("entry", Some(w.id), "server reports it as removed"))
+            return Err(Error::item(
+                "entry",
+                Some(w.id),
+                "server reports it as removed",
+            ))
         }
         other => {
             return Err(Error::item(
@@ -74,11 +78,7 @@ pub fn entry(w: wire::Entry) -> Result<Entry> {
         // A negative reading time is nonsense; clamp rather than reject.
         reading_time: w.reading_time.max(0),
         tags: w.tags,
-        enclosures: w
-            .enclosures
-            .into_iter()
-            .map(|e| enclosure(e, id))
-            .collect(),
+        enclosures: w.enclosures.into_iter().map(|e| enclosure(e, id)).collect(),
     })
 }
 
@@ -101,7 +101,12 @@ pub fn feed(w: wire::Feed) -> Result<Feed> {
         feed_url: lenient_url(&w.feed_url),
         // `icon` is present-and-null when the feed has no icon, and an
         // icon_id of 0 means the same thing.
-        icon_id: w.icon.as_ref().map(|i| i.icon_id).filter(|id| *id != 0).map(IconId),
+        icon_id: w
+            .icon
+            .as_ref()
+            .map(|i| i.icon_id)
+            .filter(|id| *id != 0)
+            .map(IconId),
         checked_at: to_utc(w.checked_at),
         parsing_error_message: w.parsing_error_message,
         parsing_error_count: w.parsing_error_count.max(0),
@@ -111,7 +116,11 @@ pub fn feed(w: wire::Feed) -> Result<Feed> {
 }
 
 pub fn category(w: wire::Category) -> Result<Category> {
-    Ok(Category { id: CategoryId(w.id), title: w.title, hide_globally: w.hide_globally })
+    Ok(Category {
+        id: CategoryId(w.id),
+        title: w.title,
+        hide_globally: w.hide_globally,
+    })
 }
 
 /// Convert a page of entries, separating the usable from the rejected.
@@ -149,7 +158,10 @@ mod tests {
         assert_eq!(e.id, EntryId(7));
         assert_eq!(e.status, EntryStatus::Unread);
         assert!(e.starred);
-        assert_eq!(e.url.map(|u| u.as_str().to_owned()), Some("https://x.example/a".to_owned()));
+        assert_eq!(
+            e.url.map(|u| u.as_str().to_owned()),
+            Some("https://x.example/a".to_owned())
+        );
     }
 
     #[test]
@@ -197,7 +209,10 @@ mod tests {
 
     #[test]
     fn absurd_numbers_are_clamped_not_rejected() {
-        let e = entry(wire_entry(r#"{"id":1,"status":"read","reading_time":-9000}"#)).unwrap();
+        let e = entry(wire_entry(
+            r#"{"id":1,"status":"read","reading_time":-9000}"#,
+        ))
+        .unwrap();
         assert_eq!(e.reading_time, 0);
     }
 

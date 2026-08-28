@@ -108,8 +108,12 @@ pub fn feeds(conn: &rusqlite::Connection) -> Result<Vec<Feed>> {
             id: FeedId(r.get(0)?),
             category_id: r.get::<_, Option<i64>>(1)?.map(CategoryId),
             title: r.get(2)?,
-            site_url: r.get::<_, Option<String>>(3)?.and_then(|s| crate::content::MediaUrl::parse(&s)),
-            feed_url: r.get::<_, Option<String>>(4)?.and_then(|s| crate::content::MediaUrl::parse(&s)),
+            site_url: r
+                .get::<_, Option<String>>(3)?
+                .and_then(|s| crate::content::MediaUrl::parse(&s)),
+            feed_url: r
+                .get::<_, Option<String>>(4)?
+                .and_then(|s| crate::content::MediaUrl::parse(&s)),
             icon_id: r.get::<_, Option<i64>>(5)?.map(IconId),
             checked_at: from_ts(r.get(6)?),
             parsing_error_message: r.get(7)?,
@@ -236,7 +240,9 @@ pub fn local_entry_ids(conn: &rusqlite::Connection) -> Result<Vec<EntryId>> {
 
 /// Per-feed entry counts, for the cheap divergence check against
 /// `GET /v1/feeds/counters`.
-pub fn entry_counts_by_feed(conn: &rusqlite::Connection) -> Result<std::collections::HashMap<i64, i64>> {
+pub fn entry_counts_by_feed(
+    conn: &rusqlite::Connection,
+) -> Result<std::collections::HashMap<i64, i64>> {
     let mut stmt = conn.prepare("SELECT feed_id, COUNT(*) FROM entries GROUP BY feed_id")?;
     let rows = stmt.query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?)))?;
     let mut out = std::collections::HashMap::new();
@@ -303,7 +309,11 @@ pub fn list_entries(
             }
         }
         EntryFilter::Feed(id) | EntryFilter::Category(id) => {
-            let sql = if matches!(filter, EntryFilter::Feed(_)) { BY_FEED } else { BY_CATEGORY };
+            let sql = if matches!(filter, EntryFilter::Feed(_)) {
+                BY_FEED
+            } else {
+                BY_CATEGORY
+            };
             let mut stmt = conn.prepare(sql)?;
             let mut rows = stmt.query(rusqlite::params![limit, offset, id])?;
             while let Some(row) = rows.next()? {
@@ -319,11 +329,19 @@ fn row_to_entry(r: &rusqlite::Row<'_>) -> rusqlite::Result<Entry> {
     Ok(Entry {
         id: EntryId(r.get(0)?),
         feed_id: FeedId(r.get(1)?),
-        status: if r.get::<_, String>(2)? == "read" { EntryStatus::Read } else { EntryStatus::Unread },
+        status: if r.get::<_, String>(2)? == "read" {
+            EntryStatus::Read
+        } else {
+            EntryStatus::Unread
+        },
         starred: r.get::<_, i64>(3)? != 0,
         title: r.get(4)?,
-        url: r.get::<_, Option<String>>(5)?.and_then(|s| crate::content::MediaUrl::parse(&s)),
-        comments_url: r.get::<_, Option<String>>(6)?.and_then(|s| crate::content::MediaUrl::parse(&s)),
+        url: r
+            .get::<_, Option<String>>(5)?
+            .and_then(|s| crate::content::MediaUrl::parse(&s)),
+        comments_url: r
+            .get::<_, Option<String>>(6)?
+            .and_then(|s| crate::content::MediaUrl::parse(&s)),
         author: r.get(7)?,
         content: r.get(8)?,
         published_at: from_ts(r.get(9)?),
@@ -349,7 +367,11 @@ pub fn entry(conn: &rusqlite::Connection, id: EntryId) -> Result<Option<Entry>> 
 }
 
 pub fn unread_count(conn: &rusqlite::Connection) -> Result<i64> {
-    Ok(conn.query_row("SELECT COUNT(*) FROM entries WHERE status = 'unread'", [], |r| r.get(0))?)
+    Ok(conn.query_row(
+        "SELECT COUNT(*) FROM entries WHERE status = 'unread'",
+        [],
+        |r| r.get(0),
+    )?)
 }
 
 // ------------------------------------------------------------------ icons
@@ -402,7 +424,10 @@ pub fn icon(conn: &rusqlite::Connection, id: IconId) -> Result<Option<Icon>> {
 /// §11 asks how to avoid a thundering herd on first sync; the answer is that
 /// icons are fetched lazily from this list, a few at a time, rather than all
 /// at once behind the first pull.
-pub fn feeds_missing_icons(conn: &rusqlite::Connection, limit: i64) -> Result<Vec<(FeedId, IconId)>> {
+pub fn feeds_missing_icons(
+    conn: &rusqlite::Connection,
+    limit: i64,
+) -> Result<Vec<(FeedId, IconId)>> {
     let mut stmt = conn.prepare(
         "SELECT f.id, f.icon_id FROM feeds f
          WHERE f.icon_id IS NOT NULL

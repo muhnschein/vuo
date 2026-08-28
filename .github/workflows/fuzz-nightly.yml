@@ -1,0 +1,45 @@
+# The long fuzz run (§8.3: "short in PR CI, long on a schedule").
+#
+# The corpus is cached between runs so each night continues where the last left
+# off rather than restarting from the seeds.
+
+name: Fuzz (nightly)
+
+on:
+  schedule:
+    - cron: "27 3 * * *"
+  workflow_dispatch:
+
+jobs:
+  fuzz:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [content_transform, entry_deserialise]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-fuzz
+
+      - name: Restore corpus
+        uses: actions/cache@v4
+        with:
+          path: crates/vuo-core/fuzz/corpus/${{ matrix.target }}
+          key: fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}
+          restore-keys: fuzz-corpus-${{ matrix.target }}-
+
+      - name: Fuzz for 30 minutes
+        run: |
+          cd crates/vuo-core/fuzz
+          cargo fuzz run ${{ matrix.target }} -- -max_total_time=1800 -rss_limit_mb=4096
+
+      - name: Upload crashes
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-artifacts-${{ matrix.target }}
+          path: crates/vuo-core/fuzz/artifacts/

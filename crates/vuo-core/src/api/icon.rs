@@ -39,7 +39,10 @@ impl Default for IconLimits {
     fn default() -> Self {
         // A feed icon is drawn at roughly 32 device pixels. Anything beyond
         // 512 on a side is not an icon.
-        IconLimits { max_bytes: 512 * 1024, max_pixels_per_side: 512 }
+        IconLimits {
+            max_bytes: 512 * 1024,
+            max_pixels_per_side: 512,
+        }
     }
 }
 
@@ -63,7 +66,15 @@ pub fn decode_icon(w: &wire::Icon, limits: IconLimits) -> Result<Icon> {
 
     // Cap before decoding: base64 inflates by 4/3, so a length check on the
     // encoded form bounds the decoded allocation.
-    if payload.len() / 4 * 3 > limits.max_bytes {
+    // Base64 encodes 3 bytes as 4 characters, so the decoded length is at
+    // most 3/4 of the encoded length. Truncating division rounds this estimate
+    // DOWN, which is the safe direction: it can only make the pre-check more
+    // permissive, and the exact check on the decoded bytes below is the one
+    // that actually enforces the cap. The point of this one is to avoid
+    // allocating for a payload that is obviously far too big.
+    #[allow(clippy::integer_division)]
+    let decoded_upper_bound = payload.len() / 4 * 3;
+    if decoded_upper_bound > limits.max_bytes {
         return Err(reject("icon exceeds the size cap"));
     }
 
@@ -98,7 +109,12 @@ pub fn decode_icon(w: &wire::Icon, limits: IconLimits) -> Result<Icon> {
         }
     }
 
-    Ok(Icon { id: IconId(w.id), format, bytes, dimensions })
+    Ok(Icon {
+        id: IconId(w.id),
+        format,
+        bytes,
+        dimensions,
+    })
 }
 
 /// Identify an image format from its leading bytes.
@@ -137,7 +153,12 @@ fn sniff_format(b: &[u8]) -> Option<ImageFormat> {
 
 fn be_u32(b: &[u8], at: usize) -> Option<u32> {
     let s = b.get(at..at + 4)?;
-    Some(u32::from_be_bytes([*s.first()?, *s.get(1)?, *s.get(2)?, *s.get(3)?]))
+    Some(u32::from_be_bytes([
+        *s.first()?,
+        *s.get(1)?,
+        *s.get(2)?,
+        *s.get(3)?,
+    ]))
 }
 
 fn be_u16(b: &[u8], at: usize) -> Option<u16> {
@@ -172,17 +193,22 @@ fn read_dimensions(b: &[u8], format: ImageFormat) -> Option<(u32, u32)> {
             // Width/height of the first directory entry; 0 means 256.
             let w = *b.get(6)?;
             let h = *b.get(7)?;
-            Some((if w == 0 { 256 } else { u32::from(w) }, if h == 0 { 256 } else { u32::from(h) }))
+            Some((
+                if w == 0 { 256 } else { u32::from(w) },
+                if h == 0 { 256 } else { u32::from(h) },
+            ))
         }
         ImageFormat::Jpeg => jpeg_dimensions(b),
         // VP8X carries a 24-bit canvas size; VP8/VP8L encode it differently
         // and are not worth hand-parsing for a favicon.
         ImageFormat::WebP => {
             if b.get(12..16) == Some(b"VP8X") {
-                let w = 1 + u32::from(*b.get(24)?)
+                let w = 1
+                    + u32::from(*b.get(24)?)
                     + (u32::from(*b.get(25)?) << 8)
                     + (u32::from(*b.get(26)?) << 16);
-                let h = 1 + u32::from(*b.get(27)?)
+                let h = 1
+                    + u32::from(*b.get(27)?)
                     + (u32::from(*b.get(28)?) << 8)
                     + (u32::from(*b.get(29)?) << 16);
                 Some((w, h))
@@ -259,8 +285,11 @@ mod tests {
 
     #[test]
     fn a_real_png_decodes() {
-        let icon = decode_icon(&icon_body(&png_header(32, 32), "image/png"), IconLimits::default())
-            .unwrap();
+        let icon = decode_icon(
+            &icon_body(&png_header(32, 32), "image/png"),
+            IconLimits::default(),
+        )
+        .unwrap();
         assert_eq!(icon.format, ImageFormat::Png);
         assert_eq!(icon.dimensions, Some((32, 32)));
     }
@@ -269,9 +298,11 @@ mod tests {
     fn the_claimed_mime_type_is_ignored() {
         // §9.3: validate by content, not by claim. A PNG mislabelled as JPEG
         // is still a PNG, and a script mislabelled as PNG is still refused.
-        let icon =
-            decode_icon(&icon_body(&png_header(16, 16), "image/jpeg"), IconLimits::default())
-                .unwrap();
+        let icon = decode_icon(
+            &icon_body(&png_header(16, 16), "image/jpeg"),
+            IconLimits::default(),
+        )
+        .unwrap();
         assert_eq!(icon.format, ImageFormat::Png, "content wins over the label");
 
         let hostile = icon_body(b"<html><script>alert(1)</script>", "image/png");
@@ -284,7 +315,10 @@ mod tests {
         // has to be enforced before any decoder sees this.
         let bomb = icon_body(&png_header(65_535, 65_535), "image/png");
         let err = decode_icon(&bomb, IconLimits::default()).unwrap_err();
-        assert!(err.is_item_local(), "a bad icon costs the feed its icon, nothing more");
+        assert!(
+            err.is_item_local(),
+            "a bad icon costs the feed its icon, nothing more"
+        );
     }
 
     #[test]
@@ -295,14 +329,23 @@ mod tests {
 
     #[test]
     fn svg_is_refused_explicitly() {
-        let svg = icon_body(br#"<svg xmlns="http://www.w3.org/2000/svg"></svg>"#, "image/svg+xml");
+        let svg = icon_body(
+            br#"<svg xmlns="http://www.w3.org/2000/svg"></svg>"#,
+            "image/svg+xml",
+        );
         let err = decode_icon(&svg, IconLimits::default()).unwrap_err();
-        assert!(err.to_string().contains("SVG"), "the refusal should say why: {err}");
+        assert!(
+            err.to_string().contains("SVG"),
+            "the refusal should say why: {err}"
+        );
     }
 
     #[test]
     fn oversized_payloads_are_refused_before_decoding() {
-        let limits = IconLimits { max_bytes: 1024, ..IconLimits::default() };
+        let limits = IconLimits {
+            max_bytes: 1024,
+            ..IconLimits::default()
+        };
         let big = icon_body(&vec![0x89; 8192], "image/png");
         assert!(decode_icon(&big, limits).is_err());
     }
@@ -314,12 +357,18 @@ mod tests {
             mime_type: "image/png".into(),
             data: "image/png;base64,!!!not base64!!!".into(),
         };
-        assert!(decode_icon(&bad, IconLimits::default()).unwrap_err().is_item_local());
+        assert!(decode_icon(&bad, IconLimits::default())
+            .unwrap_err()
+            .is_item_local());
     }
 
     #[test]
     fn an_empty_payload_is_refused() {
-        let empty = wire::Icon { id: 4, mime_type: String::new(), data: String::new() };
+        let empty = wire::Icon {
+            id: 4,
+            mime_type: String::new(),
+            data: String::new(),
+        };
         assert!(decode_icon(&empty, IconLimits::default()).is_err());
     }
 

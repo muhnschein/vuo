@@ -1,0 +1,36 @@
+[package]
+name = "harbour-vuo"
+description = "The Vuo application binary."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "harbour-vuo"
+path = "src/main.rs"
+
+[dependencies]
+vuo-core = { path = "../vuo-core" }
+vuo-shim = { path = "../vuo-shim" }
+qmetaobject = "=0.2.10"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "env-filter"] }
+
+[build-dependencies]
+cpp_build = { version = "0.5", optional = true }
+
+[features]
+# Default is the DESKTOP harness: a plain QmlEngine, which needs no SailfishOS
+# SDK and therefore compiles and runs on a developer's machine (and in CI)
+# against the Silica stubs. It is for bring-up and debugging, not for shipping.
+default = []
+
+# The device build. Uses SailfishApp::application()/createView() for correct
+# Wayland, booster and theme setup -- QmlEngine's QtWidgets QApplication is
+# wrong for a Silica app. Requires sailfishapp headers, so it only builds
+# inside the SDK; rpm/harbour-vuo.spec passes it.
+sailfishapp = ["dep:cpp_build"]

@@ -1,0 +1,136 @@
+# An ephemeral Miniflux, for verifying the contract questions §11 raises
+# against a real server rather than against a mock built from assumptions.
+#
+# §8.3 explains why this job is worth its setup cost: cursor semantics and
+# bulk-mutation idempotency are contract questions about *someone else's
+# server*. Verifying them once by hand and writing the answer into a comment
+# means finding out by regression when the server updates.
+#
+# Two consequences of the distroless image, planned for rather than discovered:
+#
+#   1. There is no shell in the container, so readiness CANNOT be a curl
+#      healthcheck in the service definition. The runner polls the health
+#      endpoint itself instead.
+#   2. Distroless builds cover fewer architectures than the Alpine ones. Fine
+#      on x86_64 runners; worth checking before anyone tries this on ARM.
+#
+# ON PINNING (please read before relying on this job)
+#
+# §8.3 says to pin by digest, not by tag, and bump deliberately. The images
+# below are currently pinned only to an exact VERSION TAG, which gets most of
+# the benefit -- an unpinned `latest` is what turns an upstream release into a
+# mystery CI failure -- but not all of it, since a tag can in principle be
+# repointed.
+#
+# The digests are absent because the environment this workflow was written in
+# could not reach the registry to resolve them, and inventing a plausible-
+# looking sha256 would be worse than leaving it undone: it would fail at pull
+# time with an error nobody could interpret. Before treating this job's result
+# as authoritative, run:
+#
+#     docker manifest inspect miniflux/miniflux:2.2.13-distroless \
+#       | jq -r '.manifests[0].digest'
+#
+# and replace each `image:` with `name@sha256:...`. The check-pins step below
+# will stop reminding you once that is done.
+
+name: Miniflux integration
+
+on:
+  schedule:
+    - cron: "17 5 * * 1"
+  workflow_dispatch:
+  pull_request:
+    paths:
+      # Only when the code that actually talks to the server changes.
+      - "crates/vuo-core/src/api/**"
+      - "crates/vuo-core/src/sync/**"
+      - ".github/workflows/miniflux-integration.yml"
+
+jobs:
+  live:
+    name: against a real Miniflux
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        # TODO(pin): replace with an @sha256: digest. See the note at the top.
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: miniflux
+          POSTGRES_PASSWORD: miniflux
+          POSTGRES_DB: miniflux
+        options: >-
+          --health-cmd "pg_isready -U miniflux"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Remind about digest pinning
+        # Deliberately a warning rather than a failure: a job that refuses to
+        # run until someone edits it is a job nobody ever fixes. A visible
+        # annotation on every run is harder to ignore than a comment.
+        run: |
+          if grep -q 'TODO(pin)' .github/workflows/miniflux-integration.yml; then
+            echo "::warning file=.github/workflows/miniflux-integration.yml::Container images are pinned by tag, not by digest (§8.3 asks for digests). See the note at the top of this workflow."
+          fi
+
+      - name: Start Miniflux
+        env:
+          # TODO(pin): replace with an @sha256: digest. See the note at the top.
+          MINIFLUX_IMAGE: miniflux/miniflux:2.2.13-distroless
+        run: |
+          docker run -d --name miniflux --network host \
+            -e DATABASE_URL="postgres://miniflux:miniflux@localhost/miniflux?sslmode=disable" \
+            -e RUN_MIGRATIONS=1 \
+            -e CREATE_ADMIN=1 \
+            -e ADMIN_USERNAME=vuo \
+            -e ADMIN_PASSWORD=vuo-test-password \
+            -e LISTEN_ADDR=127.0.0.1:8080 \
+            "$MINIFLUX_IMAGE"
+
+      - name: Wait for readiness
+        # Polled from the runner, not with a container healthcheck: the
+        # distroless image has no shell to run one in.
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:8080/healthcheck >/dev/null 2>&1; then
+              echo "Miniflux is up after ${i}s"
+              curl -fsS http://127.0.0.1:8080/version && echo
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Miniflux did not become ready" >&2
+          docker logs miniflux || true
+          exit 1
+
+      - name: Create an API key and seed a fixed OPML
+        id: seed
+        run: |
+          token=$(curl -fsS -u vuo:vuo-test-password \
+            -X POST http://127.0.0.1:8080/v1/api-keys \
+            -H 'Content-Type: application/json' \
+            -d '{"description":"ci"}' | python3 -c 'import sys,json; print(json.load(sys.stdin)["token"])')
+          echo "::add-mask::$token"
+          echo "token=$token" >> "$GITHUB_OUTPUT"
+
+          curl -fsS -X POST http://127.0.0.1:8080/v1/import \
+            -H "X-Auth-Token: $token" \
+            --data-binary @tests/fixtures/seed.opml
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Run the opt-in live tests
+        env:
+          VUO_LIVE_BASE_URL: http://127.0.0.1:8080
+          VUO_LIVE_TOKEN: ${{ steps.seed.outputs.token }}
+        run: make live-test
+
+      - name: Miniflux logs
+        if: failure()
+        run: docker logs miniflux || true

@@ -33,6 +33,21 @@
 //! wherever foreign input is shaped into something the UI will draw.
 
 #![forbid(unsafe_code)]
+// The `unwrap`/`expect`/`panic`/indexing denials exist because foreign input
+// reaches production paths and unwinding out of Rust into Qt's C++ frames is
+// undefined behaviour (§9.5). Test code has neither property: a test that
+// cannot unwrap is a test that spends more lines on error handling than on the
+// thing it is checking, and a panicking assertion is the entire point.
+#![cfg_attr(
+    test,
+    allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        clippy::indexing_slicing,
+        clippy::integer_division,
+    )
+)]
 
 pub mod api;
 pub mod content;

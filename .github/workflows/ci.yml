@@ -1,0 +1,105 @@
+# The host CI gate.
+#
+# §8: "`make check` runs exactly what CI runs, from a clean checkout, with no
+# phone, no server account, and no network." This workflow is therefore
+# deliberately thin: it installs dependencies and calls `make check`. If a
+# contributor's local `make check` passes, this passes.
+#
+# Device RPM builds need the SailfishOS SDK, which does not run on stock
+# runners, so they stay local or on OBS (§8.1).
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  # A phone build has no incremental cache either, and this keeps CI closer to
+  # what the device build does.
+  CARGO_INCREMENTAL: 0
+  RUSTFLAGS: -D warnings
+
+jobs:
+  check:
+    name: host checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Qt and packaging tools
+        run: |
+          sudo apt-get update
+          # The -dev packages omit the QtQuick runtime plugin, which is a
+          # confusing failure if missed (§8.1): QML compiles but nothing can
+          # instantiate a QtQuick item.
+          sudo apt-get install -y --no-install-recommends \
+            qtbase5-dev \
+            qtdeclarative5-dev \
+            qtdeclarative5-dev-tools \
+            qml-module-qtquick2 \
+            desktop-file-utils
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install cargo-deny
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deny
+
+      - name: make check
+        run: make check
+
+  msrv:
+    name: SailfishOS Rust floor
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # §7: the SDK ships an older Rust than current stable. This job exists so
+      # a dependency bump cannot silently break the device build -- the failure
+      # mode it prevents is discovering it during a release.
+      - name: Read the pinned MSRV
+        id: msrv
+        run: |
+          version=$(sed -n 's/^rust-version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "workspace rust-version is $version"
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ steps.msrv.outputs.version }}
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: cargo check on the floor
+        # --locked: the committed lockfile is what OBS will build offline, so
+        # the MSRV check has to apply to those exact versions.
+        run: cargo check --workspace --exclude vuo-shim --exclude harbour-vuo --locked --all-targets
+
+  fuzz-smoke:
+    name: fuzz (short)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: Swatinem/rust-cache@v2
+      - name: Install cargo-fuzz
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-fuzz
+      # §8.3: "Run short in PR CI, long on a schedule." These two targets are
+      # the code paths that eat attacker-influenced bytes.
+      - name: Fuzz the content transform and the JSON deserialiser
+        run: |
+          cd crates/vuo-core/fuzz
+          for target in content_transform entry_deserialise; do
+            cargo fuzz run "$target" -- -max_total_time=60 -rss_limit_mb=4096
+          done

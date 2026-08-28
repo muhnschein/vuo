@@ -175,7 +175,12 @@ pub fn queue_mark_feed_read(tx: &Transaction<'_>, feed_id: i64, now: i64) -> Res
         rows.collect::<std::result::Result<Vec<_>, _>>()?
     };
     for id in &ids {
-        queue(tx, EntryId(*id), DesiredValue::Status(EntryStatus::Read), now)?;
+        queue(
+            tx,
+            EntryId(*id),
+            DesiredValue::Status(EntryStatus::Read),
+            now,
+        )?;
     }
     Ok(ids.len())
 }
@@ -192,7 +197,12 @@ pub fn queue_mark_category_read(tx: &Transaction<'_>, category_id: i64, now: i64
         rows.collect::<std::result::Result<Vec<_>, _>>()?
     };
     for id in &ids {
-        queue(tx, EntryId(*id), DesiredValue::Status(EntryStatus::Read), now)?;
+        queue(
+            tx,
+            EntryId(*id),
+            DesiredValue::Status(EntryStatus::Read),
+            now,
+        )?;
     }
     Ok(ids.len())
 }
@@ -218,7 +228,11 @@ pub fn pending(conn: &Connection) -> Result<Vec<PendingMutation>> {
         // newer Vuo that queued something this build does not understand. Skip
         // it rather than failing the flush; the newer build will send it.
         if let Some(value) = DesiredValue::parse(&field, &value) {
-            out.push(PendingMutation { entry_id: EntryId(entry_id), value, attempts });
+            out.push(PendingMutation {
+                entry_id: EntryId(entry_id),
+                value,
+                attempts,
+            });
         }
     }
     Ok(out)
@@ -228,7 +242,11 @@ pub fn pending(conn: &Connection) -> Result<Vec<PendingMutation>> {
 ///
 /// Used by the pull to resolve conflicts **per field**: a remote read-status
 /// change must not clobber a local pending star.
-pub fn pending_for(conn: &Connection, entry_id: EntryId, field: OutboxField) -> Result<Option<DesiredValue>> {
+pub fn pending_for(
+    conn: &Connection,
+    entry_id: EntryId,
+    field: OutboxField,
+) -> Result<Option<DesiredValue>> {
     let row: Option<(String, String)> = conn
         .query_row(
             "SELECT field, value FROM outbox WHERE entry_id = ?1 AND field = ?2",
@@ -260,7 +278,10 @@ pub fn batches(pending: &[PendingMutation]) -> Vec<Batch> {
             if chunk.is_empty() {
                 continue;
             }
-            out.push(Batch { value, entry_ids: chunk.to_vec() });
+            out.push(Batch {
+                value,
+                entry_ids: chunk.to_vec(),
+            });
         }
     }
     out
@@ -365,9 +386,16 @@ mod tests {
         })
         .unwrap();
 
-        assert_eq!(len(db.conn()).unwrap(), 1, "an op log would have five rows here");
+        assert_eq!(
+            len(db.conn()).unwrap(),
+            1,
+            "an op log would have five rows here"
+        );
         let p = pending(db.conn()).unwrap();
-        assert_eq!(p.first().map(|m| m.value), Some(DesiredValue::Starred(true)));
+        assert_eq!(
+            p.first().map(|m| m.value),
+            Some(DesiredValue::Starred(true))
+        );
     }
 
     #[test]
@@ -394,15 +422,30 @@ mod tests {
         assert_eq!(batches.len(), 3, "1200 ids at 500 per request");
         assert_eq!(batches.first().map(|b| b.entry_ids.len()), Some(500));
         assert_eq!(batches.get(2).map(|b| b.entry_ids.len()), Some(200));
-        assert!(batches.iter().all(|b| !b.entry_ids.is_empty()), "an empty batch is a 400");
+        assert!(
+            batches.iter().all(|b| !b.entry_ids.is_empty()),
+            "an empty batch is a 400"
+        );
     }
 
     #[test]
     fn batches_never_mix_values() {
         let pending = vec![
-            PendingMutation { entry_id: EntryId(1), value: DesiredValue::Status(EntryStatus::Read), attempts: 0 },
-            PendingMutation { entry_id: EntryId(2), value: DesiredValue::Status(EntryStatus::Unread), attempts: 0 },
-            PendingMutation { entry_id: EntryId(3), value: DesiredValue::Starred(true), attempts: 0 },
+            PendingMutation {
+                entry_id: EntryId(1),
+                value: DesiredValue::Status(EntryStatus::Read),
+                attempts: 0,
+            },
+            PendingMutation {
+                entry_id: EntryId(2),
+                value: DesiredValue::Status(EntryStatus::Unread),
+                attempts: 0,
+            },
+            PendingMutation {
+                entry_id: EntryId(3),
+                value: DesiredValue::Starred(true),
+                attempts: 0,
+            },
         ];
         let batches = batches(&pending);
         assert_eq!(batches.len(), 3);
@@ -422,10 +465,14 @@ mod tests {
         })
         .unwrap();
 
-        let sent = Batch { value: DesiredValue::Starred(true), entry_ids: vec![EntryId(1), EntryId(2)] };
+        let sent = Batch {
+            value: DesiredValue::Starred(true),
+            entry_ids: vec![EntryId(1), EntryId(2)],
+        };
 
         // While the request is in flight the user unstars entry 2.
-        db.with_tx(|tx| queue(tx, EntryId(2), DesiredValue::Starred(false), 2)).unwrap();
+        db.with_tx(|tx| queue(tx, EntryId(2), DesiredValue::Starred(false), 2))
+            .unwrap();
 
         let cleared = db.with_tx(|tx| confirm(tx, &sent)).unwrap();
         assert_eq!(cleared, 1, "only entry 1's intent was the one confirmed");
@@ -435,7 +482,10 @@ mod tests {
             "entry 2's newer intent must survive: the server has not seen it"
         );
         let p = pending(db.conn()).unwrap();
-        assert_eq!(p.first().map(|m| m.value), Some(DesiredValue::Starred(false)));
+        assert_eq!(
+            p.first().map(|m| m.value),
+            Some(DesiredValue::Starred(false))
+        );
     }
 
     #[test]
@@ -445,25 +495,35 @@ mod tests {
         // next flush resends -- which is harmless precisely because the
         // payload is an absolute value rather than a toggle.
         let mut db = db_with_entries(1);
-        db.with_tx(|tx| queue(tx, EntryId(1), DesiredValue::Starred(true), 1)).unwrap();
+        db.with_tx(|tx| queue(tx, EntryId(1), DesiredValue::Starred(true), 1))
+            .unwrap();
 
         let first = batches(&pending(db.conn()).unwrap());
         // ... process dies here, no confirm() ...
         let second = batches(&pending(db.conn()).unwrap());
-        assert_eq!(first, second, "the intent must still be queued after a crash");
+        assert_eq!(
+            first, second,
+            "the intent must still be queued after a crash"
+        );
 
         // Resending is a no-op server-side; confirming afterwards clears it.
-        db.with_tx(|tx| confirm(tx, first.first().unwrap())).unwrap();
+        db.with_tx(|tx| confirm(tx, first.first().unwrap()))
+            .unwrap();
         assert_eq!(len(db.conn()).unwrap(), 0);
     }
 
     #[test]
     fn a_failed_attempt_keeps_the_intent_and_counts_it() {
         let mut db = db_with_entries(1);
-        db.with_tx(|tx| queue(tx, EntryId(1), DesiredValue::Starred(true), 1)).unwrap();
-        let batch = Batch { value: DesiredValue::Starred(true), entry_ids: vec![EntryId(1)] };
+        db.with_tx(|tx| queue(tx, EntryId(1), DesiredValue::Starred(true), 1))
+            .unwrap();
+        let batch = Batch {
+            value: DesiredValue::Starred(true),
+            entry_ids: vec![EntryId(1)],
+        };
 
-        db.with_tx(|tx| record_failure(tx, &batch, "timed out")).unwrap();
+        db.with_tx(|tx| record_failure(tx, &batch, "timed out"))
+            .unwrap();
         let p = pending(db.conn()).unwrap();
         assert_eq!(p.len(), 1, "a failure must never lose the user's action");
         assert_eq!(p.first().map(|m| m.attempts), Some(1));
@@ -486,15 +546,23 @@ mod tests {
         assert_eq!(len(db.conn()).unwrap(), 4);
         let unread: i64 = db
             .conn()
-            .query_row("SELECT COUNT(*) FROM entries WHERE status = 'unread'", [], |r| r.get(0))
+            .query_row(
+                "SELECT COUNT(*) FROM entries WHERE status = 'unread'",
+                [],
+                |r| r.get(0),
+            )
             .unwrap();
-        assert_eq!(unread, 0, "the local mirror reflects the action immediately");
+        assert_eq!(
+            unread, 0,
+            "the local mirror reflects the action immediately"
+        );
     }
 
     #[test]
     fn pending_for_resolves_conflicts_per_field() {
         let mut db = db_with_entries(1);
-        db.with_tx(|tx| queue(tx, EntryId(1), DesiredValue::Starred(true), 1)).unwrap();
+        db.with_tx(|tx| queue(tx, EntryId(1), DesiredValue::Starred(true), 1))
+            .unwrap();
 
         assert_eq!(
             pending_for(db.conn(), EntryId(1), OutboxField::Starred).unwrap(),

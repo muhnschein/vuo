@@ -1,4 +1,15 @@
 //! (Some fixtures are used by only one of the integration test binaries.)
+// Test code: see the note in vuo-core's lib.rs. The unwrap/panic denials
+// guard foreign-input paths in production, not assertions in tests.
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+// This module is compiled separately into each integration-test binary, so
+// items only one of them uses look unreachable from the others' point of view.
+#![allow(unreachable_pub)]
 #![allow(dead_code)]
 
 //! A mock Miniflux, and the fixtures the sync tests are written against.
@@ -15,8 +26,12 @@ use wiremock::MockServer;
 /// Build a client pointed at a mock server.
 pub fn client_for(server: &MockServer) -> MinifluxClient {
     let origin = url::Url::parse(&server.uri()).expect("mock server URI");
-    let transport = Transport::new(origin, ApiToken::new("test-token"), &TransportConfig::default())
-        .expect("transport");
+    let transport = Transport::new(
+        origin,
+        ApiToken::new("test-token"),
+        &TransportConfig::default(),
+    )
+    .expect("transport");
     MinifluxClient::new(transport)
 }
 

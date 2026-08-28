@@ -10,6 +10,14 @@
 //! The stated rule, for the last one, is **local intent wins per field**. See
 //! `db::store` for why it is per field and not per entry.
 
+// Test code: see the note in vuo-core's lib.rs. The unwrap/panic denials
+// guard foreign-input paths in production, not assertions in tests.
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
 mod common;
 
 use common::*;
@@ -60,7 +68,12 @@ async fn replay_is_idempotent() {
 
     db.with_tx(|tx| {
         for id in 1..=3 {
-            outbox::queue(tx, EntryId(id), DesiredValue::Status(EntryStatus::Read), 100)?;
+            outbox::queue(
+                tx,
+                EntryId(id),
+                DesiredValue::Status(EntryStatus::Read),
+                100,
+            )?;
         }
         Ok(())
     })
@@ -78,7 +91,10 @@ async fn replay_is_idempotent() {
     assert_eq!(bodies.len(), 1, "the second flush must not re-send");
     // What went on the wire is an absolute value, which is what makes
     // resending it safe in the first place.
-    assert_eq!(bodies.first().and_then(|b| b.get("status")), Some(&Value::from("read")));
+    assert_eq!(
+        bodies.first().and_then(|b| b.get("status")),
+        Some(&Value::from("read"))
+    );
 }
 
 #[tokio::test]
@@ -95,7 +111,8 @@ async fn a_process_killed_mid_flight_resumes_without_losing_or_double_applying()
     let client = client_for(&server);
     let mut db = seeded_db(1);
 
-    db.with_tx(|tx| outbox::queue(tx, EntryId(1), DesiredValue::Starred(true), 1)).unwrap();
+    db.with_tx(|tx| outbox::queue(tx, EntryId(1), DesiredValue::Starred(true), 1))
+        .unwrap();
 
     // Simulate the crash: send the batch by hand, and never confirm it.
     let batch = outbox::batches(&outbox::pending(db.conn()).unwrap());
@@ -118,10 +135,17 @@ async fn a_process_killed_mid_flight_resumes_without_losing_or_double_applying()
 
     let bodies = update_bodies(&server.received_requests().await.unwrap());
     assert_eq!(bodies.len(), 2, "the same absolute value was sent twice");
-    assert_eq!(bodies.first(), bodies.get(1), "and both times it was identical");
+    assert_eq!(
+        bodies.first(),
+        bodies.get(1),
+        "and both times it was identical"
+    );
     // Double-applying an absolute set is a no-op, which is the whole point:
     // had this been the server's toggle endpoint, the star would now be off.
-    assert_eq!(bodies.first().and_then(|b| b.get("starred")), Some(&Value::from(true)));
+    assert_eq!(
+        bodies.first().and_then(|b| b.get("starred")),
+        Some(&Value::from(true))
+    );
 }
 
 #[tokio::test]
@@ -161,7 +185,11 @@ async fn an_offline_burst_reconciles_on_reconnect() {
     assert_eq!(outbox::len(db.conn()).unwrap(), 0);
 
     let bodies = update_bodies(&server.received_requests().await.unwrap());
-    assert_eq!(bodies.len(), 4, "1200 marks chunk into 3 requests, plus 1 for the stars");
+    assert_eq!(
+        bodies.len(),
+        4,
+        "1200 marks chunk into 3 requests, plus 1 for the stars"
+    );
 
     // Every id appears exactly once across the whole flush.
     let mut seen: Vec<i64> = Vec::new();
@@ -174,7 +202,10 @@ async fn an_offline_burst_reconciles_on_reconnect() {
 
     // And the stars settled on the final value the user chose, not an
     // intermediate one.
-    let star_body = bodies.iter().find(|b| b.get("starred").is_some()).expect("a star request");
+    let star_body = bodies
+        .iter()
+        .find(|b| b.get("starred").is_some())
+        .expect("a star request");
     assert_eq!(star_body.get("starred"), Some(&Value::from(true)));
 }
 
@@ -187,18 +218,31 @@ async fn a_server_change_to_a_locally_mutated_entry_resolves_by_the_stated_rule(
     // preserving the local pending star -- resolving per entry would drop one
     // or the other.
     let mut db = seeded_db(1);
-    db.with_tx(|tx| outbox::queue(tx, EntryId(1), DesiredValue::Starred(true), 1)).unwrap();
+    db.with_tx(|tx| outbox::queue(tx, EntryId(1), DesiredValue::Starred(true), 1))
+        .unwrap();
 
     let remote = vuo_core::api::convert::entry(
         serde_json::from_value(entry_json(1, 1, "read", false)).unwrap(),
     )
     .unwrap();
-    db.with_tx(|tx| store::upsert_entry(tx, &remote, 1)).unwrap();
+    db.with_tx(|tx| store::upsert_entry(tx, &remote, 1))
+        .unwrap();
 
     let stored = store::entry(db.conn(), EntryId(1)).unwrap().expect("entry");
-    assert_eq!(stored.status, EntryStatus::Read, "the remote status change is accepted");
-    assert!(stored.starred, "but the local pending star is not clobbered");
-    assert_eq!(outbox::len(db.conn()).unwrap(), 1, "and it is still queued to send");
+    assert_eq!(
+        stored.status,
+        EntryStatus::Read,
+        "the remote status change is accepted"
+    );
+    assert!(
+        stored.starred,
+        "but the local pending star is not clobbered"
+    );
+    assert_eq!(
+        outbox::len(db.conn()).unwrap(),
+        1,
+        "and it is still queued to send"
+    );
 }
 
 #[tokio::test]
@@ -224,8 +268,14 @@ async fn the_servers_toggle_endpoints_are_never_called() {
 
     for request in server.received_requests().await.unwrap() {
         let path = request.url.path();
-        assert!(!path.ends_with("/star"), "the toggle endpoint was called: {path}");
-        assert!(!path.ends_with("/bookmark"), "the toggle endpoint was called: {path}");
+        assert!(
+            !path.ends_with("/star"),
+            "the toggle endpoint was called: {path}"
+        );
+        assert!(
+            !path.ends_with("/bookmark"),
+            "the toggle endpoint was called: {path}"
+        );
     }
 }
 
@@ -251,7 +301,13 @@ async fn a_transient_failure_keeps_the_intent_queued() {
         1,
         "a 503 must never lose the user's action"
     );
-    assert_eq!(outbox::pending(db.conn()).unwrap().first().map(|m| m.attempts), Some(1));
+    assert_eq!(
+        outbox::pending(db.conn())
+            .unwrap()
+            .first()
+            .map(|m| m.attempts),
+        Some(1)
+    );
 }
 
 #[tokio::test]
@@ -277,7 +333,11 @@ async fn revoked_credentials_stop_the_flush_without_dropping_work() {
 
     let outcome = replay::flush(&mut db, &client).await.unwrap();
     assert!(outcome.auth_failed);
-    assert_eq!(outbox::len(db.conn()).unwrap(), 1000, "nothing may be dropped");
+    assert_eq!(
+        outbox::len(db.conn()).unwrap(),
+        1000,
+        "nothing may be dropped"
+    );
 
     // It stopped after the first batch rather than hammering the server with
     // every remaining chunk.
@@ -322,7 +382,8 @@ async fn a_retoggle_during_the_request_is_not_lost() {
     let client = client_for(&server);
     let mut db = seeded_db(1);
 
-    db.with_tx(|tx| outbox::queue(tx, EntryId(1), DesiredValue::Starred(true), 1)).unwrap();
+    db.with_tx(|tx| outbox::queue(tx, EntryId(1), DesiredValue::Starred(true), 1))
+        .unwrap();
     let batch = outbox::batches(&outbox::pending(db.conn()).unwrap());
     let sent = batch.first().cloned().unwrap();
 
@@ -332,11 +393,15 @@ async fn a_retoggle_during_the_request_is_not_lost() {
         .await
         .unwrap();
     // ...and while it is in flight the user changes their mind.
-    db.with_tx(|tx| outbox::queue(tx, EntryId(1), DesiredValue::Starred(false), 2)).unwrap();
+    db.with_tx(|tx| outbox::queue(tx, EntryId(1), DesiredValue::Starred(false), 2))
+        .unwrap();
     // ...and only then does the confirmation land.
     let cleared = db.with_tx(|tx| outbox::confirm(tx, &sent)).unwrap();
 
-    assert_eq!(cleared, 0, "the queued value is no longer the one that was sent");
+    assert_eq!(
+        cleared, 0,
+        "the queued value is no longer the one that was sent"
+    );
     assert_eq!(
         outbox::pending(db.conn()).unwrap().first().map(|m| m.value),
         Some(DesiredValue::Starred(false)),

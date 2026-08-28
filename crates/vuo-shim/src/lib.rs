@@ -97,13 +97,20 @@ mod tests {
         assert_eq!(heading.level, 2);
 
         let body = model.rows().get(1).expect("paragraph");
-        assert!(body.text.contains("<b>bold</b>"), "styling should survive: {}", body.text);
+        assert!(
+            body.text.contains("<b>bold</b>"),
+            "styling should survive: {}",
+            body.text
+        );
         assert!(
             !body.text.contains("javascript:"),
             "a dangerous href must never reach QML: {}",
             body.text
         );
-        assert!(body.text.contains("bad link"), "but its text is still readable");
+        assert!(
+            body.text.contains("bad link"),
+            "but its text is still readable"
+        );
     }
 
     #[test]
@@ -114,21 +121,37 @@ mod tests {
         model.set_html("<p>&lt;img src=x onerror=alert(1)&gt;</p>", &ctx);
 
         let row = model.rows().first().expect("a paragraph");
-        assert!(!row.text.contains("<img"), "unescaped markup reached the UI: {}", row.text);
-        assert!(row.text.contains("&lt;img"), "the text itself should still be shown");
+        assert!(
+            !row.text.contains("<img"),
+            "unescaped markup reached the UI: {}",
+            row.text
+        );
+        assert!(
+            row.text.contains("&lt;img"),
+            "the text itself should still be shown"
+        );
     }
 
     #[test]
     fn un_proxied_images_are_flagged_rather_than_silently_dropped() {
         let mut model = article::ArticleModel::default();
         let instance = url::Url::parse("https://miniflux.example/").unwrap();
-        let ctx = TransformContext::new(instance).with_base_url(
-            url::Url::parse("https://blog.example/post/").ok(),
+        let ctx = TransformContext::new(instance)
+            .with_base_url(url::Url::parse("https://blog.example/post/").ok());
+        model.set_html(
+            "<p><img src=\"https://tracker.example/p.gif\" alt=\"x\"></p>",
+            &ctx,
         );
-        model.set_html("<p><img src=\"https://tracker.example/p.gif\" alt=\"x\"></p>", &ctx);
 
-        let image = model.rows().iter().find(|r| r.kind == "image").expect("an image row");
-        assert!(image.needs_consent, "the UI must ask before leaking the device IP");
+        let image = model
+            .rows()
+            .iter()
+            .find(|r| r.kind == "image")
+            .expect("an image row");
+        assert!(
+            image.needs_consent,
+            "the UI must ask before leaking the device IP"
+        );
         assert_eq!(model.blocked_image_count(), 1);
     }
 
@@ -139,7 +162,10 @@ mod tests {
         let mut ctx = TransformContext::new(instance);
         ctx.limits.max_blocks = 5;
         model.set_html(&"<p>x</p>".repeat(50), &ctx);
-        assert!(model.is_truncated(), "a silent truncation reads as 'this is the whole article'");
+        assert!(
+            model.is_truncated(),
+            "a silent truncation reads as 'this is the whole article'"
+        );
     }
 
     #[test]

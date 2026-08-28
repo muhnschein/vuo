@@ -82,8 +82,14 @@ pub async fn taxonomy(db: &mut Database, client: &MinifluxClient, generation: i6
 
     // Convert outside the transaction: a per-item rejection should not roll
     // back the items that were fine.
-    let categories: Vec<_> = categories.into_iter().filter_map(|c| convert::category(c).ok()).collect();
-    let feeds: Vec<_> = feeds.into_iter().filter_map(|f| convert::feed(f).ok()).collect();
+    let categories: Vec<_> = categories
+        .into_iter()
+        .filter_map(|c| convert::category(c).ok())
+        .collect();
+    let feeds: Vec<_> = feeds
+        .into_iter()
+        .filter_map(|f| convert::feed(f).ok())
+        .collect();
 
     db.with_tx(|tx| {
         for c in &categories {
@@ -101,7 +107,11 @@ pub async fn taxonomy(db: &mut Database, client: &MinifluxClient, generation: i6
     // deletion case, and it costs no extra request.
     let live: std::collections::HashSet<i64> = feeds.iter().map(|f| f.id.get()).collect();
     let local = store::feeds(db.conn())?;
-    let gone: Vec<_> = local.iter().map(|f| f.id).filter(|id| !live.contains(&id.get())).collect();
+    let gone: Vec<_> = local
+        .iter()
+        .map(|f| f.id)
+        .filter(|id| !live.contains(&id.get()))
+        .collect();
     if !gone.is_empty() {
         db.with_tx(|tx| {
             for id in &gone {
@@ -133,7 +143,9 @@ pub async fn entries(
             break;
         }
 
-        let query = EntriesQuery::keyset(PAGE_SIZE).changed_after(cursor).after_entry_id(after);
+        let query = EntriesQuery::keyset(PAGE_SIZE)
+            .changed_after(cursor)
+            .after_entry_id(after);
         let (page, date) = client.entries(&query).await?;
         outcome.pages += 1;
 
@@ -274,7 +286,10 @@ pub async fn reconcile(db: &mut Database, client: &MinifluxClient) -> Result<usi
     }
 
     let local = store::local_entry_ids(db.conn())?;
-    let stale: Vec<EntryId> = local.into_iter().filter(|id| !seen.contains(&id.get())).collect();
+    let stale: Vec<EntryId> = local
+        .into_iter()
+        .filter(|id| !seen.contains(&id.get()))
+        .collect();
     if stale.is_empty() {
         return Ok(0);
     }
@@ -303,10 +318,11 @@ mod tests {
         assert_eq!(cursor, 999_940);
     }
 
-    #[test]
-    fn the_page_size_is_within_the_servers_cap() {
-        // 2.3.x answers 400 for limit > 1000.
-        assert!(PAGE_SIZE <= 1000);
-        assert!(PAGE_SIZE > 0, "limit=0 means UNLIMITED on 2.2.x");
-    }
+    /// Compile-time, because both sides are constants: a runtime assertion
+    /// over two consts is checked long after the mistake could have been
+    /// caught, and clippy rightly points that out.
+    ///
+    /// 2.3.x answers 400 for `limit > 1000`, and `limit=0` means UNLIMITED on
+    /// 2.2.x -- a full-corpus dump into a phone.
+    const _: () = assert!(PAGE_SIZE <= 1000 && PAGE_SIZE > 0);
 }
