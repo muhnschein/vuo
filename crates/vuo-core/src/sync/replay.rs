@@ -64,14 +64,12 @@ pub async fn flush(db: &mut Database, client: &MinifluxClient) -> Result<ReplayO
                 outcome.auth_failed = true;
                 return Ok(outcome);
             }
-            Err(e) if e.is_transient() => {
-                db.with_tx(|tx| outbox::record_failure(tx, &batch, &e.to_string()))?;
-                outcome.deferred += batch.entry_ids.len();
-            }
-            Err(e) => {
-                // Permanent. Dropping is the least-bad option: keeping it would
-                // retry forever and block every later intent behind it. The
-                // error is recorded first so it is visible rather than silent.
+            Err(e) if e.is_permanently_rejected() => {
+                // The server rejected the payload itself, so resending it will
+                // be rejected identically forever. Dropping is the least-bad
+                // option: keeping it would retry endlessly and block every
+                // later intent behind it. The error is recorded first so the
+                // loss is visible rather than silent.
                 db.with_tx(|tx| {
                     outbox::record_failure(tx, &batch, &e.to_string())?;
                     outbox::discard(tx, &batch)
@@ -82,6 +80,17 @@ pub async fn flush(db: &mut Database, client: &MinifluxClient) -> Result<ReplayO
                     count = batch.entry_ids.len(),
                     "dropped outbox entries the server permanently rejected"
                 );
+            }
+            Err(e) => {
+                // Everything else stays queued -- including failures that are
+                // not "transient" in the retry sense, such as a refused
+                // redirect or an oversized response. Those mean the server is
+                // misconfigured or hostile, NOT that the user's intent is
+                // invalid, and discarding marks and stars because someone
+                // typed the wrong server URL is not a trade this app makes.
+                // They wait for a human to fix the configuration.
+                db.with_tx(|tx| outbox::record_failure(tx, &batch, &e.to_string()))?;
+                outcome.deferred += batch.entry_ids.len();
             }
         }
     }
@@ -94,6 +103,16 @@ pub async fn flush(db: &mut Database, client: &MinifluxClient) -> Result<ReplayO
 #[must_use]
 pub fn should_retry(error: &Error) -> bool {
     !error.is_auth_failure() && error.is_transient()
+}
+
+/// Whether a batch would be DISCARDED, losing the user's intent.
+///
+/// Separate from [`should_retry`] on purpose: the two are not complements, and
+/// treating them as such is what made a misconfigured server URL silently
+/// delete queued marks and stars.
+#[must_use]
+pub fn would_discard(error: &Error) -> bool {
+    !error.is_auth_failure() && error.is_permanently_rejected()
 }
 
 #[cfg(test)]
@@ -151,6 +170,47 @@ mod tests {
             assert!(!should_retry(&http(status)));
             assert!(http(status).is_auth_failure());
         }
+    }
+
+    #[test]
+    fn only_a_server_side_rejection_ever_discards_user_intent() {
+        // Regression: `is_transient()` is false for a refused redirect and for
+        // an oversized body, and the flush used to drop anything that was not
+        // transient. So pointing Vuo at a URL that redirects off-origin --
+        // a typo, a moved instance, a captive portal -- silently destroyed
+        // every queued mark and star.
+        let policy_refusals = [
+            crate::error::TransportKind::RedirectRefused,
+            crate::error::TransportKind::BodyTooLarge,
+            crate::error::TransportKind::Tls,
+            crate::error::TransportKind::Connect,
+        ];
+        for kind in policy_refusals {
+            let e = Error::Transport {
+                endpoint: SafeUrl::from(&url::Url::parse("https://h.example/").unwrap()),
+                kind,
+                detail: String::new(),
+            };
+            assert!(
+                !would_discard(&e),
+                "{kind} would discard the user's queued actions; it means the server is \
+                 misconfigured, not that the intent is invalid"
+            );
+        }
+
+        // A genuine payload rejection is still dropped, or it would block the
+        // queue forever.
+        assert!(would_discard(&http(400)));
+        assert!(would_discard(&http(422)));
+        assert!(
+            !would_discard(&http(429)),
+            "throttling is not a payload problem"
+        );
+        assert!(!would_discard(&http(503)));
+        assert!(
+            !would_discard(&http(401)),
+            "auth failure stops the flush, it does not drop"
+        );
     }
 
     #[test]

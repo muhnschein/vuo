@@ -309,6 +309,10 @@ struct Builder {
 
     /// Table accumulation. `None` when not inside a `<table>`.
     table: Option<TableBuild>,
+    /// `<table>` nesting. Only the outermost close emits a block: a nested
+    /// table is flattened into its parent's cells, and closing the outer table
+    /// on the inner `</table>` would truncate it.
+    table_depth: u32,
 
     text_bytes: usize,
 }
@@ -338,6 +342,7 @@ impl Builder {
             pre_text: String::new(),
             pre_language: None,
             table: None,
+            table_depth: 0,
             text_bytes: 0,
         }
     }
@@ -364,6 +369,28 @@ impl Builder {
     }
 
     fn push_block(&mut self, kind: BlockKind) {
+        // Inside a table, a block-level element (a rule, an image, a code
+        // block) would otherwise be appended to the document directly -- and
+        // since the table itself is only emitted when it closes, that content
+        // appeared BEFORE the table it came from. Fold what text it carries
+        // into the current cell instead, and drop the rest.
+        if self.table.is_some() {
+            let text = RenderBlock::new(kind).plain_text();
+            if !text.trim().is_empty() {
+                if let Some(table) = self.table.as_mut() {
+                    if let Some(row) = table.current_row.as_mut() {
+                        if let Some(cell) = row.last_mut() {
+                            cell.spans.push(Span {
+                                text,
+                                style: SpanStyle::default(),
+                                link: None,
+                            });
+                        }
+                    }
+                }
+            }
+            return;
+        }
         if self.blocks.len() >= self.ctx.limits.max_blocks {
             self.record_truncation(Truncation::TooManyBlocks);
             return;
@@ -587,8 +614,11 @@ impl Builder {
         }
 
         // Structural depth cap (§9.2). Past the cap we stop opening structure
-        // entirely; text still flows into the enclosing block.
+        // entirely; text still flows into the enclosing block. Recorded, so
+        // the UI can say the article is not shown in full rather than
+        // presenting a silently flattened version as complete.
         if self.open.len() >= self.ctx.limits.max_depth {
+            self.record_truncation(Truncation::TooDeep);
             return TokenSinkResult::Continue;
         }
 
@@ -694,8 +724,10 @@ impl Builder {
             }
             BlockTag::Table => {
                 self.flush();
-                // Nested tables flatten: allowing them would reintroduce
-                // unbounded nesting through the back door.
+                // Nested tables flatten into the enclosing one: allowing real
+                // nesting would reintroduce unbounded depth through the back
+                // door, and Qt 5.6 has no table rendering to nest into anyway.
+                self.table_depth = self.table_depth.saturating_add(1);
                 if self.table.is_none() {
                     self.table = Some(TableBuild::default());
                 }
@@ -852,7 +884,13 @@ impl Builder {
             }
             Disposition::Block(BlockTag::Table) => {
                 self.flush();
-                self.close_table();
+                self.table_depth = self.table_depth.saturating_sub(1);
+                // Only the outermost </table> emits the block. Closing on an
+                // inner one truncated the outer table at the nested table's
+                // position.
+                if self.table_depth == 0 {
+                    self.close_table();
+                }
             }
             Disposition::Block(BlockTag::TableRow) => {
                 self.flush();

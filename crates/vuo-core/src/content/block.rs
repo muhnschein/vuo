@@ -212,8 +212,7 @@ pub enum BlockKind {
         /// Un-proxied third-party media is the common case on a stock Miniflux
         /// (`MEDIA_PROXY_MODE` defaults to `http-only`), so the transform keeps
         /// such images in the document as placeholders rather than dropping
-        /// them. The UI renders a tap-to-load affordance naming the host, and
-        /// nothing is fetched until the user agrees.
+        /// them. Nothing is fetched until the user agrees.
         fetch: MediaFetch,
     },
     /// Fixed three-level nesting: rows of cells of spans. Not self-referential,
@@ -293,6 +292,9 @@ pub enum Truncation {
     TooManyBlocks,
     /// The cumulative text cap was reached.
     TooMuchText,
+    /// Markup nested past the structural depth cap, so some structure (and
+    /// possibly some content inside it) was dropped.
+    TooDeep,
 }
 
 #[cfg(test)]

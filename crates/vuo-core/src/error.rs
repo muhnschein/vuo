@@ -143,6 +143,24 @@ impl Error {
         matches!(self, Error::Item { .. })
     }
 
+    /// `true` when this failure means the server will reject this payload
+    /// forever, so the queued intent should be dropped rather than retried.
+    ///
+    /// Deliberately narrow: **only** a non-429 client error from the server.
+    ///
+    /// This is not the inverse of [`Error::is_transient`], and conflating the
+    /// two loses user data. A refused redirect or an oversized body is not
+    /// "transient" — retrying replays the same refusal — but it is also not
+    /// the *payload's* fault: it means the server is misconfigured or hostile.
+    /// Treating those as permanent made the outbox discard marks and stars the
+    /// user had made, because a misdirected server URL looked exactly like a
+    /// malformed request. Anything that is neither transient nor a 4xx stays
+    /// queued and waits for a human to fix the configuration.
+    #[must_use]
+    pub fn is_permanently_rejected(&self) -> bool {
+        matches!(self, Error::Http { status, .. } if (400..500).contains(status) && *status != 429)
+    }
+
     /// `true` when retrying the identical request could plausibly succeed.
     ///
     /// This is the outbox's retry classifier. Because every outbox write is an
@@ -198,11 +216,13 @@ impl Error {
 
 impl From<rusqlite::Error> for Error {
     fn from(e: rusqlite::Error) -> Self {
-        // `rusqlite::Error`'s display carries SQL text and bound values in some
-        // variants. Vuo binds an API token into SQL exactly once (the account
-        // row), so this is stringified deliberately rather than chained, and
-        // the account store is responsible for not round-tripping the token
-        // through an error path.
+        // `rusqlite::Error`'s Display carries SQL text and, in some variants,
+        // bound parameter values. No token is ever bound into SQL -- the API
+        // key lives in a separate 0600 file, deliberately outside the mirror
+        // (§7) -- but article content and feed titles are foreign text and do
+        // get bound, so the message is still not something to hand to a
+        // renderer unexamined. Stringified rather than chained so the shape of
+        // what escapes is fixed here rather than by rusqlite's version.
         Error::Db(e.to_string())
     }
 }

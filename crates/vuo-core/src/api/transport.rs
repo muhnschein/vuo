@@ -29,10 +29,16 @@
 //! The scoping is achieved structurally instead: the extra CA is installed on
 //! the **API client only**, that client is constructed per account, and the
 //! redirect policy above guarantees it never contacts any origin but the
-//! configured one. Media is fetched through a *separate* client
-//! ([`Transport::media_client`]) that carries neither the token nor the extra
-//! CA. So a user's private CA is trusted for exactly the one host it was
-//! supplied for, which is the property §9.1 actually wants.
+//! configured one. So a user's private CA is trusted for exactly the one host
+//! it was supplied for, which is the property §9.1 actually wants.
+//!
+//! A note on media, because it is easy to assume otherwise:
+//! [`Transport::media_client`] exists and carries neither the token nor the
+//! extra CA, but article images are fetched by **Qt**, from the QML `Image`
+//! element, not through this crate. What Rust decides is *which URLs the UI is
+//! given at all* -- the media policy runs in the transform, before a URL ever
+//! reaches QML -- and that is where the §9.3 guarantee actually lives. The
+//! client here is for media Rust fetches itself (currently none) and for tests.
 //!
 //! There is deliberately no way to disable verification. Not a setting, not a
 //! feature flag, not an environment variable.
@@ -55,7 +61,11 @@ pub struct TransportConfig {
     /// Maximum time between bytes. A server that accepts a connection and then
     /// dribbles must not wedge a sync forever.
     pub read_timeout: Duration,
-    /// Ceiling on a whole request including body read.
+    /// Ceiling on a whole `send`, INCLUDING every redirect hop.
+    ///
+    /// Applied as a shrinking deadline rather than per-hop: a per-hop timeout
+    /// multiplied by `max_redirects` would let a server that redirects slowly
+    /// hold a sync open for four times this long.
     pub request_timeout: Duration,
     /// Hard cap on any response body (§9.1: this is a phone).
     pub max_response_bytes: usize,
@@ -102,6 +112,7 @@ pub struct Transport {
     token: ApiToken,
     config_max_bytes: usize,
     max_redirects: usize,
+    request_timeout: Duration,
 }
 
 impl Transport {
@@ -175,6 +186,7 @@ impl Transport {
             token,
             config_max_bytes: config.max_response_bytes,
             max_redirects: config.max_redirects,
+            request_timeout: config.request_timeout,
         })
     }
 
@@ -184,6 +196,9 @@ impl Transport {
     }
 
     /// A client for fetching media: no token, no cookies, no private CA.
+    ///
+    /// Not used by the article view -- Qt fetches images itself. See the note
+    /// in the module docs about where the §9.3 guarantee actually lives.
     #[must_use]
     pub fn media_client(&self) -> &reqwest::Client {
         &self.media
@@ -205,6 +220,8 @@ impl Transport {
     ) -> Result<BoundedResponse> {
         let mut current = url;
         let mut hops = 0usize;
+        // One deadline for the whole call, not one per hop.
+        let started = std::time::Instant::now();
 
         loop {
             let safe = SafeUrl::from(&current);
@@ -213,7 +230,19 @@ impl Transport {
             // redirect ever walked us elsewhere, the request goes out
             // unauthenticated rather than leaking the key -- though in
             // practice the origin check below refuses the hop first.
-            let mut req = self.api.request(method.clone(), current.clone());
+            let remaining = self.request_timeout.checked_sub(started.elapsed());
+            let Some(remaining) = remaining.filter(|r| !r.is_zero()) else {
+                return Err(Error::Transport {
+                    endpoint: safe,
+                    kind: TransportKind::Timeout,
+                    detail: "the request deadline elapsed while following redirects".to_owned(),
+                });
+            };
+
+            let mut req = self
+                .api
+                .request(method.clone(), current.clone())
+                .timeout(remaining);
             if self.is_configured_origin(&current) {
                 req = req.header(AUTH_HEADER, self.token.expose());
             }

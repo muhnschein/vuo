@@ -140,7 +140,7 @@ Page {
 
             TextSwitch {
                 text: qsTr("Use a custom CA certificate")
-                description: qsTr("For a self-hosted server with a private certificate authority. Certificate verification is never disabled.")
+                description: qsTr("For a self-hosted server with a private certificate authority. Place the certificate at ~/.local/share/harbour-vuo/ca.pem. Certificate verification is never disabled, and there is no option to disable it.")
                 checked: settings.useCustomCa
                 onCheckedChanged: settings.useCustomCa = checked
             }

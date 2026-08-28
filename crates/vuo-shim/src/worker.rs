@@ -116,6 +116,7 @@ impl Worker {
         db_path: PathBuf,
         server: url::Url,
         token: ApiToken,
+        config: TransportConfig,
         on_event: impl Fn(Event) + Send + 'static,
     ) -> Self {
         let (tx, rx) = mpsc::channel::<Command>();
@@ -146,7 +147,7 @@ impl Worker {
                     }
                 };
 
-                let client = match Transport::new(server, token, &TransportConfig::default()) {
+                let client = match Transport::new(server, token, &config) {
                     Ok(t) => MinifluxClient::new(t),
                     Err(e) => {
                         on_event(Event::SyncFailed {
@@ -373,6 +374,11 @@ fn chrono_now() -> i64 {
 pub struct AppPaths {
     pub database: PathBuf,
     pub account: PathBuf,
+    /// Where a user-supplied CA certificate is expected, for a self-hosted
+    /// instance with a private certificate authority (§9.1). A fixed path
+    /// rather than a file picker: it is a rare, deliberate act, and a path the
+    /// user chose would be one more thing to validate.
+    pub ca_certificate: PathBuf,
 }
 
 impl AppPaths {
@@ -386,6 +392,7 @@ impl AppPaths {
         Some(AppPaths {
             database: base.join("vuo.sqlite"),
             account: base.join("account.json"),
+            ca_certificate: base.join("ca.pem"),
         })
     }
 
@@ -406,6 +413,13 @@ impl AppPaths {
 pub struct Account {
     pub server_url: String,
     pub token: String,
+    /// Whether to trust the CA certificate at [`AppPaths::ca_certificate`].
+    ///
+    /// Off unless the user turns it on *and* the file exists. §9.1 offers a
+    /// per-host CA precisely so that nobody needs an "ignore certificate
+    /// errors" switch; there is no such switch, and this is not one.
+    #[serde(default)]
+    pub use_custom_ca: bool,
 }
 
 /// Read the account file.
@@ -448,16 +462,34 @@ pub fn save_account(path: &std::path::Path, account: &Account) -> vuo_core::Resu
     Ok(())
 }
 
+/// Build the transport config for an account, including its CA if configured.
+pub fn transport_config_for(
+    paths: &AppPaths,
+    account: &Account,
+) -> vuo_core::Result<TransportConfig> {
+    let mut config = TransportConfig::default();
+    if account.use_custom_ca {
+        let pem = std::fs::read(&paths.ca_certificate).map_err(|e| {
+            // Loud, never silent. Falling back to the platform roots here would
+            // be an "ignore certificate errors" switch in effect: the user
+            // would believe their private CA was in use when it was not.
+            vuo_core::Error::Config(format!(
+                "the custom CA certificate at {} could not be read: {e}",
+                paths.ca_certificate.display()
+            ))
+        })?;
+        config.extra_ca_pem = Some(pem);
+    }
+    Ok(config)
+}
+
 /// One synchronous sync pass, for the systemd timer.
 pub fn sync_once_blocking(paths: &AppPaths) -> vuo_core::Result<vuo_core::sync::SyncReport> {
     let account = load_account(&paths.account)?;
     let server = url::Url::parse(&account.server_url)
         .map_err(|_| vuo_core::Error::Config("the stored server URL is not a URL".to_owned()))?;
-    let transport = Transport::new(
-        server,
-        ApiToken::new(account.token),
-        &TransportConfig::default(),
-    )?;
+    let config = transport_config_for(paths, &account)?;
+    let transport = Transport::new(server, ApiToken::new(account.token), &config)?;
     let client = MinifluxClient::new(transport);
     let mut db = Database::open(&paths.database)?;
 
@@ -473,6 +505,58 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_missing_custom_ca_fails_loudly_rather_than_falling_back() {
+        // §9.1 gives TLS verification no toggle, and a silent fallback to the
+        // platform roots would be one in effect: the user would believe their
+        // private CA was in use when it was not.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let paths = AppPaths {
+            database: dir.path().join("db.sqlite"),
+            account: dir.path().join("account.json"),
+            ca_certificate: dir.path().join("absent.pem"),
+        };
+        let account = Account {
+            server_url: "https://h.example/".into(),
+            token: "t".into(),
+            use_custom_ca: true,
+        };
+        let err = transport_config_for(&paths, &account).expect_err("should refuse");
+        assert!(err.to_string().contains("could not be read"), "{err}");
+    }
+
+    #[test]
+    fn a_configured_ca_reaches_the_transport() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let ca = dir.path().join("ca.pem");
+        std::fs::write(&ca, b"-----BEGIN CERTIFICATE-----\n").expect("write");
+        let paths = AppPaths {
+            database: dir.path().join("db.sqlite"),
+            account: dir.path().join("account.json"),
+            ca_certificate: ca,
+        };
+        let account = Account {
+            server_url: "https://h.example/".into(),
+            token: "t".into(),
+            use_custom_ca: true,
+        };
+        let config = transport_config_for(&paths, &account).expect("config");
+        assert!(
+            config.extra_ca_pem.is_some(),
+            "the CA setting must actually reach the client"
+        );
+
+        // And off by default.
+        let off = Account {
+            use_custom_ca: false,
+            ..account
+        };
+        assert!(transport_config_for(&paths, &off)
+            .expect("config")
+            .extra_ca_pem
+            .is_none());
+    }
+
+    #[test]
     fn the_account_file_is_not_world_readable() {
         // §7 relies on filesystem permissions plus Sailfish's home encryption,
         // so the permissions have to actually be right.
@@ -483,6 +567,7 @@ mod tests {
             &Account {
                 server_url: "https://h.example/".into(),
                 token: "secret".into(),
+                use_custom_ca: false,
             },
         )
         .expect("write");
@@ -516,6 +601,7 @@ mod tests {
         let paths = AppPaths {
             database: dir.path().join("db.sqlite"),
             account: dir.path().join("missing.json"),
+            ca_certificate: dir.path().join("ca.pem"),
         };
         assert!(!paths.account.exists());
     }

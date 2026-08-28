@@ -83,13 +83,39 @@ impl Database {
         &mut self.conn
     }
 
-    /// Run `f` inside a transaction, committing on `Ok` and rolling back on
-    /// `Err`.
+    /// Run `f` inside a WRITE transaction, committing on `Ok` and rolling back
+    /// on `Err`.
+    ///
+    /// `BEGIN IMMEDIATE`, not the `BEGIN DEFERRED` that `Connection::transaction`
+    /// gives by default. The difference is not academic here.
+    ///
+    /// A deferred transaction in WAL mode takes its read snapshot at the first
+    /// *read*. If another connection commits after that point, the later
+    /// *write* fails with `SQLITE_BUSY_SNAPSHOT` — and `busy_timeout` does not
+    /// rescue it, because the transaction cannot be saved by waiting; it has to
+    /// be rolled back and retried.
+    ///
+    /// Vuo has exactly the shape that hits this. The UI process and the systemd
+    /// timer process both hold the mirror open (see [`Database::configure`]),
+    /// and the write path is read-then-write: "mark this feed read" reads the
+    /// unread ids, then queues them. Measured before this change, with the
+    /// timer committing between those two halves, the user's mark failed with
+    /// "database is locked" and was lost.
+    ///
+    /// Taking the write lock at `BEGIN` removes the upgrade, so the contention
+    /// lands on the *other* writer, where `busy_timeout` applies normally. That
+    /// is the right way round: a background refresh can be retried on the next
+    /// tick, a user's action cannot be invented again.
+    ///
+    /// Readers are unaffected — reads in this crate go through
+    /// [`Database::conn`] and never open a transaction.
     pub fn with_tx<T>(
         &mut self,
         f: impl FnOnce(&rusqlite::Transaction<'_>) -> Result<T>,
     ) -> Result<T> {
-        let tx = self.conn.transaction()?;
+        let tx = self
+            .conn
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
         let out = f(&tx)?;
         tx.commit()?;
         Ok(out)
@@ -134,6 +160,75 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM categories", [], |r| r.get(0))
             .unwrap();
         assert_eq!(n, 0);
+    }
+
+    #[test]
+    fn a_write_transaction_survives_a_concurrent_committer() {
+        // Regression: with BEGIN DEFERRED this failed with "database is
+        // locked" and the user's queued action was lost. Vuo runs the UI and
+        // a systemd timer against the same file, so this race is the normal
+        // case, not an exotic one.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("mirror.sqlite");
+        let mut ui = Database::open(&path).expect("ui");
+        let mut timer = Database::open(&path).expect("timer");
+
+        ui.with_tx(|tx| {
+            tx.execute("INSERT INTO feeds (id, title) VALUES (1, 'f')", [])?;
+            tx.execute(
+                "INSERT INTO entries (id, feed_id, status) VALUES (1, 1, 'unread')",
+                [],
+            )?;
+            Ok(())
+        })
+        .expect("seed");
+
+        // Open the UI's write transaction and read inside it, exactly as
+        // "mark this feed read" does.
+        let tx = ui
+            .conn_mut()
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+            .expect("begin");
+        let unread: i64 = tx
+            .query_row(
+                "SELECT COUNT(*) FROM entries WHERE status = 'unread'",
+                [],
+                |r| r.get(0),
+            )
+            .expect("read");
+        assert_eq!(unread, 1);
+
+        // The timer would commit here. With IMMEDIATE the UI already holds the
+        // write lock, so the timer waits rather than invalidating the UI's
+        // snapshot; give it a short timeout so this test cannot hang.
+        timer
+            .conn()
+            .busy_timeout(std::time::Duration::from_millis(50))
+            .expect("timeout");
+        let concurrent = timer.with_tx(|t| {
+            t.execute("UPDATE entries SET title = 'x' WHERE id = 1", [])?;
+            Ok(())
+        });
+        assert!(
+            concurrent.is_err(),
+            "the second writer should be the one that waits"
+        );
+
+        // The user's write still succeeds. That is the property that matters:
+        // a queued mark must never be lost to a background sync.
+        tx.execute("UPDATE entries SET status = 'read' WHERE id = 1", [])
+            .expect("the user's write must not be lost");
+        tx.commit().expect("commit");
+
+        let read: i64 = ui
+            .conn()
+            .query_row(
+                "SELECT COUNT(*) FROM entries WHERE status = 'read'",
+                [],
+                |r| r.get(0),
+            )
+            .expect("verify");
+        assert_eq!(read, 1);
     }
 
     #[test]

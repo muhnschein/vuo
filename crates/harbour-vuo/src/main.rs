@@ -61,6 +61,7 @@ fn install_context() -> vuo_core::Result<()> {
     let server = url::Url::parse(&account.server_url)
         .map_err(|_| vuo_core::Error::Config("the stored server URL is not a URL".to_owned()))?;
 
+    let config = worker::transport_config_for(&paths, &account)?;
     let db = vuo_core::db::Database::open(&paths.database)?;
 
     // The worker's events arrive on ITS thread, so everything that touches a
@@ -73,6 +74,7 @@ fn install_context() -> vuo_core::Result<()> {
         paths.database.clone(),
         server.clone(),
         vuo_core::redact::ApiToken::new(account.token),
+        config,
         deliver,
     );
 

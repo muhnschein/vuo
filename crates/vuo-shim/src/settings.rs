@@ -74,6 +74,7 @@ impl Settings {
             // settings to change something else. It is displayed with
             // echoMode: Password.
             self.apiKey = QString::from(account.token);
+            self.useCustomCa = account.use_custom_ca;
         }
         if self.mediaPolicy == 0 && self.serverUrl.to_string().is_empty() {
             // First run: default to Ask rather than Strict, because on a stock
@@ -99,6 +100,7 @@ impl Settings {
         let account = Account {
             server_url: self.serverUrl.to_string().trim().to_owned(),
             token: self.apiKey.to_string().trim().to_owned(),
+            use_custom_ca: self.useCustomCa,
         };
         if account.server_url.is_empty() || account.token.is_empty() {
             return;
