@@ -1,6 +1,6 @@
 [package]
 name = "vuo-shim"
-description = "qmetaobject-rs bindings exposing vuo-core to QML. Requires Qt development headers."
+description = "qmetaobject-rs adapters exposing vuo-core to QML. Requires Qt development headers."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -8,5 +8,27 @@ license.workspace = true
 repository.workspace = true
 authors.workspace = true
 
+# NOTE: deliberately not in the workspace's `default-members`. This crate links
+# against Qt, so `cargo build` on a runner without Qt development headers would
+# fail through no fault of the code. `make check` builds it only when qmake is
+# present; `make shim` builds it explicitly.
+
 [dependencies]
 vuo-core = { path = "../vuo-core" }
+
+# Pinned exactly. qmetaobject is only passively maintained upstream (§4 says to
+# budget for carrying a patch or two), so an accidental minor bump is a risk
+# rather than a benefit. 0.2.10's listmodel/future/qtdeclarative sources are
+# byte-identical to the crate's master branch.
+qmetaobject = "=0.2.10"
+qttypes = "=0.2.12"
+# `qml_register_type` wants a &'static CStr. Sailfish's Rust floor predates
+# C-string literals (`c"..."`), so the macro earns its place.
+cstr = "0.2"
+
+tokio = { version = "1", features = ["rt", "sync", "time"] }
+tracing = "0.1"
+url = "2.5"
+
+[dev-dependencies]
+tempfile = "3"
