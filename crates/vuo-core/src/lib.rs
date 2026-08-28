@@ -13,6 +13,7 @@
 //!   bytes become validated domain values.
 //! - [`db`] — the local SQLite mirror, and the outbox that makes the write
 //!   path offline-tolerant.
+//! - [`sync`] — the incremental pull and the idempotent outbox replay.
 //! - [`model`] — the strict domain types.
 //! - [`content`] — the HTML → render-block transform (§9.2, §9.3).
 //! - [`redact`] — keeping the API token and credentials out of error paths.
@@ -39,5 +40,6 @@ pub mod db;
 pub mod error;
 pub mod model;
 pub mod redact;
+pub mod sync;
 
 pub use error::{Error, Result};
