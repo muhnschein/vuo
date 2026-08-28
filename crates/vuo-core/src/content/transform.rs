@@ -1,0 +1,1236 @@
+//! The HTML → render-block transform.
+//!
+//! # Why a tokenizer and not a DOM
+//!
+//! This module drives `html5ever`'s **tokenizer** directly and never
+//! constructs a tree. That is a safety decision, not a performance one.
+//!
+//! The obvious implementation parses to an `RcDom` and walks it. An `RcDom` is
+//! a tree of `Rc`s, and dropping one is *recursive*: a document nested ten
+//! thousand `<div>`s deep overflows the stack in the destructor, on the cleanup
+//! path, where the crash is hardest to attribute. §9.2 warns about deeply
+//! nested markup against a recursive parser; a recursive destructor is the same
+//! bug wearing a hat. Consuming a flat token stream and assembling a flat
+//! [`Document`] means there is no recursive structure to build *or* to drop.
+//!
+//! # Allowlist by construction
+//!
+//! §9.2: *allowlist, never blocklist. A blocklist is a promise to have thought
+//! of every tag, which nobody can keep.* Recognised elements map to
+//! [`BlockKind`] variants or to inline styles; everything else falls through to
+//! [`Disposition::Flatten`], which drops the tag and keeps its text. There is
+//! no passthrough path, so an element nobody has heard of renders as its text
+//! content and nothing more.
+//!
+//! A small set of elements is `Skip`ped subtree-and-all — `<script>`,
+//! `<style>`, `<iframe>` and friends — because their *text* is not content.
+//!
+//! # Every loop is bounded
+//!
+//! Input is truncated before parsing, not after (§9.2). Structural depth, block
+//! count, cumulative text size, list indent and quote depth all have caps, and
+//! hitting one records a [`Truncation`] on the output so the UI can say the
+//! article is incomplete rather than silently presenting a fragment as whole.
+
+use html5ever::tokenizer::{
+    BufferQueue, Tag, TagKind, Token, TokenSink, TokenSinkResult, Tokenizer, TokenizerOpts,
+};
+use html5ever::tokenizer::states::RawKind;
+use tendril::StrTendril;
+use url::Url;
+
+use crate::content::block::{BlockKind, Document, RenderBlock, Span, SpanStyle, TableCell, Truncation};
+use crate::content::url::{MediaDecision, MediaPolicy, MediaUrl};
+
+/// Resource caps for the transform. Every one of these exists because the
+/// input is written by strangers (§9).
+#[derive(Debug, Clone, Copy)]
+pub struct Limits {
+    /// Applied to the input string *before* tokenizing.
+    pub max_input_bytes: usize,
+    /// Maximum element nesting. Beyond this, start tags stop opening new
+    /// structure and their content flattens into the enclosing block.
+    pub max_depth: usize,
+    /// Maximum blocks in the output document.
+    pub max_blocks: usize,
+    /// Maximum cumulative text bytes across all blocks.
+    pub max_text_bytes: usize,
+    /// Maximum `<blockquote>` nesting reflected in `quote_depth`.
+    pub max_quote_depth: u8,
+    /// Maximum list nesting reflected in `indent`.
+    pub max_list_indent: u8,
+}
+
+impl Default for Limits {
+    fn default() -> Self {
+        Limits {
+            // A multi-megabyte entry is a frozen UI on a phone (§9.2). Two
+            // megabytes is far past any honest article.
+            max_input_bytes: 2 * 1024 * 1024,
+            max_depth: 128,
+            max_blocks: 4096,
+            max_text_bytes: 1024 * 1024,
+            max_quote_depth: 8,
+            max_list_indent: 8,
+        }
+    }
+}
+
+/// Everything the transform needs besides the markup itself.
+#[derive(Debug, Clone)]
+pub struct TransformContext {
+    /// The article's own URL, used to resolve relative `src`/`href`.
+    pub base_url: Option<Url>,
+    /// What to do about remote media (§9.3).
+    pub media: MediaPolicy,
+    pub limits: Limits,
+}
+
+impl TransformContext {
+    /// The privacy-preserving default for a given instance.
+    #[must_use]
+    pub fn new(instance: Url) -> Self {
+        TransformContext {
+            base_url: None,
+            media: MediaPolicy::default_for(instance),
+            limits: Limits::default(),
+        }
+    }
+
+    #[must_use]
+    pub fn with_base_url(mut self, base: Option<Url>) -> Self {
+        self.base_url = base;
+        self
+    }
+}
+
+/// Transform article HTML into a flat block list.
+///
+/// This function is **infallible by design**. §9.5 requires that a malformed
+/// response be a handled error rather than a crash, and the honest handling for
+/// unparseable markup is an empty or partial document, not an `Err` that some
+/// caller will end up unwrapping. Anything the transform could not make sense
+/// of is simply absent from the output; anything it had to cut is recorded in
+/// [`Document::truncated`].
+#[must_use]
+pub fn transform(html: &str, ctx: &TransformContext) -> Document {
+    // Cap the input BEFORE parsing, not after (§9.2). Slicing on a char
+    // boundary keeps the truncation from splitting a UTF-8 sequence.
+    let (input, pre_truncated) = if html.len() > ctx.limits.max_input_bytes {
+        let mut cut = ctx.limits.max_input_bytes;
+        while cut > 0 && !html.is_char_boundary(cut) {
+            cut -= 1;
+        }
+        (html.get(..cut).unwrap_or(""), Some(Truncation::InputTooLarge))
+    } else {
+        (html, None)
+    };
+
+    let mut builder = Builder::new(ctx.clone());
+    builder.truncated = pre_truncated;
+
+    let mut queue = BufferQueue::default();
+    queue.push_back(StrTendril::from(input));
+
+    let mut tok = Tokenizer::new(
+        builder,
+        TokenizerOpts {
+            // Parse errors are not interesting here: the transform's contract
+            // is best-effort rendering, and collecting error strings from
+            // hostile input is just another unbounded allocation.
+            exact_errors: false,
+            ..TokenizerOpts::default()
+        },
+    );
+
+    // `feed` returns `Script(handle)` only if the sink asks for script
+    // handling, which this sink never does; looping to `Done` is exhaustive.
+    let _ = tok.feed(&mut queue);
+    tok.end();
+
+    tok.sink.finish()
+}
+
+/// What the transform does with an element.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Disposition {
+    /// Drop the element and everything inside it.
+    Skip,
+    /// Drop the tag, keep the contents. The default for anything unrecognised.
+    Flatten,
+    /// Recognised structure.
+    Block(BlockTag),
+    /// Recognised inline styling.
+    Inline(InlineTag),
+    /// Recognised void element.
+    Void(VoidTag),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BlockTag {
+    Paragraph,
+    Heading(u8),
+    List { ordered: bool },
+    ListItem,
+    Quote,
+    Pre,
+    Table,
+    TableRow,
+    TableCell { header: bool },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum InlineTag {
+    Bold,
+    Italic,
+    Code,
+    Strike,
+    Superscript,
+    Subscript,
+    Anchor,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum VoidTag {
+    Break,
+    Rule,
+    Image,
+}
+
+/// The allowlist. Everything not named here is [`Disposition::Flatten`].
+fn classify(name: &str) -> Disposition {
+    match name {
+        // -- dropped entirely: their text is not article content ------------
+        "script" | "style" | "noscript" | "iframe" | "object" | "embed" | "applet" | "svg"
+        | "math" | "template" | "form" | "button" | "input" | "select" | "option" | "textarea"
+        | "canvas" | "map" | "area" | "audio" | "video" | "source" | "track" | "param"
+        | "head" | "meta" | "link" | "title" | "base" => Disposition::Skip,
+
+        // -- block structure ------------------------------------------------
+        "p" => Disposition::Block(BlockTag::Paragraph),
+        "h1" => Disposition::Block(BlockTag::Heading(1)),
+        "h2" => Disposition::Block(BlockTag::Heading(2)),
+        "h3" => Disposition::Block(BlockTag::Heading(3)),
+        "h4" => Disposition::Block(BlockTag::Heading(4)),
+        "h5" => Disposition::Block(BlockTag::Heading(5)),
+        "h6" => Disposition::Block(BlockTag::Heading(6)),
+        "ul" | "menu" => Disposition::Block(BlockTag::List { ordered: false }),
+        "ol" => Disposition::Block(BlockTag::List { ordered: true }),
+        "li" => Disposition::Block(BlockTag::ListItem),
+        "blockquote" => Disposition::Block(BlockTag::Quote),
+        "pre" => Disposition::Block(BlockTag::Pre),
+        "table" => Disposition::Block(BlockTag::Table),
+        "tr" => Disposition::Block(BlockTag::TableRow),
+        "td" => Disposition::Block(BlockTag::TableCell { header: false }),
+        "th" => Disposition::Block(BlockTag::TableCell { header: true }),
+
+        // Block-level containers that carry no styling of their own but do
+        // terminate the current paragraph.
+        "div" | "section" | "article" | "aside" | "main" | "header" | "footer" | "nav"
+        | "figure" | "figcaption" | "dl" | "dt" | "dd" | "address" | "fieldset" | "details"
+        | "summary" | "hgroup" | "thead" | "tbody" | "tfoot" | "caption" | "colgroup" | "col" => {
+            Disposition::Block(BlockTag::Paragraph)
+        }
+
+        // -- inline ---------------------------------------------------------
+        "b" | "strong" => Disposition::Inline(InlineTag::Bold),
+        "i" | "em" | "cite" | "dfn" | "var" => Disposition::Inline(InlineTag::Italic),
+        "code" | "kbd" | "samp" | "tt" => Disposition::Inline(InlineTag::Code),
+        "s" | "del" | "strike" => Disposition::Inline(InlineTag::Strike),
+        "sup" => Disposition::Inline(InlineTag::Superscript),
+        "sub" => Disposition::Inline(InlineTag::Subscript),
+        "a" => Disposition::Inline(InlineTag::Anchor),
+
+        // -- void -----------------------------------------------------------
+        "br" => Disposition::Void(VoidTag::Break),
+        "hr" => Disposition::Void(VoidTag::Rule),
+        "img" => Disposition::Void(VoidTag::Image),
+
+        _ => Disposition::Flatten,
+    }
+}
+
+/// An element on the open-element stack.
+#[derive(Debug)]
+struct OpenElement {
+    name: String,
+    disposition: Disposition,
+    /// Inline style to restore when this element closes.
+    saved_style: Option<SpanStyle>,
+    /// Link to restore when this element closes.
+    saved_link: Option<Option<MediaUrl>>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ListState {
+    ordered: bool,
+    counter: u32,
+}
+
+/// Which kind of block the currently-accumulating spans belong to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Pending {
+    Paragraph,
+    Heading(u8),
+    ListItem { ordered: bool, number: Option<u32>, indent: u8 },
+}
+
+struct Builder {
+    ctx: TransformContext,
+    blocks: Vec<RenderBlock>,
+    truncated: Option<Truncation>,
+
+    open: Vec<OpenElement>,
+    /// Depth at which a `Skip` element was opened. While `Some`, everything is
+    /// discarded until the stack unwinds back past it.
+    skip_from: Option<usize>,
+
+    spans: Vec<Span>,
+    style: SpanStyle,
+    link: Option<MediaUrl>,
+    pending: Pending,
+
+    quote_depth: u8,
+    lists: Vec<ListState>,
+
+    /// `<pre>` nesting; text is taken verbatim while non-zero.
+    pre_depth: u32,
+    pre_text: String,
+    pre_language: Option<String>,
+
+    /// Table accumulation. `None` when not inside a `<table>`.
+    table: Option<TableBuild>,
+
+    text_bytes: usize,
+}
+
+#[derive(Debug, Default)]
+struct TableBuild {
+    rows: Vec<Vec<TableCell>>,
+    current_row: Option<Vec<TableCell>>,
+    current_header: bool,
+}
+
+impl Builder {
+    fn new(ctx: TransformContext) -> Self {
+        Builder {
+            ctx,
+            blocks: Vec::new(),
+            truncated: None,
+            open: Vec::new(),
+            skip_from: None,
+            spans: Vec::new(),
+            style: SpanStyle::default(),
+            link: None,
+            pending: Pending::Paragraph,
+            quote_depth: 0,
+            lists: Vec::new(),
+            pre_depth: 0,
+            pre_text: String::new(),
+            pre_language: None,
+            table: None,
+            text_bytes: 0,
+        }
+    }
+
+    fn finish(mut self) -> Document {
+        self.flush();
+        self.close_table();
+        Document { blocks: self.blocks, truncated: self.truncated }
+    }
+
+    fn at_capacity(&self) -> bool {
+        self.blocks.len() >= self.ctx.limits.max_blocks
+            || self.text_bytes >= self.ctx.limits.max_text_bytes
+    }
+
+    fn record_truncation(&mut self, why: Truncation) {
+        // Keep the first cause: it is the one that explains the rest.
+        if self.truncated.is_none() {
+            self.truncated = Some(why);
+        }
+    }
+
+    fn push_block(&mut self, kind: BlockKind) {
+        if self.blocks.len() >= self.ctx.limits.max_blocks {
+            self.record_truncation(Truncation::TooManyBlocks);
+            return;
+        }
+        if self.text_bytes >= self.ctx.limits.max_text_bytes {
+            self.record_truncation(Truncation::TooMuchText);
+            return;
+        }
+        self.blocks.push(RenderBlock::quoted(kind, self.quote_depth));
+    }
+
+    /// Emit whatever inline text has accumulated as the pending block kind.
+    fn flush(&mut self) {
+        let spans = std::mem::take(&mut self.spans);
+        let spans = trim_spans(spans);
+        if spans.is_empty() {
+            // Reset pending even when empty so a stray `</h2>` cannot leak its
+            // heading level onto the next paragraph.
+            self.pending = self.default_pending();
+            return;
+        }
+
+        // Inside a table cell, text belongs to the cell rather than the
+        // document body.
+        if let Some(table) = self.table.as_mut() {
+            if let Some(row) = table.current_row.as_mut() {
+                if let Some(cell) = row.last_mut() {
+                    cell.spans.extend(spans);
+                    self.pending = self.default_pending();
+                    return;
+                }
+            }
+            // Text inside <table> but outside any cell is stray; drop it
+            // rather than inventing a cell for it.
+            self.pending = self.default_pending();
+            return;
+        }
+
+        let kind = match self.pending {
+            Pending::Paragraph => BlockKind::Paragraph { spans },
+            Pending::Heading(level) => BlockKind::Heading { level, spans },
+            Pending::ListItem { ordered, number, indent } => {
+                BlockKind::ListItem { ordered, number, indent, spans }
+            }
+        };
+        self.push_block(kind);
+        self.pending = self.default_pending();
+    }
+
+    /// What a fresh block should be, given the enclosing structure.
+    fn default_pending(&self) -> Pending {
+        if self.lists.is_empty() {
+            Pending::Paragraph
+        } else {
+            // Continuation text inside a list item stays part of the item.
+            match self.lists.last() {
+                Some(list) => Pending::ListItem {
+                    ordered: list.ordered,
+                    number: None,
+                    indent: self.list_indent(),
+                },
+                None => Pending::Paragraph,
+            }
+        }
+    }
+
+    fn list_indent(&self) -> u8 {
+        let depth = self.lists.len().saturating_sub(1);
+        u8::try_from(depth).unwrap_or(u8::MAX).min(self.ctx.limits.max_list_indent)
+    }
+
+    fn push_text(&mut self, text: &str) {
+        if self.skip_from.is_some() {
+            return;
+        }
+
+        if self.pre_depth > 0 {
+            let budget = self.ctx.limits.max_text_bytes.saturating_sub(self.text_bytes);
+            if budget == 0 {
+                self.record_truncation(Truncation::TooMuchText);
+                return;
+            }
+            let taken = clamp_to_char_boundary(text, budget);
+            self.pre_text.push_str(taken);
+            self.text_bytes += taken.len();
+            return;
+        }
+
+        // Outside <pre>, collapse whitespace runs. Real feed markup is full of
+        // newlines and indentation that mean nothing.
+        let collapsed = collapse_whitespace(text);
+        if collapsed.is_empty() {
+            return;
+        }
+        // Collapsing has to carry across token boundaries. html5ever splits
+        // character data at arbitrary points, so "a\n\n  \tb" can arrive as
+        // several CharacterTokens; collapsing each in isolation would emit one
+        // space per chunk and render "a   b". Drop a leading space when the
+        // text so far already ends in one -- or when there is no text yet,
+        // since a block must not start with a space.
+        let trailing_space = match self.spans.last() {
+            Some(prev) => prev.text.ends_with(' '),
+            None => true,
+        };
+        let collapsed = if trailing_space && collapsed.starts_with(' ') {
+            collapsed.trim_start().to_owned()
+        } else {
+            collapsed
+        };
+        if collapsed.is_empty() {
+            return;
+        }
+
+        let budget = self.ctx.limits.max_text_bytes.saturating_sub(self.text_bytes);
+        if budget == 0 {
+            self.record_truncation(Truncation::TooMuchText);
+            return;
+        }
+        let taken = clamp_to_char_boundary(&collapsed, budget).to_owned();
+        self.text_bytes += taken.len();
+
+        // Merge into the previous span when the styling is identical; this
+        // keeps the span list short for text broken up by ignored tags.
+        match self.spans.last_mut() {
+            Some(prev) if prev.style == self.style && prev.link == self.link => {
+                prev.text.push_str(&taken);
+            }
+            _ => self.spans.push(Span { text: taken, style: self.style, link: self.link.clone() }),
+        }
+    }
+
+    fn close_table(&mut self) {
+        if let Some(mut table) = self.table.take() {
+            if let Some(row) = table.current_row.take() {
+                if !row.is_empty() {
+                    table.rows.push(row);
+                }
+            }
+            if !table.rows.is_empty() {
+                self.push_block(BlockKind::Table { rows: table.rows });
+            }
+        }
+    }
+
+    fn start_tag(&mut self, tag: &Tag) -> TokenSinkResult<()> {
+        let name = tag.name.as_ref().to_ascii_lowercase();
+        let disposition = classify(&name);
+
+        // Already discarding a subtree: still track the stack so we know when
+        // to stop, but do nothing else.
+        if self.skip_from.is_some() {
+            if !is_void(&name) && !tag.self_closing {
+                self.open.push(OpenElement {
+                    name,
+                    disposition: Disposition::Skip,
+                    saved_style: None,
+                    saved_link: None,
+                });
+            }
+            return TokenSinkResult::Continue;
+        }
+
+        // Structural depth cap (§9.2). Past the cap we stop opening structure
+        // entirely; text still flows into the enclosing block.
+        if self.open.len() >= self.ctx.limits.max_depth {
+            return TokenSinkResult::Continue;
+        }
+
+        if let Disposition::Void(void) = disposition {
+            self.void_element(void, tag);
+            return TokenSinkResult::Continue;
+        }
+
+        let mut saved_style = None;
+        let mut saved_link = None;
+
+        match disposition {
+            Disposition::Skip => {
+                self.flush();
+                self.skip_from = Some(self.open.len());
+            }
+            Disposition::Flatten => {}
+            Disposition::Inline(inline) => {
+                saved_style = Some(self.style);
+                match inline {
+                    InlineTag::Bold => self.style.bold = true,
+                    InlineTag::Italic => self.style.italic = true,
+                    InlineTag::Code => self.style.code = true,
+                    InlineTag::Strike => self.style.strike = true,
+                    InlineTag::Superscript => self.style.superscript = true,
+                    InlineTag::Subscript => self.style.subscript = true,
+                    InlineTag::Anchor => {
+                        saved_link = Some(self.link.clone());
+                        // §9.2: only http(s) survives into a rendered link.
+                        // An unparseable or dangerous href yields plain text,
+                        // never a link the user can tap.
+                        self.link = attr(tag, "href").and_then(|href| self.resolve(&href));
+                    }
+                }
+            }
+            Disposition::Block(block) => self.start_block(block, tag),
+            Disposition::Void(_) => unreachable!("handled above"),
+        }
+
+        // Decide the raw-text handling before `name` is moved into the stack.
+        // Asking the tokenizer to treat the contents of these elements as text
+        // rather than markup means `<script>if (a<b) {}</script>` cannot
+        // produce a spurious `<b>` start tag.
+        let raw_text = match name.as_str() {
+            "script" => TokenSinkResult::RawData(RawKind::ScriptData),
+            "style" | "textarea" | "title" => TokenSinkResult::RawData(RawKind::Rawtext),
+            _ => TokenSinkResult::Continue,
+        };
+
+        if !is_void(&name) && !tag.self_closing {
+            self.open.push(OpenElement { name, disposition, saved_style, saved_link });
+        } else if let Some(style) = saved_style {
+            // A self-closing inline element styles nothing.
+            self.style = style;
+            if let Some(link) = saved_link {
+                self.link = link;
+            }
+        }
+
+        raw_text
+    }
+
+    fn start_block(&mut self, block: BlockTag, tag: &Tag) {
+        match block {
+            BlockTag::Paragraph => self.flush(),
+            BlockTag::Heading(level) => {
+                self.flush();
+                self.pending = Pending::Heading(level);
+            }
+            BlockTag::List { ordered } => {
+                self.flush();
+                if self.lists.len() < usize::from(self.ctx.limits.max_list_indent) {
+                    self.lists.push(ListState { ordered, counter: 0 });
+                }
+            }
+            BlockTag::ListItem => {
+                self.flush();
+                let indent = self.list_indent();
+                let (ordered, number) = match self.lists.last_mut() {
+                    Some(list) => {
+                        list.counter = list.counter.saturating_add(1);
+                        (list.ordered, list.ordered.then_some(list.counter))
+                    }
+                    // An `<li>` with no enclosing list: render it as a bullet
+                    // rather than dropping the user's text.
+                    None => (false, None),
+                };
+                self.pending = Pending::ListItem { ordered, number, indent };
+            }
+            BlockTag::Quote => {
+                self.flush();
+                self.quote_depth = self.quote_depth.saturating_add(1).min(self.ctx.limits.max_quote_depth);
+            }
+            BlockTag::Pre => {
+                self.flush();
+                self.pre_depth = self.pre_depth.saturating_add(1);
+                if self.pre_depth == 1 {
+                    self.pre_text.clear();
+                    self.pre_language = class_language(tag);
+                }
+            }
+            BlockTag::Table => {
+                self.flush();
+                // Nested tables flatten: allowing them would reintroduce
+                // unbounded nesting through the back door.
+                if self.table.is_none() {
+                    self.table = Some(TableBuild::default());
+                }
+            }
+            BlockTag::TableRow => {
+                self.flush();
+                if let Some(table) = self.table.as_mut() {
+                    if let Some(row) = table.current_row.take() {
+                        if !row.is_empty() {
+                            table.rows.push(row);
+                        }
+                    }
+                    table.current_row = Some(Vec::new());
+                }
+            }
+            BlockTag::TableCell { header } => {
+                self.flush();
+                if let Some(table) = self.table.as_mut() {
+                    table.current_header = header;
+                    if table.current_row.is_none() {
+                        table.current_row = Some(Vec::new());
+                    }
+                    if let Some(row) = table.current_row.as_mut() {
+                        row.push(TableCell { spans: Vec::new(), header });
+                    }
+                }
+            }
+        }
+    }
+
+    fn void_element(&mut self, void: VoidTag, tag: &Tag) {
+        match void {
+            VoidTag::Break => {
+                if self.pre_depth > 0 {
+                    self.pre_text.push('\n');
+                } else if !self.spans.is_empty() {
+                    self.spans.push(Span {
+                        text: "\n".to_owned(),
+                        style: self.style,
+                        link: self.link.clone(),
+                    });
+                }
+            }
+            VoidTag::Rule => {
+                self.flush();
+                self.push_block(BlockKind::Rule);
+            }
+            VoidTag::Image => {
+                let Some(src) = attr(tag, "src").and_then(|s| self.resolve(&s)) else {
+                    return;
+                };
+                // §9.3: decide *before* the URL ever reaches the UI, so a
+                // third-party host is never contacted from the phone.
+                let MediaDecision::Fetch(src) = self.ctx.media.decide(&src) else {
+                    return;
+                };
+                self.flush();
+                let alt = attr(tag, "alt").unwrap_or_default();
+                let title = attr(tag, "title").filter(|t| !t.is_empty());
+                self.push_block(BlockKind::Image { src, alt, title });
+            }
+        }
+    }
+
+    /// Resolve an attribute value into a validated `http(s)` URL.
+    fn resolve(&self, raw: &str) -> Option<MediaUrl> {
+        match &self.ctx.base_url {
+            Some(base) => MediaUrl::parse_relative(raw, base),
+            // With no base URL a relative reference is unresolvable, and
+            // guessing an origin for it would be worse than dropping it.
+            None => MediaUrl::parse(raw),
+        }
+    }
+
+    fn end_tag(&mut self, tag: &Tag) {
+        let name = tag.name.as_ref().to_ascii_lowercase();
+
+        // Find the matching open element, innermost first. Unmatched end tags
+        // are ignored rather than unwinding the whole stack -- real feed HTML
+        // is full of stray `</div>`s and closing everything would destroy the
+        // document's structure.
+        let Some(index) = self.open.iter().rposition(|el| el.name == name) else {
+            return;
+        };
+
+        // Close everything from the innermost open element down to the match.
+        while self.open.len() > index {
+            let Some(element) = self.open.pop() else { break };
+            self.close_element(&element);
+            if let Some(skip_from) = self.skip_from {
+                if self.open.len() <= skip_from {
+                    self.skip_from = None;
+                }
+            }
+        }
+    }
+
+    fn close_element(&mut self, element: &OpenElement) {
+        if self.skip_from.is_some() {
+            // Restore nothing: a skipped subtree never applied styling.
+            return;
+        }
+
+        if let Some(style) = element.saved_style {
+            self.style = style;
+        }
+        if let Some(link) = &element.saved_link {
+            self.link = link.clone();
+        }
+
+        match element.disposition {
+            Disposition::Block(BlockTag::Heading(_)) | Disposition::Block(BlockTag::Paragraph) => {
+                self.flush();
+            }
+            Disposition::Block(BlockTag::ListItem) => self.flush(),
+            Disposition::Block(BlockTag::List { .. }) => {
+                self.flush();
+                self.lists.pop();
+            }
+            Disposition::Block(BlockTag::Quote) => {
+                self.flush();
+                self.quote_depth = self.quote_depth.saturating_sub(1);
+            }
+            Disposition::Block(BlockTag::Pre) => {
+                self.pre_depth = self.pre_depth.saturating_sub(1);
+                if self.pre_depth == 0 {
+                    let text = std::mem::take(&mut self.pre_text);
+                    let language = self.pre_language.take();
+                    let trimmed = text.trim_matches('\n');
+                    if !trimmed.is_empty() {
+                        let owned = trimmed.to_owned();
+                        self.push_block(BlockKind::Code { language, text: owned });
+                    }
+                    // Inline spans accumulated before <pre> were already
+                    // flushed on open; discard anything stray.
+                    self.spans.clear();
+                }
+            }
+            Disposition::Block(BlockTag::Table) => {
+                self.flush();
+                self.close_table();
+            }
+            Disposition::Block(BlockTag::TableRow) => {
+                self.flush();
+                if let Some(table) = self.table.as_mut() {
+                    if let Some(row) = table.current_row.take() {
+                        if !row.is_empty() {
+                            table.rows.push(row);
+                        }
+                    }
+                }
+            }
+            Disposition::Block(BlockTag::TableCell { .. }) => self.flush(),
+            Disposition::Skip | Disposition::Flatten | Disposition::Inline(_) | Disposition::Void(_) => {}
+        }
+    }
+}
+
+impl TokenSink for Builder {
+    type Handle = ();
+
+    fn process_token(&mut self, token: Token, _line: u64) -> TokenSinkResult<()> {
+        // Stop doing work once every cap is spent; the tokenizer still drains,
+        // but nothing further is allocated.
+        if self.at_capacity() && self.truncated.is_some() {
+            return TokenSinkResult::Continue;
+        }
+
+        match token {
+            Token::TagToken(tag) => match tag.kind {
+                TagKind::StartTag => return self.start_tag(&tag),
+                TagKind::EndTag => self.end_tag(&tag),
+            },
+            Token::CharacterTokens(text) => self.push_text(&text),
+            // Comments, doctypes, parse errors and stray NULs carry nothing a
+            // reader wants to see.
+            Token::CommentToken(_)
+            | Token::DoctypeToken(_)
+            | Token::NullCharacterToken
+            | Token::ParseError(_) => {}
+            Token::EOFToken => {}
+        }
+        TokenSinkResult::Continue
+    }
+}
+
+fn is_void(name: &str) -> bool {
+    matches!(
+        name,
+        "area" | "base" | "br" | "col" | "embed" | "hr" | "img" | "input" | "link" | "meta"
+            | "param" | "source" | "track" | "wbr"
+    )
+}
+
+fn attr(tag: &Tag, wanted: &str) -> Option<String> {
+    tag.attrs
+        .iter()
+        .find(|a| a.name.local.as_ref().eq_ignore_ascii_case(wanted))
+        .map(|a| a.value.to_string())
+}
+
+/// Extract a language hint from `<pre class="language-rust">` / `highlight-rust`.
+fn class_language(tag: &Tag) -> Option<String> {
+    let class = attr(tag, "class")?;
+    class.split_whitespace().find_map(|c| {
+        let c = c.to_ascii_lowercase();
+        for prefix in ["language-", "lang-", "highlight-", "brush:"] {
+            if let Some(rest) = c.strip_prefix(prefix) {
+                if !rest.is_empty() {
+                    return Some(rest.to_owned());
+                }
+            }
+        }
+        None
+    })
+}
+
+/// Collapse runs of ASCII whitespace to a single space.
+fn collapse_whitespace(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut in_space = false;
+    for ch in text.chars() {
+        if ch.is_whitespace() {
+            if !in_space {
+                out.push(' ');
+                in_space = true;
+            }
+        } else {
+            out.push(ch);
+            in_space = false;
+        }
+    }
+    out
+}
+
+/// Truncate to at most `budget` bytes without splitting a character.
+fn clamp_to_char_boundary(text: &str, budget: usize) -> &str {
+    if text.len() <= budget {
+        return text;
+    }
+    let mut cut = budget;
+    while cut > 0 && !text.is_char_boundary(cut) {
+        cut -= 1;
+    }
+    text.get(..cut).unwrap_or("")
+}
+
+/// Drop leading/trailing whitespace across a span run, and remove spans that
+/// become empty. Keeps blocks from rendering with stray padding.
+fn trim_spans(mut spans: Vec<Span>) -> Vec<Span> {
+    while let Some(first) = spans.first_mut() {
+        let trimmed = first.text.trim_start();
+        if trimmed.len() != first.text.len() {
+            first.text = trimmed.to_owned();
+        }
+        if first.text.is_empty() {
+            spans.remove(0);
+        } else {
+            break;
+        }
+    }
+    while let Some(last) = spans.last_mut() {
+        let trimmed = last.text.trim_end();
+        if trimmed.len() != last.text.len() {
+            last.text = trimmed.to_owned();
+        }
+        if last.text.is_empty() {
+            spans.pop();
+        } else {
+            break;
+        }
+    }
+    spans
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::content::url::UnproxiedMedia;
+
+    fn instance() -> Url {
+        Url::parse("https://miniflux.example/").unwrap()
+    }
+
+    /// A context that renders third-party images, so tests about *structure*
+    /// are not silently also testing the media policy.
+    fn lenient_ctx() -> TransformContext {
+        TransformContext {
+            base_url: Some(Url::parse("https://blog.example/post/").unwrap()),
+            media: MediaPolicy::ProxyThroughInstance {
+                instance: instance(),
+                fallback: UnproxiedMedia::FetchDirectly,
+            },
+            limits: Limits::default(),
+        }
+    }
+
+    fn strict_ctx() -> TransformContext {
+        TransformContext::new(instance())
+            .with_base_url(Some(Url::parse("https://blog.example/post/").unwrap()))
+    }
+
+    fn text_of(doc: &Document) -> String {
+        doc.blocks.iter().map(|b| b.plain_text()).collect::<Vec<_>>().join("\n")
+    }
+
+    // ---------------------------------------------------------------- basics
+
+    #[test]
+    fn paragraphs_and_headings() {
+        let doc = transform("<h2>Title</h2><p>Hello <b>world</b>.</p>", &lenient_ctx());
+        assert_eq!(doc.blocks.len(), 2);
+        assert!(matches!(
+            doc.blocks.first().map(|b| &b.kind),
+            Some(BlockKind::Heading { level: 2, .. })
+        ));
+        assert_eq!(text_of(&doc), "Title\nHello world.");
+    }
+
+    #[test]
+    fn entities_are_decoded_once() {
+        let doc = transform("<p>a &amp; b &lt;tag&gt; &#8212; end</p>", &lenient_ctx());
+        // The tokenizer decodes references; the transform must not decode again.
+        assert_eq!(text_of(&doc), "a & b <tag> \u{2014} end");
+    }
+
+    #[test]
+    fn inline_styles_nest_and_restore() {
+        let doc = transform("<p>a<b>b<i>c</i>d</b>e</p>", &lenient_ctx());
+        let BlockKind::Paragraph { spans } = doc.blocks.first().map(|b| &b.kind).unwrap() else {
+            panic!("expected a paragraph")
+        };
+        let styled: Vec<_> = spans.iter().map(|s| (s.text.as_str(), s.style.bold, s.style.italic)).collect();
+        assert_eq!(
+            styled,
+            vec![("a", false, false), ("b", true, false), ("c", true, true), ("d", true, false), ("e", false, false)]
+        );
+    }
+
+    #[test]
+    fn lists_number_and_indent() {
+        let doc = transform(
+            "<ol><li>one</li><li>two<ul><li>inner</li></ul></li></ol>",
+            &lenient_ctx(),
+        );
+        let items: Vec<_> = doc
+            .blocks
+            .iter()
+            .filter_map(|b| match &b.kind {
+                BlockKind::ListItem { ordered, number, indent, spans } => {
+                    Some((*ordered, *number, *indent, Span::render_plain_text(spans)))
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(items.first(), Some(&(true, Some(1), 0, "one".to_owned())));
+        assert_eq!(items.get(1), Some(&(true, Some(2), 0, "two".to_owned())));
+        assert_eq!(items.get(2), Some(&(false, None, 1, "inner".to_owned())));
+    }
+
+    #[test]
+    fn blockquote_depth_is_a_scalar_not_nesting() {
+        let doc = transform("<blockquote><p>a</p><blockquote><p>b</p></blockquote></blockquote>", &lenient_ctx());
+        let depths: Vec<u8> = doc.blocks.iter().map(|b| b.quote_depth).collect();
+        assert_eq!(depths, vec![1, 2]);
+    }
+
+    #[test]
+    fn pre_preserves_whitespace_and_reads_language() {
+        let doc = transform(
+            "<pre class=\"language-rust\">fn main() {\n    let x = 1;\n}</pre>",
+            &lenient_ctx(),
+        );
+        let Some(BlockKind::Code { language, text }) = doc.blocks.first().map(|b| b.kind.clone()) else {
+            panic!("expected a code block, got {:?}", doc.blocks)
+        };
+        assert_eq!(language.as_deref(), Some("rust"));
+        assert_eq!(text, "fn main() {\n    let x = 1;\n}");
+    }
+
+    #[test]
+    fn tables_become_rows_of_cells() {
+        let doc = transform(
+            "<table><tr><th>h1</th><th>h2</th></tr><tr><td>a</td><td>b</td></tr></table>",
+            &lenient_ctx(),
+        );
+        let Some(BlockKind::Table { rows }) = doc.blocks.first().map(|b| b.kind.clone()) else {
+            panic!("expected a table, got {:?}", doc.blocks)
+        };
+        assert_eq!(rows.len(), 2);
+        assert!(rows.first().map(|r| r.iter().all(|c| c.header)).unwrap_or(false));
+        let body: Vec<String> = rows
+            .get(1)
+            .map(|r| r.iter().map(|c| Span::render_plain_text(&c.spans)).collect())
+            .unwrap_or_default();
+        assert_eq!(body, vec!["a".to_owned(), "b".to_owned()]);
+    }
+
+    // ------------------------------------------------------- §9.2 allowlist
+
+    #[test]
+    fn script_and_style_contents_never_appear() {
+        let doc = transform(
+            "<p>before</p><script>alert('pwned'); if (a<b) { evil() }</script>\
+             <style>body{display:none}</style><p>after</p>",
+            &lenient_ctx(),
+        );
+        let text = text_of(&doc);
+        assert!(!text.contains("pwned"), "script body leaked: {text}");
+        assert!(!text.contains("display:none"), "style body leaked: {text}");
+        assert_eq!(text, "before\nafter");
+    }
+
+    #[test]
+    fn a_less_than_inside_script_cannot_forge_a_tag() {
+        // Without RawData handling the tokenizer would read `<b>` out of the
+        // script body and the following text would render bold.
+        let doc = transform("<script>if (a<b) {}</script><p>plain</p>", &lenient_ctx());
+        let BlockKind::Paragraph { spans } = doc.blocks.first().map(|b| &b.kind).unwrap() else {
+            panic!("expected a paragraph")
+        };
+        assert!(spans.iter().all(|s| !s.style.bold), "forged <b> applied styling");
+    }
+
+    #[test]
+    fn unknown_elements_flatten_to_their_text() {
+        let doc = transform("<p>a <blink>b</blink> <custom-elem>c</custom-elem> d</p>", &lenient_ctx());
+        assert_eq!(text_of(&doc), "a b c d");
+    }
+
+    #[test]
+    fn dangerous_link_schemes_render_as_plain_text() {
+        for href in ["javascript:alert(1)", "data:text/html,<script>x</script>", "file:///etc/passwd"] {
+            let html = format!("<p><a href=\"{href}\">click me</a></p>");
+            let doc = transform(&html, &lenient_ctx());
+            let BlockKind::Paragraph { spans } = doc.blocks.first().map(|b| &b.kind).unwrap() else {
+                panic!("expected a paragraph")
+            };
+            assert!(
+                spans.iter().all(|s| s.link.is_none()),
+                "{href} survived as a tappable link"
+            );
+            // The text is kept -- dropping it would lose content the user can read.
+            assert_eq!(Span::render_plain_text(spans), "click me");
+        }
+    }
+
+    #[test]
+    fn safe_links_survive_and_resolve_relatively() {
+        let doc = transform("<p><a href=\"../x\">go</a></p>", &lenient_ctx());
+        let BlockKind::Paragraph { spans } = doc.blocks.first().map(|b| &b.kind).unwrap() else {
+            panic!("expected a paragraph")
+        };
+        assert_eq!(
+            spans.first().and_then(|s| s.link.as_ref()).map(|u| u.as_str()),
+            Some("https://blog.example/x")
+        );
+    }
+
+    #[test]
+    fn data_uri_images_are_dropped() {
+        let doc = transform(
+            "<p><img src=\"data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=\" alt=\"x\"></p>",
+            &lenient_ctx(),
+        );
+        assert!(
+            !doc.blocks.iter().any(|b| matches!(b.kind, BlockKind::Image { .. })),
+            "a data: URI became an image"
+        );
+    }
+
+    // --------------------------------------------------------- §9.3 privacy
+
+    #[test]
+    fn third_party_images_are_dropped_under_the_default_policy() {
+        let doc = transform(
+            "<p><img src=\"https://tracker.example/pixel.gif\" alt=\"t\"></p>\
+             <p><img src=\"https://miniflux.example/proxy/sig/abc\" alt=\"ok\"></p>",
+            &strict_ctx(),
+        );
+        let srcs: Vec<String> = doc
+            .blocks
+            .iter()
+            .filter_map(|b| match &b.kind {
+                BlockKind::Image { src, .. } => Some(src.as_str().to_owned()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            srcs,
+            vec!["https://miniflux.example/proxy/sig/abc".to_owned()],
+            "a third-party host would have been contacted from the phone"
+        );
+    }
+
+    // ------------------------------------------------------------ §9.2 caps
+
+    #[test]
+    fn deeply_nested_markup_does_not_overflow_the_stack() {
+        // This is the case the tokenizer-not-DOM decision exists for: an RcDom
+        // built from this input overflows the stack when it is *dropped*.
+        let depth = 50_000;
+        let html = format!("{}deep{}", "<div>".repeat(depth), "</div>".repeat(depth));
+        let doc = transform(&html, &lenient_ctx());
+        assert!(text_of(&doc).contains("deep"), "content lost under deep nesting");
+    }
+
+    #[test]
+    fn deeply_nested_unclosed_markup_is_also_survivable() {
+        // No closing tags at all: the open-element stack never unwinds.
+        let html = format!("{}tail", "<div><span><em>".repeat(20_000));
+        let doc = transform(&html, &lenient_ctx());
+        assert!(text_of(&doc).contains("tail"));
+    }
+
+    #[test]
+    fn oversized_input_is_cut_before_parsing() {
+        let ctx = TransformContext { limits: Limits { max_input_bytes: 1024, ..Limits::default() }, ..lenient_ctx() };
+        let html = format!("<p>{}</p>", "x".repeat(64 * 1024));
+        let doc = transform(&html, &ctx);
+        assert_eq!(doc.truncated, Some(Truncation::InputTooLarge));
+        assert!(text_of(&doc).len() <= 1024);
+    }
+
+    #[test]
+    fn block_count_is_capped_and_reported() {
+        let ctx = TransformContext { limits: Limits { max_blocks: 10, ..Limits::default() }, ..lenient_ctx() };
+        let html = "<p>x</p>".repeat(500);
+        let doc = transform(&html, &ctx);
+        assert_eq!(doc.blocks.len(), 10);
+        assert_eq!(
+            doc.truncated,
+            Some(Truncation::TooManyBlocks),
+            "a silent truncation reads as 'this is the whole article' when it is not"
+        );
+    }
+
+    #[test]
+    fn text_volume_is_capped() {
+        let ctx = TransformContext { limits: Limits { max_text_bytes: 512, ..Limits::default() }, ..lenient_ctx() };
+        let html = format!("<p>{}</p>", "abcd ".repeat(10_000));
+        let doc = transform(&html, &ctx);
+        assert!(doc.truncated.is_some());
+        assert!(text_of(&doc).len() <= 600, "text cap overshot");
+    }
+
+    #[test]
+    fn quote_and_list_depth_are_clamped() {
+        let ctx = TransformContext {
+            limits: Limits { max_quote_depth: 3, max_list_indent: 2, ..Limits::default() },
+            ..lenient_ctx()
+        };
+        let html = format!("{}<p>deep</p>{}", "<blockquote>".repeat(50), "</blockquote>".repeat(50));
+        let doc = transform(&html, &ctx);
+        assert!(doc.blocks.iter().all(|b| b.quote_depth <= 3));
+
+        let nested_lists = format!("{}<li>x</li>{}", "<ul>".repeat(50), "</ul>".repeat(50));
+        let doc = transform(&nested_lists, &ctx);
+        assert!(doc.blocks.iter().all(|b| match b.kind {
+            BlockKind::ListItem { indent, .. } => indent <= 2,
+            _ => true,
+        }));
+    }
+
+    // ------------------------------------------------------ malformed input
+
+    #[test]
+    fn malformed_markup_does_not_panic() {
+        // §9.5: a malformed response is a handled error, not a crash. The fuzz
+        // targets in fuzz/ generalise this; these are the shapes seen in real
+        // feeds.
+        let cases = [
+            "",
+            "<",
+            "<<<<>>>>",
+            "<p",
+            "<p>unclosed",
+            "</p></div></span>",
+            "<p><b>bold <i>both</p></b></i>",
+            "<table><td>orphan cell</td>",
+            "<ul><li>a<li>b<li>c",
+            "<img src=>",
+            "<a href>text</a>",
+            "<pre><code>x",
+            "<!-- comment only -->",
+            "<!DOCTYPE html>",
+            "\u{0}\u{0}\u{0}",
+            "<p>\u{fffd}</p>",
+            "<h7>not a heading</h7>",
+            "<blockquote>",
+        ];
+        for html in cases {
+            let doc = transform(html, &lenient_ctx());
+            // The contract is only that it returns; assert something cheap so
+            // the call is not optimised away.
+            let _ = doc.blocks.len();
+        }
+    }
+
+    #[test]
+    fn stray_end_tags_do_not_destroy_structure() {
+        // A stray `</div>` must not unwind the whole open-element stack.
+        let doc = transform("<p>a</div> b</p>", &lenient_ctx());
+        assert_eq!(text_of(&doc), "a b");
+    }
+
+    #[test]
+    fn whitespace_between_tags_collapses() {
+        let doc = transform("<p>a\n\n   \tb</p>", &lenient_ctx());
+        assert_eq!(text_of(&doc), "a b");
+    }
+}

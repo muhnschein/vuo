@@ -1,0 +1,12 @@
+[package]
+name = "vuo-shim"
+description = "qmetaobject-rs bindings exposing vuo-core to QML. Requires Qt development headers."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+vuo-core = { path = "../vuo-core" }

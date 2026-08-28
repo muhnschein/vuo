@@ -1,0 +1,71 @@
+[package]
+name = "vuo-core"
+description = "Miniflux sync engine, local mirror and content transform for Vuo. No Qt, no SailfishOS."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# --- serialisation -----------------------------------------------------------
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# --- HTTP --------------------------------------------------------------------
+# default-features = false deliberately: it drops native-tls (and with it
+# OpenSSL) and the default redirect policy. §9.1 requires rustls and a
+# restrictive, hand-written redirect policy, so neither default is wanted.
+reqwest = { version = "0.12", default-features = false, features = [
+    "json",
+    "rustls-tls-native-roots",
+    "stream",
+    "gzip",
+] }
+http = "1"
+url = { version = "2.5", features = ["serde"] }
+bytes = "1"
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
+
+# --- async -------------------------------------------------------------------
+tokio = { version = "1", features = ["rt", "macros", "sync", "time"] }
+
+# --- storage -----------------------------------------------------------------
+# "bundled" compiles SQLite from vendored C rather than linking whatever the
+# device happens to ship. That keeps the mirror's behaviour identical between
+# the host test suite and the phone, which matters because the mirror is the
+# UI's source of truth.
+rusqlite = { version = "0.32", features = ["bundled", "backup"] }
+
+# --- content transform -------------------------------------------------------
+# Only html5ever's TOKENIZER is used, never its tree builder or RcDom: an
+# RcDom is dropped recursively, so deeply nested markup would overflow the
+# stack on drop -- precisely the input §9.2 warns about. Blocks are assembled
+# from the token stream with an explicit, depth-capped stack instead.
+html5ever = "0.27"
+tendril = "0.4"
+
+# --- misc --------------------------------------------------------------------
+thiserror = "1.0"
+time = { version = "0.3", features = ["serde", "formatting", "parsing", "macros"] }
+tracing = "0.1"
+percent-encoding = "2.3"
+sha2 = "0.10"
+hex = "0.4"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
+wiremock = "0.6"
+insta = { version = "1", features = ["json", "redactions"] }
+tempfile = "3"
+serde_json = "1.0"
+
+[features]
+default = []
+# Enables the opt-in live integration test against a real Miniflux instance.
+# See docs/testing.md; the test is additionally gated on VUO_LIVE_BASE_URL.
+live-integration-tests = []
