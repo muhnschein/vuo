@@ -61,6 +61,14 @@ pub struct Limits {
     pub max_quote_depth: u8,
     /// Maximum list nesting reflected in `indent`.
     pub max_list_indent: u8,
+    /// Maximum rows in one table.
+    ///
+    /// A table is a SINGLE block, so `max_blocks` does not bound it at all. A
+    /// document of half a million empty `<td>`s built an 80 MB structure while
+    /// reporting one block and no truncation.
+    pub max_table_rows: usize,
+    /// Maximum cells in one table row.
+    pub max_table_cells_per_row: usize,
 }
 
 impl Default for Limits {
@@ -74,6 +82,8 @@ impl Default for Limits {
             max_text_bytes: 1024 * 1024,
             max_quote_depth: 8,
             max_list_indent: 8,
+            max_table_rows: 512,
+            max_table_cells_per_row: 64,
         }
     }
 }
@@ -545,9 +555,10 @@ impl Builder {
     }
 
     fn close_table(&mut self) {
+        let max_rows = self.ctx.limits.max_table_rows;
         if let Some(mut table) = self.table.take() {
             if let Some(row) = table.current_row.take() {
-                if !row.is_empty() {
+                if !row.is_empty() && table.rows.len() < max_rows {
                     table.rows.push(row);
                 }
             }
@@ -734,28 +745,46 @@ impl Builder {
             }
             BlockTag::TableRow => {
                 self.flush();
+                let max_rows = self.ctx.limits.max_table_rows;
+                let mut hit_cap = false;
                 if let Some(table) = self.table.as_mut() {
                     if let Some(row) = table.current_row.take() {
                         if !row.is_empty() {
-                            table.rows.push(row);
+                            if table.rows.len() < max_rows {
+                                table.rows.push(row);
+                            } else {
+                                hit_cap = true;
+                            }
                         }
                     }
                     table.current_row = Some(Vec::new());
                 }
+                if hit_cap {
+                    self.record_truncation(Truncation::TooManyBlocks);
+                }
             }
             BlockTag::TableCell { header } => {
                 self.flush();
+                let max_cells = self.ctx.limits.max_table_cells_per_row;
+                let mut hit_cap = false;
                 if let Some(table) = self.table.as_mut() {
                     table.current_header = header;
                     if table.current_row.is_none() {
                         table.current_row = Some(Vec::new());
                     }
                     if let Some(row) = table.current_row.as_mut() {
-                        row.push(TableCell {
-                            spans: Vec::new(),
-                            header,
-                        });
+                        if row.len() < max_cells {
+                            row.push(TableCell {
+                                spans: Vec::new(),
+                                header,
+                            });
+                        } else {
+                            hit_cap = true;
+                        }
                     }
+                }
+                if hit_cap {
+                    self.record_truncation(Truncation::TooManyBlocks);
                 }
             }
         }
@@ -894,12 +923,25 @@ impl Builder {
             }
             Disposition::Block(BlockTag::TableRow) => {
                 self.flush();
+                // The cap has to be applied on BOTH paths that commit a row:
+                // this one (`</tr>`) and the one in `start_block` that flushes
+                // the previous row when a new `<tr>` opens. Capping only the
+                // latter left well-formed markup completely unbounded.
+                let max_rows = self.ctx.limits.max_table_rows;
+                let mut hit_cap = false;
                 if let Some(table) = self.table.as_mut() {
                     if let Some(row) = table.current_row.take() {
                         if !row.is_empty() {
-                            table.rows.push(row);
+                            if table.rows.len() < max_rows {
+                                table.rows.push(row);
+                            } else {
+                                hit_cap = true;
+                            }
                         }
                     }
+                }
+                if hit_cap {
+                    self.record_truncation(Truncation::TooManyBlocks);
                 }
             }
             Disposition::Block(BlockTag::TableCell { .. }) => self.flush(),
@@ -1465,6 +1507,38 @@ mod tests {
             // the call is not optimised away.
             let _ = doc.blocks.len();
         }
+    }
+
+    #[test]
+    fn tables_are_bounded_like_everything_else() {
+        // A table is a SINGLE block, so `max_blocks` does not bound it at all.
+        // Half a million empty `<td>`s built an 80 MB structure while
+        // reporting one block and no truncation.
+        //
+        // Note both commit paths need the cap: `</tr>` and the next `<tr>`.
+        // Capping only the latter left well-formed markup unbounded, which is
+        // the shape real feed HTML actually has.
+        let limits = Limits::default();
+
+        let tall = format!("<table>{}</table>", "<tr><td>x</td></tr>".repeat(50_000));
+        let doc = transform(&tall, &lenient_ctx());
+        let Some(BlockKind::Table { rows }) = doc.blocks.first().map(|b| b.kind.clone()) else {
+            panic!("expected a table")
+        };
+        assert_eq!(rows.len(), limits.max_table_rows);
+        assert!(doc.truncated.is_some(), "a capped table must say so");
+
+        let wide = format!("<table><tr>{}</tr></table>", "<td>y</td>".repeat(20_000));
+        let doc = transform(&wide, &lenient_ctx());
+        let Some(BlockKind::Table { rows }) = doc.blocks.first().map(|b| b.kind.clone()) else {
+            panic!("expected a table")
+        };
+        assert_eq!(
+            rows.first().map(Vec::len),
+            Some(limits.max_table_cells_per_row),
+            "cells per row must be capped"
+        );
+        assert!(doc.truncated.is_some());
     }
 
     #[test]

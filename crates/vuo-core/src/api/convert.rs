@@ -123,21 +123,43 @@ pub fn category(w: wire::Category) -> Result<Category> {
     })
 }
 
-/// Convert a page of entries, separating the usable from the rejected.
-///
-/// Returns the entries that validated plus the per-item errors, so a caller can
-/// log or count the rejects without either ignoring them or aborting on them.
+/// What a page of entries decoded into.
+#[derive(Debug, Default)]
+pub struct Page {
+    /// Entries that validated.
+    pub valid: Vec<Entry>,
+    /// Ids the server reports as `removed`.
+    ///
+    /// A pre-2.3 server soft-deletes by flipping `status` to `removed` rather
+    /// than deleting the row, so this is the *only* deletion signal such a
+    /// server ever gives. Dropping these as merely "unusable" left the entry
+    /// in the local mirror forever — visible in the UI, absent from the server
+    /// — which is exactly what the schema comment about translating `removed`
+    /// into a local DELETE promises does not happen.
+    pub removed: Vec<EntryId>,
+    /// Per-item errors, for logging or counting.
+    pub rejected: Vec<Error>,
+}
+
+/// Convert a page of entries, separating the usable, the deleted and the bad.
 #[must_use]
-pub fn entries(page: Vec<wire::Entry>) -> (Vec<Entry>, Vec<Error>) {
-    let mut ok = Vec::with_capacity(page.len());
-    let mut rejected = Vec::new();
+pub fn entries(page: Vec<wire::Entry>) -> Page {
+    let mut out = Page {
+        valid: Vec::with_capacity(page.len()),
+        ..Page::default()
+    };
     for w in page {
+        let id = EntryId(w.id);
+        if w.status == "removed" {
+            out.removed.push(id);
+            continue;
+        }
         match entry(w) {
-            Ok(e) => ok.push(e),
-            Err(e) => rejected.push(e),
+            Ok(e) => out.valid.push(e),
+            Err(e) => out.rejected.push(e),
         }
     }
-    (ok, rejected)
+    out
 }
 
 #[cfg(test)]
@@ -201,10 +223,10 @@ mod tests {
             wire_entry(r#"{"id":2,"status":"nonsense"}"#),
             wire_entry(r#"{"id":3,"status":"unread"}"#),
         ];
-        let (ok, rejected) = entries(page);
-        assert_eq!(ok.len(), 2, "good rows must still be applied");
-        assert_eq!(rejected.len(), 1);
-        assert!(rejected.iter().all(Error::is_item_local));
+        let page = entries(page);
+        assert_eq!(page.valid.len(), 2, "good rows must still be applied");
+        assert_eq!(page.rejected.len(), 1);
+        assert!(page.rejected.iter().all(Error::is_item_local));
     }
 
     #[test]
@@ -232,5 +254,29 @@ mod tests {
         let e = entry(wire_entry(r#"{"id":-3,"feed_id":-1,"status":"read"}"#)).unwrap();
         assert_eq!(e.id, EntryId(-3));
         assert_eq!(e.feed_id, FeedId(-1));
+    }
+}
+
+#[cfg(test)]
+mod removed_status_tests {
+    use super::*;
+
+    #[test]
+    fn a_removed_entry_is_reported_as_a_deletion_not_a_reject() {
+        // On a pre-2.3 server this is the ONLY deletion signal there is:
+        // the retention job flips status to 'removed' rather than deleting the
+        // row, and `changed_after` then reports it. Treating it as merely
+        // unusable left the entry in the mirror forever.
+        let page = entries(vec![
+            serde_json::from_str(r#"{"id":1,"status":"read"}"#).unwrap(),
+            serde_json::from_str(r#"{"id":2,"status":"removed"}"#).unwrap(),
+            serde_json::from_str(r#"{"id":3,"status":"unread"}"#).unwrap(),
+        ]);
+        assert_eq!(page.valid.len(), 2);
+        assert_eq!(page.removed, vec![EntryId(2)]);
+        assert!(
+            page.rejected.is_empty(),
+            "a removed entry is not a malformed one"
+        );
     }
 }

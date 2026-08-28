@@ -179,3 +179,39 @@ fn a_second_writer_waits_rather_than_corrupting() {
         })
         .expect("the second writer succeeds once the lock is released");
 }
+
+#[test]
+fn two_processes_can_open_a_fresh_mirror_at_once() {
+    // Regression: `migrate` read `user_version` BEFORE opening its
+    // transaction, so two processes starting together both saw version 0, both
+    // ran migration 1, and the loser failed on "table already exists" against
+    // a database that was in perfect shape. On a device the UI and the
+    // systemd timer really do start at the same moment.
+    use std::sync::{Arc, Barrier};
+
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("fresh.sqlite");
+
+    // Several rounds, because the race is timing-dependent.
+    for _ in 0..5 {
+        let _ = std::fs::remove_file(&path);
+        let barrier = Arc::new(Barrier::new(4));
+        let mut handles = Vec::new();
+
+        for _ in 0..4 {
+            let path = path.clone();
+            let barrier = Arc::clone(&barrier);
+            handles.push(std::thread::spawn(move || {
+                barrier.wait();
+                Database::open(&path).map(|_| ())
+            }));
+        }
+
+        for handle in handles {
+            handle
+                .join()
+                .expect("thread")
+                .expect("opening a fresh mirror concurrently must succeed");
+        }
+    }
+}

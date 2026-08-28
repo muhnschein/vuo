@@ -28,10 +28,11 @@ struct Migration {
 }
 
 /// The ordered schema history. Append; never edit.
-const MIGRATIONS: &[Migration] = &[Migration {
-    version: 1,
-    name: "initial schema",
-    sql: r#"
+const MIGRATIONS: &[Migration] = &[
+    Migration {
+        version: 1,
+        name: "initial schema",
+        sql: r#"
 CREATE TABLE categories (
     id             INTEGER PRIMARY KEY,
     title          TEXT    NOT NULL DEFAULT '',
@@ -138,7 +139,20 @@ CREATE TABLE media_consent (
     granted_at INTEGER NOT NULL
 );
 "#,
-}];
+    },
+    Migration {
+        version: 2,
+        name: "record failed icon fetches",
+        sql: r#"
+-- Without this, a feed whose icon cannot be decoded is retried on every sync
+-- forever, and because icons are fetched in a small batch ordered by feed id,
+-- a handful of permanently-bad icons at the front starve every feed behind
+-- them: measured, feeds 9 and 10 never got their icons across five passes
+-- while 40 requests were spent re-fetching the same broken ones.
+ALTER TABLE feeds ADD COLUMN icon_failures INTEGER NOT NULL DEFAULT 0;
+"#,
+    },
+];
 
 /// The schema version this build expects.
 #[must_use]
@@ -165,10 +179,23 @@ pub fn migrate(conn: &mut Connection) -> Result<()> {
 /// properties that matter -- ordering, atomicity, and above all that data
 /// survives -- without waiting for a second real migration to exist.
 fn apply(conn: &mut Connection, migrations: &[Migration]) -> Result<()> {
-    let from = current_version(conn)?;
     let target = migrations.last().map_or(0, |m| m.version);
 
+    // The version is read INSIDE the write transaction, not before it.
+    //
+    // Vuo opens the mirror from two processes -- the UI and the systemd timer
+    // -- and on a device they can start at the same moment. Reading the
+    // version first and then opening a transaction is a check-then-act race:
+    // both processes see version 0, both try to run migration 1, and the loser
+    // fails on `CREATE TABLE ... already exists` with the database in a
+    // perfectly good state. `BEGIN IMMEDIATE` serialises them, and re-reading
+    // inside means the loser sees the winner's committed version and exits
+    // cleanly.
+    let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+    let from = current_version(&tx)?;
+
     if from > target {
+        drop(tx);
         // A newer Vuo has already upgraded this database. Refusing is the only
         // safe answer: this build does not know what the newer schema means,
         // and writing to it could destroy data the newer build understands.
@@ -184,7 +211,6 @@ fn apply(conn: &mut Connection, migrations: &[Migration]) -> Result<()> {
         return Ok(());
     }
 
-    let tx = conn.transaction()?;
     for migration in migrations.iter().filter(|m| m.version > from) {
         tx.execute_batch(migration.sql)
             .map_err(|e| Error::Migration {
@@ -192,10 +218,12 @@ fn apply(conn: &mut Connection, migrations: &[Migration]) -> Result<()> {
                 reason: format!("{} failed: {e}", migration.name),
             })?;
     }
-    // `PRAGMA user_version = ?` is not bindable in raw SQL, but rusqlite's
-    // pragma_update takes the value as a parameter, so even this stays out of
-    // string-built SQL. §9.4 is absolute: no query in Vuo is built with
-    // `format!`, including the obviously-safe ones with an integer.
+    // `PRAGMA user_version = ?` is not bindable in ANY SQLite client, and
+    // rusqlite's `pragma_update` does not bind it either: it renders the value
+    // into the statement text and calls `execute_batch`. That is fine here
+    // for a reason that is about the value, not the API — `target` is an i64
+    // from this file's own MIGRATIONS table, never from the server. It is not
+    // an escaping helper and must not be used as one.
     tx.pragma_update(None, "user_version", target)?;
     tx.commit()?;
     Ok(())
@@ -252,12 +280,33 @@ mod tests {
         // §9.4: the mirror can be re-fetched, the outbox cannot. This is a
         // structural guard against a future migration doing the easy thing.
         for m in MIGRATIONS {
-            let sql = m.sql.to_ascii_lowercase();
-            assert!(
-                !sql.contains("drop table outbox") && !sql.contains("delete from outbox"),
-                "migration {} would destroy pending user actions",
-                m.version
-            );
+            // Normalise whitespace so a statement split across lines, or
+            // written with a quoted identifier, cannot slip past.
+            let sql = m
+                .sql
+                .to_ascii_lowercase()
+                .replace(['"', '`', '[', ']'], "")
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ");
+            for forbidden in [
+                "drop table outbox",
+                "drop table if exists outbox",
+                "delete from outbox",
+                "truncate outbox",
+                // The standard SQLite recipe for changing a table's shape is
+                // rename-create-copy-drop. Forgetting the copy silently loses
+                // the queue, so the rename itself has to be deliberate: if a
+                // migration genuinely needs it, it must also be reviewed here.
+                "alter table outbox rename",
+            ] {
+                assert!(
+                    !sql.contains(forbidden),
+                    "migration {} contains {forbidden:?} and would risk destroying pending \
+                     user actions. The mirror can be re-fetched; the outbox cannot.",
+                    m.version
+                );
+            }
         }
     }
 

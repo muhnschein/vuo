@@ -68,17 +68,20 @@ pub async fn flush(db: &mut Database, client: &MinifluxClient) -> Result<ReplayO
                 // The server rejected the payload itself, so resending it will
                 // be rejected identically forever. Dropping is the least-bad
                 // option: keeping it would retry endlessly and block every
-                // later intent behind it. The error is recorded first so the
-                // loss is visible rather than silent.
-                db.with_tx(|tx| {
-                    outbox::record_failure(tx, &batch, &e.to_string())?;
-                    outbox::discard(tx, &batch)
-                })?;
+                // later intent behind it.
+                //
+                // Note the failure is NOT recorded on the row first: `discard`
+                // deletes the row, taking the `last_error` with it, so writing
+                // one would be theatre. The log line below is where this
+                // actually becomes visible, and `ReplayOutcome::dropped`
+                // carries the count to the UI.
+                db.with_tx(|tx| outbox::discard(tx, &batch))?;
                 outcome.dropped += batch.entry_ids.len();
                 tracing::warn!(
                     error = %e,
                     count = batch.entry_ids.len(),
-                    "dropped outbox entries the server permanently rejected"
+                    ids = ?batch.entry_ids,
+                    "DROPPED queued user actions: the server rejected the request permanently"
                 );
             }
             Err(e) => {

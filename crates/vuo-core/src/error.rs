@@ -158,7 +158,25 @@ impl Error {
     /// queued and waits for a human to fix the configuration.
     #[must_use]
     pub fn is_permanently_rejected(&self) -> bool {
-        matches!(self, Error::Http { status, .. } if (400..500).contains(status) && *status != 429)
+        // An explicit list, not "any 4xx except 429". Several 4xx codes say
+        // nothing about the payload and are routinely produced by things
+        // between Vuo and Miniflux:
+        //
+        //   404 — a reverse proxy that does not forward /v1/, or a path typo
+        //   405 — an nginx `limit_except GET` block refusing PUT
+        //   408 — a proxy's own request timeout
+        //   409 — a transient conflict
+        //   429 — throttling, already excluded
+        //
+        // Treating those as "the payload is invalid" deleted the user's queued
+        // marks and stars because of someone's web-server config. Only codes
+        // that genuinely mean "this request body will never be accepted"
+        // discard work.
+        matches!(
+            self,
+            Error::Http { status, .. }
+                if matches!(status, 400 | 411 | 413 | 414 | 415 | 422 | 431)
+        )
     }
 
     /// `true` when retrying the identical request could plausibly succeed.

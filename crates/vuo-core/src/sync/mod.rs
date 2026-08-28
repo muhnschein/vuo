@@ -101,8 +101,14 @@ pub async fn sync(
         .map_or(true, |last| now - last >= options.reconcile_interval_secs);
     let diverging = pull::diverging_feeds(db, client).await.unwrap_or_default();
     if version.has_entry_ids_endpoint() && (due || !diverging.is_empty()) {
-        report.entries_deleted = pull::reconcile(db, client).await?;
-        report.reconciled = true;
+        let outcome = pull::reconcile(db, client).await?;
+        report.entries_deleted = outcome.deleted;
+        // Only a reconcile that actually completed counts. Recording an
+        // aborted one would stamp `last_full_reconcile_at` and defer the
+        // deletion backstop for a whole interval on a mirror that was never
+        // checked -- and an abort is not rare: any concurrent write tears the
+        // listing.
+        report.reconciled = outcome.completed;
     } else if !diverging.is_empty() {
         // An older server has no cheap id listing. Rather than re-pulling the
         // whole corpus on every divergence, note it and let the periodic full
@@ -161,18 +167,27 @@ async fn fetch_icons(db: &mut Database, client: &MinifluxClient, limit: i64) -> 
         let wire = match client.feed_icon(feed_id.get()).await {
             Ok(w) => w,
             Err(e) => {
-                // A missing or broken icon is never a reason to fail a sync.
+                // A missing or broken icon is never a reason to fail a sync --
+                // but it IS a reason to stop asking, or this feed starves every
+                // one behind it in the batch on every future sync.
                 tracing::debug!(feed = %feed_id, error = %e, "could not fetch a feed icon");
+                db.with_tx(|tx| store::record_icon_failure(tx, feed_id))?;
                 continue;
             }
         };
         // Validated by content, not by claimed type (§9.3).
         match decode_icon(&wire, IconLimits::default()) {
             Ok(icon) => {
-                db.with_tx(|tx| store::upsert_icon(tx, &icon))?;
+                db.with_tx(|tx| {
+                    store::upsert_icon(tx, &icon)?;
+                    store::clear_icon_failures(tx, feed_id)
+                })?;
                 fetched += 1;
             }
-            Err(e) => tracing::debug!(feed = %feed_id, error = %e, "rejected a feed icon"),
+            Err(e) => {
+                tracing::debug!(feed = %feed_id, error = %e, "rejected a feed icon");
+                db.with_tx(|tx| store::record_icon_failure(tx, feed_id))?;
+            }
         }
     }
     Ok(fetched)

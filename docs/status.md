@@ -64,6 +64,18 @@ every other check in the build.
 | A probe over void elements | `<meta>`, `<link>`, `<input>`, `<embed>`, `<source>`, `<track>`, `<param>`, `<area>` and self-closing `<svg/>` **silently truncated the entire article**: each is on the skip list and is void, so skip mode was entered with no end tag able to clear it. `<input>` is common in real feed HTML. |
 | The same probe | `<script>` and `<style>` bodies **leaked into the article as text** when opened past the depth cap, because the cap's early return preempted skip handling. An allowlist breach (§9.2). |
 | Fuzzing | One bug in a *test*: the fuzz target asserted on substrings like `onerror=`, which correctly-escaped text can legitimately contain. Replaced with the real structural invariant — every tag in rendered output must come from the closed set. |
+| Adversarial review | **A negative `total` from `/v1/entries/ids` disabled the torn-listing guard.** The check read `total >= 0 && collected != total`, so a server answering `{"total": -1, "entry_ids": []}` skipped it entirely and the reconcile deleted the user's whole mirror, pending outbox rows included. |
+| Adversarial review | **A policy-refused redirect discarded queued user actions.** Dropping was gated on "not transient", which is true of a refused redirect — so a mistyped server URL silently destroyed every queued mark and star. |
+| Adversarial review | **`BEGIN DEFERRED` lost a user's mark to a concurrent sync.** Read-then-write took its WAL snapshot at the read; a commit from the timer in between made the write fail with `SQLITE_BUSY_SNAPSHOT`, which `busy_timeout` cannot rescue. |
+| Adversarial review | **The deletion reconcile never paged**: `PAGE` was 10 000 but the query clamps to the server's 1 000 cap, so "a short page means done" fired on page one and every corpus over 1 000 entries aborted on every run. |
+| Adversarial review | **The pull advanced its cursor after stopping at the page cap**, marking as seen a window it never finished reading — every entry beyond the stopping point skipped forever. |
+| Adversarial review | **An empty `/v1/feeds` response wiped the mirror.** A proxy serving a stale cached `[]` read as "the user unsubscribed from everything". |
+| Adversarial review | **A reachable panic**: hostile feed counters overflowed the divergence check's accumulator. §9.5 forbids this outright — unwinding into Qt's C++ frames is undefined behaviour. |
+| Adversarial review | **Tables were unbounded.** A table is one block, so `max_blocks` did not constrain it; half a million `<td>`s built an 80 MB structure reporting one block and no truncation. |
+| Adversarial review | **Undecodable icons starved every feed behind them**, forever: 40 requests over five passes, zero icons stored, two good icons never reached. |
+| Adversarial review | **`removed` was never translated into a local delete**, despite a schema comment promising it — so on a pre-2.3 server, soft-deleted entries stayed in the mirror permanently. |
+| Adversarial review | Concurrent first open failed: `journal_mode = WAL` needs a lock and `busy_timeout` does **not** apply to it, so the UI and the timer starting together raced. |
+| Adversarial review | Three comments claimed more than the code did, including one asserting `rusqlite::pragma_update` binds its value as a parameter. It does not — it renders it into the statement text. |
 | `cargo-deny` | Vuo's own crates were rejected: the workspace is `GPL-3.0-or-later`, a different SPDX id from the `GPL-3.0` the allow-list named. |
 | A guard test | `reqwest::Certificate::from_pem_bundle` answers `Ok(vec![])` rather than `Err` for input containing no PEM blocks, so a truncated CA file was silently becoming "no extra CA". |
 

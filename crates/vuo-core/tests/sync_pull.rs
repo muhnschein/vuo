@@ -223,8 +223,15 @@ async fn a_torn_id_listing_aborts_the_reconcile_instead_of_deleting() {
     })
     .unwrap();
 
-    let deleted = pull::reconcile(&mut db, &client).await.unwrap();
-    assert_eq!(deleted, 0, "a torn listing must never drive deletions");
+    let outcome = pull::reconcile(&mut db, &client).await.unwrap();
+    assert_eq!(
+        outcome.deleted, 0,
+        "a torn listing must never drive deletions"
+    );
+    assert!(
+        !outcome.completed,
+        "an aborted reconcile must not count as having run"
+    );
     assert_eq!(store::local_entry_ids(db.conn()).unwrap().len(), 5);
 }
 
@@ -261,8 +268,9 @@ async fn a_consistent_id_listing_deletes_what_the_server_dropped() {
     })
     .unwrap();
 
-    let deleted = pull::reconcile(&mut db, &client).await.unwrap();
-    assert_eq!(deleted, 2, "entries 2 and 4 are gone server-side");
+    let outcome = pull::reconcile(&mut db, &client).await.unwrap();
+    assert!(outcome.completed);
+    assert_eq!(outcome.deleted, 2, "entries 2 and 4 are gone server-side");
 
     let remaining = store::local_entry_ids(db.conn()).unwrap();
     let mut ids: Vec<i64> = remaining.iter().map(|i| i.get()).collect();
@@ -310,5 +318,261 @@ async fn the_counters_check_finds_diverging_feeds() {
         diverging,
         vec![2],
         "only the feed whose counts disagree needs work"
+    );
+}
+
+#[tokio::test]
+async fn a_negative_total_aborts_rather_than_disabling_the_guard() {
+    // Regression, and the worst bug found in review: the guard was written
+    // `total >= 0 && collected != total`, so a NEGATIVE total skipped the
+    // check entirely. A server -- hostile, buggy, or a proxy serving a cached
+    // body -- answering {"total": -1, "entry_ids": []} would have deleted the
+    // user's whole mirror and every pending outbox row with it.
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/v1/entries/ids"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "total": -1,
+            "entry_ids": []
+        })))
+        .mount(&server)
+        .await;
+
+    let client = client_for(&server);
+    let mut db = memory_db();
+    db.with_tx(|tx| {
+        tx.execute("INSERT INTO feeds (id, title) VALUES (1, 'f')", [])?;
+        for i in 1..=5 {
+            tx.execute(
+                "INSERT INTO entries (id, feed_id, status) VALUES (?1, 1, 'unread')",
+                [i],
+            )?;
+        }
+        tx.execute(
+            "INSERT INTO outbox (entry_id, field, value, queued_at) VALUES (2,'starred','true',1)",
+            [],
+        )?;
+        Ok(())
+    })
+    .unwrap();
+
+    let outcome = pull::reconcile(&mut db, &client).await.unwrap();
+    assert!(!outcome.completed);
+    assert_eq!(outcome.deleted, 0);
+    assert_eq!(
+        store::local_entry_ids(db.conn()).unwrap().len(),
+        5,
+        "the mirror survived"
+    );
+    assert_eq!(
+        vuo_core::db::outbox::len(db.conn()).unwrap(),
+        1,
+        "pending intent survived"
+    );
+}
+
+#[tokio::test]
+async fn the_reconcile_pages_beyond_the_servers_limit_cap() {
+    // Regression: PAGE was 10_000 but EntriesQuery clamps limit to the
+    // server's 1000 cap, so "a short page means done" fired on the first page
+    // and the reconcile never paged. Any corpus over 1000 entries therefore
+    // failed the total check on every single run.
+    let server = MockServer::start().await;
+    let first: Vec<i64> = (1..=1000).rev().collect();
+    let second: Vec<i64> = (1001..=1500).rev().collect();
+
+    Mock::given(method("GET"))
+        .and(path("/v1/entries/ids"))
+        .and(query_param("offset", "0"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "total": 1500, "entry_ids": first
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/v1/entries/ids"))
+        .and(query_param("offset", "1000"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "total": 1500, "entry_ids": second
+        })))
+        .mount(&server)
+        .await;
+
+    let client = client_for(&server);
+    let mut db = memory_db();
+    db.with_tx(|tx| {
+        tx.execute("INSERT INTO feeds (id, title) VALUES (1, 'f')", [])?;
+        // 1500 the server still has, plus one it does not.
+        for i in 1..=1501i64 {
+            tx.execute(
+                "INSERT INTO entries (id, feed_id, status) VALUES (?1, 1, 'unread')",
+                [i],
+            )?;
+        }
+        Ok(())
+    })
+    .unwrap();
+
+    let outcome = pull::reconcile(&mut db, &client).await.unwrap();
+    assert!(
+        outcome.completed,
+        "the reconcile must page rather than abort on a large corpus"
+    );
+    assert_eq!(outcome.deleted, 1, "only entry 1501 is gone server-side");
+    assert_eq!(store::local_entry_ids(db.conn()).unwrap().len(), 1500);
+}
+
+#[tokio::test]
+async fn stopping_at_the_page_cap_does_not_advance_the_cursor() {
+    // Regression: the pass returned an advanced cursor even when it bailed
+    // early, marking as "seen" a window it never finished reading. Every entry
+    // beyond the stopping point would be skipped forever.
+    let server = MockServer::start().await;
+    // A server whose after_entry_id never advances the window: every page is
+    // full and ends on the same id.
+    Mock::given(method("GET"))
+        .and(path("/v1/entries"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("Date", "Fri, 02 Jan 2026 03:04:05 GMT")
+                .set_body_json(entries_response(
+                    (1..=250)
+                        .map(|i| entry_json(i, 1, "unread", false))
+                        .collect(),
+                    10_000,
+                )),
+        )
+        .mount(&server)
+        .await;
+
+    let client = client_for(&server);
+    let mut db = memory_db();
+    let outcome = pull::entries(&mut db, &client, Some(1000), 1)
+        .await
+        .unwrap();
+    assert_eq!(
+        outcome.next_cursor, None,
+        "an incomplete pass must leave the cursor alone; advancing it loses entries"
+    );
+}
+
+#[tokio::test]
+async fn hostile_feed_counters_do_not_panic() {
+    // §9.2: server-assigned numbers are chosen by someone else. Two i64::MAX
+    // counts for the same feed overflowed the divergence check's accumulator
+    // and panicked -- a reachable panic on foreign input, which §9.5 forbids
+    // outright because unwinding into Qt's C++ frames is undefined behaviour.
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/v1/feeds/counters"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "reads":   { "1": i64::MAX },
+            "unreads": { "1": i64::MAX }
+        })))
+        .mount(&server)
+        .await;
+
+    let client = client_for(&server);
+    let mut db = memory_db();
+    db.with_tx(|tx| {
+        tx.execute("INSERT INTO feeds (id, title) VALUES (1, 'f')", [])?;
+        tx.execute(
+            "INSERT INTO entries (id, feed_id, status) VALUES (1, 1, 'unread')",
+            [],
+        )?;
+        Ok(())
+    })
+    .unwrap();
+
+    let diverging = pull::diverging_feeds(&db, &client).await.unwrap();
+    assert_eq!(
+        diverging,
+        vec![1],
+        "an absurd count is divergence, not a crash"
+    );
+}
+
+#[tokio::test]
+async fn an_empty_feed_listing_is_not_treated_as_a_mass_unsubscribe() {
+    // A reverse proxy serving a stale cached `[]` would otherwise delete the
+    // entire mirror. Unsubscribing from every feed at once is not a real
+    // workflow; a cached empty body is a real failure mode.
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/v1/categories"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(vec![category_json(1, "News")]))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/v1/feeds"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(Vec::<serde_json::Value>::new()))
+        .mount(&server)
+        .await;
+
+    let client = client_for(&server);
+    let mut db = memory_db();
+    db.with_tx(|tx| {
+        tx.execute(
+            "INSERT INTO feeds (id, title) VALUES (1, 'kept'), (2, 'kept too')",
+            [],
+        )?;
+        tx.execute(
+            "INSERT INTO entries (id, feed_id, status) VALUES (1, 1, 'unread')",
+            [],
+        )?;
+        Ok(())
+    })
+    .unwrap();
+
+    pull::taxonomy(&mut db, &client, 1).await.unwrap();
+
+    assert_eq!(
+        store::feeds(db.conn()).unwrap().len(),
+        2,
+        "the mirror survived an empty listing"
+    );
+    assert!(store::entry(db.conn(), EntryId(1)).unwrap().is_some());
+}
+
+#[tokio::test]
+async fn unsubscribing_a_feed_takes_its_queued_intents_with_it() {
+    // An intent for an entry the server no longer has can never be confirmed:
+    // Miniflux silently ignores unknown ids, so the flush gets its 204 and
+    // `confirm` matches nothing. The row would sit in the queue forever,
+    // counted in "changes waiting to be sent" that never will be.
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/v1/categories"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(vec![category_json(1, "News")]))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/v1/feeds"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(vec![feed_json(1, "Kept", 1)]))
+        .mount(&server)
+        .await;
+
+    let client = client_for(&server);
+    let mut db = memory_db();
+    db.with_tx(|tx| {
+        tx.execute("INSERT INTO feeds (id, title) VALUES (1, 'kept'), (7, 'going')", [])?;
+        for i in 1..=3i64 {
+            tx.execute("INSERT INTO entries (id, feed_id, status) VALUES (?1, 7, 'unread')", [i])?;
+            tx.execute(
+                "INSERT INTO outbox (entry_id, field, value, queued_at) VALUES (?1,'status','read',1)",
+                [i],
+            )?;
+        }
+        Ok(())
+    })
+    .unwrap();
+    assert_eq!(vuo_core::db::outbox::len(db.conn()).unwrap(), 3);
+
+    pull::taxonomy(&mut db, &client, 1).await.unwrap();
+
+    assert_eq!(
+        vuo_core::db::outbox::len(db.conn()).unwrap(),
+        0,
+        "intents for a removed feed's entries can never be confirmed"
     );
 }

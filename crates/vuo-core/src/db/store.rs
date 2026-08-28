@@ -62,6 +62,19 @@ pub fn categories(tx: &rusqlite::Connection) -> Result<Vec<Category>> {
 // ------------------------------------------------------------------ feeds
 
 pub fn upsert_feed(tx: &Transaction<'_>, f: &Feed, generation: i64) -> Result<()> {
+    // `feeds.category_id` references `categories(id)`, and the two listings
+    // are fetched separately: a category created between the two calls is
+    // referenced by a feed but absent from the categories table, and the
+    // foreign key would abort the entire sync over one row. Insert a
+    // placeholder instead; the next taxonomy pull replaces it with the real
+    // title.
+    if let Some(category) = f.category_id {
+        tx.execute(
+            "INSERT INTO categories (id, title) VALUES (?1, '')
+             ON CONFLICT(id) DO NOTHING",
+            [category.get()],
+        )?;
+    }
     tx.execute(
         "INSERT INTO feeds (id, category_id, title, site_url, feed_url, icon_id, checked_at,
                             parsing_error_message, parsing_error_count, disabled, hide_globally,
@@ -125,10 +138,20 @@ pub fn feeds(conn: &rusqlite::Connection) -> Result<Vec<Feed>> {
     Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
 }
 
-/// Remove a feed and, by cascade, its entries.
+/// Remove a feed, its entries, and any intents queued against them.
 pub fn delete_feed(tx: &Transaction<'_>, id: FeedId) -> Result<()> {
-    // Entries do not declare an FK to feeds (a feed can arrive after its
-    // entries during a sync), so they are removed explicitly.
+    // The outbox rows go first, and they are not optional: the same rule
+    // `delete_entry` states applies here. An intent for an entry the server no
+    // longer has can never be confirmed -- Miniflux silently ignores unknown
+    // ids, so the flush gets its 204 and `confirm` matches nothing -- and the
+    // row would sit in the queue forever, counted in "changes waiting to be
+    // sent" that will never be sent.
+    tx.execute(
+        "DELETE FROM outbox WHERE entry_id IN (SELECT id FROM entries WHERE feed_id = ?1)",
+        [id.get()],
+    )?;
+    // Entries do not declare an FK to feeds (a feed can arrive before or after
+    // its entries during a sync), so they are removed explicitly.
     tx.execute("DELETE FROM entries WHERE feed_id = ?1", [id.get()])?;
     tx.execute("DELETE FROM feeds WHERE id = ?1", [id.get()])?;
     Ok(())
@@ -406,6 +429,24 @@ pub fn upsert_icon(tx: &Transaction<'_>, icon: &Icon) -> Result<()> {
     Ok(())
 }
 
+/// Record that a feed's icon could not be fetched or decoded.
+pub fn record_icon_failure(tx: &Transaction<'_>, feed_id: FeedId) -> Result<()> {
+    tx.execute(
+        "UPDATE feeds SET icon_failures = icon_failures + 1 WHERE id = ?1",
+        [feed_id.get()],
+    )?;
+    Ok(())
+}
+
+/// Clear a feed's icon failure count, e.g. when the server reports a new icon.
+pub fn clear_icon_failures(tx: &Transaction<'_>, feed_id: FeedId) -> Result<()> {
+    tx.execute(
+        "UPDATE feeds SET icon_failures = 0 WHERE id = ?1",
+        [feed_id.get()],
+    )?;
+    Ok(())
+}
+
 pub fn icon(conn: &rusqlite::Connection, id: IconId) -> Result<Option<Icon>> {
     let row = conn
         .query_row(
@@ -444,10 +485,16 @@ pub fn feeds_missing_icons(
     conn: &rusqlite::Connection,
     limit: i64,
 ) -> Result<Vec<(FeedId, IconId)>> {
+    // Ordered by failure count, and giving up after a few attempts. An icon
+    // that cannot be decoded never will be, and retrying it every sync starves
+    // every feed behind it in the batch -- the feed list then shows default
+    // icons forever while the bandwidth goes to the same broken PNG.
     let mut stmt = conn.prepare(
         "SELECT f.id, f.icon_id FROM feeds f
          WHERE f.icon_id IS NOT NULL
+           AND f.icon_failures < 3
            AND NOT EXISTS (SELECT 1 FROM icons i WHERE i.id = f.icon_id)
+         ORDER BY f.icon_failures ASC, f.id ASC
          LIMIT ?1",
     )?;
     let rows = stmt.query_map([limit], |r| Ok((FeedId(r.get(0)?), IconId(r.get(1)?))))?;

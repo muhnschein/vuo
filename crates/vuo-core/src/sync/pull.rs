@@ -69,6 +69,9 @@ const MAX_PAGES_PER_PASS: usize = 400;
 pub struct PullOutcome {
     pub upserted: usize,
     pub rejected: usize,
+    /// Entries a pre-2.3 server reported as `removed` and that were deleted
+    /// locally as a result.
+    pub removed: usize,
     pub pages: usize,
     /// The cursor to persist if the whole pass succeeds.
     pub next_cursor: Option<i64>,
@@ -107,6 +110,21 @@ pub async fn taxonomy(db: &mut Database, client: &MinifluxClient, generation: i6
     // deletion case, and it costs no extra request.
     let live: std::collections::HashSet<i64> = feeds.iter().map(|f| f.id.get()).collect();
     let local = store::feeds(db.conn())?;
+
+    // An EMPTY feed listing is never taken as "the user unsubscribed from
+    // everything". A reverse proxy serving a stale cached `[]`, or a partial
+    // response, would otherwise delete the entire mirror -- and unsubscribing
+    // from every feed at once is not a real workflow, whereas a cached empty
+    // body is a real failure mode. If the user genuinely has no feeds, there
+    // is nothing local to delete anyway.
+    if feeds.is_empty() && !local.is_empty() {
+        tracing::warn!(
+            local = local.len(),
+            "the server listed no feeds at all; refusing to treat that as a mass unsubscribe"
+        );
+        return Ok(());
+    }
+
     let gone: Vec<_> = local
         .iter()
         .map(|f| f.id)
@@ -136,10 +154,18 @@ pub async fn entries(
     let mut outcome = PullOutcome::default();
     let mut after: Option<EntryId> = None;
     let mut server_now: Option<i64> = None;
+    // Set when the pass stops early. The cursor must NOT advance in that case:
+    // it would mark as "seen" a window the pass never finished reading, and
+    // every entry beyond the stopping point would be skipped forever.
+    let mut incomplete = false;
 
     loop {
         if outcome.pages >= MAX_PAGES_PER_PASS {
-            tracing::warn!(pages = outcome.pages, "stopping pull at the page cap");
+            tracing::warn!(
+                pages = outcome.pages,
+                "stopping pull at the page cap; the cursor will not advance"
+            );
+            incomplete = true;
             break;
         }
 
@@ -161,16 +187,22 @@ pub async fn entries(
         // set it counts only rows ahead of the cursor and shrinks every page.
         let last_id = page.entries.last().map(|e| EntryId(e.id));
 
-        let (valid, rejected) = convert::entries(page.entries);
-        for e in &rejected {
+        let decoded = convert::entries(page.entries);
+        for e in &decoded.rejected {
             tracing::debug!(error = %e, "dropped an unusable entry");
         }
-        outcome.rejected += rejected.len();
-        outcome.upserted += valid.len();
+        outcome.rejected += decoded.rejected.len();
+        outcome.upserted += decoded.valid.len();
+        outcome.removed += decoded.removed.len();
 
         db.with_tx(|tx| {
-            for e in &valid {
+            for e in &decoded.valid {
                 store::upsert_entry(tx, e, generation)?;
+            }
+            // A pre-2.3 server's soft delete. This is the only deletion signal
+            // such a server gives, and it arrives through the ordinary cursor.
+            for id in &decoded.removed {
+                store::delete_entry(tx, *id)?;
             }
             Ok(())
         })?;
@@ -183,19 +215,31 @@ pub async fn entries(
             break;
         }
         match last_id {
-            Some(id) => after = Some(id),
-            // A full page with no last id cannot happen, but looping forever
-            // if it did would be worse than stopping.
-            None => break,
+            Some(id) if Some(id) != after => after = Some(id),
+            // Either a full page with no last id, or a server whose
+            // `after_entry_id` did not advance the window -- both mean the
+            // next request would repeat this one. Stop, and do not pretend the
+            // window was covered.
+            _ => {
+                incomplete = true;
+                break;
+            }
         }
     }
 
-    outcome.next_cursor = server_now
-        .map(|now| now - CURSOR_SKEW_SECS)
-        // Falling back to the local clock is a compromise, not a preference:
-        // without a Date header there is nothing better, and keeping the old
-        // cursor forever would re-pull the same window every sync.
-        .or_else(|| Some(chrono::Utc::now().timestamp() - CURSOR_SKEW_SECS));
+    outcome.next_cursor = if incomplete {
+        // Leave the cursor where it was. The next pass re-reads this window,
+        // which costs bandwidth; advancing it would cost entries.
+        None
+    } else {
+        server_now
+            .map(|now| now - CURSOR_SKEW_SECS)
+            // Falling back to the local clock is a compromise, not a
+            // preference: without a Date header there is nothing better, and
+            // keeping the old cursor forever would re-pull the same window
+            // every sync.
+            .or_else(|| Some(chrono::Utc::now().timestamp() - CURSOR_SKEW_SECS))
+    };
 
     Ok(outcome)
 }
@@ -216,7 +260,13 @@ pub async fn diverging_feeds(db: &Database, client: &MinifluxClient) -> Result<V
     let mut server: std::collections::HashMap<i64, i64> = std::collections::HashMap::new();
     for (key, value) in counters.reads.iter().chain(counters.unreads.iter()) {
         if let Ok(id) = key.parse::<i64>() {
-            *server.entry(id).or_insert(0) += *value;
+            // saturating, not `+=`. These are numbers chosen by someone else
+            // (§9.2), and two i64::MAX counts for the same feed panicked on
+            // overflow in a debug build -- a reachable panic on foreign input,
+            // which §9.5 forbids outright because unwinding into Qt's C++
+            // frames is undefined behaviour.
+            let slot = server.entry(id).or_insert(0);
+            *slot = slot.saturating_add(*value);
         }
     }
 
@@ -248,8 +298,15 @@ pub async fn diverging_feeds(db: &Database, client: &MinifluxClient) -> Result<V
 /// reported, and a mismatch **aborts the reconcile** rather than deleting
 /// anything. A reconcile that does not run is a cache that stays slightly
 /// stale; a reconcile that runs on a torn listing destroys the user's data.
-pub async fn reconcile(db: &mut Database, client: &MinifluxClient) -> Result<usize> {
-    const PAGE: u32 = 10_000;
+pub async fn reconcile(db: &mut Database, client: &MinifluxClient) -> Result<Reconcile> {
+    // The server caps `limit` at 1000 and `EntriesQuery` clamps to it, so
+    // asking for 10_000 silently yielded 1000 -- and the loop's
+    // "short page means done" test then fired on the very first page. The
+    // reconcile therefore never paged at all, and on any corpus over 1000
+    // entries the total check below rejected it every single time. Use the
+    // real cap so the page-size the loop compares against is the page-size the
+    // server actually applies.
+    const PAGE: u32 = 1000;
 
     let mut seen: std::collections::HashSet<i64> = std::collections::HashSet::new();
     let mut offset = 0u32;
@@ -270,19 +327,34 @@ pub async fn reconcile(db: &mut Database, client: &MinifluxClient) -> Result<usi
         offset = offset.saturating_add(PAGE);
         if u64::from(offset) > 5_000_000 {
             // Refuse to page forever against a server that never shortens.
-            return Ok(0);
+            tracing::warn!("aborting deletion reconcile: the id listing never ended");
+            return Ok(Reconcile::aborted());
         }
     }
 
-    if let Some(total) = declared_total {
-        if total >= 0 && seen.len() as i64 != total {
-            tracing::warn!(
-                declared = total,
-                collected = seen.len(),
-                "aborting deletion reconcile: the id listing was torn by concurrent writes"
-            );
-            return Ok(0);
-        }
+    // The guard. `/v1/entries/ids` pages by offset over an `id DESC` ordering,
+    // which is not stable under concurrent writes: an insert shifts the window
+    // and an id can fall through the crack. Acting on a torn listing deletes
+    // live entries, so the collected count must match the total the first page
+    // declared.
+    //
+    // A missing or NEGATIVE total disables the guard rather than passing it.
+    // The previous form (`total >= 0 && collected != total`) let a negative
+    // value skip the check entirely, so a server -- hostile, buggy, or a proxy
+    // serving a cached body -- answering `{"total": -1, "entry_ids": []}` would
+    // have deleted the user's entire mirror along with every pending outbox
+    // row. A value that cannot be checked is not a value that can be trusted.
+    let Some(total) = declared_total.filter(|t| *t >= 0) else {
+        tracing::warn!("aborting deletion reconcile: the server declared no usable total");
+        return Ok(Reconcile::aborted());
+    };
+    if seen.len() as i64 != total {
+        tracing::warn!(
+            declared = total,
+            collected = seen.len(),
+            "aborting deletion reconcile: the id listing was torn by concurrent writes"
+        );
+        return Ok(Reconcile::aborted());
     }
 
     let local = store::local_entry_ids(db.conn())?;
@@ -291,7 +363,10 @@ pub async fn reconcile(db: &mut Database, client: &MinifluxClient) -> Result<usi
         .filter(|id| !seen.contains(&id.get()))
         .collect();
     if stale.is_empty() {
-        return Ok(0);
+        return Ok(Reconcile {
+            completed: true,
+            deleted: 0,
+        });
     }
 
     let removed = stale.len();
@@ -301,7 +376,32 @@ pub async fn reconcile(db: &mut Database, client: &MinifluxClient) -> Result<usi
         }
         Ok(())
     })?;
-    Ok(removed)
+    Ok(Reconcile {
+        completed: true,
+        deleted: removed,
+    })
+}
+
+/// The outcome of a deletion reconcile.
+///
+/// `completed` is not the same as "deleted something": an aborted reconcile
+/// deletes nothing and must NOT be recorded as having run, or the periodic
+/// backstop is deferred for a full interval on a mirror that was never
+/// actually checked.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Reconcile {
+    pub completed: bool,
+    pub deleted: usize,
+}
+
+impl Reconcile {
+    #[must_use]
+    fn aborted() -> Self {
+        Reconcile {
+            completed: false,
+            deleted: 0,
+        }
+    }
 }
 
 #[cfg(test)]
