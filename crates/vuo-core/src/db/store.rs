@@ -253,6 +253,22 @@ pub fn entry_counts_by_feed(
     Ok(out)
 }
 
+/// Per-feed unread counts, for the feed list's badges.
+pub fn unread_counts_by_feed(
+    conn: &rusqlite::Connection,
+) -> Result<std::collections::HashMap<i64, i64>> {
+    let mut stmt = conn.prepare(
+        "SELECT feed_id, COUNT(*) FROM entries WHERE status = 'unread' GROUP BY feed_id",
+    )?;
+    let rows = stmt.query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?)))?;
+    let mut out = std::collections::HashMap::new();
+    for row in rows {
+        let (k, v) = row?;
+        out.insert(k, v);
+    }
+    Ok(out)
+}
+
 /// How the UI wants entries listed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EntryFilter {

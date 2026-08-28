@@ -2,6 +2,7 @@ import QtQuick 2.6
 import Sailfish.Silica 1.0
 import Vuo 1.0
 import "pages"
+import "cover"
 
 /*
  * Vuo's root window.
@@ -32,7 +33,21 @@ ApplicationWindow {
     EntryModel { id: entries }
     FeedModel { id: feeds }
 
+    Component.onCompleted: {
+        // 0 = unread. The models are empty until a scope is set.
+        entries.setScope(0, 0)
+        feeds.refresh()
+    }
+
     initialPage: Component { EntryListPage { model: entries; feedModel: feeds } }
-    cover: Qt.resolvedUrl("cover/CoverPage.qml")
+
+    // The cover is a separate Component so its bindings can reach `entries`
+    // for the unread count, which a bare URL cover cannot.
+    cover: Component {
+        CoverPage {
+            unreadCount: entries.count
+            onRefresh: entries.refresh()
+        }
+    }
     allowedOrientations: defaultAllowedOrientations
 }

@@ -21,12 +21,15 @@ env:
   # A phone build has no incremental cache either, and this keeps CI closer to
   # what the device build does.
   CARGO_INCREMENTAL: 0
-  RUSTFLAGS: -D warnings
 
 jobs:
   check:
     name: host checks
     runs-on: ubuntu-latest
+    env:
+      # Not workflow-global: cargo-fuzz composes its own RUSTFLAGS, and having
+      # ours merged in there is noise at best.
+      RUSTFLAGS: -D warnings
     steps:
       - uses: actions/checkout@v4
 
@@ -98,6 +101,12 @@ jobs:
       # §8.3: "Run short in PR CI, long on a schedule." These two targets are
       # the code paths that eat attacker-influenced bytes.
       - name: Fuzz the content transform and the JSON deserialiser
+        env:
+          # rust-toolchain.toml pins `stable` for everyone, which OVERRIDES the
+          # toolchain the nightly action just installed -- so cargo-fuzz's
+          # -Zsanitizer was being handed to a stable rustc and rejected.
+          # RUSTUP_TOOLCHAIN takes precedence over the toolchain file.
+          RUSTUP_TOOLCHAIN: nightly
         run: |
           cd crates/vuo-core/fuzz
           for target in content_transform entry_deserialise; do

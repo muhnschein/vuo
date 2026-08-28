@@ -20,7 +20,14 @@
 use std::collections::HashMap;
 
 use qmetaobject::*;
-use vuo_core::content::{BlockKind, MediaFetch, RenderBlock, Span, TransformContext};
+use vuo_core::content::{
+    BlockKind, MediaFetch, MediaPolicy, RenderBlock, Span, TransformContext, UnproxiedMedia,
+};
+use vuo_core::db::store;
+use vuo_core::model::EntryId;
+
+use crate::context::AppContext;
+use crate::worker::Command;
 
 pub const ROLE_KIND: i32 = USER_ROLE;
 pub const ROLE_TEXT: i32 = USER_ROLE + 1;
@@ -138,25 +145,134 @@ fn row_for(block: &RenderBlock) -> BlockRow {
 pub struct ArticleModel {
     base: qt_base_class!(trait QAbstractListModel),
 
-    count: qt_property!(i32; READ row_count NOTIFY count_changed),
-    count_changed: qt_signal!(),
+    count: qt_property!(i32; READ row_count NOTIFY countChanged),
+    countChanged: qt_signal!(),
 
     /// True when the transform had to cut the article short. The UI says so
     /// rather than presenting a fragment as the whole thing.
-    truncated: qt_property!(bool; NOTIFY truncated_changed),
-    truncated_changed: qt_signal!(),
+    truncated: qt_property!(bool; NOTIFY truncatedChanged),
+    truncatedChanged: qt_signal!(),
 
     /// How many images are held back awaiting consent, so the UI can offer a
     /// single "load images from example.com" affordance rather than N.
-    blocked_images: qt_property!(i32; NOTIFY blocked_images_changed),
-    blocked_images_changed: qt_signal!(),
+    blockedImages: qt_property!(i32; NOTIFY blockedImagesChanged),
+    blockedImagesChanged: qt_signal!(),
 
     clear: qt_method!(fn(&mut self)),
+    /// Load an entry from the mirror and transform its stored HTML.
+    ///
+    /// Reads locally, so opening an article works with no network at all.
+    load: qt_method!(fn(&mut self, entry_id: i64)),
+    /// Hand the article's own URL to the system browser.
+    openInBrowser: qt_method!(fn(&self) -> QString),
+    /// Ask the *server* to scrape the original page (§3: no local Readability).
+    fetchOriginal: qt_method!(fn(&mut self)),
+    /// Consent to loading images from the origin of the block at `row`, for
+    /// this article. Re-transforms so the placeholders become images.
+    allowImagesFrom: qt_method!(fn(&mut self, row: i32)),
 
     rows: Vec<BlockRow>,
+    entry_id: i64,
+    article_url: String,
+    /// Origins the user has agreed to for this article view.
+    consented: Vec<url::Url>,
+    ctx: Option<std::rc::Rc<AppContext>>,
 }
 
 impl ArticleModel {
+    /// Give the model its context. Called during app start-up, not from QML.
+    pub fn attach(&mut self, ctx: std::rc::Rc<AppContext>) {
+        self.ctx = Some(ctx);
+    }
+
+    /// The app context: the one attached explicitly (tests), else the global.
+    fn context(&self) -> Option<std::rc::Rc<AppContext>> {
+        self.ctx.clone().or_else(crate::context::current)
+    }
+
+    fn load(&mut self, entry_id: i64) {
+        let Some(ctx) = self.context() else { return };
+        self.entry_id = entry_id;
+        self.consented.clear();
+
+        let Some(Some(entry)) =
+            ctx.read(|db| store::entry(db.conn(), EntryId(entry_id)).ok().flatten())
+        else {
+            self.clear();
+            return;
+        };
+        self.article_url = entry
+            .url
+            .as_ref()
+            .map(|u| u.as_str().to_owned())
+            .unwrap_or_default();
+
+        let stored_consent = ctx.read(|db| store::media_consent(db.conn()).unwrap_or_default());
+        self.consented = stored_consent.unwrap_or_default();
+
+        let content = entry.content.clone();
+        let ctx_for_transform = self.transform_context(&ctx);
+        self.set_html(&content, &ctx_for_transform);
+    }
+
+    /// Build the transform context, honouring consent already granted.
+    fn transform_context(&self, ctx: &AppContext) -> TransformContext {
+        TransformContext {
+            base_url: url::Url::parse(&self.article_url).ok(),
+            media: MediaPolicy::ProxyThroughInstance {
+                instance: ctx.instance().clone(),
+                // Origins the user consented to are folded in as trusted, so
+                // the transform yields Fetch rather than NeedsConsent for them.
+                extra_trusted: self.consented.clone(),
+                fallback: UnproxiedMedia::Ask,
+            },
+            limits: vuo_core::content::Limits::default(),
+        }
+    }
+
+    fn openInBrowser(&self) -> QString {
+        // Returns the URL rather than launching anything: QML owns
+        // Qt.openUrlExternally, and handing a URL back keeps this crate free
+        // of platform launching concerns. Empty means "no link".
+        QString::from(self.article_url.clone())
+    }
+
+    fn fetchOriginal(&mut self) {
+        let Some(ctx) = self.context() else { return };
+        if self.entry_id != 0 {
+            ctx.send(Command::FetchOriginal {
+                entry_id: self.entry_id,
+            });
+        }
+    }
+
+    fn allowImagesFrom(&mut self, row: i32) {
+        let Some(ctx) = self.context() else { return };
+        let Some(origin) = usize::try_from(row)
+            .ok()
+            .and_then(|i| self.rows.get(i))
+            .and_then(|r| url::Url::parse(&r.image_src).ok())
+            .and_then(|u| u.join("/").ok())
+        else {
+            return;
+        };
+
+        if !self.consented.contains(&origin) {
+            self.consented.push(origin.clone());
+        }
+        // Remember across articles too: agreeing to a host once should not have
+        // to be repeated on every entry from the same site.
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+        ctx.write(|db| db.with_tx(|tx| store::grant_media_consent(tx, origin.as_str(), now)));
+
+        // Re-transform so the placeholders become images.
+        let entry_id = self.entry_id;
+        self.load(entry_id);
+    }
+
     /// Transform an article's HTML and show it.
     pub fn set_html(&mut self, html: &str, ctx: &TransformContext) {
         let document = vuo_core::content::transform(html, ctx);
@@ -168,17 +284,17 @@ impl ArticleModel {
         (self as &mut dyn QAbstractListModel).end_reset_model();
 
         self.truncated = document.truncated.is_some();
-        self.blocked_images = i32::try_from(blocked).unwrap_or(i32::MAX);
-        self.count_changed();
-        self.truncated_changed();
-        self.blocked_images_changed();
+        self.blockedImages = i32::try_from(blocked).unwrap_or(i32::MAX);
+        self.countChanged();
+        self.truncatedChanged();
+        self.blockedImagesChanged();
     }
 
     fn clear(&mut self) {
         (self as &mut dyn QAbstractListModel).begin_reset_model();
         self.rows.clear();
         (self as &mut dyn QAbstractListModel).end_reset_model();
-        self.count_changed();
+        self.countChanged();
     }
 
     #[must_use]
@@ -195,7 +311,7 @@ impl ArticleModel {
     /// How many images are held back awaiting the user's consent.
     #[must_use]
     pub fn blocked_image_count(&self) -> i32 {
-        self.blocked_images
+        self.blockedImages
     }
 }
 

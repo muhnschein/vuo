@@ -34,12 +34,33 @@ use vuo_core::redact::ApiToken;
 use vuo_core::sync::{self, SyncOptions};
 
 /// What the UI can ask the worker to do.
+///
+/// Only operations that genuinely need the network are here. Local mutations
+/// (mark read, star) are applied inline on the Qt thread instead -- see
+/// [`apply_local_status`] -- because routing a fast local transaction through
+/// a channel would put a thread hop between the user's tap and the UI
+/// updating, for no benefit.
 #[derive(Debug)]
 pub enum Command {
     /// Run a full sync pass.
     Sync,
     /// Flush the outbox without pulling.
     FlushOutbox,
+    /// Subscribe to a feed. The *server* discovers and fetches it; §3 makes
+    /// local feed fetching the project's most important boundary.
+    Subscribe {
+        feed_url: String,
+    },
+    Unsubscribe {
+        feed_id: i64,
+    },
+    /// Ask the server to scrape the original article (§3: use the server's
+    /// endpoint, never a local Readability port).
+    FetchOriginal {
+        entry_id: i64,
+    },
+    /// Verify the configured credentials, for the settings screen.
+    TestConnection,
     Shutdown,
 }
 
@@ -57,6 +78,21 @@ pub enum Event {
     },
     /// The API key was rejected; the UI should send the user to settings.
     AuthFailed,
+    /// A subscribe or unsubscribe finished. `message` is empty on success.
+    SubscriptionChanged {
+        ok: bool,
+        message: String,
+    },
+    /// The server returned scraped content for an entry.
+    OriginalContentFetched {
+        entry_id: i64,
+        ok: bool,
+    },
+    /// Result of a settings-screen connection test.
+    ConnectionTested {
+        ok: bool,
+        message: String,
+    },
 }
 
 /// A handle to the worker thread.
@@ -145,6 +181,82 @@ impl Worker {
                                 }),
                             }
                         }
+                        Command::Subscribe { feed_url } => {
+                            let result = runtime.block_on(client.create_feed(&feed_url, None));
+                            match result {
+                                Ok(_) => {
+                                    // Pull immediately so the new feed's entries
+                                    // appear without waiting for the next timer.
+                                    let _ = runtime.block_on(sync::sync(
+                                        &mut db,
+                                        &client,
+                                        SyncOptions::default(),
+                                    ));
+                                    on_event(Event::SubscriptionChanged {
+                                        ok: true,
+                                        message: String::new(),
+                                    });
+                                }
+                                Err(e) => on_event(Event::SubscriptionChanged {
+                                    ok: false,
+                                    message: e.to_string(),
+                                }),
+                            }
+                        }
+                        Command::Unsubscribe { feed_id } => {
+                            match runtime.block_on(client.delete_feed(feed_id)) {
+                                Ok(()) => {
+                                    let removed = db.with_tx(|tx| {
+                                        store::delete_feed(tx, vuo_core::model::FeedId(feed_id))
+                                    });
+                                    on_event(Event::SubscriptionChanged {
+                                        ok: removed.is_ok(),
+                                        message: String::new(),
+                                    });
+                                }
+                                Err(e) => on_event(Event::SubscriptionChanged {
+                                    ok: false,
+                                    message: e.to_string(),
+                                }),
+                            }
+                        }
+                        Command::FetchOriginal { entry_id } => {
+                            let id = EntryId(entry_id);
+                            match runtime.block_on(client.fetch_original_content(id)) {
+                                Ok(content) => {
+                                    // Store the scraped body against the entry so
+                                    // it survives a restart and stays readable
+                                    // offline.
+                                    let stored = db.with_tx(|tx| {
+                                        tx.execute(
+                                            "UPDATE entries SET content = ?2 WHERE id = ?1",
+                                            rusqlite::params![id.get(), content.content],
+                                        )
+                                        .map_err(vuo_core::Error::from)
+                                    });
+                                    on_event(Event::OriginalContentFetched {
+                                        entry_id,
+                                        ok: stored.is_ok(),
+                                    });
+                                }
+                                Err(_) => on_event(Event::OriginalContentFetched {
+                                    entry_id,
+                                    ok: false,
+                                }),
+                            }
+                        }
+                        Command::TestConnection => match runtime.block_on(client.me()) {
+                            Ok(user) => on_event(Event::ConnectionTested {
+                                ok: true,
+                                // The username is the user's own, from their own
+                                // server, but it is still rendered as plain text.
+                                message: user.username,
+                            }),
+                            Err(e) => on_event(Event::ConnectionTested {
+                                ok: false,
+                                message: e.to_string(),
+                            }),
+                        },
                         Command::FlushOutbox => {
                             match runtime.block_on(sync::replay::flush(&mut db, &client)) {
                                 Ok(outcome) if outcome.auth_failed => on_event(Event::AuthFailed),
@@ -171,6 +283,12 @@ impl Worker {
     /// Ask the worker to do something. Returns `false` if it has stopped.
     pub fn send(&self, command: Command) -> bool {
         self.tx.send(command).is_ok()
+    }
+
+    /// A sender for the context to hold.
+    #[must_use]
+    pub fn sender(&self) -> mpsc::Sender<Command> {
+        self.tx.clone()
     }
 }
 
@@ -201,6 +319,25 @@ pub fn apply_local_status(
 pub fn apply_local_starred(db: &mut Database, id: EntryId, starred: bool) -> vuo_core::Result<()> {
     let now = chrono_now();
     db.with_tx(|tx| outbox::queue(tx, id, DesiredValue::Starred(starred), now))
+}
+
+/// Apply the same status to many entries at once, in one transaction.
+///
+/// Used by "mark all read" in a scope that has no server-side equivalent
+/// (unread, starred, all), where the intent has to be expanded over the
+/// concrete entries the user is actually looking at.
+pub fn apply_local_status_bulk(
+    db: &mut Database,
+    ids: &[EntryId],
+    status: EntryStatus,
+) -> vuo_core::Result<usize> {
+    let now = chrono_now();
+    db.with_tx(|tx| {
+        for id in ids {
+            outbox::queue(tx, *id, DesiredValue::Status(status), now)?;
+        }
+        Ok(ids.len())
+    })
 }
 
 pub fn apply_local_mark_feed_read(db: &mut Database, feed_id: i64) -> vuo_core::Result<usize> {

@@ -36,16 +36,15 @@
 
 name: Miniflux integration
 
+# Scheduled and manual only, deliberately. §8.3 asks for "a separate scheduled
+# or opt-in job", and it means it: this job depends on a third-party container
+# registry and on a server Vuo does not control, so gating every pull request
+# on it would make the project's merge-ability depend on someone else's uptime.
+# `make check` is the gate; this is the periodic contract check.
 on:
   schedule:
     - cron: "17 5 * * 1"
   workflow_dispatch:
-  pull_request:
-    paths:
-      # Only when the code that actually talks to the server changes.
-      - "crates/vuo-core/src/api/**"
-      - "crates/vuo-core/src/sync/**"
-      - ".github/workflows/miniflux-integration.yml"
 
 jobs:
   live:
@@ -56,6 +55,13 @@ jobs:
       postgres:
         # TODO(pin): replace with an @sha256: digest. See the note at the top.
         image: postgres:16-alpine
+        ports:
+          # Miniflux runs with --network host, so it reaches Postgres on the
+          # RUNNER's localhost. A service container with no `ports:` is only
+          # reachable over the job's bridge network under its service alias,
+          # which a host-network container cannot resolve -- so without this
+          # the readiness poll just times out with no useful error.
+          - 5432:5432
         env:
           POSTGRES_USER: miniflux
           POSTGRES_PASSWORD: miniflux

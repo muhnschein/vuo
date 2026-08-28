@@ -33,6 +33,10 @@ jobs:
           restore-keys: fuzz-corpus-${{ matrix.target }}-
 
       - name: Fuzz for 30 minutes
+        env:
+          # See the note in ci.yml: rust-toolchain.toml pins stable and would
+          # otherwise override the nightly toolchain cargo-fuzz requires.
+          RUSTUP_TOOLCHAIN: nightly
         run: |
           cd crates/vuo-core/fuzz
           cargo fuzz run ${{ matrix.target }} -- -max_total_time=1800 -rss_limit_mb=4096

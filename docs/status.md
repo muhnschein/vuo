@@ -51,6 +51,22 @@ SailfishOS SDK.** The environment this was developed in has neither. Concretely:
   pinned by version tag rather than by digest — see the note at the top of that
   workflow.
 
+## Bugs found by the project's own tooling
+
+Recorded because they justify the tooling's cost, and because each one passed
+every other check in the build.
+
+| Found by | Bug |
+| --- | --- |
+| The QML load test | `harbour-vuo.qml` never imported `pages/`, so the app would have failed at launch. `qmllint` passes this file. |
+| A QML/Rust API contract test | Nine methods the QML called — `setRead`, `setStarred`, `markAllRead`, `markFeedRead`, `subscribe`, `unsubscribe`, `load`, `fetchOriginal`, `allowImagesFrom` — had never been implemented. QML resolves calls at runtime, so nothing else caught it. |
+| Fuzzing the transform | A **quadratic blow-up**: a skipped subtree (`<svg>`, `<script>`) grew the open-element stack without applying the depth cap, and each unmatched end tag scanned all of it. 320 KB of markup took 23 s, well inside the 2 MiB input cap — a frozen UI, which is exactly what §9.2's caps exist to prevent. Now linear (245 ms). |
+| A probe over void elements | `<meta>`, `<link>`, `<input>`, `<embed>`, `<source>`, `<track>`, `<param>`, `<area>` and self-closing `<svg/>` **silently truncated the entire article**: each is on the skip list and is void, so skip mode was entered with no end tag able to clear it. `<input>` is common in real feed HTML. |
+| The same probe | `<script>` and `<style>` bodies **leaked into the article as text** when opened past the depth cap, because the cap's early return preempted skip handling. An allowlist breach (§9.2). |
+| Fuzzing | One bug in a *test*: the fuzz target asserted on substrings like `onerror=`, which correctly-escaped text can legitimately contain. Replaced with the real structural invariant — every tag in rendered output must come from the closed set. |
+| `cargo-deny` | Vuo's own crates were rejected: the workspace is `GPL-3.0-or-later`, a different SPDX id from the `GPL-3.0` the allow-list named. |
+| A guard test | `reqwest::Certificate::from_pem_bundle` answers `Ok(vec![])` rather than `Err` for input containing no PEM blocks, so a truncated CA file was silently becoming "no extra CA". |
+
 ## Open questions from §11 that are now answered
 
 Resolved from Miniflux's source and written up in

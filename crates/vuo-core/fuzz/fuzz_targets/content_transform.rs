@@ -58,20 +58,67 @@ fuzz_target!(|data: &[u8]| {
         }
     }
 
-    // Rendering must not panic either, and must never emit an unescaped tag
-    // that did not come from our own closed set.
+    // Rendering must not panic, and every tag it emits must come from the
+    // closed set the renderer is allowed to produce.
+    //
+    // NOTE: do NOT test this by searching for scary substrings like "onerror="
+    // or "javascript:". All foreign text is ESCAPED, so a document whose text
+    // content happens to be the literal string `onerror=` renders it as exactly
+    // that -- correctly and harmlessly. An earlier version of this target
+    // asserted on substrings and the fuzzer duly "found" that input within
+    // seconds. The real invariant is structural: after escaping, every `<` in
+    // the output must begin one of our own tags.
     for block in &document.blocks {
         if let vuo_core::content::BlockKind::Paragraph { spans }
-        | vuo_core::content::BlockKind::Heading { spans, .. } = &block.kind
+        | vuo_core::content::BlockKind::Heading { spans, .. }
+        | vuo_core::content::BlockKind::ListItem { spans, .. } = &block.kind
         {
             let styled = vuo_core::content::Span::render_styled_text(spans);
-            for forbidden in ["<script", "<img", "<iframe", "onerror=", "javascript:"] {
-                assert!(
-                    !styled.contains(forbidden),
-                    "rendered markup contains {forbidden}: {styled}"
-                );
-            }
+            assert_no_foreign_tags(&styled);
             let _ = vuo_core::content::Span::render_plain_text(spans);
         }
     }
 });
+
+/// Every `<...>` in rendered StyledText must be a tag this renderer emits.
+///
+/// Anything else means foreign markup survived escaping.
+fn assert_no_foreign_tags(styled: &str) {
+    const ALLOWED: &[&str] = &[
+        "b", "/b", "i", "/i", "s", "/s", "sup", "/sup", "sub", "/sub", "/a",
+    ];
+
+    let bytes = styled.as_bytes();
+    let mut i = 0usize;
+    while i < bytes.len() {
+        if bytes.get(i) != Some(&b'<') {
+            i += 1;
+            continue;
+        }
+        let rest = styled.get(i + 1..).unwrap_or_default();
+        let Some(end) = rest.find('>') else {
+            panic!("unterminated tag in rendered output: {styled:?}");
+        };
+        let tag = rest.get(..end).unwrap_or_default();
+
+        let ok = ALLOWED.contains(&tag)
+            // The only tag with an attribute. The href is a MediaUrl, so it is
+            // http(s) by construction; assert that here too since this is the
+            // one place a URL reaches a markup context.
+            || (tag.starts_with("a href=\"")
+                && tag.ends_with('"')
+                && {
+                    let href = tag
+                        .strip_prefix("a href=\"")
+                        .and_then(|t| t.strip_suffix('"'))
+                        .unwrap_or_default();
+                    // Escaped, so compare against the escaped forms.
+                    (href.starts_with("http://") || href.starts_with("https://"))
+                        && !href.contains('<')
+                        && !href.contains('>')
+                });
+
+        assert!(ok, "rendered output contains a tag the renderer must never emit: <{tag}> in {styled:?}");
+        i += 1 + end + 1;
+    }
+}

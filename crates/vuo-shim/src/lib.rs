@@ -30,8 +30,20 @@
 //! Enums therefore cross into QML as plain integers (see
 //! [`models::Scope::from_qml`]) and strings, rather than as registered types.
 
+// QML-visible members are camelCase on purpose.
+//
+// `qmetaobject` emits property, method and signal names to the meta-object
+// VERBATIM -- there is no snake_case-to-camelCase conversion -- so whatever is
+// written here is exactly what QML must type. Qt's convention is camelCase, and
+// this struct's public surface *is* a Qt API, so it follows Qt's convention
+// rather than Rust's. The alternative is QML reading `model.set_read(...)` and
+// a signal handler spelled `onConnection_tested`.
+#![allow(non_snake_case)]
+
 pub mod article;
+pub mod context;
 pub mod models;
+pub mod settings;
 pub mod worker;
 
 use cstr::cstr;
@@ -45,6 +57,7 @@ pub fn register_qml_types() {
     qml_register_type::<models::EntryModel>(cstr!("Vuo"), 1, 0, cstr!("EntryModel"));
     qml_register_type::<models::FeedModel>(cstr!("Vuo"), 1, 0, cstr!("FeedModel"));
     qml_register_type::<article::ArticleModel>(cstr!("Vuo"), 1, 0, cstr!("ArticleModel"));
+    qml_register_type::<settings::Settings>(cstr!("Vuo"), 1, 0, cstr!("Settings"));
 }
 
 /// C ABI entry point, for a Sailfish binary whose `main` is C++.

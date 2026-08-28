@@ -533,11 +533,18 @@ impl Builder {
     fn start_tag(&mut self, tag: &Tag) -> TokenSinkResult<()> {
         let name = tag.name.as_ref().to_ascii_lowercase();
         let disposition = classify(&name);
+        // An element that can never have children or an end tag.
+        let childless = is_void(&name) || tag.self_closing;
 
-        // Already discarding a subtree: still track the stack so we know when
-        // to stop, but do nothing else.
+        // Already discarding a subtree: track the stack so we know when to
+        // stop, but do nothing else. The depth cap applies here too -- without
+        // it a skipped subtree grows the stack without bound, and because an
+        // unmatched end tag is resolved by scanning that stack, the transform
+        // goes quadratic. Measured before this cap was applied: 320 KB of
+        // `<svg>` + 40k `<b>` + 40k `</zz>` took 23 seconds, well inside the
+        // 2 MiB input cap. §9.2's caps exist to prevent exactly that.
         if self.skip_from.is_some() {
-            if !is_void(&name) && !tag.self_closing {
+            if !childless && self.open.len() < self.ctx.limits.max_depth {
                 self.open.push(OpenElement {
                     name,
                     disposition: Disposition::Skip,
@@ -546,6 +553,37 @@ impl Builder {
                 });
             }
             return TokenSinkResult::Continue;
+        }
+
+        // Skip elements are handled BEFORE the structural depth cap, and that
+        // ordering is load-bearing: with the cap first, a `<script>` opened
+        // beyond the cap returned early without entering skip mode, so the
+        // tokenizer was never put into raw-text mode and the script's body
+        // arrived as ordinary character tokens -- i.e. the article rendered
+        // `alert('pwned')` as text. That is an allowlist breach (§9.2), not a
+        // cosmetic one.
+        if matches!(disposition, Disposition::Skip) {
+            self.flush();
+            // A childless skip element -- `<meta>`, `<link>`, `<input>`,
+            // `<embed>`, `<source>`, `<track>`, `<param>`, `<area>`, or any
+            // self-closing form such as `<svg/>` -- has no content and will
+            // never produce an end tag. Entering skip mode for one would set a
+            // flag that nothing can ever clear, silently discarding the entire
+            // rest of the article. That bug shipped in the first draft of this
+            // function and `<input>` alone is common enough in real feeds to
+            // have hit it.
+            if childless {
+                return TokenSinkResult::Continue;
+            }
+            self.skip_from = Some(self.open.len());
+            let raw = raw_text_kind(&name);
+            self.open.push(OpenElement {
+                name,
+                disposition: Disposition::Skip,
+                saved_style: None,
+                saved_link: None,
+            });
+            return raw;
         }
 
         // Structural depth cap (§9.2). Past the cap we stop opening structure
@@ -563,10 +601,7 @@ impl Builder {
         let mut saved_link = None;
 
         match disposition {
-            Disposition::Skip => {
-                self.flush();
-                self.skip_from = Some(self.open.len());
-            }
+            Disposition::Skip | Disposition::Void(_) => unreachable_disposition(),
             Disposition::Flatten => {}
             Disposition::Inline(inline) => {
                 saved_style = Some(self.style);
@@ -579,8 +614,8 @@ impl Builder {
                     InlineTag::Subscript => self.style.subscript = true,
                     InlineTag::Anchor => {
                         saved_link = Some(self.link.clone());
-                        // §9.2: only http(s) survives into a rendered link.
-                        // An unparseable or dangerous href yields plain text,
+                        // §9.2: only http(s) survives into a rendered link. An
+                        // unparseable or dangerous href yields plain text,
                         // never a link the user can tap.
                         self.link =
                             non_empty_attr(tag, "href").and_then(|href| self.resolve(&href));
@@ -588,20 +623,9 @@ impl Builder {
                 }
             }
             Disposition::Block(block) => self.start_block(block, tag),
-            Disposition::Void(_) => unreachable!("handled above"),
         }
 
-        // Decide the raw-text handling before `name` is moved into the stack.
-        // Asking the tokenizer to treat the contents of these elements as text
-        // rather than markup means `<script>if (a<b) {}</script>` cannot
-        // produce a spurious `<b>` start tag.
-        let raw_text = match name.as_str() {
-            "script" => TokenSinkResult::RawData(RawKind::ScriptData),
-            "style" | "textarea" | "title" => TokenSinkResult::RawData(RawKind::Rawtext),
-            _ => TokenSinkResult::Continue,
-        };
-
-        if !is_void(&name) && !tag.self_closing {
+        if !childless {
             self.open.push(OpenElement {
                 name,
                 disposition,
@@ -616,7 +640,7 @@ impl Builder {
             }
         }
 
-        raw_text
+        TokenSinkResult::Continue
     }
 
     fn start_block(&mut self, block: BlockTag, tag: &Tag) {
@@ -876,6 +900,23 @@ impl TokenSink for Builder {
         TokenSinkResult::Continue
     }
 }
+
+/// Ask the tokenizer to treat an element's contents as text rather than
+/// markup, so that `<script>if (a<b) {}</script>` cannot produce a spurious
+/// `<b>` start tag.
+fn raw_text_kind(name: &str) -> TokenSinkResult<()> {
+    match name {
+        "script" => TokenSinkResult::RawData(RawKind::ScriptData),
+        "style" | "textarea" | "title" => TokenSinkResult::RawData(RawKind::Rawtext),
+        _ => TokenSinkResult::Continue,
+    }
+}
+
+/// A branch the match above has already excluded.
+///
+/// `unreachable!()` would be a panic, and §9.5 forbids reachable panics on this
+/// path; this keeps the same "cannot happen" meaning without one.
+fn unreachable_disposition() {}
 
 fn is_void(name: &str) -> bool {
     matches!(
@@ -1389,6 +1430,59 @@ mod tests {
     }
 
     #[test]
+    fn a_childless_skip_element_does_not_truncate_the_article() {
+        // Regression: `<meta>`, `<input>`, `<embed>` and friends are on the
+        // skip list AND are void, so entering skip mode for them set a flag
+        // nothing could ever clear -- silently discarding everything after.
+        // `<input>` alone is common enough in real feed HTML to have hit this.
+        for tag in [
+            "<meta>",
+            "<link>",
+            "<input>",
+            "<area>",
+            "<source>",
+            "<track>",
+            "<param>",
+            "<embed>",
+            "<base href=\"https://x.example/\">",
+            "<svg/>",
+            "<template/>",
+        ] {
+            let html = format!("<p>before</p>{tag}<p>after</p>");
+            let doc = transform(&html, &lenient_ctx());
+            assert_eq!(
+                text_of(&doc),
+                "before\nafter",
+                "{tag} swallowed the rest of the document"
+            );
+        }
+    }
+
+    #[test]
+    fn skipped_content_does_not_leak_past_the_depth_cap() {
+        // Regression: with the depth cap checked before skip handling, a
+        // <script> opened beyond the cap never entered skip mode, the
+        // tokenizer was never put into raw-text mode, and the script body
+        // arrived as ordinary text -- so the article rendered alert('pwned')
+        // as readable content. An allowlist breach, not a cosmetic one.
+        let depth = Limits::default().max_depth + 2;
+        let html = format!(
+            "{}<script>alert('pwned')</script><style>body{{display:none}}</style>{}",
+            "<div>".repeat(depth),
+            "</div>".repeat(depth)
+        );
+        let text = text_of(&transform(&html, &lenient_ctx()));
+        assert!(
+            !text.contains("pwned"),
+            "script body leaked past the depth cap: {text:?}"
+        );
+        assert!(
+            !text.contains("display:none"),
+            "style body leaked: {text:?}"
+        );
+    }
+
+    #[test]
     fn stray_end_tags_do_not_destroy_structure() {
         // A stray `</div>` must not unwind the whole open-element stack.
         let doc = transform("<p>a</div> b</p>", &lenient_ctx());
@@ -1444,5 +1538,55 @@ mod tests_support {
             },
             limits: Limits::default(),
         }
+    }
+}
+
+#[cfg(test)]
+mod resource_exhaustion_tests {
+    use super::tests_support::ctx;
+    use std::time::Instant;
+
+    /// A depth-capped stack must stay depth-capped on *every* path.
+    ///
+    /// Regression test for a quadratic blow-up found by fuzzing the transform:
+    /// a skipped subtree (`<svg>`, `<script>`, …) used to push onto the
+    /// open-element stack before the depth cap was applied, so the stack grew
+    /// without bound and every unmatched end tag scanned all of it.
+    #[test]
+    fn a_skipped_subtree_cannot_grow_the_element_stack_without_bound() {
+        // Scaling check rather than a wall-clock threshold: an absolute timing
+        // assertion would be flaky on a loaded CI runner, but quadratic growth
+        // shows up as a ratio no matter how slow the machine is.
+        let small = {
+            let html = format!("<svg>{}{}", "<b>".repeat(10_000), "</zz>".repeat(10_000));
+            let t = Instant::now();
+            let _ = super::transform(&html, &ctx());
+            t.elapsed()
+        };
+        let large = {
+            let html = format!("<svg>{}{}", "<b>".repeat(40_000), "</zz>".repeat(40_000));
+            let t = Instant::now();
+            let _ = super::transform(&html, &ctx());
+            t.elapsed()
+        };
+
+        // Four times the input. Linear would be ~4x; the bug was ~16x (measured
+        // 1.3s -> 23s). Ten is comfortably clear of both noise and the defect.
+        let ratio = large.as_secs_f64() / small.as_secs_f64().max(0.000_001);
+        assert!(
+            ratio < 10.0,
+            "transform scales super-linearly on skipped subtrees: \
+             10k took {small:?}, 40k took {large:?} (ratio {ratio:.1}x)"
+        );
+    }
+
+    #[test]
+    fn the_depth_cap_holds_through_a_skipped_subtree() {
+        // The same input, checked structurally rather than by timing.
+        let html = format!("<svg>{}", "<b>".repeat(5_000));
+        let doc = super::transform(&html, &ctx());
+        // Nothing should have been emitted, and crucially it should return
+        // promptly rather than having built a 5000-deep stack.
+        assert!(doc.blocks.is_empty());
     }
 }

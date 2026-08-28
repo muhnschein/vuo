@@ -36,7 +36,51 @@ fn main() {
     }
 
     vuo_shim::register_qml_types();
+
+    // Install the shared context before any QML loads: QML constructs the
+    // models itself, so they resolve their database and worker through the
+    // Qt-thread global rather than through a constructor.
+    if let Err(e) = install_context() {
+        // Not fatal. With no account configured yet there is nothing to open,
+        // and the UI must still start so the user can reach Settings.
+        tracing::info!(error = %e, "starting without a configured account");
+    }
+
     run();
+}
+
+/// Open the mirror, start the worker, and install the app context.
+fn install_context() -> vuo_core::Result<()> {
+    use vuo_shim::context::AppContext;
+    use vuo_shim::worker::{self, AppPaths};
+
+    let paths = AppPaths::resolve().ok_or_else(|| {
+        vuo_core::Error::Config("could not resolve the data directory".to_owned())
+    })?;
+    let account = worker::load_account(&paths.account)?;
+    let server = url::Url::parse(&account.server_url)
+        .map_err(|_| vuo_core::Error::Config("the stored server URL is not a URL".to_owned()))?;
+
+    let db = vuo_core::db::Database::open(&paths.database)?;
+
+    // The worker's events arrive on ITS thread, so everything that touches a
+    // QObject has to be marshalled back. `queued_callback` is qmetaobject's
+    // primitive for that; without it this would be a data race on Qt internals.
+    let deliver = qmetaobject::queued_callback(|event: worker::Event| {
+        tracing::debug!(?event, "sync event");
+    });
+    let worker = worker::Worker::spawn(
+        paths.database.clone(),
+        server.clone(),
+        vuo_core::redact::ApiToken::new(account.token),
+        deliver,
+    );
+
+    // The context owns the worker, so the thread lives exactly as long as the
+    // thing that talks to it.
+    let ctx = AppContext::new(db, worker, server);
+    vuo_shim::context::install(ctx);
+    Ok(())
 }
 
 /// Run one sync pass headlessly, then exit.

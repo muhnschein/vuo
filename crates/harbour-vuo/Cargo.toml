@@ -17,6 +17,7 @@ path = "src/main.rs"
 vuo-core = { path = "../vuo-core" }
 vuo-shim = { path = "../vuo-shim" }
 qmetaobject = "=0.2.10"
+url = "2.5"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "env-filter"] }
 

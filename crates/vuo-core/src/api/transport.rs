@@ -226,6 +226,19 @@ impl Transport {
             let response = req.send().await.map_err(|e| classify(e, &safe))?;
             let status = response.status();
 
+            // 304/305/306 are in the 3xx range but are not redirects to
+            // follow: 304 carries no Location by design. Vuo never sends a
+            // conditional request header, so a 304 here means the server (or
+            // something in front of it) is misbehaving -- report that, rather
+            // than the confusing "redirect without a Location header".
+            if matches!(status.as_u16(), 304..=306) {
+                return Err(Error::Http {
+                    status: status.as_u16(),
+                    endpoint: safe,
+                    message: Some("unexpected conditional or proxy response".to_owned()),
+                });
+            }
+
             if status.is_redirection() {
                 if hops >= self.max_redirects {
                     return Err(Error::Transport {

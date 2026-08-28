@@ -1,9 +1,24 @@
 import QtQuick 2.6
 import Sailfish.Silica 1.0
+import Vuo 1.0
 
 Page {
     id: page
     allowedOrientations: Orientation.All
+
+    // Backed by Rust: reads and writes the account file (mode 0600, outside
+    // the SQLite mirror) and the media/sync preferences.
+    Settings {
+        id: settings
+        onConnectionTested: {
+            testResult.visible = true
+            testResult.ok = ok
+            testResult.detail = message
+        }
+    }
+
+    // Save on leaving, so a half-typed key is not written on every keystroke.
+    Component.onDestruction: settings.save()
 
     SilicaFlickable {
         anchors.fill: parent
@@ -54,6 +69,23 @@ Page {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: qsTr("Test connection")
                 onClicked: settings.testConnection()
+            }
+
+            Label {
+                id: testResult
+                property bool ok: false
+                property string detail: ""
+                visible: false
+                x: Theme.horizontalPageMargin
+                width: parent.width - Theme.horizontalPageMargin * 2
+                wrapMode: Text.Wrap
+                // `detail` is the server's own text on failure and a username
+                // on success. Foreign either way.
+                textFormat: Text.PlainText
+                font.pixelSize: Theme.fontSizeExtraSmall
+                color: ok ? Theme.highlightColor : Theme.errorColor
+                text: ok ? qsTr("Connected as %1").arg(detail)
+                         : qsTr("Could not connect: %1").arg(detail)
             }
 
             SectionHeader { text: qsTr("Images") }
