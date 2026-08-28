@@ -1,0 +1,50 @@
+# A stub of Sailfish.Silica, for linting Vuo's QML on a machine without the
+# SailfishOS SDK.
+#
+# §8.1: "Sailfish.Silica only ships with the SDK, so linting QML on a CI runner
+# needs a stub module." These declare the surface Vuo actually uses -- not all
+# of Silica -- so that `make qmllint` resolves imports and catches real
+# mistakes rather than drowning in unresolved-type noise.
+#
+# These stubs are NOT shipped in the RPM and are never loaded on a device. If a
+# property Vuo uses is missing here, add it; do not work around it in the app.
+module Sailfish.Silica
+
+singleton Theme 1.0 Theme.qml
+Orientation 1.0 Orientation.qml
+TruncationMode 1.0 TruncationMode.qml
+BusyIndicatorSize 1.0 BusyIndicatorSize.qml
+
+ApplicationWindow 1.0 ApplicationWindow.qml
+Page 1.0 Page.qml
+Dialog 1.0 Dialog.qml
+PageHeader 1.0 PageHeader.qml
+DialogHeader 1.0 DialogHeader.qml
+SectionHeader 1.0 SectionHeader.qml
+SilicaFlickable 1.0 SilicaFlickable.qml
+SilicaListView 1.0 SilicaListView.qml
+SilicaGridView 1.0 SilicaGridView.qml
+PullDownMenu 1.0 PullDownMenu.qml
+PushUpMenu 1.0 PushUpMenu.qml
+MenuItem 1.0 MenuItem.qml
+ContextMenu 1.0 ContextMenu.qml
+ListItem 1.0 ListItem.qml
+BackgroundItem 1.0 BackgroundItem.qml
+RemorsePopup 1.0 RemorsePopup.qml
+RemorseItem 1.0 RemorseItem.qml
+ViewPlaceholder 1.0 ViewPlaceholder.qml
+BusyIndicator 1.0 BusyIndicator.qml
+Button 1.0 Button.qml
+IconButton 1.0 IconButton.qml
+TextField 1.0 TextField.qml
+TextArea 1.0 TextArea.qml
+TextSwitch 1.0 TextSwitch.qml
+ComboBox 1.0 ComboBox.qml
+Slider 1.0 Slider.qml
+Label 1.0 Label.qml
+Separator 1.0 Separator.qml
+VerticalScrollDecorator 1.0 VerticalScrollDecorator.qml
+CoverBackground 1.0 CoverBackground.qml
+CoverActionList 1.0 CoverActionList.qml
+CoverAction 1.0 CoverAction.qml
+Notification 1.0 Notification.qml
