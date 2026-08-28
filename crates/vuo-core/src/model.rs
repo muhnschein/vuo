@@ -57,7 +57,9 @@ id_type!(IconId, "A server-assigned icon identifier.");
 /// local database at all. The converter maps it to a per-item rejection so the
 /// sync drops the row and continues rather than storing a third state that the
 /// UI would then have to render.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
+)]
 #[serde(rename_all = "lowercase")]
 pub enum EntryStatus {
     Unread,

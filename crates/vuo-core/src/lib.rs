@@ -11,6 +11,8 @@
 //!
 //! - [`api`] — the Miniflux REST client, and the boundary where foreign
 //!   bytes become validated domain values.
+//! - [`db`] — the local SQLite mirror, and the outbox that makes the write
+//!   path offline-tolerant.
 //! - [`model`] — the strict domain types.
 //! - [`content`] — the HTML → render-block transform (§9.2, §9.3).
 //! - [`redact`] — keeping the API token and credentials out of error paths.
@@ -33,6 +35,7 @@
 
 pub mod api;
 pub mod content;
+pub mod db;
 pub mod error;
 pub mod model;
 pub mod redact;

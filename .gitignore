@@ -31,3 +31,9 @@
 
 # Local secrets used by the opt-in live integration test
 .env
+
+# Reference checkouts of other projects, cloned locally for study only.
+# They are GPL third-party code and must never become part of this tree.
+/fuoten/
+/sm/
+/reference/
