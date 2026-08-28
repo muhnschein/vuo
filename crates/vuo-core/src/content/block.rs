@@ -149,6 +149,17 @@ fn escape_into(raw: &str, out: &mut String) {
     }
 }
 
+/// Whether a media reference may be loaded without asking the user first.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MediaFetch {
+    /// Server-proxied or same-origin: no third party learns anything.
+    Allowed,
+    /// Third-party and un-proxied. Fetching leaks the device IP, so the user
+    /// decides (per origin) before anything is requested.
+    NeedsConsent,
+}
+
 /// A table cell: a span run plus whether it came from `<th>`.
 #[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub struct TableCell {
@@ -180,7 +191,19 @@ pub enum BlockKind {
     /// `<pre>` / `<pre><code>`. Text is verbatim and is *not* span-formatted:
     /// inline markup inside a code block is flattened away rather than honoured.
     Code { language: Option<String>, text: String },
-    Image { src: MediaUrl, alt: String, title: Option<String> },
+    Image {
+        src: MediaUrl,
+        alt: String,
+        title: Option<String>,
+        /// Whether the UI may load this image immediately.
+        ///
+        /// Un-proxied third-party media is the common case on a stock Miniflux
+        /// (`MEDIA_PROXY_MODE` defaults to `http-only`), so the transform keeps
+        /// such images in the document as placeholders rather than dropping
+        /// them. The UI renders a tap-to-load affordance naming the host, and
+        /// nothing is fetched until the user agrees.
+        fetch: MediaFetch,
+    },
     /// Fixed three-level nesting: rows of cells of spans. Not self-referential,
     /// so the drop-recursion argument above does not apply.
     Table { rows: Vec<Vec<TableCell>> },

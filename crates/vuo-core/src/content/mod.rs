@@ -8,6 +8,8 @@ pub mod block;
 pub mod transform;
 pub mod url;
 
-pub use block::{BlockKind, Document, RenderBlock, Span, SpanStyle, TableCell, Truncation};
+pub use block::{
+    BlockKind, Document, MediaFetch, RenderBlock, Span, SpanStyle, TableCell, Truncation,
+};
 pub use transform::{transform, Limits, TransformContext};
 pub use url::{MediaDecision, MediaPolicy, MediaUrl, UnproxiedMedia};

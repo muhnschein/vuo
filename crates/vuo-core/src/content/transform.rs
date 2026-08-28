@@ -39,7 +39,9 @@ use html5ever::tokenizer::states::RawKind;
 use tendril::StrTendril;
 use url::Url;
 
-use crate::content::block::{BlockKind, Document, RenderBlock, Span, SpanStyle, TableCell, Truncation};
+use crate::content::block::{
+    BlockKind, Document, MediaFetch, RenderBlock, Span, SpanStyle, TableCell, Truncation,
+};
 use crate::content::url::{MediaDecision, MediaPolicy, MediaUrl};
 
 /// Resource caps for the transform. Every one of these exists because the
@@ -673,15 +675,18 @@ impl Builder {
                 let Some(src) = attr(tag, "src").and_then(|s| self.resolve(&s)) else {
                     return;
                 };
-                // §9.3: decide *before* the URL ever reaches the UI, so a
-                // third-party host is never contacted from the phone.
-                let MediaDecision::Fetch(src) = self.ctx.media.decide(&src) else {
-                    return;
+                // §9.3: the decision is made here, before the URL ever
+                // reaches the UI, so a third-party host cannot be contacted by
+                // a QML Image that simply binds to whatever `src` it was given.
+                let (src, fetch) = match self.ctx.media.decide(&src) {
+                    MediaDecision::Fetch(src) => (src, MediaFetch::Allowed),
+                    MediaDecision::NeedsConsent(src) => (src, MediaFetch::NeedsConsent),
+                    MediaDecision::Drop => return,
                 };
                 self.flush();
                 let alt = attr(tag, "alt").unwrap_or_default();
                 let title = attr(tag, "title").filter(|t| !t.is_empty());
-                self.push_block(BlockKind::Image { src, alt, title });
+                self.push_block(BlockKind::Image { src, alt, title, fetch });
             }
         }
     }
@@ -913,14 +918,15 @@ mod tests {
             base_url: Some(Url::parse("https://blog.example/post/").unwrap()),
             media: MediaPolicy::ProxyThroughInstance {
                 instance: instance(),
-                fallback: UnproxiedMedia::FetchDirectly,
+                extra_trusted: Vec::new(),
+                fallback: UnproxiedMedia::Allow,
             },
             limits: Limits::default(),
         }
     }
 
     fn strict_ctx() -> TransformContext {
-        TransformContext::new(instance())
+        TransformContext { media: MediaPolicy::strict_for(instance()), ..TransformContext::new(instance()) }
             .with_base_url(Some(Url::parse("https://blog.example/post/").unwrap()))
     }
 
@@ -1096,7 +1102,7 @@ mod tests {
     // --------------------------------------------------------- §9.3 privacy
 
     #[test]
-    fn third_party_images_are_dropped_under_the_default_policy() {
+    fn third_party_images_are_not_fetched_under_the_strict_policy() {
         let doc = transform(
             "<p><img src=\"https://tracker.example/pixel.gif\" alt=\"t\"></p>\
              <p><img src=\"https://miniflux.example/proxy/sig/abc\" alt=\"ok\"></p>",
