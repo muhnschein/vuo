@@ -39,6 +39,18 @@
 // rather than Rust's. The alternative is QML reading `model.set_read(...)` and
 // a signal handler spelled `onConnection_tested`.
 #![allow(non_snake_case)]
+// The panic denials exist because unwinding out of Rust into Qt's C++ frames
+// is undefined behaviour (§9.5). Test code has neither foreign input nor a Qt
+// frame above it, and a panicking assertion is the entire point of a test.
+#![cfg_attr(
+    test,
+    allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        clippy::indexing_slicing
+    )
+)]
 
 pub mod article;
 pub mod context;

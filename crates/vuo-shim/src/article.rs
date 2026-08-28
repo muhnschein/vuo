@@ -41,6 +41,7 @@ pub const ROLE_IMAGE_ALT: i32 = USER_ROLE + 8;
 pub const ROLE_NEEDS_CONSENT: i32 = USER_ROLE + 9;
 pub const ROLE_CODE_LANGUAGE: i32 = USER_ROLE + 10;
 pub const ROLE_PLAIN_TEXT: i32 = USER_ROLE + 11;
+pub const ROLE_IMAGE_HOST: i32 = USER_ROLE + 12;
 
 /// A flattened block, ready for a delegate.
 #[derive(Debug, Clone, Default)]
@@ -60,6 +61,9 @@ pub struct BlockRow {
     pub indent: i32,
     pub image_src: String,
     pub image_alt: String,
+    /// The host the image would be fetched from. Shown in the consent
+    /// placeholder so "load images" is an informed choice rather than a shrug.
+    pub image_host: String,
     /// True when the image is third-party and un-proxied: the delegate shows a
     /// tap-to-load placeholder naming the host and fetches nothing (§9.3).
     pub needs_consent: bool,
@@ -111,6 +115,7 @@ fn row_for(block: &RenderBlock) -> BlockRow {
             row.kind = "image".to_owned();
             row.image_src = src.as_str().to_owned();
             row.image_alt = alt.clone();
+            row.image_host = src.as_url().host_str().unwrap_or_default().to_owned();
             row.needs_consent = matches!(fetch, MediaFetch::NeedsConsent);
         }
         BlockKind::Table { rows } => {
@@ -246,6 +251,11 @@ impl ArticleModel {
         }
     }
 
+    /// Grant consent for the ORIGIN of the image at `row`.
+    ///
+    /// Scoped to that one origin, not to third-party media in general: §9.3's
+    /// whole point is that agreeing to load from one host is not agreeing to
+    /// load from every host a feed happens to reference.
     fn allowImagesFrom(&mut self, row: i32) {
         let Some(ctx) = self.context() else { return };
         let Some(origin) = usize::try_from(row)
@@ -338,6 +348,7 @@ impl QAbstractListModel for ArticleModel {
             ROLE_INDENT => row.indent.into(),
             ROLE_IMAGE_SRC => QString::from(row.image_src.clone()).into(),
             ROLE_IMAGE_ALT => QString::from(row.image_alt.clone()).into(),
+            ROLE_IMAGE_HOST => QString::from(row.image_host.clone()).into(),
             ROLE_NEEDS_CONSENT => row.needs_consent.into(),
             ROLE_CODE_LANGUAGE => QString::from(row.code_language.clone()).into(),
             _ => QVariant::default(),
@@ -356,6 +367,7 @@ impl QAbstractListModel for ArticleModel {
         names.insert(ROLE_INDENT, "indent".into());
         names.insert(ROLE_IMAGE_SRC, "imageSource".into());
         names.insert(ROLE_IMAGE_ALT, "imageAlt".into());
+        names.insert(ROLE_IMAGE_HOST, "imageHost".into());
         names.insert(ROLE_NEEDS_CONSENT, "needsConsent".into());
         names.insert(ROLE_CODE_LANGUAGE, "codeLanguage".into());
         names

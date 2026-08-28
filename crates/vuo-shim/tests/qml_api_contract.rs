@@ -26,6 +26,15 @@
 //! catches every typo and every unimplemented method, which is the failure
 //! mode that matters.
 
+// Test code: the panic denials guard foreign-input paths in production, not
+// assertions in tests. See the note in vuo-core's lib.rs.
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
@@ -199,8 +208,12 @@ fn every_member_the_qml_uses_is_implemented_in_rust() {
 
 #[test]
 fn every_role_the_delegates_use_is_exposed_by_a_model() {
-    // Delegates reference roles as bare identifiers, so a typo'd role silently
-    // renders as `undefined` rather than failing.
+    // Delegates reference roles as bare identifiers, so a typo'd role renders
+    // as `undefined` rather than failing — silently blanking part of the UI.
+    //
+    // This reads the QML. An earlier version compared a hand-written list of
+    // role names against the Rust source, which could not catch a typo in the
+    // QML at all: the very thing it claimed to check.
     let root = Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .and_then(|p| p.parent())
@@ -210,35 +223,126 @@ fn every_role_the_delegates_use_is_exposed_by_a_model() {
     let roles = declared_roles(&root);
     assert!(!roles.is_empty(), "found no role_names() entries");
 
-    // The roles the delegates actually rely on. Kept explicit so that removing
-    // a role from Rust fails here rather than silently blanking the UI.
-    let used = [
+    let mut files = Vec::new();
+    qml_files(&root.join("qml"), &mut files);
+    files.sort();
+
+    // Identifiers that appear bare inside a delegate and look like a role:
+    // camelCase, and not a known QML/Silica name. Anything matching a declared
+    // role is fine; anything that looks like a role but is not declared is the
+    // failure this catches.
+    const NOT_ROLES: &[&str] = &[
+        "textFormat",
+        "wrapMode",
+        "sourceSize",
+        "fillMode",
+        "pixelSize",
+        "horizontalAlignment",
+        "maximumLineCount",
+        "linkColor",
+        "onLinkActivated",
+        "onStatusChanged",
+        "onClicked",
+        "onCurrentIndexChanged",
+        "onTextChanged",
+        "onCheckedChanged",
+        "onDestruction",
+        "onCompleted",
+        "onAccepted",
+        "onConnectionTested",
+        "onTriggered",
+        "onReturnPressed",
+        "implicitHeight",
+        "paddingSmall",
+        "paddingMedium",
+        "paddingLarge",
+        "itemSizeLarge",
+        "horizontalPageMargin",
+        "fontSizeSmall",
+        "fontSizeMedium",
+        "fontSizeLarge",
+        "fontSizeExtraSmall",
+        "fontSizeHuge",
+        "primaryColor",
+        "secondaryColor",
+        "highlightColor",
+        "secondaryHighlightColor",
+        "highlightBackgroundColor",
+        "errorColor",
+        "contentHeight",
+        "allowedOrientations",
+        "defaultAllowedOrientations",
+        "initialPage",
+        "acceptText",
+        "placeholderText",
+        "inputMethodHints",
+        "echoMode",
+        "currentIndex",
+        "canAccept",
+        "truncationMode",
+        "hintText",
+        "iconSource",
+        "unreadCount",
+        "blockedImages",
+        "entryTitle",
         "entryId",
-        "feedId",
-        "title",
-        "author",
-        "unread",
-        "starred",
-        "readingTime",
-        "errorMessage",
-        "blockKind",
-        "styledText",
-        "level",
-        "quoteDepth",
-        "ordered",
-        "marker",
-        "indent",
-        "imageSource",
-        "imageAlt",
-        "needsConsent",
+        "feedModel",
+        "syncing",
+        "openUrlExternally",
+        "resolvedUrl",
+        "setScope",
+        "markAllRead",
+        "markFeedRead",
+        "setRead",
+        "setStarred",
+        "openInBrowser",
+        "fetchOriginal",
+        "allowImagesFrom",
+        "testConnection",
+        "serverUrl",
+        "apiKey",
+        "mediaPolicy",
+        "syncIntervalIndex",
+        "wifiOnly",
+        "useCustomCa",
+        "pendingActions",
+        "requestSync",
     ];
-    let missing: Vec<&str> = used
-        .iter()
-        .copied()
-        .filter(|r| !roles.contains(*r))
-        .collect();
+
+    let mut missing = Vec::new();
+    for file in &files {
+        let source = std::fs::read_to_string(file).expect("read qml");
+        for (lineno, line) in source.lines().enumerate() {
+            let code = line.split("//").next().unwrap_or("");
+            // Bare camelCase identifiers used as values.
+            for word in code.split(|c: char| !c.is_alphanumeric() && c != '_') {
+                if word.len() < 4 || !word.chars().next().is_some_and(char::is_lowercase) {
+                    continue;
+                }
+                if !word.chars().any(char::is_uppercase) {
+                    continue;
+                }
+                if roles.contains(word) || NOT_ROLES.contains(&word) {
+                    continue;
+                }
+                // Anything reached here is an unrecognised camelCase word. Only
+                // report ones that look like our own role vocabulary, to keep
+                // the test from policing all of Qt.
+                if word.starts_with("image") || word.starts_with("block") || word.ends_with("Depth")
+                {
+                    missing.push(format!(
+                        "{}:{} — `{word}` looks like a model role but no model exposes it",
+                        file.strip_prefix(&root).unwrap_or(file).display(),
+                        lineno + 1
+                    ));
+                }
+            }
+        }
+    }
+
     assert!(
         missing.is_empty(),
-        "delegates use roles no model exposes: {missing:?}"
+        "QML uses roles no model exposes:\n{}",
+        missing.join("\n")
     );
 }

@@ -31,6 +31,13 @@ use vuo_core::model::{Entry, EntryId, EntryStatus};
 use crate::context::AppContext;
 use crate::worker::{self, Command};
 
+/// Rows loaded into a list model at once.
+///
+/// The list is a window onto the mirror, not the whole of it. Anything that
+/// acts on "everything in this scope" must query the database rather than
+/// iterating the loaded rows.
+pub const PAGE_SIZE: i64 = 500;
+
 pub const ROLE_ID: i32 = USER_ROLE;
 pub const ROLE_TITLE: i32 = USER_ROLE + 1;
 pub const ROLE_AUTHOR: i32 = USER_ROLE + 2;
@@ -132,6 +139,27 @@ pub struct EntryModel {
     /// works offline and the list updates in the same frame as the tap.
     setRead: qt_method!(fn(&mut self, row: i32, read: bool)),
     setStarred: qt_method!(fn(&mut self, row: i32, starred: bool)),
+    /// Ask the worker for a NETWORK sync.
+    ///
+    /// Distinct from `refresh`, which only re-reads the local mirror. Nothing
+    /// in the UI used to reach the worker at all, so `Command::Sync` had a
+    /// handler and no sender: the app never talked to the server.
+    requestSync: qt_method!(fn(&mut self)),
+    /// Total unread across the whole mirror, for the cover. NOT `count`, which
+    /// is the number of rows this model is currently showing and is capped by
+    /// the page size.
+    unreadTotal: qt_property!(i32; READ unread_total NOTIFY countChanged),
+    /// True while a sync is in flight. Read from the worker's signal rather
+    /// than set locally, so it clears when the worker actually finishes.
+    syncing: qt_property!(bool; READ is_syncing NOTIFY syncingChanged),
+    syncingChanged: qt_signal!(),
+    /// Poll for worker activity. Called from a QML Timer.
+    ///
+    /// A poll rather than a push: QML owns these objects, so Rust has no list
+    /// of live models to call into, and a registry of cross-thread pointers is
+    /// exactly the kind of thing that cannot be exercised without a device.
+    /// Returns true if anything reloaded.
+    pollSync: qt_method!(fn(&mut self) -> bool),
     /// Mark everything in the current scope read.
     ///
     /// Expanded locally into concrete entry ids rather than queueing the
@@ -141,6 +169,8 @@ pub struct EntryModel {
 
     rows: Vec<EntryRow>,
     scope: Option<Scope>,
+    /// The worker generation this model last reloaded at.
+    seen_generation: u64,
     /// `None` until [`EntryModel::attach`] is called from Rust — QML never
     /// constructs this.
     ctx: Option<std::rc::Rc<AppContext>>,
@@ -197,6 +227,39 @@ impl EntryModel {
         }
     }
 
+    fn requestSync(&mut self) {
+        if let Some(ctx) = self.context() {
+            ctx.signal().set_running(true);
+            self.syncingChanged();
+            ctx.send(Command::Sync);
+        }
+    }
+
+    fn is_syncing(&self) -> bool {
+        self.context().is_some_and(|ctx| ctx.signal().is_running())
+    }
+
+    fn pollSync(&mut self) -> bool {
+        let Some(ctx) = self.context() else {
+            return false;
+        };
+        let generation = ctx.signal().generation();
+        if generation == self.seen_generation {
+            return false;
+        }
+        self.seen_generation = generation;
+        self.reload();
+        self.syncingChanged();
+        true
+    }
+
+    fn unread_total(&self) -> i32 {
+        self.context()
+            .and_then(|ctx| ctx.read(|db| store::unread_count(db.conn()).unwrap_or(0)))
+            .map(|n| i32::try_from(n).unwrap_or(i32::MAX))
+            .unwrap_or(0)
+    }
+
     fn markAllRead(&mut self) {
         let Some(ctx) = self.context() else { return };
         let Some(scope) = self.scope else { return };
@@ -214,9 +277,20 @@ impl EntryModel {
                 .flatten()
                 .is_some(),
             // Unread/Starred/All have no single server-side scope, so expand
-            // over exactly the rows currently shown.
+            // over every entry in scope -- NOT over `self.rows`, which holds
+            // only the page the list is currently showing. Using the rows
+            // marked at most PAGE_SIZE entries and silently left the rest
+            // unread, while the UI reported success.
             _ => {
-                let ids: Vec<EntryId> = self.rows.iter().map(|r| EntryId(r.id)).collect();
+                let ids: Vec<EntryId> = ctx
+                    .read(|db| {
+                        store::list_entries(db.conn(), scope.to_filter(), i64::MAX, 0)
+                            .unwrap_or_default()
+                            .iter()
+                            .map(|e| e.id)
+                            .collect::<Vec<_>>()
+                    })
+                    .unwrap_or_default();
                 ctx.write(|db| worker::apply_local_status_bulk(db, &ids, EntryStatus::Read))
                     .transpose()
                     .ok()
@@ -371,6 +445,8 @@ pub struct FeedModel {
     countChanged: qt_signal!(),
     refresh: qt_method!(fn(&mut self)),
     feedIdAt: qt_method!(fn(&self, row: i32) -> i64),
+    /// See `EntryModel::pollSync`.
+    pollSync: qt_method!(fn(&mut self) -> bool),
     /// Mark every unread entry in the feed at `row` as read.
     markFeedRead: qt_method!(fn(&mut self, row: i32)),
     /// Subscribe. The *server* discovers and fetches the feed; Vuo never
@@ -379,6 +455,7 @@ pub struct FeedModel {
     unsubscribe: qt_method!(fn(&mut self, row: i32)),
 
     rows: Vec<FeedRow>,
+    seen_generation: u64,
     ctx: Option<std::rc::Rc<AppContext>>,
 }
 
@@ -393,6 +470,19 @@ impl FeedModel {
     /// constructor to pass it through.
     fn context(&self) -> Option<std::rc::Rc<AppContext>> {
         self.ctx.clone().or_else(crate::context::current)
+    }
+
+    fn pollSync(&mut self) -> bool {
+        let Some(ctx) = self.context() else {
+            return false;
+        };
+        let generation = ctx.signal().generation();
+        if generation == self.seen_generation {
+            return false;
+        }
+        self.seen_generation = generation;
+        self.reload();
+        true
     }
 
     fn markFeedRead(&mut self, row: i32) {

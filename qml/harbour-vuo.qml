@@ -33,20 +33,39 @@ ApplicationWindow {
     EntryModel { id: entries }
     FeedModel { id: feeds }
 
+    // Models observe SQLite, and the worker writes to SQLite from another
+    // thread. This is how they find out. A poll rather than a signal because
+    // QML owns these objects: Rust has no handle on a live model to call into,
+    // and a registry of cross-thread pointers is exactly the sort of thing
+    // that cannot be exercised without a device.
+    Timer {
+        interval: 1500
+        repeat: true
+        running: true
+        onTriggered: {
+            if (entries.pollSync()) {
+                feeds.pollSync()
+            }
+        }
+    }
+
     Component.onCompleted: {
         // 0 = unread. The models are empty until a scope is set.
         entries.setScope(0, 0)
         feeds.refresh()
     }
 
-    initialPage: Component { EntryListPage { model: entries; feedModel: feeds } }
+    initialPage: Component {
+        EntryListPage { model: entries; feedModel: feeds; scopeKind: 0 }
+    }
 
     // The cover is a separate Component so its bindings can reach `entries`
     // for the unread count, which a bare URL cover cannot.
     cover: Component {
         CoverPage {
-            unreadCount: entries.count
-            onRefresh: entries.refresh()
+            unreadCount: entries.unreadTotal
+            syncing: entries.syncing
+            onRefresh: entries.requestSync()
         }
     }
     allowedOrientations: defaultAllowedOrientations

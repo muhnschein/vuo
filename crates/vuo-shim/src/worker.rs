@@ -117,6 +117,7 @@ impl Worker {
         server: url::Url,
         token: ApiToken,
         config: TransportConfig,
+        signal: std::sync::Arc<crate::context::SyncSignal>,
         on_event: impl Fn(Event) + Send + 'static,
     ) -> Self {
         let (tx, rx) = mpsc::channel::<Command>();
@@ -158,6 +159,16 @@ impl Worker {
                 };
 
                 while let Ok(command) = rx.recv() {
+                    // Every command that can change the mirror bumps the
+                    // signal when it finishes, and clears the running flag.
+                    // The models poll it; see context::SyncSignal for why this
+                    // is a poll rather than a callback.
+                    let finish = |changed: bool| {
+                        if changed {
+                            signal.bump();
+                        }
+                        signal.set_running(false);
+                    };
                     match command {
                         Command::Shutdown => break,
                         Command::Sync => {
@@ -165,13 +176,21 @@ impl Worker {
                             let options = SyncOptions::default();
                             match runtime.block_on(sync::sync(&mut db, &client, options)) {
                                 Ok(report) if report.replay.auth_failed => {
+                                    finish(false);
                                     on_event(Event::AuthFailed);
                                 }
                                 Ok(report) => {
                                     let unread = store::unread_count(db.conn()).unwrap_or(0);
                                     let changed = report.pull.upserted > 0
+                                        || report.pull.removed > 0
                                         || report.entries_deleted > 0
-                                        || report.replay.confirmed > 0;
+                                        || report.replay.confirmed > 0
+                                        || report.icons_fetched > 0;
+                                    // Bump unconditionally: "nothing changed"
+                                    // still has to clear the spinner, and a
+                                    // reload of an unchanged mirror is cheap.
+                                    finish(true);
+                                    let _ = changed;
                                     on_event(Event::SyncFinished { unread, changed });
                                 }
                                 Err(e) if e.is_auth_failure() => on_event(Event::AuthFailed),
@@ -193,6 +212,7 @@ impl Worker {
                                         &client,
                                         SyncOptions::default(),
                                     ));
+                                    finish(true);
                                     on_event(Event::SubscriptionChanged {
                                         ok: true,
                                         message: String::new(),
@@ -410,6 +430,7 @@ impl AppPaths {
 
 /// The stored account. Written with owner-only permissions.
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
 pub struct Account {
     pub server_url: String,
     pub token: String,
@@ -420,6 +441,33 @@ pub struct Account {
     /// errors" switch; there is no such switch, and this is not one.
     #[serde(default)]
     pub use_custom_ca: bool,
+    /// 0 strict, 1 ask, 2 allow. See `settings::MEDIA_*`.
+    #[serde(default = "default_media_policy")]
+    pub media_policy: i32,
+    /// Index into `settings::SYNC_INTERVALS_MINUTES`.
+    #[serde(default)]
+    pub sync_interval_index: i32,
+    #[serde(default)]
+    pub wifi_only: bool,
+}
+
+/// Ask, not Strict. On a stock Miniflux `MEDIA_PROXY_MODE` is `http-only`, so
+/// most images arrive un-proxied and Strict would blank them.
+fn default_media_policy() -> i32 {
+    1
+}
+
+impl Default for Account {
+    fn default() -> Self {
+        Account {
+            server_url: String::new(),
+            token: String::new(),
+            use_custom_ca: false,
+            media_policy: default_media_policy(),
+            sync_interval_index: 0,
+            wifi_only: false,
+        }
+    }
 }
 
 /// Read the account file.
@@ -519,6 +567,7 @@ mod tests {
             server_url: "https://h.example/".into(),
             token: "t".into(),
             use_custom_ca: true,
+            ..Account::default()
         };
         let err = transport_config_for(&paths, &account).expect_err("should refuse");
         assert!(err.to_string().contains("could not be read"), "{err}");
@@ -538,6 +587,7 @@ mod tests {
             server_url: "https://h.example/".into(),
             token: "t".into(),
             use_custom_ca: true,
+            ..Account::default()
         };
         let config = transport_config_for(&paths, &account).expect("config");
         assert!(
@@ -568,6 +618,7 @@ mod tests {
                 server_url: "https://h.example/".into(),
                 token: "secret".into(),
                 use_custom_ca: false,
+                ..Account::default()
             },
         )
         .expect("write");

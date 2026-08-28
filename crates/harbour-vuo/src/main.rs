@@ -67,20 +67,34 @@ fn install_context() -> vuo_core::Result<()> {
     // The worker's events arrive on ITS thread, so everything that touches a
     // QObject has to be marshalled back. `queued_callback` is qmetaobject's
     // primitive for that; without it this would be a data race on Qt internals.
-    let deliver = qmetaobject::queued_callback(|event: worker::Event| {
-        tracing::debug!(?event, "sync event");
+    //
+    // The callback must DO something. A version of this that only logged meant
+    // no model ever reloaded after a sync: entries arrived in SQLite and the
+    // UI never noticed, so the app looked broken in exactly the way a user
+    // would report as "sync does nothing".
+    // Logging only. The models learn that the mirror changed by polling
+    // `SyncSignal`, which the worker bumps -- see context::SyncSignal for why
+    // that is a poll and not a callback into QML-owned objects.
+    let deliver = qmetaobject::queued_callback(|event: worker::Event| match &event {
+        worker::Event::SyncFinished { unread, .. } => tracing::info!(unread, "sync finished"),
+        worker::Event::AuthFailed => tracing::warn!("the server rejected the API key"),
+        worker::Event::SyncFailed { message } => tracing::warn!(%message, "sync failed"),
+        other => tracing::debug!(?other, "sync event"),
     });
+
+    let signal = std::sync::Arc::new(vuo_shim::context::SyncSignal::default());
     let worker = worker::Worker::spawn(
         paths.database.clone(),
         server.clone(),
         vuo_core::redact::ApiToken::new(account.token),
         config,
+        std::sync::Arc::clone(&signal),
         deliver,
     );
 
     // The context owns the worker, so the thread lives exactly as long as the
     // thing that talks to it.
-    let ctx = AppContext::new(db, worker, server);
+    let ctx = AppContext::new(db, worker, server, signal);
     vuo_shim::context::install(ctx);
     Ok(())
 }

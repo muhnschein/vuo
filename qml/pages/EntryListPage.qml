@@ -6,7 +6,16 @@ Page {
 
     property var model
     property var feedModel
-    property string title: qsTr("Unread")
+    /// A fixed, translated label. Safe for PageHeader.
+    property string scopeLabel: qsTr("Unread")
+    /// A feed or category name when browsing one. FOREIGN TEXT: rendered only
+    /// through an explicit Text.PlainText Label, never through PageHeader.
+    property string title: ""
+    /// 0 unread, 1 starred, 2 all, 3 feed, 4 category. See models::Scope.
+    property int scopeKind: 0
+    property int scopeId: 0
+
+    Component.onCompleted: if (page.model) page.model.setScope(page.scopeKind, page.scopeId)
 
     allowedOrientations: Orientation.All
 
@@ -15,11 +24,34 @@ Page {
         anchors.fill: parent
         model: page.model
 
-        header: PageHeader {
-            title: page.title
-            description: page.model && page.model.count > 0
-                         ? qsTr("%n article(s)", "", page.model.count)
-                         : ""
+        // PageHeader's own title label offers no supported way to force its
+        // textFormat, and `page.title` can be a FEED NAME -- foreign text
+        // chosen by the feed operator. §9.3: a crafted title in a rich-text
+        // context is markup injection, and can pull a remote image that leaks
+        // the device's IP on a list scroll. So the header carries a fixed
+        // string and the name is rendered by a Label this file controls.
+        header: Column {
+            width: listView.width
+
+            PageHeader {
+                title: page.scopeLabel
+                description: page.model && page.model.count > 0
+                             ? qsTr("%n article(s)", "", page.model.count)
+                             : ""
+            }
+
+            Label {
+                visible: page.title.length > 0
+                x: Theme.horizontalPageMargin
+                width: parent.width - Theme.horizontalPageMargin * 2
+                textFormat: Text.PlainText
+                text: page.title
+                wrapMode: Text.Wrap
+                maximumLineCount: 2
+                elide: Text.ElideRight
+                font.pixelSize: Theme.fontSizeLarge
+                color: Theme.highlightColor
+            }
         }
 
         PullDownMenu {
@@ -30,7 +62,8 @@ Page {
             MenuItem {
                 text: qsTr("Feeds")
                 onClicked: pageStack.push(Qt.resolvedUrl("FeedListPage.qml"),
-                                          { model: page.feedModel })
+                                          { model: page.feedModel,
+                                            entryModel: page.model })
             }
             MenuItem {
                 text: qsTr("Mark all as read")
@@ -40,7 +73,10 @@ Page {
             }
             MenuItem {
                 text: qsTr("Refresh")
-                onClicked: page.model.refresh()
+                // Asks the worker for a network sync. `refresh()` alone only
+                // re-reads the local mirror, so on its own the pulley menu
+                // never actually talked to the server.
+                onClicked: page.model.requestSync()
             }
         }
 

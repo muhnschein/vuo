@@ -4,6 +4,9 @@ import Sailfish.Silica 1.0
 Page {
     id: page
     property var model
+    /// The shared entry model, so a per-feed view can be scoped without
+    /// constructing a second one.
+    property var entryModel
 
     allowedOrientations: Orientation.All
 
@@ -59,8 +62,17 @@ Page {
                 }
             }
 
-            onClicked: pageStack.push(Qt.resolvedUrl("EntryListPage.qml"),
-                                      { title: title, feedId: feedId })
+            // The scope has to be passed as (kind, id) and the model has to
+            // come with it: pushing `feedId` set a property that does not
+            // exist and omitted `model` entirely, so the page opened empty.
+            onClicked: pageStack.push(Qt.resolvedUrl("EntryListPage.qml"), {
+                model: page.model ? page.entryModel : null,
+                feedModel: page.model,
+                scopeLabel: qsTr("Feed"),
+                title: title,
+                scopeKind: 3,
+                scopeId: feedId
+            })
 
             menu: ContextMenu {
                 MenuItem {

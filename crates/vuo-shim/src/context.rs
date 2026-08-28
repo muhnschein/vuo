@@ -20,6 +20,8 @@ pub struct AppContext {
     commands: std::sync::mpsc::Sender<Command>,
     /// The configured Miniflux origin, for the content transform's media policy.
     instance: url::Url,
+    /// Bumped by the worker when the mirror changes; polled by the models.
+    signal: std::sync::Arc<SyncSignal>,
     /// Owned here so the worker thread lives exactly as long as the context
     /// that talks to it. Dropping the context sends Shutdown and joins the
     /// thread; the alternative — leaking the handle with `mem::forget` — would
@@ -35,14 +37,25 @@ impl std::fmt::Debug for AppContext {
 
 impl AppContext {
     #[must_use]
-    pub fn new(db: Database, worker: crate::worker::Worker, instance: url::Url) -> Rc<Self> {
+    pub fn new(
+        db: Database,
+        worker: crate::worker::Worker,
+        instance: url::Url,
+        signal: std::sync::Arc<SyncSignal>,
+    ) -> Rc<Self> {
         let commands = worker.sender();
         Rc::new(AppContext {
             db: Rc::new(RefCell::new(db)),
             commands,
             instance,
+            signal,
             _worker: worker,
         })
+    }
+
+    #[must_use]
+    pub fn signal(&self) -> &SyncSignal {
+        &self.signal
     }
 
     #[must_use]
@@ -116,5 +129,42 @@ mod tests {
         // Models constructed by QML before install() must degrade, not panic.
         // (Each test thread has its own slot, so this is not order-dependent.)
         assert!(current().is_none());
+    }
+}
+
+/// A counter the worker bumps whenever it changes the mirror.
+///
+/// Deliberately not a callback registry. QML owns the models, so Rust has no
+/// list of live ones to call into, and building one out of `QPointer`s means
+/// cross-thread lifetime rules that cannot be exercised without a device. An
+/// atomic the UI polls has neither problem: the worker thread only ever
+/// increments an integer, and every `QObject` touch stays on the Qt thread
+/// where the poll runs.
+#[derive(Debug, Default)]
+pub struct SyncSignal {
+    generation: std::sync::atomic::AtomicU64,
+    running: std::sync::atomic::AtomicBool,
+}
+
+impl SyncSignal {
+    /// Called from the worker thread when the mirror changed.
+    pub fn bump(&self) {
+        self.generation
+            .fetch_add(1, std::sync::atomic::Ordering::Release);
+    }
+
+    pub fn set_running(&self, running: bool) {
+        self.running
+            .store(running, std::sync::atomic::Ordering::Release);
+    }
+
+    #[must_use]
+    pub fn generation(&self) -> u64 {
+        self.generation.load(std::sync::atomic::Ordering::Acquire)
+    }
+
+    #[must_use]
+    pub fn is_running(&self) -> bool {
+        self.running.load(std::sync::atomic::Ordering::Acquire)
     }
 }

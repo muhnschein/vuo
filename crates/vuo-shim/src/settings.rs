@@ -75,12 +75,14 @@ impl Settings {
             // echoMode: Password.
             self.apiKey = QString::from(account.token);
             self.useCustomCa = account.use_custom_ca;
+            self.mediaPolicy = account.media_policy;
+            self.syncIntervalIndex = account.sync_interval_index;
+            self.wifiOnly = account.wifi_only;
+            return;
         }
-        if self.mediaPolicy == 0 && self.serverUrl.to_string().is_empty() {
-            // First run: default to Ask rather than Strict, because on a stock
-            // Miniflux most images are un-proxied and Strict would blank them.
-            self.mediaPolicy = MEDIA_ASK;
-        }
+        // First run: default to Ask rather than Strict, because on a stock
+        // Miniflux most images are un-proxied and Strict would blank them.
+        self.mediaPolicy = MEDIA_ASK;
     }
 
     fn pendingActionsCount(&self) -> i32 {
@@ -101,6 +103,9 @@ impl Settings {
             server_url: self.serverUrl.to_string().trim().to_owned(),
             token: self.apiKey.to_string().trim().to_owned(),
             use_custom_ca: self.useCustomCa,
+            media_policy: self.mediaPolicy,
+            sync_interval_index: self.syncIntervalIndex,
+            wifi_only: self.wifiOnly,
         };
         if account.server_url.is_empty() || account.token.is_empty() {
             return;
@@ -152,6 +157,42 @@ impl Settings {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn every_setting_survives_a_round_trip() {
+        // The Images, Background refresh and Wi-Fi-only controls were rendered
+        // but never persisted or read: changing them did nothing at all, and
+        // nothing in the build said so.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("account.json");
+        let written = Account {
+            server_url: "https://h.example/".into(),
+            token: "t".into(),
+            use_custom_ca: true,
+            media_policy: MEDIA_ALLOW,
+            sync_interval_index: 3,
+            wifi_only: true,
+        };
+        worker::save_account(&path, &written).expect("write");
+        let read = worker::load_account(&path).expect("read");
+
+        assert_eq!(read.media_policy, MEDIA_ALLOW);
+        assert_eq!(read.sync_interval_index, 3);
+        assert!(read.wifi_only);
+        assert!(read.use_custom_ca);
+    }
+
+    #[test]
+    fn an_account_file_from_an_older_build_still_loads() {
+        // The new fields must be optional, or upgrading would strand the user
+        // with an unreadable account and no obvious way back.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("account.json");
+        std::fs::write(&path, r#"{"server_url":"https://h.example/","token":"t"}"#).expect("write");
+        let read = worker::load_account(&path).expect("an older account file must still load");
+        assert_eq!(read.media_policy, MEDIA_ASK, "and get the safe default");
+        assert!(!read.wifi_only);
+    }
 
     #[test]
     fn the_default_media_policy_is_ask_not_strict() {

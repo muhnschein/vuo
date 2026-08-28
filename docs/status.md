@@ -79,6 +79,24 @@ every other check in the build.
 | `cargo-deny` | Vuo's own crates were rejected: the workspace is `GPL-3.0-or-later`, a different SPDX id from the `GPL-3.0` the allow-list named. |
 | A guard test | `reqwest::Certificate::from_pem_bundle` answers `Ok(vec![])` rather than `Err` for input containing no PEM blocks, so a truncated CA file was silently becoming "no extra CA". |
 
+## Known limitations in the UI layer
+
+Found by review and **not** fixed, so that they are stated rather than
+discovered:
+
+- **The app must be restarted after first-run account setup.** The shared
+  context (database handle plus sync worker) is installed once at start-up
+  from the stored account, so a device with no account configured yet starts
+  without one and does not pick it up when Settings writes the file. Fixing it
+  properly means tearing down and re-installing the worker at runtime, which
+  is exactly the kind of lifetime work that should not be written without a
+  device to test it on.
+- **Model updates are polled, not pushed.** QML owns the list models, so Rust
+  holds no handle on a live one; a 1.5-second timer polls a generation counter
+  the worker bumps. Correct and simple, but not instant.
+- **Feed unread badges are computed per reload**, not incrementally. Fine at
+  the feed counts a phone has; not fine at thousands.
+
 ## Open questions from §11 that are now answered
 
 Resolved from Miniflux's source and written up in

@@ -14,6 +14,18 @@ authors.workspace = true
 # fail through no fault of the code. `make check` builds it only when qmake is
 # present; `make shim` builds it explicitly.
 
+# §9.5's rule is about unwinding into Qt's C++ frames, which is undefined
+# behaviour -- so it applies MOST to the crates that actually touch Qt, not
+# least. `unsafe_code` stays allowed here (qmetaobject's macros require it and
+# it is reviewed line by line); the panic denials do not.
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+indexing_slicing = "deny"
+todo = "deny"
+unimplemented = "deny"
+
 [dependencies]
 vuo-core = { path = "../vuo-core" }
 
