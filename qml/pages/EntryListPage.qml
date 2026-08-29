@@ -82,8 +82,21 @@ Page {
 
         RemorsePopup { id: remorse }
 
+        // A refresh that reached the network has to look different from one
+        // that did not. `syncing` had exactly one consumer -- the cover -- so
+        // on the page itself a working Refresh and a Refresh that did nothing
+        // were pixel-identical, which is how the latter went unnoticed.
+        BusyIndicator {
+            anchors.centerIn: parent
+            size: BusyIndicatorSize.Large
+            running: page.model ? page.model.syncing : false
+        }
+
         ViewPlaceholder {
+            // Not while syncing: "Nothing to read / Pull down to refresh"
+            // under a running spinner reads as a refusal.
             enabled: listView.count === 0
+                     && !(page.model && page.model.syncing)
             text: qsTr("Nothing to read")
             hintText: qsTr("Pull down to refresh")
         }
