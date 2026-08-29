@@ -141,6 +141,16 @@ pub fn transform(html: &str, ctx: &TransformContext) -> Document {
         (html, None)
     };
 
+    drive(input, ctx, pre_truncated).finish()
+}
+
+/// Tokenize into a [`Builder`] without finishing it.
+///
+/// Split out so a test can inspect builder state after the run. The §9.2 depth
+/// cap needs that: inside a SKIPPED subtree it has no observable consequence at
+/// all -- nothing is emitted either way -- so the only way to check the cap
+/// holds is to look at how deep the open-element stack actually got.
+fn drive(input: &str, ctx: &TransformContext, pre_truncated: Option<Truncation>) -> Builder {
     let mut builder = Builder::new(ctx.clone());
     builder.truncated = pre_truncated;
 
@@ -163,7 +173,7 @@ pub fn transform(html: &str, ctx: &TransformContext) -> Document {
     let _ = tok.feed(&mut queue);
     tok.end();
 
-    tok.sink.finish()
+    tok.sink
 }
 
 /// What the transform does with an element.
@@ -325,6 +335,8 @@ struct Builder {
     table_depth: u32,
 
     text_bytes: usize,
+    /// The deepest `open` ever got. See [`drive`].
+    peak_open: usize,
     /// `text_bytes` as of the last block actually emitted.
     ///
     /// Lets `push_block` tell "this block is the one that reached the cap"
@@ -360,6 +372,7 @@ impl Builder {
             table: None,
             table_depth: 0,
             text_bytes: 0,
+            peak_open: 0,
             text_committed: 0,
         }
     }
@@ -600,6 +613,8 @@ impl Builder {
         // 2 MiB input cap. §9.2's caps exist to prevent exactly that.
         if self.skip_from.is_some() {
             if !childless && self.open.len() < self.ctx.limits.max_depth {
+                self.peak_open = self.peak_open.max(self.open.len() + 1);
+                self.peak_open = self.peak_open.max(self.open.len() + 1);
                 self.open.push(OpenElement {
                     name,
                     disposition: Disposition::Skip,
@@ -632,6 +647,7 @@ impl Builder {
             }
             self.skip_from = Some(self.open.len());
             let raw = raw_text_kind(&name);
+            self.peak_open = self.peak_open.max(self.open.len() + 1);
             self.open.push(OpenElement {
                 name,
                 disposition: Disposition::Skip,
@@ -684,6 +700,7 @@ impl Builder {
         }
 
         if !childless {
+            self.peak_open = self.peak_open.max(self.open.len() + 1);
             self.open.push(OpenElement {
                 name,
                 disposition,
@@ -1739,6 +1756,7 @@ mod tests_support {
 #[cfg(test)]
 mod resource_exhaustion_tests {
     use super::tests_support::ctx;
+    use super::{Limits, TransformContext};
     use std::time::Instant;
 
     /// A depth-capped stack must stay depth-capped on *every* path.
@@ -1778,10 +1796,29 @@ mod resource_exhaustion_tests {
     #[test]
     fn the_depth_cap_holds_through_a_skipped_subtree() {
         // The same input, checked structurally rather than by timing.
+        //
+        // `assert!(doc.blocks.is_empty())` on its own says nothing about the
+        // cap: every element here is inside a skipped <svg> and carries no
+        // text, so zero blocks come out whether the stack stops at 128 or
+        // grows to 5000. The stack itself has to be the thing observed.
+        let limits = Limits {
+            max_depth: 8,
+            ..Limits::default()
+        };
+        let context = TransformContext { limits, ..ctx() };
         let html = format!("<svg>{}", "<b>".repeat(5_000));
-        let doc = super::transform(&html, &ctx());
-        // Nothing should have been emitted, and crucially it should return
-        // promptly rather than having built a 5000-deep stack.
-        assert!(doc.blocks.is_empty());
+
+        let builder = super::drive(&html, &context, None);
+        let peak = builder.peak_open;
+        let doc = builder.finish();
+
+        assert!(doc.blocks.is_empty(), "a skipped subtree emits nothing");
+        assert!(
+            peak <= limits.max_depth,
+            "the open-element stack reached {peak}, past the cap of {}. \
+             A skipped subtree must not be a way around the §9.2 depth cap: \
+             that is a 5000-deep stack built from attacker-controlled bytes.",
+            limits.max_depth
+        );
     }
 }

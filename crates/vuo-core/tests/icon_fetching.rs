@@ -137,4 +137,38 @@ async fn undecodable_icons_do_not_starve_the_feeds_behind_them() {
         attempts <= 4,
         "and should stop, rather than counting up forever: {attempts}"
     );
+
+    // And now the REQUESTS, not just the rows. §8.3: the mock is the contract,
+    // and what was sent is half of it. Every assertion above is about database
+    // state, and several very different request patterns satisfy all of them --
+    // deleting the "skip icons we already have" clause from
+    // `store::feeds_missing_icons`, so every icon is re-fetched on every sync
+    // forever, changed nothing any of them could see.
+    let requests = server.received_requests().await.expect("recorded requests");
+    let icon_requests: Vec<&str> = requests
+        .iter()
+        .map(|r| r.url.path())
+        .filter(|p| p.starts_with("/v1/feeds/") && p.ends_with("/icon"))
+        .collect();
+
+    // The two good icons are stored on first success and never asked for again.
+    for feed in [9i64, 10] {
+        let asked = icon_requests
+            .iter()
+            .filter(|p| **p == format!("/v1/feeds/{feed}/icon"))
+            .count();
+        assert_eq!(
+            asked, 1,
+            "feed {feed}'s icon decoded on the first try, so it must never be \
+             re-fetched; it was requested {asked} times across five syncs"
+        );
+    }
+
+    // The broken ones stop too, so the total is bounded rather than growing
+    // with the number of passes.
+    assert!(
+        icon_requests.len() <= 8 * 4 + 2,
+        "icon fetching is unbounded: {} requests across five syncs",
+        icon_requests.len()
+    );
 }

@@ -102,6 +102,19 @@ async fn a_process_killed_mid_flight_resumes_without_losing_or_double_applying()
     // The server applies the change, then the process dies before it can
     // record the confirmation. The intent must still be queued, and resending
     // it must be harmless.
+    //
+    // The crash is simulated OUTSIDE `flush` -- the batch is sent by hand --
+    // so what this test actually pins is the idempotency of a resend: the same
+    // absolute value, twice, is a no-op. It deliberately does not carry the two
+    // neighbouring properties, which have their own tests because this shape
+    // cannot see them:
+    //
+    //   - that `flush` sends BEFORE it clears the row, so a failure mid-request
+    //     does not lose the intent -- `a_transient_failure_keeps_the_intent_queued` and
+    //     `a_misconfigured_server_url_never_discards_queued_work`;
+    //   - that a re-toggle during the in-flight window survives, which is why
+    //     `confirm` compares before deleting -- `a_retoggle_during_the_request_
+    //     is_not_lost`.
     let server = MockServer::start().await;
     Mock::given(method("PUT"))
         .and(path("/v1/entries"))

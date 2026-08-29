@@ -428,13 +428,22 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_skew_is_subtracted_not_added() {
-        // Adding it would move the cursor into the future and skip the window
-        // it was supposed to overlap.
-        let server_now = 1_000_000i64;
-        let cursor = server_now - CURSOR_SKEW_SECS;
-        assert!(cursor < server_now);
-        assert_eq!(cursor, 999_940);
+    fn the_skew_is_large_enough_to_be_worth_having() {
+        // This used to be `the_skew_is_subtracted_not_added`, and computed
+        // `server_now - CURSOR_SKEW_SECS` ITSELF before asserting on its own
+        // arithmetic. No production code was called, so flipping the sign in
+        // the pass left it green -- while the direction is the entire point.
+        //
+        // The direction is now checked against the real pass, in
+        // tests/sync_pull.rs::the_cursor_comes_from_the_servers_clock_minus_a_skew.
+        // What remains here is the one thing that test cannot see: whether the
+        // constant is a sensible size. Too small and a mutation during the
+        // pass is missed; too large and every sync re-reads hours of entries.
+        assert!(
+            (30..=300).contains(&CURSOR_SKEW_SECS),
+            "a cursor skew of {CURSOR_SKEW_SECS}s is outside the range that trades \
+             re-reading against missing a concurrent mutation"
+        );
     }
 
     /// Compile-time, because both sides are constants: a runtime assertion

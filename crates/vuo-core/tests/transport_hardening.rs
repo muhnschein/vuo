@@ -319,7 +319,7 @@ async fn a_failed_request_renders_without_the_url_or_its_query() {
             None,
         )
         .await;
-    let err = res.err().expect("a closed port must fail");
+    let err = res.expect_err("a closed port must fail");
     for rendering in [err.to_string(), format!("{err:?}")] {
         assert!(
             !rendering.contains("CANARY-IN-THE-QUERY"),

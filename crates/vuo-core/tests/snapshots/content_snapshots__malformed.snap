@@ -9,3 +9,4 @@ li[bullet, indent 0]: No closing tags
 li[bullet, indent 0]: At all
 li[bullet, indent 0]: Whatsoever Link with a valueless href
 table: 1 rows
+  | td:A cell with no rowTrailing text with a stray &amp;amp; and a bare &amp; ampersand
