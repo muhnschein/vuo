@@ -58,6 +58,12 @@ impl AppContext {
         &self.signal
     }
 
+    /// The shared handle, for code that needs to hold on to it.
+    #[must_use]
+    pub fn signal_handle(&self) -> &std::sync::Arc<SyncSignal> {
+        &self.signal
+    }
+
     #[must_use]
     pub fn instance(&self) -> &url::Url {
         &self.instance
@@ -130,6 +136,98 @@ mod tests {
         // (Each test thread has its own slot, so this is not order-dependent.)
         assert!(current().is_none());
     }
+
+    /// A context over a temp mirror and a worker pointed at an origin nothing
+    /// answers on. Nothing here makes a request; the worker exists because
+    /// `AppContext` owns it.
+    fn test_context(dir: &tempfile::TempDir) -> Rc<AppContext> {
+        let db_path = dir.path().join("mirror.sqlite");
+        let db = Database::open(&db_path).expect("mirror");
+        let signal = std::sync::Arc::new(SyncSignal::default());
+        let worker = crate::worker::Worker::spawn(
+            db_path,
+            url::Url::parse("https://unreachable.invalid/").expect("url"),
+            vuo_core::redact::ApiToken::new("t"),
+            vuo_core::api::TransportConfig::default(),
+            std::sync::Arc::clone(&signal),
+            |_event| {},
+        );
+        AppContext::new(
+            db,
+            worker,
+            url::Url::parse("https://unreachable.invalid/").expect("url"),
+            signal,
+        )
+    }
+
+    #[test]
+    fn a_reentrant_borrow_returns_none_rather_than_panicking() {
+        // §9.5: a panic here unwinds into Qt's C++ frames, which is undefined
+        // behaviour -- so every borrow of the mirror is fallible.
+        //
+        // Nothing exercised that. No test built an `AppContext` at all, so
+        // `read` and `write` were never called, let alone reentrantly:
+        // replacing `try_borrow` with `borrow` left the whole shim suite green
+        // while turning a recoverable `None` into UB.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let ctx = test_context(&dir);
+
+        // A plain borrow succeeds.
+        assert!(ctx.read(|_| ()).is_some());
+        assert!(ctx.write(|_| ()).is_some());
+
+        // A write inside a read, and a read inside a write, are the two ways
+        // this happens for real: a model reading the mirror to build a row and
+        // calling something that writes.
+        let nested_write = ctx.read(|_| ctx.write(|_| ()));
+        assert_eq!(
+            nested_write,
+            Some(None),
+            "a write inside a read must be refused, not panic"
+        );
+        let nested_read = ctx.write(|_| ctx.read(|_| ()));
+        assert_eq!(
+            nested_read,
+            Some(None),
+            "a read inside a write must be refused, not panic"
+        );
+
+        // And the refusal is temporary: the borrow is released afterwards.
+        assert!(ctx.write(|_| ()).is_some());
+    }
+
+    #[test]
+    fn the_sync_signal_counts_generations() {
+        // The models poll this to decide whether to reload. If `bump` stops
+        // incrementing, the UI never refreshes after a sync and silently shows
+        // stale articles; if the poll stops comparing, every model reloads from
+        // SQLite twice a second forever. Neither direction was tested.
+        let signal = SyncSignal::default();
+        assert_eq!(signal.generation(), 0);
+        signal.bump();
+        assert_eq!(signal.generation(), 1);
+        signal.bump();
+        assert_eq!(signal.generation(), 2, "two bumps must advance by two");
+
+        // And it is observable from another thread, which is the only way it
+        // is ever used: the worker bumps, the Qt thread polls.
+        let shared = std::sync::Arc::new(SyncSignal::default());
+        let writer = std::sync::Arc::clone(&shared);
+        std::thread::spawn(move || {
+            for _ in 0..100 {
+                writer.bump();
+            }
+        })
+        .join()
+        .expect("worker thread");
+        assert_eq!(shared.generation(), 100);
+
+        assert!(!shared.is_running());
+        shared.set_running(true);
+        assert!(shared.is_running());
+        shared.set_running(false);
+        assert!(!shared.is_running());
+    }
 }
 
 /// A counter the worker bumps whenever it changes the mirror.
@@ -144,6 +242,24 @@ mod tests {
 pub struct SyncSignal {
     generation: std::sync::atomic::AtomicU64,
     running: std::sync::atomic::AtomicBool,
+    /// A one-shot result the UI has to SHOW rather than merely reload for.
+    ///
+    /// The generation counter says "the mirror changed"; it cannot carry the
+    /// server's answer to "test this connection" or the error text from a
+    /// rejected feed URL. Those reached a log line and nothing else, so "Test
+    /// connection" appeared to do nothing whether the credentials were right
+    /// or wrong.
+    notice: std::sync::Mutex<Option<Notice>>,
+}
+
+/// Something the worker produced that a page must display.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Notice {
+    /// `GET /v1/me` answered. `message` is the username, or the error.
+    ConnectionTested { ok: bool, message: String },
+    /// A subscribe or unsubscribe finished. `message` is the server's error
+    /// text when it failed -- foreign text, so it renders as plain text.
+    SubscriptionChanged { ok: bool, message: String },
 }
 
 impl SyncSignal {
@@ -151,6 +267,23 @@ impl SyncSignal {
     pub fn bump(&self) {
         self.generation
             .fetch_add(1, std::sync::atomic::Ordering::Release);
+    }
+
+    /// Leave a result for the UI to pick up. Called from the worker thread.
+    ///
+    /// A poisoned lock is ignored rather than unwrapped: §9.5 forbids a panic
+    /// that could unwind into Qt's frames, and a dropped notice costs the user
+    /// a status line, not data.
+    pub fn post(&self, notice: Notice) {
+        if let Ok(mut slot) = self.notice.lock() {
+            *slot = Some(notice);
+        }
+    }
+
+    /// Take the pending notice, if any. Called from the Qt thread.
+    #[must_use]
+    pub fn take_notice(&self) -> Option<Notice> {
+        self.notice.lock().ok().and_then(|mut slot| slot.take())
     }
 
     pub fn set_running(&self, running: bool) {

@@ -52,6 +52,14 @@ pub struct Settings {
 
     save: qt_method!(fn(&mut self)),
     testConnection: qt_method!(fn(&mut self)),
+    /// Drain the worker's pending result and fire [`connectionTested`].
+    ///
+    /// A poll for the same reason `EntryModel::pollSync` is one: QML owns this
+    /// object, so Rust has no handle to signal into. Before this existed the
+    /// worker's answer reached a log line and nothing else, so "Test
+    /// connection" gave the user no feedback at all -- right or wrong
+    /// credentials, the result Label stayed hidden.
+    pollNotice: qt_method!(fn(&mut self) -> bool),
 
     ctx: Option<std::rc::Rc<AppContext>>,
 }
@@ -68,6 +76,17 @@ impl Settings {
         let Some(paths) = AppPaths::resolve() else {
             return;
         };
+        self.load_from(&paths);
+    }
+
+    /// [`Settings::load`] against explicit paths.
+    ///
+    /// Split out so the settings screen's own read path can be tested. The
+    /// no-arg version resolves `$XDG_DATA_HOME`/`$HOME`, so a test that called
+    /// it was reading the developer's real home directory: on a machine where
+    /// Vuo is actually configured it took the loaded branch and passed with the
+    /// default flipped.
+    pub fn load_from(&mut self, paths: &AppPaths) {
         if let Ok(account) = worker::load_account(&paths.account) {
             self.serverUrl = QString::from(account.server_url);
             // The key is loaded so the field is not blank when the user opens
@@ -99,6 +118,17 @@ impl Settings {
         let Some(paths) = AppPaths::resolve() else {
             return;
         };
+        self.save_to(&paths);
+    }
+
+    /// [`Settings::save`] against explicit paths.
+    ///
+    /// The copy from the QML-visible properties into `Account` lives here, so
+    /// a test can drive the real one. The round-trip test used to build an
+    /// `Account` by hand and round-trip THAT, which exercises serde's derive
+    /// rather than the settings screen: dropping three fields from this copy
+    /// left it green.
+    pub fn save_to(&mut self, paths: &AppPaths) {
         let account = Account {
             server_url: self.serverUrl.to_string().trim().to_owned(),
             token: self.apiKey.to_string().trim().to_owned(),
@@ -122,7 +152,33 @@ impl Settings {
         }
     }
 
-    /// Called from the event pump when the worker answers.
+    fn pollNotice(&mut self) -> bool {
+        let Some(ctx) = self.ctx.clone().or_else(crate::context::current) else {
+            return false;
+        };
+        let signal = std::sync::Arc::clone(ctx.signal_handle());
+        self.poll_notice_from(&signal)
+    }
+
+    /// [`Settings::pollNotice`] against an explicit signal, so the worker →
+    /// page round trip can be tested without a QML engine or a context.
+    pub fn poll_notice_from(&mut self, signal: &crate::context::SyncSignal) -> bool {
+        match signal.take_notice() {
+            Some(crate::context::Notice::ConnectionTested { ok, message }) => {
+                self.on_connection_tested(ok, &message);
+                true
+            }
+            // Not this page's to show; put it back so the page that cares can
+            // take it.
+            Some(other) => {
+                signal.post(other);
+                false
+            }
+            None => false,
+        }
+    }
+
+    /// Fire the QML-visible signal. Reached through [`Settings::pollNotice`].
     pub fn on_connection_tested(&mut self, ok: bool, message: &str) {
         self.connectionTested(ok, QString::from(message.to_owned()));
     }
@@ -158,28 +214,47 @@ impl Settings {
 mod tests {
     use super::*;
 
+    fn temp_paths(dir: &tempfile::TempDir) -> AppPaths {
+        let base = dir.path().join("harbour-vuo");
+        std::fs::create_dir_all(&base).expect("mkdir");
+        AppPaths::under(base)
+    }
+
     #[test]
     fn every_setting_survives_a_round_trip() {
         // The Images, Background refresh and Wi-Fi-only controls were rendered
         // but never persisted or read: changing them did nothing at all, and
         // nothing in the build said so.
+        //
+        // The round trip goes through `Settings` itself. It used to build an
+        // `Account` literal and round-trip THAT through save_account /
+        // load_account, which tests serde's derive rather than the settings
+        // screen: dropping `use_custom_ca`, `media_policy` and
+        // `sync_interval_index` from `Settings::save`'s copy -- the exact bug
+        // in the comment above -- left it green.
         let dir = tempfile::tempdir().expect("tempdir");
-        let path = dir.path().join("account.json");
-        let written = Account {
-            server_url: "https://h.example/".into(),
-            token: "t".into(),
-            use_custom_ca: true,
-            media_policy: MEDIA_ALLOW,
-            sync_interval_index: 3,
-            wifi_only: true,
-        };
-        worker::save_account(&path, &written).expect("write");
-        let read = worker::load_account(&path).expect("read");
+        let paths = temp_paths(&dir);
 
-        assert_eq!(read.media_policy, MEDIA_ALLOW);
-        assert_eq!(read.sync_interval_index, 3);
-        assert!(read.wifi_only);
-        assert!(read.use_custom_ca);
+        let mut written = Settings {
+            serverUrl: QString::from("https://h.example/"),
+            apiKey: QString::from("t"),
+            useCustomCa: true,
+            mediaPolicy: MEDIA_ALLOW,
+            syncIntervalIndex: 3,
+            wifiOnly: true,
+            ..Settings::default()
+        };
+        written.save_to(&paths);
+
+        let mut read = Settings::default();
+        read.load_from(&paths);
+
+        assert_eq!(read.serverUrl.to_string(), "https://h.example/");
+        assert_eq!(read.apiKey.to_string(), "t");
+        assert_eq!(read.mediaPolicy, MEDIA_ALLOW);
+        assert_eq!(read.syncIntervalIndex, 3);
+        assert!(read.wifiOnly);
+        assert!(read.useCustomCa);
     }
 
     #[test]
@@ -198,9 +273,65 @@ mod tests {
     fn the_default_media_policy_is_ask_not_strict() {
         // On a stock Miniflux MEDIA_PROXY_MODE is http-only, so most images
         // arrive un-proxied. Strict by default would blank most articles.
+        //
+        // Against an EMPTY directory of its own. Calling the no-arg `load()`,
+        // as this used to, reads $XDG_DATA_HOME/$HOME: on a machine where the
+        // developer actually runs Vuo it took the loaded branch and passed with
+        // the default flipped to Strict.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let paths = temp_paths(&dir);
+        assert!(!paths.account.exists(), "this must be a first run");
+
         let mut s = Settings::default();
-        s.load();
+        s.load_from(&paths);
         assert_eq!(s.mediaPolicy, MEDIA_ASK);
+    }
+
+    #[test]
+    fn a_worker_result_reaches_the_settings_page() {
+        // The worker answers "test this connection" on its own thread. Before
+        // `pollNotice` existed that answer reached a log line and nothing
+        // else: `on_connection_tested` had ZERO callers, so `connectionTested`
+        // never fired and SettingsPage's result Label stayed hidden whether
+        // the credentials were right or wrong.
+        let signal = std::sync::Arc::new(crate::context::SyncSignal::default());
+
+        let mut s = Settings::default();
+        assert!(
+            !s.poll_notice_from(&signal),
+            "nothing pending: the page must not be told anything"
+        );
+
+        // As the worker does, from its own thread.
+        let writer = std::sync::Arc::clone(&signal);
+        std::thread::spawn(move || {
+            writer.post(crate::context::Notice::ConnectionTested {
+                ok: true,
+                message: "alice".to_owned(),
+            });
+        })
+        .join()
+        .expect("worker thread");
+
+        assert!(
+            s.poll_notice_from(&signal),
+            "the worker's answer must reach the page"
+        );
+        assert!(
+            !s.poll_notice_from(&signal),
+            "and it is one-shot: a drained notice must not repeat forever"
+        );
+
+        // A notice meant for another page is left where it was.
+        signal.post(crate::context::Notice::SubscriptionChanged {
+            ok: false,
+            message: "no".to_owned(),
+        });
+        assert!(!s.poll_notice_from(&signal));
+        assert!(
+            signal.take_notice().is_some(),
+            "a notice this page does not handle must stay for the one that does"
+        );
     }
 
     #[test]

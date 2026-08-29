@@ -63,7 +63,7 @@ pub const PAGE_SIZE: u32 = 250;
 ///
 /// A pass that somehow fails to advance must terminate rather than loop
 /// forever against the user's data allowance.
-const MAX_PAGES_PER_PASS: usize = 400;
+pub const MAX_PAGES_PER_PASS: usize = 400;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct PullOutcome {
@@ -151,6 +151,25 @@ pub async fn entries(
     cursor: Option<i64>,
     generation: i64,
 ) -> Result<PullOutcome> {
+    entries_with_page_cap(db, client, cursor, generation, MAX_PAGES_PER_PASS).await
+}
+
+/// [`entries`], with the page cap given explicitly.
+///
+/// The cap exists so a pass cannot run forever, and holding the cursor back
+/// when it fires is what stops the next pass skipping everything beyond the
+/// stopping point. Reaching the real cap means 400 pages of 250 entries --
+/// 100,000 rows through a mock server -- and a test that slow does not get
+/// written, so the branch was dead under test: replacing its body with a panic
+/// left every test in the suite green. Injecting the cap makes it reachable in
+/// milliseconds.
+pub async fn entries_with_page_cap(
+    db: &mut Database,
+    client: &MinifluxClient,
+    cursor: Option<i64>,
+    generation: i64,
+    max_pages: usize,
+) -> Result<PullOutcome> {
     let mut outcome = PullOutcome::default();
     let mut after: Option<EntryId> = None;
     let mut server_now: Option<i64> = None;
@@ -160,7 +179,7 @@ pub async fn entries(
     let mut incomplete = false;
 
     loop {
-        if outcome.pages >= MAX_PAGES_PER_PASS {
+        if outcome.pages >= max_pages {
             tracing::warn!(
                 pages = outcome.pages,
                 "stopping pull at the page cap; the cursor will not advance"

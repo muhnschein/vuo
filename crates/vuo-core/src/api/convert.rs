@@ -184,6 +184,41 @@ mod tests {
             e.url.map(|u| u.as_str().to_owned()),
             Some("https://x.example/a".to_owned())
         );
+        // The fixture supplies a timestamp and nothing used to look at it, so
+        // `to_utc` had no behavioural coverage at all: returning `None` from
+        // it wiped every entry date -- the sort order of the whole list -- with
+        // the crate still green.
+        assert_eq!(
+            e.published_at,
+            Some(
+                "2026-01-02T03:04:05Z"
+                    .parse::<chrono::DateTime<chrono::Utc>>()
+                    .unwrap()
+            )
+        );
+        assert_eq!(e.reading_time, 4);
+        assert_eq!(e.title, "T");
+    }
+
+    #[test]
+    fn a_non_utc_offset_is_converted_not_dropped() {
+        // The wire type keeps the server's offset; the domain type is UTC. A
+        // conversion that ignored the offset would put every entry from a
+        // non-UTC server hours out of place in the list.
+        let e = entry(wire_entry(
+            r#"{"id":8,"feed_id":3,"status":"unread","title":"T",
+                "published_at":"2026-01-02T05:04:05+02:00"}"#,
+        ))
+        .unwrap();
+        assert_eq!(
+            e.published_at,
+            Some(
+                "2026-01-02T03:04:05Z"
+                    .parse::<chrono::DateTime<chrono::Utc>>()
+                    .unwrap()
+            ),
+            "05:04:05+02:00 is 03:04:05Z"
+        );
     }
 
     #[test]

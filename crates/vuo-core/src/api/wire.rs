@@ -336,6 +336,10 @@ mod tests {
         // 05:06:07+02:00 is 03:06:07Z.
         assert_eq!(ts.timestamp(), 1_772_593_567);
         assert_eq!(ts.offset().local_minus_utc(), 2 * 3600);
+        // `timestamp()` truncates, so the whole-seconds assertion above says
+        // nothing about the fractional half of this test's name: zeroing the
+        // nanoseconds left it, and the rest of the crate, green.
+        assert_eq!(ts.timestamp_subsec_micros(), 123_456);
     }
 
     #[test]
