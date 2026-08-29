@@ -139,6 +139,42 @@ ever reached it:
 `build.rs` also honours `VUO_SYSROOT` now, so the same source builds inside sb2
 (where the prefix is empty and paths are absolute, unchanged) and outside it.
 
+### Running the device binary without a device
+
+The cross-built aarch64 binary runs under `qemu-aarch64-static` against the
+target sysroot, which makes the SailfishOS target's **own Qt 5.6.3 and own
+Silica** testable here. `docs/status.md` lists "the shim is compiled against
+Qt 5.15, not Qt 5.6" and "the Silica stubs are an approximation" as standing
+gaps; this does not close them, but it answers questions the stubs cannot.
+
+```sh
+SR=<rootfs>/srv/mer/targets/SailfishOS-5.0.0.43-aarch64
+QT_QPA_PLATFORM=minimal QT_LOGGING_TO_CONSOLE=1 XDG_RUNTIME_DIR=/tmp/xdgrt \
+QML2_IMPORT_PATH=$SR/usr/lib64/qt5/qml QT_PLUGIN_PATH=$SR/usr/lib64/qt5/plugins \
+qemu-aarch64-static -L $SR -E LD_LIBRARY_PATH=$SR/usr/lib64:$SR/lib64 \
+    target/aarch64-unknown-linux-gnu/debug/examples/qml-probe page.qml
+```
+
+`QT_LOGGING_TO_CONSOLE=1` is load-bearing: Sailfish's Qt sends `qDebug` to
+journald, so without it `console.log` output vanishes and the run looks silent
+and successful.
+
+Two examples exist for this. `qml-probe` loads a QML file in a real engine --
+enough to walk a page and print what each control actually holds when it first
+appears, which is how the settings-screen defects were confirmed against real
+Silica rather than guessed at. `net-probe` makes exactly the request "Test
+connection" makes, which tells an app fault apart from a network one:
+
+```
+$ net-probe http://127.0.0.1:8083/ mykey
+OK: connected as philipp
+# and the server saw, in full:
+#   GET /v1/me  x-auth-token: mykey, accept, user-agent, accept-encoding, host
+```
+
+That listing is the whole request. Miniflux authenticates with `X-Auth-Token`
+and Vuo sends no username at all -- the username is what `/v1/me` *returns*.
+
 ### What this does and does not prove
 
 It proves the code compiles and links against real Qt 5.6.3 and real

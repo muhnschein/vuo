@@ -51,6 +51,17 @@ pub struct Settings {
     connectionTested: qt_signal!(ok: bool, message: QString),
 
     save: qt_method!(fn(&mut self)),
+    /// Read the stored account into this object's properties.
+    ///
+    /// QML has to call this, and nothing did. `attach` -- the only caller of
+    /// `load` -- has no production callers at all, so the settings screen
+    /// never read the account file: every visit showed a blank server address
+    /// and a blank API key however many times they had been saved, and every
+    /// other control showed a Rust default rather than the stored value. The
+    /// Images setting in particular showed "Never load", because `i32::default`
+    /// is 0 and the `MEDIA_ASK` default only happens inside the load that was
+    /// not running.
+    reload: qt_method!(fn(&mut self)),
     testConnection: qt_method!(fn(&mut self)),
     /// Drain the worker's pending result and fire [`connectionTested`].
     ///
@@ -124,6 +135,11 @@ impl Settings {
             .and_then(|ctx| ctx.read(|db| vuo_core::db::outbox::len(db.conn()).unwrap_or(0)))
             .map(|n| i32::try_from(n).unwrap_or(i32::MAX))
             .unwrap_or(0)
+    }
+
+    fn reload(&mut self) {
+        self.load();
+        self.changed();
     }
 
     fn save(&mut self) {
@@ -665,6 +681,50 @@ mod tests {
         assert!(
             message.contains("scheme"),
             "the message must name what is missing: {message}"
+        );
+    }
+
+    /// §the settings screen shows what is actually stored.
+    ///
+    /// `load_from` had exactly one caller, `attach`, and `attach` had NO
+    /// production callers -- so the page never read the account file. Every
+    /// visit showed a blank server address and a blank API key however many
+    /// times they had been saved, and every other control showed a Rust
+    /// default: Images in particular showed "Never load", because `i32::
+    /// default()` is 0 and the `MEDIA_ASK` default only happens inside the
+    /// load that was not running. `reload` is what QML now calls.
+    #[test]
+    fn the_page_shows_the_stored_account_rather_than_rust_defaults() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let paths = temp_paths(&dir);
+
+        let mut written = Settings {
+            serverUrl: QString::from("http://10.77.0.1:8083/"),
+            apiKey: QString::from("secretkey"),
+            mediaPolicy: MEDIA_ALLOW,
+            syncIntervalIndex: 3,
+            wifiOnly: true,
+            ..Settings::default()
+        };
+        written.save_to(&paths);
+
+        // A second visit to the page, as a fresh QML-constructed object.
+        let mut reopened = Settings::default();
+        assert_eq!(
+            reopened.serverUrl.to_string(),
+            "",
+            "a QML-constructed page starts empty; that is the premise"
+        );
+        reopened.load_from(&paths);
+
+        assert_eq!(reopened.serverUrl.to_string(), "http://10.77.0.1:8083/");
+        assert_eq!(reopened.apiKey.to_string(), "secretkey");
+        assert_eq!(reopened.mediaPolicy, MEDIA_ALLOW);
+        assert_eq!(reopened.syncIntervalIndex, 3);
+        assert!(reopened.wifiOnly);
+        assert!(
+            !reopened.useCustomCa,
+            "and nothing turns the CA switch on by itself"
         );
     }
 
