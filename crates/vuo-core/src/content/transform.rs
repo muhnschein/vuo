@@ -855,6 +855,7 @@ impl Builder {
                     alt,
                     title,
                     fetch,
+                    intrinsic: intrinsic_size(tag),
                 });
             }
         }
@@ -1044,6 +1045,29 @@ fn is_void(name: &str) -> bool {
             | "track"
             | "wbr"
     )
+}
+
+/// The `<img>` tag's own `width` and `height`, when both are usable.
+///
+/// Only a plain integer count of pixels is accepted. A percentage, a `calc()`,
+/// a unit suffix or a zero tells us nothing about the aspect ratio, and both
+/// have to be present for a ratio to exist at all.
+///
+/// Capped hard. This is foreign input whose only job is to shape a rectangle
+/// before the image loads: a feed claiming 4 billion pixels must not be able to
+/// turn into an enormous reserved space, or a division that overflows on the
+/// way there. The cap is far beyond any real image and far below anything that
+/// hurts.
+fn intrinsic_size(tag: &Tag) -> Option<(u32, u32)> {
+    const MAX_DIMENSION: u32 = 20_000;
+    let dimension = |name: &str| -> Option<u32> {
+        attr(tag, name)?
+            .trim()
+            .parse::<u32>()
+            .ok()
+            .filter(|n| *n > 0 && *n <= MAX_DIMENSION)
+    };
+    Some((dimension("width")?, dimension("height")?))
 }
 
 fn attr(tag: &Tag, wanted: &str) -> Option<String> {
@@ -1367,6 +1391,61 @@ mod tests {
                 .and_then(|s| s.link.as_ref())
                 .map(|u| u.as_str()),
             Some("https://blog.example/x")
+        );
+    }
+
+    /// §the `<img>` tag's own dimensions, carried for layout.
+    ///
+    /// Reported from a device: an article's content jumped around while
+    /// scrolling. The UI cannot reserve room for an image it knows nothing
+    /// about, so every row was flat until its image decoded and then sprang to
+    /// full size. The ratio is advisory -- it shapes a rectangle and bounds
+    /// nothing -- so the rule is that it is either trustworthy-looking or
+    /// absent, never half-parsed.
+    #[test]
+    fn an_images_own_dimensions_are_carried_when_they_are_usable() {
+        let intrinsic_of = |html: &str| -> Option<(u32, u32)> {
+            transform(html, &lenient_ctx())
+                .blocks
+                .into_iter()
+                .find_map(|b| match b.kind {
+                    BlockKind::Image { intrinsic, .. } => Some(intrinsic),
+                    _ => None,
+                })
+                .expect("an image block")
+        };
+
+        assert_eq!(
+            intrinsic_of(r#"<img src="/a.png" width="800" height="600">"#),
+            Some((800, 600))
+        );
+
+        // Anything that does not describe a ratio in whole pixels is no hint
+        // at all, and must not become a wrong one.
+        for html in [
+            r#"<img src="/a.png" width="800">"#,  // height missing
+            r#"<img src="/a.png" height="600">"#, // width missing
+            r#"<img src="/a.png" width="100%" height="50%">"#, // percentages
+            r#"<img src="/a.png" width="800px" height="600px">"#, // units
+            r#"<img src="/a.png" width="0" height="600">"#, // a zero ratio
+            r#"<img src="/a.png" width="-800" height="600">"#, // negative
+            r#"<img src="/a.png" width="abc" height="600">"#, // not a number
+            r#"<img src="/a.png">"#,              // nothing at all
+        ] {
+            assert_eq!(intrinsic_of(html), None, "{html}");
+        }
+
+        // Foreign input: a feed can claim any size, and the reserved rectangle
+        // must not follow it anywhere absurd.
+        assert_eq!(
+            intrinsic_of(r#"<img src="/a.png" width="4294967295" height="4294967295">"#),
+            None,
+            "an enormous claim is no hint, not an enormous hint"
+        );
+        assert_eq!(
+            intrinsic_of(r#"<img src="/a.png" width="99999999999999999999" height="1">"#),
+            None,
+            "and one that does not even fit in the type is not a panic"
         );
     }
 

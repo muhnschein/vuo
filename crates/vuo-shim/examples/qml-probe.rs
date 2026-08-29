@@ -19,4 +19,13 @@ fn main() {
     vuo_shim::register_qml_types();
     let mut engine = qmetaobject::QmlEngine::new();
     engine.load_file(qmetaobject::QString::from(path));
+
+    // `Component.onCompleted` runs during the load, so a probe that only wants
+    // to inspect a page as it first appears needs nothing more. Anything
+    // driven by a Timer or by the page stack -- a navigation sequence, say --
+    // needs the event loop, and the QML is then responsible for calling
+    // Qt.quit(). Opt in, so the common case still exits on its own.
+    if std::env::var_os("VUO_PROBE_EXEC").is_some() {
+        engine.exec();
+    }
 }

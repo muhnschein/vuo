@@ -32,6 +32,16 @@ Page {
         anchors.fill: parent
         model: article
 
+        // Keep delegates alive well beyond the viewport.
+        //
+        // A ListView destroys delegates that scroll out of range and rebuilds
+        // them on the way back, which for this page meant every image was
+        // re-resolved and re-decoded each time it re-entered view -- so
+        // scrolling back up through an article you had already read jumped
+        // around exactly as it had on the way down. Four screens of buffer
+        // covers a normal article's worth of back-and-forth.
+        cacheBuffer: Math.round(blocks.height * 4)
+
         header: Column {
             width: blocks.width
 
@@ -49,6 +59,29 @@ Page {
                 text: page.entryTitle
                 font.pixelSize: Theme.fontSizeLarge
                 color: Theme.highlightColor
+            }
+
+            // What the article's own state is. Neither of these could be seen
+            // anywhere in this view before: read/unread and starred lived only
+            // in the entry list's context menu, so a reader who had opened an
+            // article could not tell whether it was starred, let alone star it.
+            Row {
+                x: Theme.horizontalPageMargin
+                spacing: Theme.paddingMedium
+
+                Label {
+                    text: article.isRead ? qsTr("Read") : qsTr("Unread")
+                    textFormat: Text.PlainText
+                    font.pixelSize: Theme.fontSizeExtraSmall
+                    color: article.isRead ? Theme.secondaryColor : Theme.highlightColor
+                }
+                Label {
+                    visible: article.isStarred
+                    text: qsTr("★ Favourite")
+                    textFormat: Text.PlainText
+                    font.pixelSize: Theme.fontSizeExtraSmall
+                    color: Theme.highlightColor
+                }
             }
 
             Label {
@@ -78,6 +111,15 @@ Page {
         }
 
         PullDownMenu {
+            MenuItem {
+                text: article.isRead ? qsTr("Mark as unread") : qsTr("Mark as read")
+                onClicked: article.toggleRead()
+            }
+            MenuItem {
+                text: article.isStarred ? qsTr("Remove favourite")
+                                        : qsTr("Add favourite")
+                onClicked: article.toggleStarred()
+            }
             MenuItem {
                 text: qsTr("Open in browser")
                 // openInBrowser RETURNS the URL rather than launching it: Rust
@@ -233,16 +275,35 @@ Page {
                     }
 
                     Image {
-                        visible: !needsConsent
+                        id: picture
+                        visible: !needsConsent && status !== Image.Error
                         width: parent.width
+                        // A definite height at ALL times, which this did not
+                        // have. With only a width set, PreserveAspectFit
+                        // leaves implicitHeight at 0 until the pixels arrive
+                        // -- so every row was flat until its image decoded and
+                        // then sprang to full size, re-flowing everything
+                        // below it under the reader's thumb.
+                        //
+                        // Once loaded the real ratio is used. Before that the
+                        // <img> tag's own width/height gives the right shape
+                        // outright, and where the feed offered none, a square
+                        // is reserved: wrong by some amount, but wrong by a
+                        // BOUNDED amount and only once.
+                        height: {
+                            if (status === Image.Ready && implicitWidth > 0) {
+                                return width * (implicitHeight / implicitWidth)
+                            }
+                            return width * (imageRatio > 0 ? imageRatio : 1)
+                        }
                         fillMode: Image.PreserveAspectFit
                         asynchronous: true
+                        cache: true
                         // Capped so a hostile image cannot exhaust memory
                         // during decode; the URL was validated as http(s) in
                         // Rust before it ever reached QML.
                         sourceSize.width: block.width
                         source: needsConsent ? "" : imageSource
-                        onStatusChanged: if (status === Image.Error) visible = false
                     }
 
                     Label {

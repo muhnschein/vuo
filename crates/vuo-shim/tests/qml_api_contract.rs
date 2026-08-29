@@ -255,6 +255,9 @@ const QML_VALUE_NAMES: &[&str] = &[
     "currentIndex",
     "defaultAllowedOrientations",
     "implicitHeight",
+    // The pair of it. Both are Item's own, and the article view reads them off
+    // a loaded Image to get its true aspect ratio.
+    "implicitWidth",
     "sourceSize",
     "textFormat",
 ];
