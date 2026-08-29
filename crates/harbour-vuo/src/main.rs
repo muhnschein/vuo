@@ -17,6 +17,9 @@
 //! mirror, loads QML, and runs the event loop. Everything else is in
 //! `vuo-core`, where it can be tested without Qt.
 
+// Only the desktop entry point uses these (QmlEngine, QString, QUrl); the
+// device path goes through SailfishApp's C++ and needs none of them.
+#[cfg(not(feature = "sailfishapp"))]
 use qmetaobject::*;
 
 fn main() {
