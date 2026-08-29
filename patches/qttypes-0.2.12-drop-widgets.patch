@@ -1,0 +1,13 @@
+--- a/build.rs
++++ b/build.rs
+@@ -243,7 +243,9 @@
+     };
+     link_lib("Core");
+     link_lib("Gui");
+-    link_lib("Widgets");
++    // link_lib("Widgets") removed -- see PATCHES.md at the repo root.
++    // libQt5Widgets.so.5 is not in Harbour's allowed_libraries.conf, and this
++    // call put it in DT_NEEDED for every binary built with this crate.
+     #[cfg(feature = "qtquick")]
+     link_lib("Quick");
+     #[cfg(feature = "qtquick")]
