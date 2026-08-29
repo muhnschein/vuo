@@ -13,3 +13,16 @@ Categories=Qt;Network;News;
 # shared link reuses the running app rather than starting a second copy.
 X-Nemo-Application-Type=silica-qt5
 X-Nemo-Single-Instance=yes
+
+# Sailjail. Must be the LAST group in the file and contain no further '[':
+# rpmvalidation.sh extracts it with `sed -n '/^\[X-Sailjail\]/,$p'`, so anything
+# after it would be read as sailjail keys.
+#
+# Internet is the only permission Vuo needs. It talks HTTPS to one server the
+# user configured and nothing else: no camera, no location, no contacts, and no
+# access to the user's document directories. Its database and account file live
+# under the app's own $XDG_DATA_HOME/harbour-vuo, which needs no permission.
+[X-Sailjail]
+OrganizationName=vuo.example
+ApplicationName=harbour-vuo
+Permissions=Internet
