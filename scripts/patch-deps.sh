@@ -23,6 +23,13 @@ ROOT=$(pwd)
 QMETAOBJECT_VERSION=0.2.10
 QTTYPES_VERSION=0.2.12
 
+# crates.io SHA-256 of each .crate tarball, taken from the lockfile entries
+# these patches replace. Every downloaded archive is checked against them, so a
+# fetched source is verified rather than trusted -- which is more than a warm
+# registry cache gives us.
+QMETAOBJECT_SHA256=426a57e85d36f055a0c82cb0a8a261d49ba051ab2a2ef5471835f69d477816cd
+QTTYPES_SHA256=c7edf5b38c97ad8900ad2a8418ee44b4adceaa866a4a3405e2f1c909871d7ebd
+
 # Pristine sources come from wherever this machine already has them: the cargo
 # registry on a dev host, or pristine/ inside the SDK chroot, where there is no
 # crates.io route at all.
@@ -35,8 +42,8 @@ find_source() {
     local name=$1 version=$2 candidate
     for candidate in \
         "$ROOT/pristine/$name-$version" \
-        "${CARGO_HOME:-$HOME/.cargo}"/registry/src/*/"$name-$version" \
-        /root/.cargo/registry/src/*/"$name-$version"
+        "$ROOT/.patch-deps-cache/$name-$version" \
+        "${CARGO_HOME:-$HOME/.cargo}"/registry/src/*/"$name-$version"
     do
         if [ -f "$candidate/Cargo.toml" ]; then
             printf '%s\n' "$candidate"
@@ -46,8 +53,46 @@ find_source() {
     return 1
 }
 
+# Download a crate straight from crates.io, checksum it, unpack it.
+#
+# Needed because there is a bootstrap cycle otherwise: this script exists to
+# create the paths [patch.crates-io] names, and `cargo fetch` -- the obvious way
+# to populate the registry -- cannot run until those paths exist. A fresh CI
+# checkout has an empty registry, so "just run cargo first" is not available.
+# Every job failed here on exactly that.
+#
+# Not used by the SDK build: pristine/ is searched first and ships in the vendor
+# tarball, so the offline path never reaches this.
+download_source() {
+    local name=$1 version=$2 want=$3
+    local cache="$ROOT/.patch-deps-cache"
+    local dest="$cache/$name-$version"
+    local tarball="$cache/$name-$version.crate"
+
+    command -v curl >/dev/null || return 1
+    mkdir -p "$cache"
+
+    curl -sSfL -o "$tarball" \
+        "https://static.crates.io/crates/$name/$name-$version.crate" || return 1
+
+    local got
+    got=$(sha256sum "$tarball" | cut -d" " -f1)
+    if [ "$got" != "$want" ]; then
+        echo "FAIL: checksum mismatch for $name $version" >&2
+        echo "      expected $want" >&2
+        echo "      got      $got" >&2
+        rm -f "$tarball"
+        exit 1
+    fi
+
+    mkdir -p "$dest"
+    tar -xzf "$tarball" -C "$dest" --strip-components=1
+    rm -f "$tarball"
+    printf '%s\n' "$dest"
+}
+
 materialise() {
-    local name=$1 version=$2 patch=$3 marker=$4
+    local name=$1 version=$2 sha256=$3 patch=$4 marker=$5
     local dest="$ROOT/third_party/$name"
 
     if [ -f "$dest/.patched" ] && grep -q "$version" "$dest/.patched" 2>/dev/null; then
@@ -57,10 +102,14 @@ materialise() {
 
     local src
     if ! src=$(find_source "$name" "$version"); then
-        echo "FAIL: no pristine source for $name $version." >&2
-        echo "      Looked in vendor/ and the cargo registry. Run 'cargo fetch'," >&2
-        echo "      or 'cargo vendor' if you are preparing an offline SDK build." >&2
-        exit 1
+        echo "  $name $version not present locally; fetching from crates.io"
+        if ! src=$(download_source "$name" "$version" "$sha256"); then
+            echo "FAIL: no source for $name $version, and the download failed." >&2
+            echo "      Looked in pristine/, .patch-deps-cache/ and the cargo" >&2
+            echo "      registry. With no network, populate one of those --" >&2
+            echo "      'cargo vendor' produces pristine/ for the SDK build." >&2
+            exit 1
+        fi
     fi
 
     echo "  $name $version <- $src"
@@ -89,6 +138,8 @@ materialise() {
 }
 
 echo "== patching forked dependencies =="
-materialise qttypes     "$QTTYPES_VERSION"     qttypes-0.2.12-drop-widgets.patch        '^[[:space:]]*link_lib\("Widgets"\)'
-materialise qmetaobject "$QMETAOBJECT_VERSION" qmetaobject-0.2.10-qguiapplication.patch '^[[:space:]]*#include <QtWidgets/QApplication>'
+materialise qttypes "$QTTYPES_VERSION" "$QTTYPES_SHA256" \
+    qttypes-0.2.12-drop-widgets.patch '^[[:space:]]*link_lib\("Widgets"\)'
+materialise qmetaobject "$QMETAOBJECT_VERSION" "$QMETAOBJECT_SHA256" \
+    qmetaobject-0.2.10-qguiapplication.patch '^[[:space:]]*#include <QtWidgets/QApplication>'
 echo "  done"

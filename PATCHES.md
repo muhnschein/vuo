@@ -99,6 +99,23 @@ against a built binary.
 `tests/`, `README.md`, `Cargo.toml.orig` and cargo's vendoring markers are
 removed from both copies. A path dependency does not build them.
 
+## Where patch-deps gets the sources
+
+In order: `pristine/` (shipped in the vendor tarball, so the SDK build never
+needs a network), `.patch-deps-cache/`, the cargo registry, and finally a
+download from crates.io checked against the SHA-256 in the lockfile entry each
+patch replaces.
+
+That last step is not a convenience. There is a bootstrap cycle without it:
+this script exists to create the paths `[patch.crates-io]` names, and
+`cargo fetch` -- the obvious way to fill the registry -- cannot resolve
+anything until those paths exist. A fresh CI checkout has an empty registry, so
+"run cargo first" is not available, and every CI job failed on exactly that
+before the download existed.
+
+A verified download is also strictly better than a warm registry cache, which
+is trusted rather than checked.
+
 ## What patch-deps verifies
 
 Applying a patch cleanly is not the same as it having done the right thing --
