@@ -5,9 +5,11 @@
 # for the whole approach is in docs/packaging.md.
 
 # Harbour ON by default: the store package is the one people install, and
-# `validatepaths` in sdk-harbour-rpmvalidator permits EXACTLY four things --
-# %{_bindir}/harbour-vuo, %{_datadir}/harbour-vuo/**, the .desktop file and the
-# hicolor icons. Anything else is "Installation not allowed in this location".
+# `validatepaths` in sdk-harbour-rpmvalidator permits EXACTLY four things: the
+# binary in bindir, everything under datadir/harbour-vuo, the .desktop file and
+# the hicolor icons. Anything else is "Installation not allowed in this
+# location". (Written without rpm macros on purpose -- rpm expands them inside
+# comments too, and warns about it.)
 # Build with `--without harbour` for OpenRepos/Chum, where the systemd sync
 # timer below is allowed and genuinely useful.
 %bcond_without harbour
@@ -213,9 +215,8 @@ if ls translations/*.qm >/dev/null 2>&1; then
 fi
 
 %if %{with harbour}
-# The licence still ships, just at a path Harbour allows: `%license` puts it
-# under %{_datadir}/licenses/<name>/, and validatepaths permits only the bin,
-# the desktop file, the icons and %{_datadir}/harbour-vuo/**.
+# The licence still ships, at a path Harbour allows. The %%license macro puts
+# it under datadir/licenses/<name>/, which validatepaths rejects.
 install -Dm 644 LICENSE %{buildroot}%{_datadir}/harbour-vuo/LICENSE
 %endif
 
