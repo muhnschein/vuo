@@ -4,7 +4,13 @@
 # Sailfish app (§4). Notes on the non-obvious parts are inline; the rationale
 # for the whole approach is in docs/packaging.md.
 
-%bcond_with harbour
+# Harbour ON by default: the store package is the one people install, and
+# `validatepaths` in sdk-harbour-rpmvalidator permits EXACTLY four things --
+# %{_bindir}/harbour-vuo, %{_datadir}/harbour-vuo/**, the .desktop file and the
+# hicolor icons. Anything else is "Installation not allowed in this location".
+# Build with `--without harbour` for OpenRepos/Chum, where the systemd sync
+# timer below is allowed and genuinely useful.
+%bcond_without harbour
 %bcond_with vendor
 %bcond_with lto
 %bcond_without xz
@@ -206,6 +212,13 @@ if ls translations/*.qm >/dev/null 2>&1; then
     install -Dm 644 translations/*.qm %{buildroot}%{_datadir}/harbour-vuo/translations/
 fi
 
+%if %{with harbour}
+# The licence still ships, just at a path Harbour allows: `%license` puts it
+# under %{_datadir}/licenses/<name>/, and validatepaths permits only the bin,
+# the desktop file, the icons and %{_datadir}/harbour-vuo/**.
+install -Dm 644 LICENSE %{buildroot}%{_datadir}/harbour-vuo/LICENSE
+%endif
+
 %if %{without harbour}
 install -Dm 644 systemd/harbour-vuo-sync.service \
     %{buildroot}%{_userunitdir}/harbour-vuo-sync.service
@@ -215,7 +228,9 @@ install -Dm 644 systemd/harbour-vuo-sync.timer \
 
 %files
 %defattr(-,root,root,-)
+%if %{without harbour}
 %license LICENSE
+%endif
 %{_bindir}/harbour-vuo
 %{_datadir}/harbour-vuo
 %{_datadir}/applications/harbour-vuo.desktop

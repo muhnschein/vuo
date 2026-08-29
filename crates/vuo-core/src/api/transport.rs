@@ -195,15 +195,6 @@ impl Transport {
         &self.origin
     }
 
-    /// A client for fetching media: no token, no cookies, no private CA.
-    ///
-    /// Not used by the article view -- Qt fetches images itself. See the note
-    /// in the module docs about where the §9.3 guarantee actually lives.
-    #[must_use]
-    pub fn media_client(&self) -> &reqwest::Client {
-        &self.media
-    }
-
     /// True when `url` is the configured instance's origin.
     fn is_configured_origin(&self, url: &Url) -> bool {
         url.scheme() == self.origin.scheme()

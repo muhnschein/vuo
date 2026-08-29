@@ -50,6 +50,15 @@ pub struct Settings {
     /// Result of a connection test. `ok` false means the message is an error.
     connectionTested: qt_signal!(ok: bool, message: QString),
 
+    /// Read the stored account into these properties.
+    ///
+    /// QML MUST call this before the page binds to anything, and before
+    /// `save()` can run. Nothing called it before: `Settings::load` was
+    /// reachable only from `Settings::attach`, and `attach` had no caller at
+    /// all -- so SettingsPage opened with empty fields and its
+    /// `Component.onDestruction: settings.save()` wrote those empties straight
+    /// over the user's server URL and API key.
+    load: qt_method!(fn(&mut self)),
     save: qt_method!(fn(&mut self)),
     testConnection: qt_method!(fn(&mut self)),
     /// Drain the worker's pending result and fire [`connectionTested`].
@@ -62,15 +71,16 @@ pub struct Settings {
     pollNotice: qt_method!(fn(&mut self) -> bool),
 
     ctx: Option<std::rc::Rc<AppContext>>,
+
+    /// Whether `load` has actually run.
+    ///
+    /// Belt and braces over the QML calling it: `save` refuses to write when
+    /// this is false, because writing properties that were never read is
+    /// exactly how a blank Settings page overwrote a configured account.
+    loaded: bool,
 }
 
 impl Settings {
-    pub fn attach(&mut self, ctx: std::rc::Rc<AppContext>) {
-        self.ctx = Some(ctx);
-        self.load();
-        self.changed();
-    }
-
     /// Read the stored account, if there is one.
     fn load(&mut self) {
         let Some(paths) = AppPaths::resolve() else {
@@ -87,6 +97,7 @@ impl Settings {
     /// Vuo is actually configured it took the loaded branch and passed with the
     /// default flipped.
     pub fn load_from(&mut self, paths: &AppPaths) {
+        self.loaded = true;
         if let Ok(account) = worker::load_account(&paths.account) {
             self.serverUrl = QString::from(account.server_url);
             // The key is loaded so the field is not blank when the user opens
@@ -129,6 +140,15 @@ impl Settings {
     /// rather than the settings screen: dropping three fields from this copy
     /// left it green.
     pub fn save_to(&mut self, paths: &AppPaths) {
+        // Never write state that was never read. `SettingsPage` saves on
+        // destruction, so without this a page that opened before `load` ran --
+        // or whose load failed -- would persist its empty defaults straight
+        // over the user's server URL and API key. Silently losing an account
+        // is worse than silently not saving one.
+        if !self.loaded {
+            tracing::warn!("refusing to save settings that were never loaded; call load() first");
+            return;
+        }
         let account = Account {
             server_url: self.serverUrl.to_string().trim().to_owned(),
             token: self.apiKey.to_string().trim().to_owned(),
@@ -193,22 +213,6 @@ impl Settings {
     /// Fire the QML-visible signal. Reached through [`Settings::pollNotice`].
     pub fn on_connection_tested(&mut self, ok: bool, message: &str) {
         self.connectionTested(ok, QString::from(message.to_owned()));
-    }
-
-    /// The media policy as the core's type.
-    #[must_use]
-    pub fn media_policy_for(&self, instance: url::Url) -> vuo_core::content::MediaPolicy {
-        use vuo_core::content::{MediaPolicy, UnproxiedMedia};
-        let fallback = match self.mediaPolicy {
-            MEDIA_STRICT => UnproxiedMedia::Strict,
-            MEDIA_ALLOW => UnproxiedMedia::Allow,
-            _ => UnproxiedMedia::Ask,
-        };
-        MediaPolicy::ProxyThroughInstance {
-            instance,
-            extra_trusted: Vec::new(),
-            fallback,
-        }
     }
 
     /// The systemd drop-in that makes the chosen interval take effect.
@@ -342,6 +346,10 @@ mod tests {
             mediaPolicy: MEDIA_ALLOW,
             syncIntervalIndex: 3,
             wifiOnly: true,
+            // The real flow: the page loads before it saves. `save_to` refuses
+            // to write otherwise, which is what stops a blank page destroying
+            // a configured account.
+            loaded: true,
             ..Settings::default()
         };
         written.save_to(&paths);
@@ -462,6 +470,47 @@ mod tests {
     /// launch, and never reached anything. Every device ran the timer unit's
     /// hardcoded `OnUnitActiveSec=30min` no matter what was picked -- the same
     /// defect shape as the Images setting.
+    /// Saving without loading must not destroy a stored account.
+    ///
+    /// `SettingsPage` binds a `Settings {}` and saves it on destruction. Load
+    /// was reachable only from `Settings::attach`, which had NO caller -- so
+    /// the page opened blank and wrote the blanks back. Opening Settings and
+    /// backing out wiped the server URL and API key.
+    #[test]
+    fn saving_without_loading_leaves_a_stored_account_alone() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let paths = temp_paths(&dir);
+
+        // A configured device.
+        let mut configured = Settings::default();
+        configured.loaded = true;
+        configured.serverUrl = QString::from("https://miniflux.example/");
+        configured.apiKey = QString::from("secret-key");
+        configured.save_to(&paths);
+        assert!(paths.account.exists());
+
+        // A fresh Settings object that never loaded -- what the page had.
+        let mut blank = Settings::default();
+        assert_eq!(blank.serverUrl.to_string(), "");
+        blank.save_to(&paths);
+
+        let mut reread = Settings::default();
+        reread.load_from(&paths);
+        assert_eq!(
+            reread.serverUrl.to_string(),
+            "https://miniflux.example/",
+            "an unloaded save must not overwrite the stored account"
+        );
+        assert_eq!(reread.apiKey.to_string(), "secret-key");
+
+        // And a loaded round trip still writes.
+        reread.serverUrl = QString::from("https://other.example/");
+        reread.save_to(&paths);
+        let mut after = Settings::default();
+        after.load_from(&paths);
+        assert_eq!(after.serverUrl.to_string(), "https://other.example/");
+    }
+
     #[test]
     fn every_sync_interval_choice_produces_a_drop_in_that_says_what_it_means() {
         // The picker's own indices, so a reordering of SYNC_INTERVALS_MINUTES
@@ -524,27 +573,6 @@ mod tests {
                     "a systemd unit line must not be indented: {line:?}"
                 );
             }
-        }
-    }
-
-    #[test]
-    fn media_policy_maps_every_index_including_nonsense() {
-        use vuo_core::content::{MediaPolicy, UnproxiedMedia};
-        let instance = url::Url::parse("https://h.example/").unwrap();
-        let mut s = Settings::default();
-        for (index, expected) in [
-            (MEDIA_STRICT, UnproxiedMedia::Strict),
-            (MEDIA_ASK, UnproxiedMedia::Ask),
-            (MEDIA_ALLOW, UnproxiedMedia::Allow),
-            (99, UnproxiedMedia::Ask),
-        ] {
-            s.mediaPolicy = index;
-            let MediaPolicy::ProxyThroughInstance { fallback, .. } =
-                s.media_policy_for(instance.clone())
-            else {
-                panic!("expected a proxying policy")
-            };
-            assert_eq!(fallback, expected, "index {index}");
         }
     }
 }

@@ -49,6 +49,33 @@ ApplicationWindow {
         }
     }
 
+    // Periodic sync while the app is running.
+    //
+    // The Harbour package cannot ship the systemd timer -- validatepaths
+    // permits only the binary, the desktop file, the icons and
+    // %{_datadir}/harbour-vuo, so a user unit is "Installation not allowed in
+    // this location". Without this Timer the Sync interval setting would reach
+    // nothing at all in a store build, which is the defect it was just fixed
+    // out of.
+    //
+    // In an OpenRepos build the systemd timer also exists and covers the app
+    // being closed; the two overlapping is harmless, because a sync is a
+    // no-op when the cursor has not moved.
+    Settings {
+        id: appSettings
+        Component.onCompleted: appSettings.load()
+    }
+
+    Timer {
+        id: periodicSync
+        // SYNC_INTERVALS_MINUTES in settings.rs: 0 = manual only.
+        readonly property var minutes: [0, 15, 30, 60, 360]
+        interval: Math.max(1, minutes[appSettings.syncIntervalIndex] || 0) * 60 * 1000
+        repeat: true
+        running: (minutes[appSettings.syncIntervalIndex] || 0) > 0
+        onTriggered: entries.requestSync()
+    }
+
     Component.onCompleted: {
         // 0 = unread. The models are empty until a scope is set.
         entries.setScope(0, 0)

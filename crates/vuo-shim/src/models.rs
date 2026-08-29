@@ -183,12 +183,6 @@ pub struct EntryModel {
 }
 
 impl EntryModel {
-    /// Give the model its context. Called during app start-up, not from QML.
-    pub fn attach(&mut self, ctx: std::rc::Rc<AppContext>) {
-        self.ctx = Some(ctx);
-        self.reload();
-    }
-
     /// The app context: the one attached explicitly (tests), else the global
     /// installed at start-up. QML constructs these objects, so there is no
     /// constructor to pass it through.
@@ -466,11 +460,6 @@ pub struct FeedModel {
 }
 
 impl FeedModel {
-    pub fn attach(&mut self, ctx: std::rc::Rc<AppContext>) {
-        self.ctx = Some(ctx);
-        self.reload();
-    }
-
     /// The app context: the one attached explicitly (tests), else the global
     /// installed at start-up. QML constructs these objects, so there is no
     /// constructor to pass it through.

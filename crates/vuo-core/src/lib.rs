@@ -83,6 +83,33 @@ mod workspace_guards {
         }
     }
 
+    /// Strip `//` line comments and `/* */` blocks.
+    ///
+    /// Load-bearing: without it, prose counts as a caller. `Settings::attach`
+    /// had NO production caller and slipped through because the word "attach"
+    /// appears in two doc comments -- while the function it alone called,
+    /// `Settings::load`, was therefore never called either, so the settings
+    /// screen opened blank and saved the blanks back over the user's account.
+    fn strip_comments(src: &str) -> String {
+        let mut out = String::with_capacity(src.len());
+        let mut rest = src;
+        while let Some(i) = rest.find("/*") {
+            out.push_str(&rest[..i]);
+            match rest[i..].find("*/") {
+                Some(j) => rest = &rest[i + j + 2..],
+                None => {
+                    rest = "";
+                    break;
+                }
+            }
+        }
+        out.push_str(rest);
+        out.lines()
+            .map(|l| l.split("//").next().unwrap_or(""))
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
     /// Source with any trailing `#[cfg(test)]` module removed.
     ///
     /// Truncating at the FIRST occurrence is crude, and deliberately so: this
@@ -93,10 +120,7 @@ mod workspace_guards {
     /// and the assertion message says to move the test module to the end.
     fn production_source(path: &Path) -> String {
         let text = std::fs::read_to_string(path).unwrap_or_default();
-        text.split("#[cfg(test)]")
-            .next()
-            .unwrap_or_default()
-            .to_owned()
+        strip_comments(text.split("#[cfg(test)]").next().unwrap_or_default())
     }
 
     /// A `pub fn` that nothing outside its own definition ever calls.
@@ -159,12 +183,52 @@ mod workspace_guards {
                 "called by main(), which is the process entry point",
             ),
             (
+                "is_item_local",
+                "asserted by tests in sibling modules (api/convert.rs, \
+                 api/icon.rs). The production guarantee -- one bad entry does \
+                 not stall a sync -- is structural: rejected items are \
+                 collected rather than propagated. This predicate is how the \
+                 tests state that, and cannot be #[cfg(test)] because it is a \
+                 method on the public Error type",
+            ),
+            (
+                "target_version",
+                "asserted by the migration tests; the production path applies \
+                 migrations in order rather than consulting a target",
+            ),
+            (
                 "conn_mut",
                 "tests/concurrent_writers.rs needs &mut Connection for \
                  transaction_with_behavior; an integration test is a separate \
                  crate, so this cannot be #[cfg(test)]",
             ),
         ];
+
+        // How many times each name is DECLARED, so the check can subtract them.
+        let mut decl_counts: std::collections::HashMap<String, usize> =
+            std::collections::HashMap::new();
+        for file in &files {
+            for line in production_source(file).lines() {
+                let line = line.trim_start();
+                let Some(rest) = line
+                    .strip_prefix("pub fn ")
+                    .or_else(|| line.strip_prefix("pub(crate) fn "))
+                    .or_else(|| line.strip_prefix("pub async fn "))
+                    .or_else(|| line.strip_prefix("pub(crate) async fn "))
+                    .or_else(|| line.strip_prefix("fn "))
+                    .or_else(|| line.strip_prefix("async fn "))
+                else {
+                    continue;
+                };
+                let name: String = rest
+                    .chars()
+                    .take_while(|c| c.is_alphanumeric() || *c == '_')
+                    .collect();
+                if !name.is_empty() {
+                    *decl_counts.entry(name).or_insert(0) += 1;
+                }
+            }
+        }
 
         let mut orphans = Vec::new();
         for file in &files {
@@ -186,10 +250,15 @@ mod workspace_guards {
                 if name.is_empty() || name == "main" || EXEMPT.iter().any(|(n, _)| *n == name) {
                     continue;
                 }
-                // The definition itself is one occurrence. A second anywhere in
-                // the workspace's production source is a caller (or a re-export,
-                // or a trait impl -- all of them mean it is reachable).
-                if all.matches(name.as_str()).count() < 2 {
+                // Occurrences minus DECLARATIONS. Counting "more than one
+                // occurrence" was wrong twice over: a name mentioned in prose
+                // looked called (fixed by strip_comments above), and a name
+                // declared on four different types -- `attach`, on each of the
+                // four QML-facing objects -- reached four occurrences from its
+                // own definitions alone and so could never be reported.
+                let uses = all.matches(name.as_str()).count();
+                let declarations = decl_counts.get(&name).copied().unwrap_or(0);
+                if uses <= declarations {
                     orphans.push(format!("{}: {name}", file.display()));
                 }
             }

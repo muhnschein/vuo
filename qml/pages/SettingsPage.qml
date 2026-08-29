@@ -10,6 +10,10 @@ Page {
     // the SQLite mirror) and the media/sync preferences.
     Settings {
         id: settings
+        // Load BEFORE anything binds. Without this the page opens with empty
+        // fields and `Component.onDestruction: settings.save()` below writes
+        // those empties over the stored server URL and API key.
+        Component.onCompleted: settings.load()
         onConnectionTested: {
             testResult.visible = true
             testResult.ok = ok

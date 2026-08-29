@@ -329,6 +329,24 @@ fn qml_declared_identifiers(files: &[PathBuf]) -> BTreeSet<String> {
         let source = std::fs::read_to_string(file).expect("read qml");
         for line in source.lines() {
             let code = line.split("//").next().unwrap_or("").trim();
+
+            // `id: foo` names an object in the same file, and QML resolves it
+            // lexically -- so it is a declaration exactly like a property.
+            // Matched ANYWHERE in the line, because the idiomatic form is
+            // inline: `Settings { id: appSettings }`. Without this the scan
+            // reports every use of a local id as an undeclared role, blaming
+            // the QML for a name it declares in the same file.
+            if let Some(rest) = code.split("id:").nth(1) {
+                let name: String = rest
+                    .trim_start()
+                    .chars()
+                    .take_while(|c| c.is_alphanumeric() || *c == '_')
+                    .collect();
+                if !name.is_empty() {
+                    names.insert(name);
+                }
+            }
+
             let mut words = code.split_whitespace();
             match words.next() {
                 Some("property") => {

@@ -185,11 +185,6 @@ pub struct ArticleModel {
 }
 
 impl ArticleModel {
-    /// Give the model its context. Called during app start-up, not from QML.
-    pub fn attach(&mut self, ctx: std::rc::Rc<AppContext>) {
-        self.ctx = Some(ctx);
-    }
-
     /// The app context: the one attached explicitly (tests), else the global.
     fn context(&self) -> Option<std::rc::Rc<AppContext>> {
         self.ctx.clone().or_else(crate::context::current)
