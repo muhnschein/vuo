@@ -106,7 +106,12 @@ jobs:
           # third_party/ is generated; [patch.crates-io] points at it, and cargo
           # refuses to resolve anything without it. `make check` gets this via
           # its patch-deps prerequisite; a job driving cargo directly does not.
-          make patch-deps
+          #
+          # The script, not `make patch-deps`: the Makefile hard-errors when
+          # qmake is missing, and it does so at parse time for EVERY target.
+          # This job has no Qt and does not need any -- it checks the Qt-free
+          # crates against the Rust floor.
+          scripts/patch-deps.sh
           cargo +${{ steps.msrv.outputs.version }} --version
           cargo +${{ steps.msrv.outputs.version }} check \
             --workspace --exclude vuo-shim --exclude harbour-vuo --locked --all-targets
@@ -134,8 +139,9 @@ jobs:
         run: |
           # Same reason as the MSRV job: third_party/ is generated and
           # [patch.crates-io] points at it, so cargo cannot resolve until this
-          # has run.
-          make patch-deps
+          # has run. The script directly, because this job has no Qt either and
+          # the Makefile's qmake guard fires for every target.
+          scripts/patch-deps.sh
           # cargo-fuzz defaults --target to the triple IT was built for, and
           # the prebuilt binary install-action fetches is musl-static. A
           # sanitizer cannot be linked against a static libc, so the build
