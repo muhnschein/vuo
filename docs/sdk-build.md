@@ -7,11 +7,12 @@ recipe follows [muhnschein/postivene](https://github.com/muhnschein/postivene)'s
 
 ## Result, in one line
 
-**The device build does not currently complete**, and the reason is a real
-defect rather than a missing step: Vuo's dependency graph needs Rust 1.88,
-while the SDK 5.0.0.43 tooling ships 1.75. See *The blocker* below. Everything
-up to the Rust version — image, chroot, sb2 targets, the reconstructed
-standard library, and the spec's own `%build` — works and is checked in.
+**An aarch64 RPM now exists**, built by the route in *Cross-building without
+the SDK's cargo* below. `mb2` itself still does not complete, for the reason in
+*The blocker*: Vuo's dependency graph needs Rust 1.88 and the SDK 5.0.0.43
+tooling ships 1.75. The way round it is to keep the SDK's *compiler and
+sysroot* — which is what has to match the device — and drive them with a host
+cargo new enough to parse the lockfile.
 
 ## Environment, without a Docker daemon
 
@@ -81,6 +82,69 @@ $ file hello
 hello: ELF 64-bit LSB pie executable, ARM aarch64, ... dynamically linked,
 interpreter /lib/ld-linux-aarch64.so.1
 ```
+
+## Cross-building without the SDK's cargo
+
+The blocker is the SDK tooling's **cargo**, not its **compiler**. Splitting the
+two gets a real binary: rustc/cargo come from the host (1.94, which parses
+edition2024), while every C/C++ compile and the final link go through the SDK's
+own `aarch64-meego-linux-gnu-gcc` 10.3.1 against the 5.0.0.43 aarch64 target.
+Using the SDK compiler is not optional — the device ships glibc 2.30 and
+libstdc++ 6.0.28 (`GLIBCXX_3.4.28`, i.e. GCC 10), and Ubuntu's GCC 13 cross
+toolchain emits references to `GLIBC_2.34`/`2.36` symbols the phone does not
+have. The link fails outright, which is the good case.
+
+Four things the host needs before this works:
+
+1. **`/opt/cross` must exist at that path.** GCC resolves `cc1`, its specs and
+   its libexec against its own absolute install prefix, so symlink the
+   unpacked `rootfs/opt/cross` there rather than invoking it in place.
+2. **32-bit runtime.** The cross-compilers are i386 ELFs:
+   `dpkg --add-architecture i386` and install `libc6:i386 libstdc++6:i386
+   zlib1g:i386`. `cc1` additionally links `libmpc`/`libmpfr`/`libgmp`, which
+   exist only inside the rootfs — put `rootfs/usr/lib` on `LD_LIBRARY_PATH`.
+3. **A `-B` directory of unprefixed binutils.** GCC looks for plain `as` and
+   `ld`; without `-B` it finds the host's x86 binutils on `PATH` and dies with
+   `as: unrecognized option '-EL'`. A directory of symlinks
+   (`as`, `ld`, `ar`, `nm`, `ranlib`, `objcopy`, `strip`, …) pointing at the
+   `aarch64-meego-linux-gnu-*` tools is enough.
+4. **`--sysroot` on CFLAGS/CXXFLAGS and the link**, plus `QT_INCLUDE_PATH` and
+   `QT_LIBRARY_PATH` as the spec already sets them.
+
+`scripts/cross-build.sh` does all of it, and `scripts/cross-rpm.sh` packages
+the result. What comes out:
+
+```
+$ readelf -d harbour-vuo | grep NEEDED
+  libstdc++.so.6  libsailfishapp.so.1  libQt5Core.so.5  libQt5Gui.so.5
+  libQt5Widgets.so.5  libQt5Quick.so.5  libQt5Qml.so.5  libgcc_s.so.1 ...
+$ # highest versioned symbol required:
+GLIBC_2.30      # == the device's glibc
+GLIBCXX_3.4     # the baseline, so any libstdc++ will do
+```
+
+### Two defects it found immediately
+
+Both are in code that had never been compiled anywhere, because no build had
+ever reached it:
+
+- **`use qmetaobject::cpp;` does not resolve.** `qmetaobject` depends on the
+  `cpp` crate but its `use cpp::{cpp, cpp_class}` is private, so the re-export
+  is not public. `harbour-vuo` now depends on `cpp` directly and imports the
+  macro from there.
+- **`cpp_build` was given no Qt include path.** `main.rs`'s `cpp!` block
+  includes `<QtQuick>`, `<QGuiApplication>` and `<QQuickView>`;
+  `QT_INCLUDE_PATH` reaches qmetaobject's own build script but not this one.
+
+`build.rs` also honours `VUO_SYSROOT` now, so the same source builds inside sb2
+(where the prefix is empty and paths are absolute, unchanged) and outside it.
+
+### What this does and does not prove
+
+It proves the code compiles and links against real Qt 5.6.3 and real
+`libsailfishapp`, which nothing before it did. It does **not** make `mb2` work,
+and it is not how a release should be built: the blocker in the next section is
+still the thing to fix. Treat the output as a test package.
 
 ## What the build found in the spec
 

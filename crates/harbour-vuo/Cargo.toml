@@ -33,6 +33,12 @@ url = "2.5"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "env-filter"] }
 
+# The `cpp!` macro that writes main.rs's SailfishApp glue. `qmetaobject`
+# depends on this crate but re-exports the macro only privately, so the device
+# build has to name it itself -- see the note in main.rs. Optional and pulled
+# in by `sailfishapp`, so a host build still needs no C++ toolchain.
+cpp = { version = "0.5", optional = true }
+
 [build-dependencies]
 cpp_build = { version = "0.5", optional = true }
 
@@ -46,4 +52,4 @@ default = []
 # Wayland, booster and theme setup -- QmlEngine's QtWidgets QApplication is
 # wrong for a Silica app. Requires sailfishapp headers, so it only builds
 # inside the SDK; rpm/harbour-vuo.spec passes it.
-sailfishapp = ["dep:cpp_build"]
+sailfishapp = ["dep:cpp", "dep:cpp_build"]
