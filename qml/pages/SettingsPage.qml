@@ -6,6 +6,16 @@ Page {
     id: page
     allowedOrientations: Orientation.All
 
+    // Set once the stored account has been read into the controls below.
+    //
+    // Every control used to both bind its value to `settings` AND write back
+    // on change. That is a two-way binding on a QObject whose properties all
+    // share ONE notify signal, so any write re-evaluated every other control's
+    // binding -- and a control that had not been populated yet would write its
+    // own default straight back over what was loaded. Values now flow one way,
+    // in `Component.onCompleted`, and back only on a real user change.
+    property bool ready: false
+
     // Backed by Rust: reads and writes the account file (mode 0600, outside
     // the SQLite mirror) and the media/sync preferences.
     Settings {
@@ -36,8 +46,21 @@ Page {
         }
     }
 
+    // Read the stored account, then push it into the controls. Nothing called
+    // this before, so the page always opened blank -- see Settings::reload.
+    Component.onCompleted: {
+        settings.reload()
+        serverField.text = settings.serverUrl
+        keyField.text = settings.apiKey
+        imagesCombo.currentIndex = settings.mediaPolicy
+        refreshCombo.currentIndex = settings.syncIntervalIndex
+        wifiSwitch.checked = settings.wifiOnly
+        caSwitch.checked = settings.useCustomCa
+        page.ready = true
+    }
+
     // Save on leaving, so a half-typed key is not written on every keystroke.
-    Component.onDestruction: settings.save()
+    Component.onDestruction: if (page.ready) settings.save()
 
     SilicaFlickable {
         anchors.fill: parent
@@ -53,15 +76,16 @@ Page {
             SectionHeader { text: qsTr("Account") }
 
             TextField {
+                id: serverField
                 width: parent.width
                 label: qsTr("Server address")
                 placeholderText: qsTr("https://miniflux.example.com")
                 inputMethodHints: Qt.ImhUrlCharactersOnly | Qt.ImhNoAutoUppercase
-                text: settings.serverUrl
-                onTextChanged: settings.serverUrl = text
+                onTextChanged: if (page.ready) settings.serverUrl = text
             }
 
             TextField {
+                id: keyField
                 width: parent.width
                 label: qsTr("API key")
                 // Not a password field by accident: an API key is a
@@ -70,8 +94,7 @@ Page {
                 // per device.
                 echoMode: TextInput.Password
                 inputMethodHints: Qt.ImhNoAutoUppercase | Qt.ImhNoPredictiveText
-                text: settings.apiKey
-                onTextChanged: settings.apiKey = text
+                onTextChanged: if (page.ready) settings.apiKey = text
             }
 
             Label {
@@ -108,21 +131,21 @@ Page {
                 font.pixelSize: Theme.fontSizeExtraSmall
                 color: ok ? Theme.highlightColor : Theme.errorColor
                 text: ok ? qsTr("Connected as %1").arg(detail)
-                         : qsTr("Could not connect: %1").arg(detail)
+                         : qsTr("Test failed: %1").arg(detail)
             }
 
             SectionHeader { text: qsTr("Images") }
 
             ComboBox {
+                id: imagesCombo
                 width: parent.width
                 label: qsTr("Images not proxied by your server")
-                currentIndex: settings.mediaPolicy
                 menu: ContextMenu {
                     MenuItem { text: qsTr("Never load") }
                     MenuItem { text: qsTr("Ask each site") }
                     MenuItem { text: qsTr("Always load") }
                 }
-                onCurrentIndexChanged: settings.mediaPolicy = currentIndex
+                onCurrentIndexChanged: if (page.ready) settings.mediaPolicy = currentIndex
             }
 
             Label {
@@ -140,9 +163,9 @@ Page {
             SectionHeader { text: qsTr("Synchronisation") }
 
             ComboBox {
+                id: refreshCombo
                 width: parent.width
                 label: qsTr("Background refresh")
-                currentIndex: settings.syncIntervalIndex
                 menu: ContextMenu {
                     MenuItem { text: qsTr("Manual only") }
                     MenuItem { text: qsTr("Every 15 minutes") }
@@ -150,22 +173,31 @@ Page {
                     MenuItem { text: qsTr("Hourly") }
                     MenuItem { text: qsTr("Every 6 hours") }
                 }
-                onCurrentIndexChanged: settings.syncIntervalIndex = currentIndex
+                onCurrentIndexChanged: if (page.ready) settings.syncIntervalIndex = currentIndex
             }
 
             TextSwitch {
+                id: wifiSwitch
                 text: qsTr("Only on Wi-Fi")
-                checked: settings.wifiOnly
-                onCheckedChanged: settings.wifiOnly = checked
+                // `onClicked`, not `onCheckedChanged`: Silica toggles `checked`
+                // itself and then emits this, so only a real tap writes back.
+                onClicked: settings.wifiOnly = checked
             }
 
             SectionHeader { text: qsTr("Advanced") }
 
             TextSwitch {
+                id: caSwitch
                 text: qsTr("Use a custom CA certificate")
-                description: qsTr("For a self-hosted server with a private certificate authority. Place the certificate at ~/.local/share/harbour-vuo/ca.pem. Certificate verification is never disabled, and there is no option to disable it.")
-                checked: settings.useCustomCa
-                onCheckedChanged: settings.useCustomCa = checked
+                // Only https does a handshake for a CA to apply to, so on an
+                // http:// instance -- one reached over a VPN, say -- this
+                // setting has nothing to act on and is shown as unavailable
+                // rather than as something that might be needed.
+                enabled: serverField.text.indexOf("https:") === 0
+                description: enabled
+                    ? qsTr("For a self-hosted server with a private certificate authority. Place the certificate at ~/.local/share/harbour-vuo/ca.pem. Certificate verification is never disabled, and there is no option to disable it.")
+                    : qsTr("Only applies to an https:// server. This one is not encrypted by TLS, so no certificate is used.")
+                onClicked: settings.useCustomCa = checked
             }
 
             Label {

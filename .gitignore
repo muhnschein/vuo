@@ -45,3 +45,6 @@ third_party/
 # Crate tarballs scripts/patch-deps.sh downloads when neither pristine/ nor the
 # cargo registry has them (a fresh CI checkout). Checksum-verified on arrival.
 .patch-deps-cache/
+
+# Cross-built RPMs, staged for a device test rather than committed.
+/dist/

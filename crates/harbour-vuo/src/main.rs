@@ -17,8 +17,10 @@
 //! mirror, loads QML, and runs the event loop. Everything else is in
 //! `vuo-core`, where it can be tested without Qt.
 
-// Only the desktop entry point uses these (QmlEngine, QString, QUrl); the
-// device path goes through SailfishApp's C++ and needs none of them.
+// Only the desktop harness needs these (`QmlEngine`, `QString`). The device
+// build's `run` is the cpp! block, which reaches Qt through C++ headers rather
+// than through qmetaobject's Rust types -- so under `sailfishapp` this import
+// is unused and warns.
 #[cfg(not(feature = "sailfishapp"))]
 use qmetaobject::*;
 
@@ -101,6 +103,11 @@ fn sync_once() -> i32 {
 
 #[cfg(feature = "sailfishapp")]
 fn run() {
+    // From `cpp`, not `qmetaobject`: qmetaobject depends on the crate but
+    // its `use cpp::{cpp, cpp_class}` is private, so `qmetaobject::cpp` does
+    // not resolve. This line was `use qmetaobject::cpp;` and could never have
+    // compiled -- the first thing a real device build finds once it gets past
+    // the toolchain.
     use cpp::cpp;
 
     cpp! {{

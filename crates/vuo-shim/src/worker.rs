@@ -622,12 +622,24 @@ pub fn save_account(path: &std::path::Path, account: &Account) -> vuo_core::Resu
 }
 
 /// Build the transport config for an account, including its CA if configured.
+///
+/// The CA is read only for an `https` server. A private certificate authority
+/// is a statement about TLS, and a plain-`http` instance -- one reached over a
+/// VPN, say, where the tunnel is the encryption -- performs no handshake for it
+/// to apply to. Demanding the file anyway made the setting able to break a
+/// configuration it has no bearing on: with the switch left on and no `ca.pem`
+/// present, connecting to an `http://` server failed with "the custom CA
+/// certificate ... could not be read", which names a file the user has no
+/// reason to have and a problem they do not have.
 pub fn transport_config_for(
     paths: &AppPaths,
     account: &Account,
 ) -> vuo_core::Result<TransportConfig> {
     let mut config = TransportConfig::default();
-    if account.use_custom_ca {
+    let uses_tls = url::Url::parse(&account.server_url)
+        .map(|u| u.scheme() == "https")
+        .unwrap_or(false);
+    if account.use_custom_ca && uses_tls {
         let pem = std::fs::read(&paths.ca_certificate).map_err(|e| {
             // Loud, never silent. Falling back to the platform roots here would
             // be an "ignore certificate errors" switch in effect: the user
@@ -710,6 +722,40 @@ gL0usN+U5YUBGaFwvRgvO/9Vrxhgw4o5QI1AwXMq49e0B3S9F502etJUpbCaXfND\n\
 B/ICqFxm4tqVyVqqaxdhkS/DJcUPIyEhhwLStjHyLGh364xT06vcDdcRmGyuCSlb\n\
 EQBBQIobIy41+aQiMsM0XBYH3Q==\n\
 -----END CERTIFICATE-----\n";
+
+    #[test]
+    fn a_plain_http_server_never_needs_a_ca_certificate() {
+        // Found on a device. With the switch on and no ca.pem present, a
+        // plain-http instance -- one reached over WireGuard, where the tunnel
+        // is the encryption -- failed to connect at all, with "the custom CA
+        // certificate at ... could not be read". No handshake happens on http
+        // for a CA to apply to, so the setting must not be able to break a
+        // configuration it has no bearing on.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let paths = AppPaths {
+            database: dir.path().join("db.sqlite"),
+            account: dir.path().join("account.json"),
+            ca_certificate: dir.path().join("absent.pem"),
+            timer_dropin_dir: dir.path().join("tdd"),
+        };
+        let account = Account {
+            server_url: "http://10.77.0.1:8083/".into(),
+            token: "t".into(),
+            use_custom_ca: true,
+            ..Account::default()
+        };
+        let config = transport_config_for(&paths, &account)
+            .expect("an http server must not require a CA file");
+        assert!(config.extra_ca_pem.is_none());
+
+        // And the same account over https still fails loudly: §9.1's rule that
+        // a private CA is never silently ignored is about TLS, and holds there.
+        let https = Account {
+            server_url: "https://10.77.0.1:8083/".into(),
+            ..account
+        };
+        assert!(transport_config_for(&paths, &https).is_err());
+    }
 
     #[test]
     fn a_configured_ca_reaches_the_transport() {

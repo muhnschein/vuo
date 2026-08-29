@@ -60,6 +60,17 @@ pub struct Settings {
     /// over the user's server URL and API key.
     load: qt_method!(fn(&mut self)),
     save: qt_method!(fn(&mut self)),
+    /// Read the stored account into this object's properties.
+    ///
+    /// QML has to call this, and nothing did. `attach` -- the only caller of
+    /// `load` -- has no production callers at all, so the settings screen
+    /// never read the account file: every visit showed a blank server address
+    /// and a blank API key however many times they had been saved, and every
+    /// other control showed a Rust default rather than the stored value. The
+    /// Images setting in particular showed "Never load", because `i32::default`
+    /// is 0 and the `MEDIA_ASK` default only happens inside the load that was
+    /// not running.
+    reload: qt_method!(fn(&mut self)),
     testConnection: qt_method!(fn(&mut self)),
     /// Drain the worker's pending result and fire [`connectionTested`].
     ///
@@ -137,6 +148,11 @@ impl Settings {
             .unwrap_or(0)
     }
 
+    fn reload(&mut self) {
+        self.load();
+        self.changed();
+    }
+
     fn save(&mut self) {
         let Some(paths) = AppPaths::resolve() else {
             tracing::warn!("no data directory: the account cannot be stored");
@@ -153,13 +169,23 @@ impl Settings {
     /// rather than the settings screen: dropping three fields from this copy
     /// left it green.
     pub fn save_to(&mut self, paths: &AppPaths) {
-        // Never write state that was never read. `SettingsPage` saves on
-        // destruction, so without this a page that opened before `load` ran --
-        // or whose load failed -- would persist its empty defaults straight
-        // over the user's server URL and API key. Silently losing an account
-        // is worse than silently not saving one.
-        if !self.loaded {
-            tracing::warn!("refusing to save settings that were never loaded; call load() first");
+        // Never OVERWRITE an account this object never read.
+        //
+        // `SettingsPage` saves on destruction, so a page that opened before
+        // its load ran -- or whose load failed -- would otherwise persist its
+        // empty defaults straight over the user's server URL and API key.
+        // Silently losing an account is worse than silently not saving one.
+        //
+        // Scoped to "an account file exists", not "load has run": with nothing
+        // on disk there is nothing to lose, and a first run legitimately saves
+        // values it never loaded. The earlier, broader form made every direct
+        // construction unsaveable, which is not a rule about safety -- it is a
+        // rule about ceremony, and it forced edits on tests that were doing
+        // nothing wrong.
+        if !self.loaded && paths.account.exists() {
+            tracing::warn!(
+                "refusing to overwrite a stored account that was never read; call load() first"
+            );
             return;
         }
         let account = Account {
@@ -184,6 +210,12 @@ impl Settings {
             self.local_notice = Some((false, e.to_string()));
             return;
         }
+
+        // Having written the file, this object knows what is in it -- which is
+        // what `loaded` means. Without this, an object that created the
+        // account itself would be barred from its own second save by the
+        // overwrite guard above.
+        self.loaded = true;
 
         // Make the running app match what was just written.
         //
@@ -567,12 +599,6 @@ mod tests {
         let mut s = Settings {
             serverUrl: QString::from("http://10.77.0.1:8083/"),
             apiKey: QString::from("k"),
-            // The page loads before it saves -- SettingsPage has
-            // `Component.onCompleted: settings.load()` -- and `save_to` now
-            // refuses to write state it never read, so a blank page cannot
-            // overwrite a configured account. `load` sets this even when
-            // there is no account file yet, which is the first-run case here.
-            loaded: true,
             ..Settings::default()
         };
         s.test_connection_with(&paths);
@@ -605,9 +631,6 @@ mod tests {
         let mut s = Settings {
             serverUrl: QString::from("http://10.77.0.1:8083/"),
             apiKey: QString::from("k"),
-            // `save_to` refuses to write state it never read; the page has
-            // loaded by this point. See the first-run test above.
-            loaded: true,
             ..Settings::default()
         };
         s.save_to(&paths);
@@ -674,9 +697,6 @@ mod tests {
         let mut s = Settings {
             serverUrl: QString::from("10.77.0.1:8083"),
             apiKey: QString::from("k"),
-            // `save_to` refuses to write state it never read; the page has
-            // loaded by this point. See the first-run test above.
-            loaded: true,
             ..Settings::default()
         };
         s.test_connection_with(&paths);
@@ -685,6 +705,50 @@ mod tests {
         assert!(
             message.contains("scheme"),
             "the message must name what is missing: {message}"
+        );
+    }
+
+    /// §the settings screen shows what is actually stored.
+    ///
+    /// `load_from` had exactly one caller, `attach`, and `attach` had NO
+    /// production callers -- so the page never read the account file. Every
+    /// visit showed a blank server address and a blank API key however many
+    /// times they had been saved, and every other control showed a Rust
+    /// default: Images in particular showed "Never load", because `i32::
+    /// default()` is 0 and the `MEDIA_ASK` default only happens inside the
+    /// load that was not running. `reload` is what QML now calls.
+    #[test]
+    fn the_page_shows_the_stored_account_rather_than_rust_defaults() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let paths = temp_paths(&dir);
+
+        let mut written = Settings {
+            serverUrl: QString::from("http://10.77.0.1:8083/"),
+            apiKey: QString::from("secretkey"),
+            mediaPolicy: MEDIA_ALLOW,
+            syncIntervalIndex: 3,
+            wifiOnly: true,
+            ..Settings::default()
+        };
+        written.save_to(&paths);
+
+        // A second visit to the page, as a fresh QML-constructed object.
+        let mut reopened = Settings::default();
+        assert_eq!(
+            reopened.serverUrl.to_string(),
+            "",
+            "a QML-constructed page starts empty; that is the premise"
+        );
+        reopened.load_from(&paths);
+
+        assert_eq!(reopened.serverUrl.to_string(), "http://10.77.0.1:8083/");
+        assert_eq!(reopened.apiKey.to_string(), "secretkey");
+        assert_eq!(reopened.mediaPolicy, MEDIA_ALLOW);
+        assert_eq!(reopened.syncIntervalIndex, 3);
+        assert!(reopened.wifiOnly);
+        assert!(
+            !reopened.useCustomCa,
+            "and nothing turns the CA switch on by itself"
         );
     }
 
@@ -716,49 +780,64 @@ mod tests {
     /// launch, and never reached anything. Every device ran the timer unit's
     /// hardcoded `OnUnitActiveSec=30min` no matter what was picked -- the same
     /// defect shape as the Images setting.
-    /// Saving without loading must not destroy a stored account.
+    /// An unloaded page must not reset the settings it never read.
     ///
-    /// `SettingsPage` binds a `Settings {}` and saves it on destruction. Load
-    /// was reachable only from `Settings::attach`, which had NO caller -- so
-    /// the page opened blank and wrote the blanks back. Opening Settings and
-    /// backing out wiped the server URL and API key.
+    /// The account itself was never at risk: `save_to` has refused an empty
+    /// server URL or token since 295f9b5. What WAS at risk is everything else
+    /// on the page. `Settings::load` was reachable only from `Settings::attach`,
+    /// which had no production caller, so the page showed Rust defaults for
+    /// media policy, sync interval and Wi-Fi-only -- and the moment the user
+    /// retyped their credentials, those defaults were written back over the
+    /// stored values.
+    ///
+    /// Measured, with the guard removed: media policy 2 -> 0, sync interval
+    /// 3 -> 0, Wi-Fi-only true -> false. Sync interval 0 is "manual only", so
+    /// background sync silently stops.
     #[test]
-    fn saving_without_loading_leaves_a_stored_account_alone() {
+    fn an_unloaded_page_does_not_reset_the_settings_it_never_read() {
         let dir = tempfile::tempdir().expect("tempdir");
         let paths = temp_paths(&dir);
 
-        // A configured device.
         let mut configured = Settings {
             serverUrl: QString::from("https://miniflux.example/"),
             apiKey: QString::from("secret-key"),
-            // `save_to` refuses to write state it never read; the page has
-            // loaded by this point. See the first-run test above.
-            loaded: true,
+            mediaPolicy: MEDIA_ALLOW,
+            syncIntervalIndex: 3,
+            wifiOnly: true,
             ..Settings::default()
         };
         configured.save_to(&paths);
-        assert!(paths.account.exists());
 
-        // A fresh Settings object that never loaded -- what the page had.
-        let mut blank = Settings::default();
-        assert_eq!(blank.serverUrl.to_string(), "");
-        blank.save_to(&paths);
+        // A page that never loaded, on which the user retypes the two fields
+        // it did show. Everything else is a Rust default it never read.
+        let mut unloaded = Settings {
+            serverUrl: QString::from("https://miniflux.example/"),
+            apiKey: QString::from("secret-key"),
+            ..Settings::default()
+        };
+        unloaded.save_to(&paths);
 
-        let mut reread = Settings::default();
-        reread.load_from(&paths);
-        assert_eq!(
-            reread.serverUrl.to_string(),
-            "https://miniflux.example/",
-            "an unloaded save must not overwrite the stored account"
-        );
-        assert_eq!(reread.apiKey.to_string(), "secret-key");
-
-        // And a loaded round trip still writes.
-        reread.serverUrl = QString::from("https://other.example/");
-        reread.save_to(&paths);
         let mut after = Settings::default();
         after.load_from(&paths);
-        assert_eq!(after.serverUrl.to_string(), "https://other.example/");
+        assert_eq!(
+            after.mediaPolicy, MEDIA_ALLOW,
+            "an unloaded save must not reset the media policy"
+        );
+        assert_eq!(
+            after.syncIntervalIndex, 3,
+            "nor the sync interval -- 0 would silently stop background sync"
+        );
+        assert!(after.wifiOnly, "nor the Wi-Fi-only switch");
+
+        // And a page that DID load still saves normally.
+        let mut loaded = Settings::default();
+        loaded.load_from(&paths);
+        loaded.syncIntervalIndex = 1;
+        loaded.save_to(&paths);
+        let mut reread = Settings::default();
+        reread.load_from(&paths);
+        assert_eq!(reread.syncIntervalIndex, 1);
+        assert_eq!(reread.mediaPolicy, MEDIA_ALLOW, "and loses nothing else");
     }
 
     #[test]
