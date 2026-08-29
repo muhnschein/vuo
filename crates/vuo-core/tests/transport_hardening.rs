@@ -7,7 +7,10 @@
 //! What each protects:
 //!
 //! - a `Content-Length` that lies in either direction — the header is foreign
-//!   input and cannot be the only bound;
+//!   input and cannot be the only bound, and a declared length past the cap is
+//!   refused before the body is read at all;
+//! - a rendered error after a real transport failure, confirming the URL and
+//!   its query do not travel in the message;
 //! - a chunked response with no length at all, which is how an unbounded body
 //!   actually arrives;
 //! - a gzip bomb, confirming the cap applies to the DECOMPRESSED size (a small
@@ -17,7 +20,9 @@
 //!   comparison;
 //! - a same-origin relative redirect, confirming the token IS still sent where
 //!   it should be — a hardening test that only proves things are refused can
-//!   pass on a client that refuses everything.
+//!   pass on a client that refuses everything;
+//! - an absolute redirect to a SECOND raw server, confirming that server hears
+//!   nothing at all. That is §9.1's headline rule, and it had no test.
 
 #![allow(
     clippy::unwrap_used,
@@ -35,7 +40,9 @@ use std::time::Duration;
 
 use url::Url;
 use vuo_core::api::{Transport, TransportConfig};
+use vuo_core::error::TransportKind;
 use vuo_core::redact::ApiToken;
+use vuo_core::Error;
 
 fn cfg() -> TransportConfig {
     TransportConfig {
@@ -99,6 +106,63 @@ async fn relative_redirect_is_followed_with_token() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn an_absolute_cross_origin_redirect_never_reaches_the_other_host() {
+    // §9.1's headline rule: "Do not follow redirects with the API token
+    // attached." It had NO coverage. The suite held a same-origin relative
+    // redirect, a protocol-relative one asserting only `is_err()`, and a hop
+    // cap -- but nothing that stands up a SECOND host and looks at what it
+    // received. Removing both layers (the off-origin refusal and the
+    // conditional attach) left all eleven test binaries green while the token
+    // went to the attacker in plain text.
+    //
+    // This is the scenario the module doc opens with: a hostile or compromised
+    // instance answering 302 to somewhere it controls.
+    let (attacker, attacker_rx, _ah) = raw_server(vec![
+        b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok".to_vec(),
+    ]);
+    let redirect =
+        format!("HTTP/1.1 302 Found\r\nLocation: {attacker}/collect\r\nContent-Length: 0\r\n\r\n");
+    let (base, rx, _h) = raw_server(vec![redirect.into_bytes()]);
+
+    let t = transport(&base, &cfg());
+    let res = t
+        .send(
+            reqwest::Method::GET,
+            Url::parse(&format!("{base}/v1/entries")).unwrap(),
+            None,
+        )
+        .await;
+
+    let first = rx.recv().unwrap();
+    assert!(
+        first.contains("SECRET-TOKEN"),
+        "the token belongs on the CONFIGURED origin; without this the test could \
+         pass on a client that never authenticates at all"
+    );
+
+    assert!(
+        matches!(
+            res,
+            Err(Error::Transport {
+                kind: TransportKind::RedirectRefused,
+                ..
+            })
+        ),
+        "a redirect off the configured origin must be refused: {res:?}"
+    );
+
+    // And the other host heard nothing at all -- not an unauthenticated
+    // request, not a connection.
+    match attacker_rx.recv_timeout(Duration::from_millis(500)) {
+        Err(_) => {}
+        Ok(head) => panic!(
+            "the redirect was followed to another origin. It received:\n{head}\n\
+             (a request at all is a failure; one carrying the token is a key leak)"
+        ),
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn protocol_relative_redirect() {
     // Location: //evil.invalid/x  -> should be refused
     let r1 = b"HTTP/1.1 302 Found\r\nLocation: //evil.invalid/steal\r\nContent-Length: 0\r\n\r\n"
@@ -129,21 +193,25 @@ async fn a_304_is_reported_as_a_protocol_error_not_a_redirect() {
             None,
         )
         .await;
-    println!("304 result: {res:?}");
     let _ = rx.recv().unwrap();
+    // The point is the CLASSIFICATION, not merely that it failed. Without the
+    // 304..=306 branch a 304 falls into `is_redirection()`, finds no Location
+    // and surfaces as RedirectRefused "redirect without a Location header" --
+    // the confusion that branch exists to avoid.
+    assert!(
+        matches!(res, Err(Error::Http { status: 304, .. })),
+        "a 304 must be reported as an HTTP status, not as a refused redirect: {res:?}"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
 async fn redirect_loop_hop_cap() {
     let r = b"HTTP/1.1 302 Found\r\nLocation: /loop\r\nContent-Length: 0\r\n\r\n".to_vec();
-    let (base, rx, _h) = raw_server(vec![
-        r.clone(),
-        r.clone(),
-        r.clone(),
-        r.clone(),
-        r.clone(),
-        r,
-    ]);
+    // Deliberately far more canned responses than the cap. With only a handful
+    // the server runs out, the next connect fails, and `is_err()` holds for a
+    // reason that has nothing to do with `max_redirects` -- so the test passed
+    // with the cap raised to 1000.
+    let (base, rx, _h) = raw_server(vec![r; 32]);
     let t = transport(&base, &cfg());
     let res = t
         .send(
@@ -152,13 +220,30 @@ async fn redirect_loop_hop_cap() {
             None,
         )
         .await;
-    println!("loop result: {res:?}");
-    let mut n = 0;
-    while rx.recv_timeout(Duration::from_millis(300)).is_ok() {
-        n += 1;
+    assert!(
+        matches!(
+            res,
+            Err(Error::Transport {
+                kind: TransportKind::RedirectRefused,
+                ..
+            })
+        ),
+        "the hop cap must be what refuses, not the network: {res:?}"
+    );
+
+    // And the cap is what stopped it: exactly the original request plus
+    // `max_redirects` follows reached the server, and nothing after. `send`
+    // has already returned, so no further request can be in flight -- counting
+    // with a short poll here would only be measuring the machine's load.
+    let expected = cfg().max_redirects + 1;
+    for i in 0..expected {
+        rx.recv_timeout(Duration::from_secs(10))
+            .unwrap_or_else(|e| panic!("request {i} of {expected} never arrived: {e}"));
     }
-    println!("requests made: {n}");
-    assert!(res.is_err());
+    assert!(
+        rx.try_recv().is_err(),
+        "a request past the cap reached the server: the walk was not stopped"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -226,6 +311,82 @@ async fn lying_content_length_small_body_big() {
             None,
         )
         .await;
-    println!("lying CL result: {:?}", res.as_ref().map(|r| r.body.len()));
     let _ = rx.recv().unwrap();
+    // The declared length is what framing believes, so the body is the 10
+    // bytes it promised and the remaining 100 KB is never delivered. Asserting
+    // this pins the direction: a change that read to EOF instead would return
+    // 100_000 here.
+    let body = res.expect("a short body is not an error").body;
+    assert_eq!(
+        body.len(),
+        10,
+        "a lying Content-Length must not be exceeded"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn content_length_above_the_cap_is_refused_before_the_body() {
+    // The other direction of the same lie, and the one §9.1 wants caught
+    // "before reading a byte": a declared length far past the cap is refused
+    // on the header alone. The incremental cap in `read_bounded` would also
+    // stop this eventually, which is exactly why it needs its own test -- with
+    // the pre-check disabled the streaming cap silently covers for it.
+    let mut r = b"HTTP/1.1 200 OK\r\nContent-Length: 4294967296\r\n\r\n".to_vec();
+    r.extend(std::iter::repeat(b'C').take(64));
+    let (base, rx, _h) = raw_server(vec![r]);
+    let t = transport(&base, &cfg());
+    let res = t
+        .send(
+            reqwest::Method::GET,
+            Url::parse(&format!("{base}/v1/me")).unwrap(),
+            None,
+        )
+        .await;
+    let _ = rx.recv().unwrap();
+    assert!(
+        matches!(
+            res,
+            Err(Error::Transport {
+                kind: TransportKind::BodyTooLarge,
+                ..
+            })
+        ),
+        "a declared length of 4 GiB must be refused on the header: {res:?}"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_failed_request_renders_without_the_url_or_its_query() {
+    // §9.1: "Never log the token or a URL containing it. Redact in error paths
+    // too." The guard is that `classify` uses a fixed string per class rather
+    // than `e.to_string()`, whose Display carries the full URL including the
+    // query. This has to drive a REAL failure through `send`, because an
+    // `Error` built by hand in a unit test can only hold a `SafeUrl` and so
+    // proves the property by construction rather than testing it.
+    //
+    // A closed port: bound, then dropped, so the connect is refused.
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    drop(listener);
+    let base = format!("http://{addr}");
+
+    let t = transport(&base, &cfg());
+    let res = t
+        .send(
+            reqwest::Method::GET,
+            Url::parse(&format!("{base}/v1/entries?marker=CANARY-IN-THE-QUERY")).unwrap(),
+            None,
+        )
+        .await;
+    let err = res.expect_err("a closed port must fail");
+    for rendering in [err.to_string(), format!("{err:?}")] {
+        assert!(
+            !rendering.contains("CANARY-IN-THE-QUERY"),
+            "the query reached a rendered error: {rendering}"
+        );
+        assert!(
+            !rendering.contains("SECRET-TOKEN"),
+            "the token reached a rendered error: {rendering}"
+        );
+    }
 }

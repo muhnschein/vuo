@@ -242,42 +242,43 @@ mod tests {
         })
         .expect("seed");
 
-        // Open the UI's write transaction and read inside it, exactly as
-        // "mark this feed read" does.
-        let tx = ui
-            .conn_mut()
-            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
-            .expect("begin");
-        let unread: i64 = tx
-            .query_row(
-                "SELECT COUNT(*) FROM entries WHERE status = 'unread'",
-                [],
-                |r| r.get(0),
-            )
-            .expect("read");
-        assert_eq!(unread, 1);
-
-        // The timer would commit here. With IMMEDIATE the UI already holds the
-        // write lock, so the timer waits rather than invalidating the UI's
-        // snapshot; give it a short timeout so this test cannot hang.
+        // The read-then-write goes through `with_tx`, which is the code this
+        // test is named for.
+        //
+        // It used to build the UI's transaction by hand with
+        // `TransactionBehavior::Immediate` -- supplying from the fixture the
+        // exact behaviour it claimed to be checking. Reverting `with_tx` to
+        // `Deferred`, the defect the comment above describes, left it green.
         timer
             .conn()
             .busy_timeout(std::time::Duration::from_millis(50))
             .expect("timeout");
-        let concurrent = timer.with_tx(|t| {
-            t.execute("UPDATE entries SET title = 'x' WHERE id = 1", [])?;
+
+        let outcome = ui.with_tx(|tx| {
+            let unread: i64 = tx.query_row(
+                "SELECT COUNT(*) FROM entries WHERE status = 'unread'",
+                [],
+                |r| r.get(0),
+            )?;
+            assert_eq!(unread, 1);
+
+            // The timer commits between the UI's read and its write. That is
+            // precisely the window BEGIN DEFERRED leaves open: the snapshot is
+            // taken at the read, and the write then fails with
+            // SQLITE_BUSY_SNAPSHOT, which busy_timeout cannot rescue.
+            let concurrent = timer.with_tx(|t| {
+                t.execute("UPDATE entries SET title = 'x' WHERE id = 1", [])?;
+                Ok(())
+            });
+            assert!(
+                concurrent.is_err(),
+                "the second writer should be the one that waits"
+            );
+
+            tx.execute("UPDATE entries SET status = 'read' WHERE id = 1", [])?;
             Ok(())
         });
-        assert!(
-            concurrent.is_err(),
-            "the second writer should be the one that waits"
-        );
-
-        // The user's write still succeeds. That is the property that matters:
-        // a queued mark must never be lost to a background sync.
-        tx.execute("UPDATE entries SET status = 'read' WHERE id = 1", [])
-            .expect("the user's write must not be lost");
-        tx.commit().expect("commit");
+        outcome.expect("the user's write must not be lost to a background sync");
 
         let read: i64 = ui
             .conn()
@@ -313,15 +314,24 @@ mod tests {
             "found too few sources to be scanning the crate"
         );
 
-        const BUILDERS: [&str; 4] = ["format!", "concat!", "push_str", "to_string() +"];
-        const KEYWORDS: [&str; 6] = [
-            "SELECT ",
-            "INSERT ",
-            "UPDATE ",
-            "DELETE FROM",
-            "CREATE TABLE",
-            "PRAGMA ",
-        ];
+        // The guard must be able to fail. `BUILDERS` used to be declared here
+        // and then discarded with `let _ = BUILDERS;` while the loop scanned
+        // only for `format!` -- so the most natural way to write the violation,
+        // `String::from("SELECT ...")` plus `push_str`, was invisible. These
+        // two assertions are what stop that happening again.
+        assert!(
+            sql_built_by_string_building(
+                r#"let mut s = String::from("SELECT COUNT(*) FROM outbox WHERE entry_id = ");
+                   s.push_str(&entry_id.to_string());"#
+            )
+            .is_some(),
+            "the scanner cannot see a push_str violation, so it guarantees nothing"
+        );
+        assert!(
+            sql_built_by_string_building(r#"let msg = format!("could not open {path}: {e}");"#)
+                .is_none(),
+            "the scanner flags an ordinary format! that has nothing to do with SQL"
+        );
 
         for file in files {
             let source = std::fs::read_to_string(&file).unwrap_or_default();
@@ -336,21 +346,46 @@ mod tests {
                 .collect::<Vec<_>>()
                 .join("\n");
 
-            for (index, _) in code.match_indices("format!") {
-                // Look at the whole macro invocation, not just its line.
-                let window = code.get(index..(index + 400).min(code.len())).unwrap_or("");
-                let upper = window.to_ascii_uppercase();
-                let looks_like_sql = KEYWORDS.iter().any(|k| upper.contains(k));
-                assert!(
-                    !looks_like_sql,
-                    "{} builds SQL with format!. §9.4 forbids it, including the \
-                     obviously-safe integer cases.\n---\n{}\n---",
+            if let Some(window) = sql_built_by_string_building(&code) {
+                panic!(
+                    "{} assembles SQL from strings. §9.4 forbids it, including the \
+                     obviously-safe integer cases.\n---\n{window}\n---",
                     file.display(),
-                    window.get(..200).unwrap_or(window)
                 );
             }
-            let _ = BUILDERS;
         }
+    }
+
+    /// The window around the first string-building construct that sits near an
+    /// SQL keyword, or `None`.
+    ///
+    /// The window is bidirectional: rustfmt readily puts the keyword BEFORE the
+    /// builder, as it does in the `String::from(...)` then `push_str` shape.
+    fn sql_built_by_string_building(code: &str) -> Option<String> {
+        const BUILDERS: [&str; 4] = ["format!", "concat!", "push_str", "to_string() +"];
+        const KEYWORDS: [&str; 6] = [
+            "SELECT ",
+            "INSERT ",
+            "UPDATE ",
+            "DELETE FROM",
+            "CREATE TABLE",
+            "PRAGMA ",
+        ];
+
+        for builder in BUILDERS {
+            for (index, _) in code.match_indices(builder) {
+                let start = index.saturating_sub(200);
+                let end = (index + 400).min(code.len());
+                let Some(window) = code.get(start..end) else {
+                    continue;
+                };
+                let upper = window.to_ascii_uppercase();
+                if KEYWORDS.iter().any(|k| upper.contains(k)) {
+                    return Some(window.chars().take(300).collect());
+                }
+            }
+        }
+        None
     }
 
     fn collect_rs(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {

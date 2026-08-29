@@ -116,7 +116,12 @@ jobs:
           # the actual host instead of inheriting the tool's own.
           HOST=$(rustc -vV | sed -n 's/^host: //p')
           echo "fuzzing for host target $HOST"
+          # fuzz/corpus/ is gitignored, so without this every run starts from
+          # an empty corpus -- and from empty, 60 seconds never reaches the
+          # assertions these targets exist for. See scripts/fuzz-seed.sh.
+          scripts/fuzz-seed.sh content_transform entry_deserialise
           cd crates/vuo-core/fuzz
           for target in content_transform entry_deserialise; do
-            cargo fuzz run --target "$HOST" "$target" -- -max_total_time=60 -rss_limit_mb=4096
+            cargo fuzz run --target "$HOST" "$target" \
+              -- -max_total_time=60 -rss_limit_mb=4096 -dict="$target.dict"
           done

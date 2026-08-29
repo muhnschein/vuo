@@ -47,7 +47,13 @@ expression = "MIT AND ISC AND OpenSSL"
 license-files = [{ path = "LICENSE", hash = 0xbd0eed23 }]
 
 [bans]
-multiple-versions = "warn"
+# "deny", not "warn". Both the Makefile and §8.3 name duplicate crates as a
+# subject of this gate, and under "warn" it could never turn `make check` red --
+# duplicates were reported and the target exited 0, so the check was a report,
+# not a gate. The `skip` list below is what makes a NEW duplicate visible: the
+# ones already there are outside the project's control, and each has to be
+# added deliberately.
+multiple-versions = "deny"
 wildcards = "deny"
 # Vuo's own crates depend on each other by path and carry no version
 # requirement, which is normal inside a workspace and is not the supply-chain
@@ -61,7 +67,19 @@ deny = [
     { name = "openssl-sys" },
     { name = "native-tls" },
 ]
-skip = []
+# The duplicates the dependency graph has today, each one a transitive pull
+# nothing in Vuo chooses. Listing them individually is the point: a NEW
+# duplicate -- one a change of ours introduced -- is not on this list and turns
+# `make check` red. Removing an entry that has since resolved is a one-line
+# change; adding one should be a deliberate note about why it is unavoidable.
+skip = [
+    # rusqlite (0.15) and indexmap/others (0.16) disagree.
+    "hashbrown",
+    # proc-macro crates spanning syn 1 and syn 2; a build-time dependency only.
+    "syn",
+    # pulled at different versions by tokio/rustls-native-certs.
+    "windows-sys",
+]
 skip-tree = []
 
 [sources]

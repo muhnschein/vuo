@@ -114,7 +114,20 @@ jobs:
           docker logs miniflux || true
           exit 1
 
-      - name: Create an API key and seed a fixed OPML
+      - name: Serve the fixture feed
+        # Miniflux runs with --network host, so it reaches the runner's
+        # 127.0.0.1 directly. Serving the feed locally makes the seed
+        # deterministic and independent of the runner's outbound network.
+        run: |
+          (cd tests/fixtures && python3 -m http.server 8099 --bind 127.0.0.1 >/dev/null 2>&1 &)
+          for i in $(seq 1 20); do
+            curl -fsS http://127.0.0.1:8099/seed-feed.xml >/dev/null 2>&1 && exit 0
+            sleep 1
+          done
+          echo "the fixture feed server did not start" >&2
+          exit 1
+
+      - name: Create an API key and seed entries
         id: seed
         run: |
           token=$(curl -fsS -u vuo:vuo-test-password \
@@ -124,9 +137,40 @@ jobs:
           echo "::add-mask::$token"
           echo "token=$token" >> "$GITHUB_OUTPUT"
 
+          # The OPML of real feeds stays, for breadth.
           curl -fsS -X POST http://127.0.0.1:8080/v1/import \
             -H "X-Auth-Token: $token" \
-            --data-binary @tests/fixtures/seed.opml
+            --data-binary @tests/fixtures/seed.opml || true
+
+          # And the local fixture, which is what the contract tests rely on.
+          curl -fsS -X POST http://127.0.0.1:8080/v1/feeds \
+            -H "X-Auth-Token: $token" \
+            -H 'Content-Type: application/json' \
+            -d '{"feed_url":"http://127.0.0.1:8099/seed-feed.xml","category_id":1}'
+
+      - name: Wait for entries to exist
+        # The contract tests now FAIL rather than skip on an empty instance, so
+        # the job has to guarantee the precondition. It used to import and run
+        # immediately, before the poller had fetched anything: both contract
+        # tests then took their "too few entries" early return, which cargo
+        # reports as a pass, and the job went green having asserted nothing.
+        env:
+          TOKEN: ${{ steps.seed.outputs.token }}
+        run: |
+          for i in $(seq 1 60); do
+            total=$(curl -fsS -H "X-Auth-Token: $TOKEN" \
+              'http://127.0.0.1:8080/v1/entries?limit=1' \
+              | python3 -c 'import sys,json; print(json.load(sys.stdin).get("total",0))' 2>/dev/null || echo 0)
+            if [ "${total:-0}" -ge 3 ]; then
+              echo "instance has $total entries after ${i}s"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "the instance never reached 3 entries; the contract tests would prove nothing" >&2
+          curl -fsS -H "X-Auth-Token: $TOKEN" http://127.0.0.1:8080/v1/feeds || true
+          docker logs miniflux || true
+          exit 1
 
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2

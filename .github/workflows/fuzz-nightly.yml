@@ -46,8 +46,12 @@ jobs:
           # the actual host instead of inheriting the tool's own.
           HOST=$(rustc -vV | sed -n 's/^host: //p')
           echo "fuzzing for host target $HOST"
+          # Adds any seed the restored corpus does not already contain, without
+          # overwriting what previous nights minimised.
+          scripts/fuzz-seed.sh ${{ matrix.target }}
           cd crates/vuo-core/fuzz
-          cargo fuzz run --target "$HOST" ${{ matrix.target }} -- -max_total_time=1800 -rss_limit_mb=4096
+          cargo fuzz run --target "$HOST" ${{ matrix.target }} \
+            -- -max_total_time=1800 -rss_limit_mb=4096 -dict=${{ matrix.target }}.dict
 
       - name: Upload crashes
         if: failure()

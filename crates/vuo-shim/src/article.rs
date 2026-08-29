@@ -229,7 +229,14 @@ impl ArticleModel {
                 // Origins the user consented to are folded in as trusted, so
                 // the transform yields Fetch rather than NeedsConsent for them.
                 extra_trusted: self.consented.clone(),
-                fallback: UnproxiedMedia::Ask,
+                // The user's Images setting, not a hardcoded default. This was
+                // `UnproxiedMedia::Ask` unconditionally, so choosing Strict or
+                // Allow in Settings did nothing at all (§9.3).
+                fallback: match ctx.media_policy() {
+                    crate::settings::MEDIA_STRICT => UnproxiedMedia::Strict,
+                    crate::settings::MEDIA_ALLOW => UnproxiedMedia::Allow,
+                    _ => UnproxiedMedia::Ask,
+                },
             },
             limits: vuo_core::content::Limits::default(),
         }
@@ -371,5 +378,64 @@ impl QAbstractListModel for ArticleModel {
         names.insert(ROLE_NEEDS_CONSENT, "needsConsent".into());
         names.insert(ROLE_CODE_LANGUAGE, "codeLanguage".into());
         names
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// §9.3's media policy, from the user's setting to the transform context.
+    ///
+    /// `transform_context` used to hardcode `UnproxiedMedia::Ask`, and
+    /// `Settings::media_policy_for` -- the function that maps the setting --
+    /// had ZERO production callers. So the Images control in Settings was
+    /// rendered, persisted and read back, and did nothing: a user who chose
+    /// Strict still got Ask, and one who chose Allow still got a tap-to-load
+    /// placeholder. Nothing in the build noticed, because nothing tested the
+    /// one place the policy is actually built.
+    #[test]
+    fn the_images_setting_reaches_the_transform_context() {
+        use vuo_core::content::UnproxiedMedia;
+
+        let dir = tempfile::tempdir().expect("tempdir");
+        let db = vuo_core::db::Database::open(&dir.path().join("m.sqlite")).expect("mirror");
+        let signal = std::sync::Arc::new(crate::context::SyncSignal::default());
+        let instance = url::Url::parse("https://miniflux.example/").expect("url");
+        let worker = crate::worker::Worker::spawn(
+            dir.path().join("m.sqlite"),
+            instance.clone(),
+            vuo_core::redact::ApiToken::new("t"),
+            vuo_core::api::TransportConfig::default(),
+            std::sync::Arc::clone(&signal),
+            |_| {},
+        );
+        let ctx = AppContext::new(db, worker, instance, signal);
+        let model = ArticleModel::default();
+
+        for (setting, expected) in [
+            (crate::settings::MEDIA_STRICT, UnproxiedMedia::Strict),
+            (crate::settings::MEDIA_ASK, UnproxiedMedia::Ask),
+            (crate::settings::MEDIA_ALLOW, UnproxiedMedia::Allow),
+        ] {
+            ctx.set_media_policy(setting);
+            let context = model.transform_context(&ctx);
+            let MediaPolicy::ProxyThroughInstance { fallback, .. } = context.media else {
+                panic!("the policy must proxy through the instance");
+            };
+            assert_eq!(
+                fallback, expected,
+                "the Images setting {setting} must reach the transform"
+            );
+        }
+
+        // An unrecognised value from a hand-edited account file falls back to
+        // Ask rather than to Allow.
+        ctx.set_media_policy(99);
+        let context = model.transform_context(&ctx);
+        let MediaPolicy::ProxyThroughInstance { fallback, .. } = context.media else {
+            panic!("the policy must proxy through the instance");
+        };
+        assert_eq!(fallback, UnproxiedMedia::Ask);
     }
 }

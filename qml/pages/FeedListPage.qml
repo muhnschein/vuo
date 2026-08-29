@@ -39,13 +39,33 @@ Page {
                 y: Theme.paddingMedium
                 width: parent.width - Theme.horizontalPageMargin * 2
 
-                Label {
+                Item {
                     width: parent.width
-                    // A feed name is chosen by the feed operator.
-                    textFormat: Text.PlainText
-                    text: title
-                    truncationMode: TruncationMode.Fade
-                    color: Theme.primaryColor
+                    height: feedTitle.height
+
+                    Label {
+                        id: unreadBadge
+                        anchors.right: parent.right
+                        anchors.verticalCenter: feedTitle.verticalCenter
+                        // FeedModel has exposed a per-feed unread count all
+                        // along; this page never read it, so the list showed
+                        // bare names and you had to open a feed to find out
+                        // whether it had anything in it.
+                        text: unreadCount > 0 ? unreadCount : ""
+                        color: Theme.highlightColor
+                        font.pixelSize: Theme.fontSizeSmall
+                    }
+                    Label {
+                        id: feedTitle
+                        anchors.left: parent.left
+                        anchors.right: unreadBadge.left
+                        anchors.rightMargin: unreadBadge.width > 0 ? Theme.paddingMedium : 0
+                        // A feed name is chosen by the feed operator.
+                        textFormat: Text.PlainText
+                        text: title
+                        truncationMode: TruncationMode.Fade
+                        color: Theme.primaryColor
+                    }
                 }
                 Label {
                     visible: errorMessage.length > 0

@@ -226,10 +226,16 @@ impl Transport {
         loop {
             let safe = SafeUrl::from(&current);
 
-            // The token is attached only for the configured origin. If a
-            // redirect ever walked us elsewhere, the request goes out
-            // unauthenticated rather than leaking the key -- though in
-            // practice the origin check below refuses the hop first.
+            // The token is attached only for the configured origin.
+            //
+            // Belt-and-braces: the origin check below refuses an off-origin hop
+            // outright, so `current` is always the configured origin by the
+            // time it gets here and this condition is always true. It stays as
+            // a second line of defence if that refusal is ever loosened -- but
+            // being unreachable, it has no behaviour a test can observe, and
+            // the comment in
+            // `tests::the_token_is_withheld_from_any_origin_but_the_configured_one`
+            // says so rather than implying coverage that does not exist.
             let remaining = self.request_timeout.checked_sub(started.elapsed());
             let Some(remaining) = remaining.filter(|r| !r.is_zero()) else {
                 return Err(Error::Transport {
@@ -464,22 +470,116 @@ mod tests {
     }
 
     #[test]
+    fn the_token_is_withheld_from_any_origin_but_the_configured_one() {
+        // The origin comparison itself, which is what the off-origin redirect
+        // refusal decides on. Getting it wrong -- accepting a different port,
+        // a different scheme, or a suffix like `miniflux.example.evil.invalid`
+        // -- is a key leak, and the integration test can only exercise one
+        // foreign origin.
+        //
+        // Note what this does NOT cover, because nothing can: the conditional
+        // at the attach site (`if self.is_configured_origin(&current)`).
+        // `current` only ever advances past the refusal above, so it is always
+        // the configured origin by construction, and attaching the header
+        // unconditionally there is behaviourally identical. It is deliberate
+        // belt-and-braces for a state the refusal makes unreachable -- not a
+        // second layer with its own observable behaviour, and not something a
+        // test can distinguish.
+        let t = Transport::new(
+            Url::parse("https://miniflux.example:8080/").unwrap(),
+            ApiToken::new("t"),
+            &TransportConfig::default(),
+        )
+        .unwrap();
+
+        assert!(t.is_configured_origin(
+            &Url::parse("https://miniflux.example:8080/v1/entries?x=1").unwrap()
+        ));
+
+        for foreign in [
+            // a different port
+            "https://miniflux.example:8443/v1/entries",
+            // the default port for the scheme, which is NOT 8080
+            "https://miniflux.example/v1/entries",
+            // a different scheme
+            "http://miniflux.example:8080/v1/entries",
+            // a different host
+            "https://evil.invalid:8080/v1/entries",
+            // A SUBDOMAIN. `ends_with` accepts this, and it is the classic
+            // way an origin check written as a suffix comparison leaks a
+            // credential -- anyone who can create a host under the domain gets
+            // the token.
+            "https://evil.miniflux.example:8080/v1/entries",
+            // A host that merely ends with the same characters, which a
+            // careless suffix comparison also accepts.
+            "https://notminiflux.example:8080/v1/entries",
+            // And the other direction: a longer host that starts the same.
+            "https://miniflux.example.evil.invalid:8080/v1/entries",
+            "https://miniflux.example.co:8080/v1/entries",
+        ] {
+            assert!(
+                !t.is_configured_origin(&Url::parse(foreign).unwrap()),
+                "{foreign} is not the configured origin; the token must not be attached"
+            );
+        }
+    }
+
+    #[test]
     fn there_is_no_way_to_disable_verification() {
         // A guard against someone adding a "trust invalid certs" toggle later.
         // §9.1 is explicit that this gets no setting.
-        let source = include_str!("transport.rs");
+        //
+        // Scans the WHOLE crate, not `include_str!("transport.rs")`. Reading
+        // only its own file made the guard trivial to walk around: a
+        // `ClientBuilder` configured in any sibling module -- api/icon.rs,
+        // api/client.rs, a new api/media.rs -- was invisible to it, and
+        // `reqwest` is a workspace dependency so any of them can build one.
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut files = Vec::new();
+        collect_rs(&root, &mut files);
+        assert!(
+            files.len() > 5,
+            "found too few sources to be scanning the crate"
+        );
+
         // The needles are assembled at runtime so that this test's own text
         // does not contain the literals it forbids.
-        for needle in [
+        let needles = [
             ["danger_accept", "_invalid_certs"].concat(),
             ["danger_accept", "_invalid_hostnames"].concat(),
             ["tls_built_in", "_root_certs"].concat(),
+            // Hands the whole verifier over to a caller-supplied one.
+            ["use_preconfigured", "_tls"].concat(),
+            ["dangerous", "()"].concat(),
             ["cookie", "_store"].concat(),
-        ] {
-            assert!(
-                !source.contains(&needle),
-                "TLS verification must not be defeatable: found {needle}"
-            );
+        ];
+
+        for file in files {
+            let source = std::fs::read_to_string(&file).unwrap_or_default();
+            // This test's own module is where the needles are written down.
+            let source = source.split("#[cfg(test)]").next().unwrap_or("").to_owned();
+            for needle in &needles {
+                assert!(
+                    !source.contains(needle.as_str()),
+                    "TLS verification must not be defeatable: found {needle} in {}",
+                    file.display()
+                );
+            }
+        }
+    }
+
+    /// Every `.rs` file under a directory.
+    fn collect_rs(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                collect_rs(&path, out);
+            } else if path.extension().and_then(|e| e.to_str()) == Some("rs") {
+                out.push(path);
+            }
         }
     }
 }

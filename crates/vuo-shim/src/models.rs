@@ -9,8 +9,14 @@
 //! # Thread affinity
 //!
 //! Every method here runs on the Qt thread. The worker never touches a
-//! `QObject`; it writes to SQLite and signals, and the signal handler — already
-//! marshalled by `queued_callback` — calls `reload`.
+//! `QObject`: it writes to SQLite and bumps [`crate::context::SyncSignal`]'s
+//! generation counter, and the models notice by POLLING that counter from
+//! `pollSync`, driven by a `Timer` in the QML.
+//!
+//! There is no callback into a model, and there cannot easily be one: QML
+//! constructs these objects, so Rust holds no handle to a live one. (This
+//! paragraph used to describe a `queued_callback` signal handler calling
+//! `reload`. No such handler exists — the poll is the mechanism.)
 //!
 //! # Roles, not rich text
 //!

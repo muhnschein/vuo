@@ -91,15 +91,32 @@ mod tests {
     ///
     /// *"Exercises the shim under `QT_QPA_PLATFORM=offscreen` on a headless
     /// runner. Catches model-registration and threading mistakes without a
-    /// device."* Registration is the part that silently does nothing when a
-    /// type is malformed, so a test that merely constructs models would not
-    /// catch it.
+    /// device."*
+    ///
+    /// What it covers is that registering does not abort and is idempotent --
+    /// a malformed meta-object aborts the process here rather than failing a
+    /// return value, and a plugin can be loaded more than once.
+    ///
+    /// What it CANNOT cover: whether Qt accepted each registration.
+    /// `qml_register_type` in qmetaobject 0.2.10 returns `()`, discarding the
+    /// type id that would be -1 on rejection, so there is nothing to assert.
+    /// A registration that silently did nothing is caught one level up, by
+    /// tests/qml_loads.rs: the QML then names a type the engine does not know
+    /// and every page fails to compile. Registering under the wrong name is
+    /// caught the same way.
     #[test]
     fn types_register_without_a_display() {
         register_qml_types();
         // Registering twice must also be harmless: a plugin can be loaded more
         // than once, and Qt tolerates re-registration.
         register_qml_types();
+
+        // And each registered type is a well-formed QObject that can actually
+        // be default-constructed, which is what QML does with `EntryModel {}`.
+        assert_eq!(models::EntryModel::default().row_count(), 0);
+        assert_eq!(models::FeedModel::default().row_count(), 0);
+        assert_eq!(article::ArticleModel::default().row_count(), 0);
+        assert_eq!(settings::Settings::default().sync_interval_minutes(), None);
     }
 
     #[test]

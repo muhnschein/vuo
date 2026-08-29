@@ -206,14 +206,169 @@ fn every_member_the_qml_uses_is_implemented_in_rust() {
     );
 }
 
+/// Roles the Rust models expose that no QML page reads.
+///
+/// The check below is that every *other* declared role is referenced, so
+/// renaming or dropping a role the UI depends on fails here. Adding a name to
+/// this list is therefore a deliberate statement that the UI does not use it,
+/// not a way to quiet the test.
+const ROLES_QML_DOES_NOT_USE: &[&str] = &[
+    // The article's plain-text rendering, kept for a share/copy action that
+    // does not exist yet.
+    "plainText",
+    // The transform records a code block's language; the UI renders code
+    // blocks unhighlighted, so nothing reads it.
+    "codeLanguage",
+    // List numbering comes from the pre-rendered `marker`.
+    "ordered",
+    // Feed browsing is by feed; categories are stored but not yet a UI axis.
+    "categoryId",
+    // The list shows `readingTime` and `unread`, not a timestamp; and the
+    // article URL reaches the browser through `article.openInBrowser()`,
+    // which returns it, rather than through the role.
+    "published",
+    "url",
+];
+
+/// QML and Silica names that legitimately appear as bare camelCase words in a
+/// value position. Everything else bare and camelCase inside a page has to be
+/// a model role.
+///
+/// This list is short on purpose. An earlier version of this test carried
+/// around sixty names, and because it had swallowed real role and method
+/// vocabulary (`entryId`, `unreadCount`, `setRead`, ...) it could no longer
+/// see a typo in any of them.
+const QML_VALUE_NAMES: &[&str] = &[
+    "qsTr",
+    "pageStack",
+    "remorseAction",
+    "currentIndex",
+    "defaultAllowedOrientations",
+    "implicitHeight",
+    "sourceSize",
+    "textFormat",
+];
+
+/// Does this word have the shape of one of our role names?
+fn looks_like_a_role(word: &str) -> bool {
+    word.len() >= 4
+        && word.chars().next().is_some_and(char::is_lowercase)
+        && word.chars().any(char::is_uppercase)
+}
+
+/// The bare identifiers on one line of QML.
+///
+/// Comments and string literals are removed; a member access (`model.title`)
+/// and a property being set (`textFormat:`) are both excluded. Member accesses
+/// are the other test's job, and a name on the left of a colon is a property
+/// this QML declares rather than a value it reads.
+fn bare_identifiers(line: &str) -> Vec<String> {
+    let code = line.split("//").next().unwrap_or("");
+
+    // A role name mentioned inside a translated string is not a reference.
+    let mut cleaned = String::with_capacity(code.len());
+    let mut quote: Option<char> = None;
+    for c in code.chars() {
+        match quote {
+            Some(q) => {
+                if c == q {
+                    quote = None;
+                }
+            }
+            None => {
+                if c == '"' || c == '\'' {
+                    quote = Some(c);
+                    cleaned.push(' ');
+                } else {
+                    cleaned.push(c);
+                }
+            }
+        }
+    }
+
+    let chars: Vec<char> = cleaned.chars().collect();
+    let mut out = Vec::new();
+    let mut i = 0usize;
+    while i < chars.len() {
+        if !(chars[i].is_alphabetic() || chars[i] == '_') {
+            i += 1;
+            continue;
+        }
+        let start = i;
+        while i < chars.len() && (chars[i].is_alphanumeric() || chars[i] == '_') {
+            i += 1;
+        }
+        let preceded_by_dot = start > 0 && chars[start - 1] == '.';
+        let mut j = i;
+        while chars.get(j) == Some(&' ') {
+            j += 1;
+        }
+        let is_binding = chars.get(j) == Some(&':');
+        if !preceded_by_dot && !is_binding {
+            out.push(chars[start..i].iter().collect());
+        }
+    }
+    out
+}
+
+/// Names the QML itself introduces: `property var x`, `id: x`, `signal x`,
+/// `function x()`. These are legitimately used bare and are not roles.
+fn qml_declared_identifiers(files: &[PathBuf]) -> BTreeSet<String> {
+    let mut names = BTreeSet::new();
+    for file in files {
+        let source = std::fs::read_to_string(file).expect("read qml");
+        for line in source.lines() {
+            let code = line.split("//").next().unwrap_or("").trim();
+            let mut words = code.split_whitespace();
+            match words.next() {
+                Some("property") => {
+                    // `property <type> <name>` and `property alias <name>`.
+                    let _ty = words.next();
+                    if let Some(name) = words.next() {
+                        names.insert(name.trim_end_matches(':').to_owned());
+                    }
+                }
+                Some("signal" | "function") => {
+                    if let Some(name) = words.next() {
+                        let name: String = name
+                            .chars()
+                            .take_while(|c| c.is_alphanumeric() || *c == '_')
+                            .collect();
+                        if !name.is_empty() {
+                            names.insert(name);
+                        }
+                    }
+                }
+                Some("id:") => {
+                    if let Some(name) = words.next() {
+                        names.insert(name.to_owned());
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    names
+}
+
 #[test]
 fn every_role_the_delegates_use_is_exposed_by_a_model() {
     // Delegates reference roles as bare identifiers, so a typo'd role renders
     // as `undefined` rather than failing — silently blanking part of the UI.
+    // Neither qmllint nor the QML load test can see it: a role is a runtime
+    // lookup.
     //
-    // This reads the QML. An earlier version compared a hand-written list of
-    // role names against the Rust source, which could not catch a typo in the
-    // QML at all: the very thing it claimed to check.
+    // The check runs in BOTH directions, because each catches a different
+    // mistake and neither catches the other's:
+    //
+    //   Rust side — every declared role must be referenced by some page, so
+    //   renaming `needsConsent` in article.rs fails here even though the QML
+    //   is untouched and still compiles.
+    //
+    //   QML side  — every bare camelCase word in a page must be a declared
+    //   role, a name the QML itself declares, or one of a short list of Qt
+    //   names, so mistyping `quoteDepth` at ONE of its four call sites fails
+    //   here even though the role is still referenced elsewhere.
     let root = Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .and_then(|p| p.parent())
@@ -226,123 +381,54 @@ fn every_role_the_delegates_use_is_exposed_by_a_model() {
     let mut files = Vec::new();
     qml_files(&root.join("qml"), &mut files);
     files.sort();
+    assert!(!files.is_empty(), "no QML found");
 
-    // Identifiers that appear bare inside a delegate and look like a role:
-    // camelCase, and not a known QML/Silica name. Anything matching a declared
-    // role is fine; anything that looks like a role but is not declared is the
-    // failure this catches.
-    const NOT_ROLES: &[&str] = &[
-        "textFormat",
-        "wrapMode",
-        "sourceSize",
-        "fillMode",
-        "pixelSize",
-        "horizontalAlignment",
-        "maximumLineCount",
-        "linkColor",
-        "onLinkActivated",
-        "onStatusChanged",
-        "onClicked",
-        "onCurrentIndexChanged",
-        "onTextChanged",
-        "onCheckedChanged",
-        "onDestruction",
-        "onCompleted",
-        "onAccepted",
-        "onConnectionTested",
-        "onTriggered",
-        "onReturnPressed",
-        "implicitHeight",
-        "paddingSmall",
-        "paddingMedium",
-        "paddingLarge",
-        "itemSizeLarge",
-        "horizontalPageMargin",
-        "fontSizeSmall",
-        "fontSizeMedium",
-        "fontSizeLarge",
-        "fontSizeExtraSmall",
-        "fontSizeHuge",
-        "primaryColor",
-        "secondaryColor",
-        "highlightColor",
-        "secondaryHighlightColor",
-        "highlightBackgroundColor",
-        "errorColor",
-        "contentHeight",
-        "allowedOrientations",
-        "defaultAllowedOrientations",
-        "initialPage",
-        "acceptText",
-        "placeholderText",
-        "inputMethodHints",
-        "echoMode",
-        "currentIndex",
-        "canAccept",
-        "truncationMode",
-        "hintText",
-        "iconSource",
-        "unreadCount",
-        "blockedImages",
-        "entryTitle",
-        "entryId",
-        "feedModel",
-        "syncing",
-        "openUrlExternally",
-        "resolvedUrl",
-        "setScope",
-        "markAllRead",
-        "markFeedRead",
-        "setRead",
-        "setStarred",
-        "openInBrowser",
-        "fetchOriginal",
-        "allowImagesFrom",
-        "testConnection",
-        "serverUrl",
-        "apiKey",
-        "mediaPolicy",
-        "syncIntervalIndex",
-        "wifiOnly",
-        "useCustomCa",
-        "pendingActions",
-        "requestSync",
-    ];
+    let qml_declared = qml_declared_identifiers(&files);
 
-    let mut missing = Vec::new();
+    let mut used: BTreeSet<String> = BTreeSet::new();
+    let mut unknown: Vec<String> = Vec::new();
+
     for file in &files {
         let source = std::fs::read_to_string(file).expect("read qml");
         for (lineno, line) in source.lines().enumerate() {
-            let code = line.split("//").next().unwrap_or("");
-            // Bare camelCase identifiers used as values.
-            for word in code.split(|c: char| !c.is_alphanumeric() && c != '_') {
-                if word.len() < 4 || !word.chars().next().is_some_and(char::is_lowercase) {
+            for word in bare_identifiers(line) {
+                if roles.contains(&word) {
+                    used.insert(word);
                     continue;
                 }
-                if !word.chars().any(char::is_uppercase) {
-                    continue;
-                }
-                if roles.contains(word) || NOT_ROLES.contains(&word) {
-                    continue;
-                }
-                // Anything reached here is an unrecognised camelCase word. Only
-                // report ones that look like our own role vocabulary, to keep
-                // the test from policing all of Qt.
-                if word.starts_with("image") || word.starts_with("block") || word.ends_with("Depth")
+                if !looks_like_a_role(&word)
+                    || qml_declared.contains(&word)
+                    || QML_VALUE_NAMES.contains(&word.as_str())
                 {
-                    missing.push(format!(
-                        "{}:{} — `{word}` looks like a model role but no model exposes it",
-                        file.strip_prefix(&root).unwrap_or(file).display(),
-                        lineno + 1
-                    ));
+                    continue;
                 }
+                unknown.push(format!(
+                    "{}:{} — `{word}` is used as a bare value but no model exposes it",
+                    file.strip_prefix(&root).unwrap_or(file).display(),
+                    lineno + 1
+                ));
             }
         }
     }
 
     assert!(
-        missing.is_empty(),
-        "QML uses roles no model exposes:\n{}",
-        missing.join("\n")
+        unknown.is_empty(),
+        "QML reads names no model exposes. A role that does not exist evaluates \
+         to `undefined` at runtime, so the binding silently renders nothing.\n\n{}\n\n\
+         If one of these is a Qt or Silica name rather than a typo, add it to \
+         QML_VALUE_NAMES with a reason.",
+        unknown.join("\n")
+    );
+
+    let unused: Vec<&String> = roles
+        .iter()
+        .filter(|r| !used.contains(*r) && !ROLES_QML_DOES_NOT_USE.contains(&r.as_str()))
+        .collect();
+    assert!(
+        unused.is_empty(),
+        "these roles are declared in Rust but no QML page reads them: {unused:?}\n\n\
+         Either the role was renamed and the QML still asks for the old name — \
+         which renders as `undefined` on the device — or the role is genuinely \
+         unused and belongs in ROLES_QML_DOES_NOT_USE with a reason."
     );
 }

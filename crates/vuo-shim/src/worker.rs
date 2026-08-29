@@ -22,6 +22,7 @@
 //! writes to the mirror, then signals; the models re-read the mirror on the Qt
 //! thread. Sync results are never passed through the channel as data.
 
+use crate::context::Notice;
 use std::path::PathBuf;
 use std::sync::mpsc;
 use std::thread;
@@ -230,15 +231,31 @@ impl Worker {
                                     let removed = db.with_tx(|tx| {
                                         store::delete_feed(tx, vuo_core::model::FeedId(feed_id))
                                     });
+                                    // This DID change the mirror. Without the
+                                    // bump the generation never moved, so
+                                    // `FeedModel::pollSync` reported nothing
+                                    // and the deleted feed's row stayed in the
+                                    // list until some later sync.
+                                    finish(removed.is_ok());
+                                    signal.post(Notice::SubscriptionChanged {
+                                        ok: removed.is_ok(),
+                                        message: String::new(),
+                                    });
                                     on_event(Event::SubscriptionChanged {
                                         ok: removed.is_ok(),
                                         message: String::new(),
                                     });
                                 }
-                                Err(e) => on_event(Event::SubscriptionChanged {
-                                    ok: false,
-                                    message: e.to_string(),
-                                }),
+                                Err(e) => {
+                                    signal.post(Notice::SubscriptionChanged {
+                                        ok: false,
+                                        message: e.to_string(),
+                                    });
+                                    on_event(Event::SubscriptionChanged {
+                                        ok: false,
+                                        message: e.to_string(),
+                                    });
+                                }
                             }
                         }
                         Command::FetchOriginal { entry_id } => {
@@ -255,6 +272,10 @@ impl Worker {
                                         )
                                         .map_err(vuo_core::Error::from)
                                     });
+                                    // Same as Unsubscribe: the scraped body is
+                                    // in SQLite, so the open article is stale
+                                    // until something reloads it.
+                                    finish(stored.is_ok());
                                     on_event(Event::OriginalContentFetched {
                                         entry_id,
                                         ok: stored.is_ok(),
@@ -267,16 +288,28 @@ impl Worker {
                             }
                         }
                         Command::TestConnection => match runtime.block_on(client.me()) {
-                            Ok(user) => on_event(Event::ConnectionTested {
-                                ok: true,
+                            Ok(user) => {
                                 // The username is the user's own, from their own
                                 // server, but it is still rendered as plain text.
-                                message: user.username,
-                            }),
-                            Err(e) => on_event(Event::ConnectionTested {
-                                ok: false,
-                                message: e.to_string(),
-                            }),
+                                signal.post(Notice::ConnectionTested {
+                                    ok: true,
+                                    message: user.username.clone(),
+                                });
+                                on_event(Event::ConnectionTested {
+                                    ok: true,
+                                    message: user.username,
+                                });
+                            }
+                            Err(e) => {
+                                signal.post(Notice::ConnectionTested {
+                                    ok: false,
+                                    message: e.to_string(),
+                                });
+                                on_event(Event::ConnectionTested {
+                                    ok: false,
+                                    message: e.to_string(),
+                                });
+                            }
                         },
                         Command::FlushOutbox => {
                             match runtime.block_on(sync::replay::flush(&mut db, &client)) {
@@ -402,6 +435,21 @@ pub struct AppPaths {
 }
 
 impl AppPaths {
+    /// The standard layout under an explicit base directory.
+    ///
+    /// Split out from [`AppPaths::resolve`] so that the layout and the
+    /// configured-or-not decision can be tested without mutating process-wide
+    /// environment, which no test in a threaded runner can do safely.
+    #[must_use]
+    pub fn under(base: impl Into<PathBuf>) -> Self {
+        let base = base.into();
+        AppPaths {
+            database: base.join("vuo.sqlite"),
+            account: base.join("account.json"),
+            ca_certificate: base.join("ca.pem"),
+        }
+    }
+
     /// Resolve the standard locations, honouring `XDG_DATA_HOME`.
     #[must_use]
     pub fn resolve() -> Option<Self> {
@@ -409,22 +457,23 @@ impl AppPaths {
             .map(PathBuf::from)
             .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local/share")))?
             .join("harbour-vuo");
-        Some(AppPaths {
-            database: base.join("vuo.sqlite"),
-            account: base.join("account.json"),
-            ca_certificate: base.join("ca.pem"),
-        })
+        Some(Self::under(base))
     }
 
-    /// Resolve paths and confirm an account has been configured.
+    /// `Some` only once an account has been written.
     ///
     /// Returns `None` when the app has never been set up, which is not an
     /// error: a background timer firing before first run should do nothing
     /// quietly.
     #[must_use]
+    pub fn configured(self) -> Option<Self> {
+        self.account.exists().then_some(self)
+    }
+
+    /// Resolve paths and confirm an account has been configured.
+    #[must_use]
     pub fn from_env() -> Option<Self> {
-        let paths = Self::resolve()?;
-        paths.account.exists().then_some(paths)
+        Self::resolve()?.configured()
     }
 }
 
@@ -483,6 +532,13 @@ pub fn load_account(path: &std::path::Path) -> vuo_core::Result<Account> {
 /// The permissions are set *before* the secret is written, not after: a file
 /// created world-readable and chmod'ed afterwards is readable for the window
 /// in between, and on a shared device that window is enough.
+///
+/// `OpenOptions::mode` applies only when the file is CREATED, so it does
+/// nothing for an account file that already exists -- one left behind by an
+/// older build, restored from a backup, or written by hand. That path is
+/// covered by tightening the mode explicitly after the open, which is safe in
+/// the same sense: `truncate(true)` has already emptied the file, so the
+/// permissions are narrowed before any secret goes in.
 pub fn save_account(path: &std::path::Path, account: &Account) -> vuo_core::Result<()> {
     use std::io::Write as _;
 
@@ -503,6 +559,18 @@ pub fn save_account(path: &std::path::Path, account: &Account) -> vuo_core::Resu
     let mut file = options
         .open(path)
         .map_err(|e| vuo_core::Error::Config(format!("could not write the account file: {e}")))?;
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        // The file is empty at this point, so this narrows before the token is
+        // written rather than after.
+        file.set_permissions(std::fs::Permissions::from_mode(0o600))
+            .map_err(|e| {
+                vuo_core::Error::Config(format!("could not secure the account file: {e}"))
+            })?;
+    }
+
     let json = serde_json::to_vec_pretty(account)
         .map_err(|_| vuo_core::Error::Config("could not encode the account".to_owned()))?;
     file.write_all(&json)
@@ -573,11 +641,37 @@ mod tests {
         assert!(err.to_string().contains("could not be read"), "{err}");
     }
 
+    /// A real self-signed CA, so the fixture is one `Transport::new` accepts.
+    ///
+    /// The previous fixture was the single line `-----BEGIN CERTIFICATE-----`,
+    /// which `reqwest::Certificate::from_pem` rejects -- so the configuration
+    /// the test blessed could not in fact build a client.
+    const TEST_CA_PEM: &str = "\
+-----BEGIN CERTIFICATE-----\n\
+MIIDDzCCAfegAwIBAgIUdRtsISsyGOb74MwXRLNVZV3gzOkwDQYJKoZIhvcNAQEL\n\
+BQAwFjEUMBIGA1UEAwwLVnVvIFRlc3QgQ0EwIBcNMjYwODI4MTgyNjU5WhgPMjEy\n\
+NjA4MDQxODI2NTlaMBYxFDASBgNVBAMMC1Z1byBUZXN0IENBMIIBIjANBgkqhkiG\n\
+9w0BAQEFAAOCAQ8AMIIBCgKCAQEAsw3RlnIknfUGFlQnR2Nz21l9//UnOCboAvZV\n\
+iOaXzQYaFjepYSTTdYcrNjuvxh5SmThKr8LyT2RygxkjI/jo6TFT/PeaqD4NkMsH\n\
+4lLxRFGHnsBtq8pGUJOYsG9DdRGvLaCQti5spfkNiElD0QxzH6ZPwGWRKJYi1szG\n\
+KNrIe6lYInC1tfI7Twxhte1vMTEeITrZR1FnNkV24Fki4dPZeYr3IAHDJCkYzBqQ\n\
+Z5MGjwCB1AJ3gB3oeFbgVmy0Lh8mIz7erGEMD8VfOQ1M2gaglymCRy2dpps/OMa9\n\
+iy1zXnGT8xdmI0H3DCg8JQR2DBSP7k/KZH+q3WZOky6FZiU1wwIDAQABo1MwUTAd\n\
+BgNVHQ4EFgQUDg3uic6vnPmu8XcrbFHI0vZ+HfowHwYDVR0jBBgwFoAUDg3uic6v\n\
+nPmu8XcrbFHI0vZ+HfowDwYDVR0TAQH/BAUwAwEB/zANBgkqhkiG9w0BAQsFAAOC\n\
+AQEAIAHzIceTVXtzNzAb66/mU3q51jv7luE9P13FbC76NM9+GbUWoQckroKvd3lt\n\
+XZ+Diiv3gxfRbgOjMa1SaJcBMyWi5iEkM2/Ljc1zYAPR3RhfhDUdUPukwmcPy74u\n\
+gL0usN+U5YUBGaFwvRgvO/9Vrxhgw4o5QI1AwXMq49e0B3S9F502etJUpbCaXfND\n\
+1HvfrW3DQouGqouD0RbbTyEjBpsoI2HZKN2irYq81VBhgDX/NKs1lySVYoz9/JPM\n\
+B/ICqFxm4tqVyVqqaxdhkS/DJcUPIyEhhwLStjHyLGh364xT06vcDdcRmGyuCSlb\n\
+EQBBQIobIy41+aQiMsM0XBYH3Q==\n\
+-----END CERTIFICATE-----\n";
+
     #[test]
     fn a_configured_ca_reaches_the_transport() {
         let dir = tempfile::tempdir().expect("tempdir");
         let ca = dir.path().join("ca.pem");
-        std::fs::write(&ca, b"-----BEGIN CERTIFICATE-----\n").expect("write");
+        std::fs::write(&ca, TEST_CA_PEM).expect("write");
         let paths = AppPaths {
             database: dir.path().join("db.sqlite"),
             account: dir.path().join("account.json"),
@@ -594,6 +688,16 @@ mod tests {
             config.extra_ca_pem.is_some(),
             "the CA setting must actually reach the client"
         );
+
+        // And the config must be one a client can be built from. Stopping at
+        // the struct field blesses a configuration that `Transport::new`
+        // refuses, which is the opposite of what this test's name claims.
+        vuo_core::api::Transport::new(
+            url::Url::parse("https://h.example/").expect("url"),
+            vuo_core::redact::ApiToken::new("t"),
+            &config,
+        )
+        .expect("a configured CA must produce a usable transport");
 
         // And off by default.
         let off = Account {
@@ -638,6 +742,38 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
+    fn overwriting_an_existing_account_file_still_secures_it() {
+        // `OpenOptions::mode` applies only at CREATION, so it does nothing for
+        // a file that already exists -- one from an older build, a restored
+        // backup, or written by hand. Overwriting it used to leave the API key
+        // world-readable.
+        use std::os::unix::fs::PermissionsExt as _;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("account.json");
+        std::fs::write(&path, "{}").expect("pre-create");
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).expect("chmod");
+
+        save_account(
+            &path,
+            &Account {
+                server_url: "https://h.example/".into(),
+                token: "secret".into(),
+                use_custom_ca: false,
+                ..Account::default()
+            },
+        )
+        .expect("write");
+
+        let mode = std::fs::metadata(&path).expect("stat").permissions().mode() & 0o777;
+        assert_eq!(
+            mode, 0o600,
+            "overwriting an existing account file must tighten its permissions, \
+             not inherit whatever was there"
+        );
+    }
+
+    #[test]
     fn a_malformed_account_file_is_an_error_not_a_panic() {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join("account.json");
@@ -648,12 +784,26 @@ mod tests {
     #[test]
     fn an_unconfigured_device_reports_no_paths_rather_than_failing() {
         // A timer that fires before first run must do nothing, quietly.
+        //
+        // This has to go through `AppPaths::configured` -- the decision
+        // `from_env` returns through. Building an `AppPaths` literal pointing
+        // at a file that does not exist and asserting `!path.exists()`, as
+        // this test used to, is an assertion about `std::path::Path` and
+        // passes with `configured` replaced by `Some(self)`.
         let dir = tempfile::tempdir().expect("tempdir");
-        let paths = AppPaths {
-            database: dir.path().join("db.sqlite"),
-            account: dir.path().join("missing.json"),
-            ca_certificate: dir.path().join("ca.pem"),
-        };
-        assert!(!paths.account.exists());
+        let base = dir.path().join("harbour-vuo");
+        std::fs::create_dir_all(&base).expect("mkdir");
+
+        assert!(
+            AppPaths::under(&base).configured().is_none(),
+            "with no account file a background sync must not start"
+        );
+
+        std::fs::write(base.join("account.json"), "{}").expect("write");
+        let paths = AppPaths::under(&base)
+            .configured()
+            .expect("an account file means configured");
+        assert_eq!(paths.database, base.join("vuo.sqlite"));
+        assert_eq!(paths.ca_certificate, base.join("ca.pem"));
     }
 }

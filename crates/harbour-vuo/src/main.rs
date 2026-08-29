@@ -68,13 +68,16 @@ fn install_context() -> vuo_core::Result<()> {
     // QObject has to be marshalled back. `queued_callback` is qmetaobject's
     // primitive for that; without it this would be a data race on Qt internals.
     //
-    // The callback must DO something. A version of this that only logged meant
-    // no model ever reloaded after a sync: entries arrived in SQLite and the
-    // UI never noticed, so the app looked broken in exactly the way a user
-    // would report as "sync does nothing".
-    // Logging only. The models learn that the mirror changed by polling
-    // `SyncSignal`, which the worker bumps -- see context::SyncSignal for why
-    // that is a poll and not a callback into QML-owned objects.
+    // Logging only, and that is now correct: the models learn that the mirror
+    // changed by polling `SyncSignal`, which the worker bumps, and a result
+    // the UI has to SHOW (the answer to "test this connection", a rejected
+    // feed URL) is left in that signal's notice slot for the page to drain.
+    // See context::SyncSignal for why both are polls rather than callbacks
+    // into QML-owned objects.
+    //
+    // (The paragraph that used to sit here said the opposite -- "the callback
+    // must DO something" -- and was left over from before the SyncSignal
+    // rewrite. Two adjacent contradictory comments are worse than neither.)
     let deliver = qmetaobject::queued_callback(|event: worker::Event| match &event {
         worker::Event::SyncFinished { unread, .. } => tracing::info!(unread, "sync finished"),
         worker::Event::AuthFailed => tracing::warn!("the server rejected the API key"),
@@ -95,6 +98,9 @@ fn install_context() -> vuo_core::Result<()> {
     // The context owns the worker, so the thread lives exactly as long as the
     // thing that talks to it.
     let ctx = AppContext::new(db, worker, server, signal);
+    // Seed the Images setting from the stored account, so the first article
+    // opened after launch honours it rather than falling back to Ask.
+    ctx.set_media_policy(account.media_policy);
     vuo_shim::context::install(ctx);
     Ok(())
 }

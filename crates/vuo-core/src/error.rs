@@ -251,9 +251,10 @@ mod tests {
     use url::Url;
 
     fn ep() -> SafeUrl {
-        // Deliberately includes userinfo: the assertion below is that it never
-        // reaches a rendered error.
-        SafeUrl::from(&Url::parse("https://user:pw@miniflux.example/v1/entries").unwrap())
+        SafeUrl::from(
+            &Url::parse("https://user:pw@miniflux.example/v1/entries?token=SHOULD-NOT-APPEAR")
+                .unwrap(),
+        )
     }
 
     #[test]
@@ -318,7 +319,19 @@ mod tests {
     }
 
     #[test]
-    fn rendered_errors_never_carry_credentials() {
+    fn an_errors_endpoint_can_only_be_a_safe_url() {
+        // A TYPE-level guarantee, and that is all this test is: every variant
+        // that names an endpoint holds a `SafeUrl`, so a full URL cannot be
+        // stored in one even by mistake. `ep()` is redacted before the `Error`
+        // is built, which means these assertions would hold no matter what the
+        // rendering code did -- naming it "rendered errors never carry
+        // credentials", as this test used to, claimed a behaviour it could not
+        // see.
+        //
+        // The behavioural half -- that `api::transport::classify` does not
+        // interpolate the `reqwest::Error`, whose Display carries the URL and
+        // its query -- needs a real failed request, and lives in
+        // tests/transport_hardening.rs::a_failed_request_renders_without_the_url_or_its_query.
         let cases = [
             Error::Transport {
                 endpoint: ep(),
@@ -337,6 +350,10 @@ mod tests {
             for rendering in [shown, debugged] {
                 assert!(!rendering.contains("pw"), "credential leaked: {rendering}");
                 assert!(!rendering.contains("user:"), "userinfo leaked: {rendering}");
+                assert!(
+                    !rendering.contains("SHOULD-NOT-APPEAR"),
+                    "query leaked: {rendering}"
+                );
             }
         }
     }

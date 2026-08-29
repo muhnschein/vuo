@@ -17,6 +17,21 @@ Page {
         }
     }
 
+    // The worker answers on its own thread, so its result is left in a slot
+    // the UI drains. Only runs while this page is showing, and only after the
+    // user has actually asked for a test.
+    Timer {
+        id: noticePoll
+        interval: 400
+        repeat: true
+        running: false
+        onTriggered: {
+            if (settings.pollNotice()) {
+                noticePoll.running = false
+            }
+        }
+    }
+
     // Save on leaving, so a half-typed key is not written on every keystroke.
     Component.onDestruction: settings.save()
 
@@ -68,7 +83,11 @@ Page {
             Button {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: qsTr("Test connection")
-                onClicked: settings.testConnection()
+                onClicked: {
+                    testResult.visible = false
+                    settings.testConnection()
+                    noticePoll.running = true
+                }
             }
 
             Label {

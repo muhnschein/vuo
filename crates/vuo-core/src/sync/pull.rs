@@ -63,7 +63,7 @@ pub const PAGE_SIZE: u32 = 250;
 ///
 /// A pass that somehow fails to advance must terminate rather than loop
 /// forever against the user's data allowance.
-const MAX_PAGES_PER_PASS: usize = 400;
+pub const MAX_PAGES_PER_PASS: usize = 400;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct PullOutcome {
@@ -151,6 +151,25 @@ pub async fn entries(
     cursor: Option<i64>,
     generation: i64,
 ) -> Result<PullOutcome> {
+    entries_with_page_cap(db, client, cursor, generation, MAX_PAGES_PER_PASS).await
+}
+
+/// [`entries`], with the page cap given explicitly.
+///
+/// The cap exists so a pass cannot run forever, and holding the cursor back
+/// when it fires is what stops the next pass skipping everything beyond the
+/// stopping point. Reaching the real cap means 400 pages of 250 entries --
+/// 100,000 rows through a mock server -- and a test that slow does not get
+/// written, so the branch was dead under test: replacing its body with a panic
+/// left every test in the suite green. Injecting the cap makes it reachable in
+/// milliseconds.
+pub async fn entries_with_page_cap(
+    db: &mut Database,
+    client: &MinifluxClient,
+    cursor: Option<i64>,
+    generation: i64,
+    max_pages: usize,
+) -> Result<PullOutcome> {
     let mut outcome = PullOutcome::default();
     let mut after: Option<EntryId> = None;
     let mut server_now: Option<i64> = None;
@@ -160,7 +179,7 @@ pub async fn entries(
     let mut incomplete = false;
 
     loop {
-        if outcome.pages >= MAX_PAGES_PER_PASS {
+        if outcome.pages >= max_pages {
             tracing::warn!(
                 pages = outcome.pages,
                 "stopping pull at the page cap; the cursor will not advance"
@@ -409,13 +428,22 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_skew_is_subtracted_not_added() {
-        // Adding it would move the cursor into the future and skip the window
-        // it was supposed to overlap.
-        let server_now = 1_000_000i64;
-        let cursor = server_now - CURSOR_SKEW_SECS;
-        assert!(cursor < server_now);
-        assert_eq!(cursor, 999_940);
+    fn the_skew_is_large_enough_to_be_worth_having() {
+        // This used to be `the_skew_is_subtracted_not_added`, and computed
+        // `server_now - CURSOR_SKEW_SECS` ITSELF before asserting on its own
+        // arithmetic. No production code was called, so flipping the sign in
+        // the pass left it green -- while the direction is the entire point.
+        //
+        // The direction is now checked against the real pass, in
+        // tests/sync_pull.rs::the_cursor_comes_from_the_servers_clock_minus_a_skew.
+        // What remains here is the one thing that test cannot see: whether the
+        // constant is a sensible size. Too small and a mutation during the
+        // pass is missed; too large and every sync re-reads hours of entries.
+        assert!(
+            (30..=300).contains(&CURSOR_SKEW_SECS),
+            "a cursor skew of {CURSOR_SKEW_SECS}s is outside the range that trades \
+             re-reading against missing a concurrent mutation"
+        );
     }
 
     /// Compile-time, because both sides are constants: a runtime assertion

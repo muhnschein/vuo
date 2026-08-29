@@ -27,18 +27,53 @@ else
     note "version $spec_version matches Cargo.toml"
 fi
 
-# 2. Every file the spec installs must exist.
-for f in harbour-vuo.desktop \
-         systemd/harbour-vuo-sync.service \
-         systemd/harbour-vuo-sync.timer \
-         qml/harbour-vuo.qml \
-         LICENSE; do
+# 2. Every file the spec installs must exist -- DERIVED FROM THE SPEC, not from
+#    a list restated here. A hardcoded list only ever re-checks the files
+#    someone remembered to add to it: adding an `install -D` line for a file
+#    that does not exist passed, which is precisely the 40-minute SDK failure
+#    this check exists to pre-empt.
+#
+#    The source-side operand of each `install -D...` line, with the spec's own
+#    `for RES in ...` loop expanded. Lines whose source is a build artefact
+#    (%{targetdir}/...) or a glob that may legitimately match nothing
+#    (translations/*.qm, guarded by `if ls` in the spec) are skipped.
+installed=$(
+    sed 's/#.*//' "$SPEC" \
+        | grep -oE 'install -D[m0-9 ]* +[^ ]+' \
+        | awk '{print $NF}' \
+        | grep -v '^%' \
+        | sort -u
+)
+[ -n "$installed" ] || bad "no install lines found in $SPEC; check #2 would be vacuous"
+
+resolutions=$(sed -n 's/^for RES in \(.*\); do/\1/p' "$SPEC" | head -1)
+checked=0
+while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    case "$f" in
+        *'*'*) continue ;;                  # a guarded glob, e.g. translations/*.qm
+        *'{}'*) continue ;;                 # find -exec placeholder; the sweep below covers qml/
+        *'${RES}'*)
+            for res in $resolutions; do
+                target=${f//\$\{RES\}/$res}
+                checked=$((checked + 1))
+                [ -e "$target" ] || bad "the spec installs $target, which does not exist"
+            done
+            continue
+            ;;
+    esac
+    checked=$((checked + 1))
+    [ -e "$f" ] || bad "the spec installs $f, which does not exist"
+done <<< "$installed"
+
+# desktop-file-install and the `find ./qml` sweep are not `install -D` lines.
+for f in harbour-vuo.desktop qml/harbour-vuo.qml LICENSE; do
+    checked=$((checked + 1))
     [ -e "$f" ] || bad "the spec installs $f, which does not exist"
 done
-for res in 86x86 108x108 128x128 172x172; do
-    [ -e "icons/$res/harbour-vuo.png" ] || bad "missing icon icons/$res/harbour-vuo.png"
-done
-note "every file the spec installs is present"
+
+[ "$checked" -ge 8 ] || bad "check #2 only examined $checked files; the spec parse must have failed"
+note "every file the spec installs is present ($checked checked, derived from the spec)"
 
 # 3. The desktop entry must validate.
 if command -v desktop-file-validate >/dev/null 2>&1; then
@@ -51,11 +86,29 @@ fi
 # 4. The spec must build the binary explicitly. The workspace's
 #    default-members are the Qt-free set, so a bare `cargo build --release`
 #    would silently produce no installable binary.
-grep -q -- '--bin harbour-vuo' "$SPEC" || \
-    bad "the spec must pass --bin harbour-vuo; default-members would otherwise build nothing"
-grep -q -- '--features sailfishapp' "$SPEC" || \
-    bad "the spec must pass --features sailfishapp for the device entry point"
-note "the spec builds the right binary with the right features"
+#    Matched on the BUILD LINE, not anywhere in the file. A whole-file grep is
+#    satisfied by a comment, a %description or a changelog entry mentioning the
+#    flag -- so the regression it is named for (a bare `cargo build --release`
+#    that produces no installable binary) could ship with the check green.
+build_line=$(
+    sed 's/#.*//' "$SPEC" \
+        | sed -e :a -e '/\\$/N; s/\\\n//; ta' \
+        | grep -E '(^|[^[:alnum:]_])cargo build' \
+        | head -1
+)
+if [ -z "$build_line" ]; then
+    bad "the spec has no cargo build line"
+else
+    case "$build_line" in
+        *"--bin harbour-vuo"*) : ;;
+        *) bad "the cargo build line must pass --bin harbour-vuo; default-members would otherwise build nothing" ;;
+    esac
+    case "$build_line" in
+        *"--features sailfishapp"*) : ;;
+        *) bad "the cargo build line must pass --features sailfishapp for the device entry point" ;;
+    esac
+    note "the spec builds the right binary with the right features"
+fi
 
 # 5. Cargo.lock must be committed: OBS builds --locked and offline.
 [ -f Cargo.lock ] || bad "Cargo.lock must be committed for reproducible offline builds"

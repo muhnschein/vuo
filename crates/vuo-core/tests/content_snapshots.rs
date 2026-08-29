@@ -74,7 +74,37 @@ fn render(document: &vuo_core::content::Document) -> String {
             } => {
                 format!("img[{fetch:?}] {src} alt={alt:?}")
             }
-            BlockKind::Table { rows } => format!("table: {} rows", rows.len()),
+            BlockKind::Table { rows } => {
+                // Every cell, not just the row count. `format!("table: {} rows")`
+                // put each cell's text, styling, links and header flag OUTSIDE
+                // the snapshot entirely: tables.html, whose whole point is
+                // <th>Implementation</th> and "1.20 s", recorded as the single
+                // line "table: 3 rows", so truncating every cell to its first
+                // character was a change the corpus could not see.
+                //
+                // What it records is what the transform DOES, warts included:
+                // malformed.snap shows "A cell with no rowTrailing text..."
+                // running together, because an unclosed <table> leaves the
+                // following paragraph's text in the same span run as the
+                // cell's. That is worth seeing rather than hiding; it is
+                // cosmetic, on malformed input, and fixing it belongs with the
+                // span-merge logic rather than here.
+                let mut s = format!("table: {} rows", rows.len());
+                for row in rows {
+                    let cells: Vec<String> = row
+                        .iter()
+                        .map(|c| {
+                            format!(
+                                "{}{}",
+                                if c.header { "th:" } else { "td:" },
+                                vuo_core::content::Span::render_styled_text(&c.spans)
+                            )
+                        })
+                        .collect();
+                    s.push_str(&format!("\n{indent}  | {}", cells.join(" | ")));
+                }
+                s
+            }
             BlockKind::Rule => "rule".to_owned(),
             other => format!("unhandled: {other:?}"),
         };

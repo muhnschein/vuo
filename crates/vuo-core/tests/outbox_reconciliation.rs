@@ -102,6 +102,19 @@ async fn a_process_killed_mid_flight_resumes_without_losing_or_double_applying()
     // The server applies the change, then the process dies before it can
     // record the confirmation. The intent must still be queued, and resending
     // it must be harmless.
+    //
+    // The crash is simulated OUTSIDE `flush` -- the batch is sent by hand --
+    // so what this test actually pins is the idempotency of a resend: the same
+    // absolute value, twice, is a no-op. It deliberately does not carry the two
+    // neighbouring properties, which have their own tests because this shape
+    // cannot see them:
+    //
+    //   - that `flush` sends BEFORE it clears the row, so a failure mid-request
+    //     does not lose the intent -- `a_transient_failure_keeps_the_intent_queued` and
+    //     `a_misconfigured_server_url_never_discards_queued_work`;
+    //   - that a re-toggle during the in-flight window survives, which is why
+    //     `confirm` compares before deleting -- `a_retoggle_during_the_request_
+    //     is_not_lost`.
     let server = MockServer::start().await;
     Mock::given(method("PUT"))
         .and(path("/v1/entries"))
@@ -307,6 +320,61 @@ async fn a_transient_failure_keeps_the_intent_queued() {
             .first()
             .map(|m| m.attempts),
         Some(1)
+    );
+}
+
+#[tokio::test]
+async fn a_misconfigured_server_url_never_discards_queued_work() {
+    // THE regression, driven end to end through `flush`.
+    //
+    // `is_transient()` is false for a policy-refused redirect, and the flush
+    // used to drop anything that was not transient -- so pointing Vuo at a URL
+    // that redirects off-origin (a typo, a moved instance, a captive portal)
+    // silently destroyed every queued mark and star.
+    //
+    // The unit tests in sync::replay cannot protect this. They assert on
+    // `would_discard`, a pure predicate, and a predicate cannot see its caller
+    // change: restoring the exact historical bug in `flush` leaves all nine of
+    // them green. Only a real failure through `flush` distinguishes them.
+    let server = MockServer::start().await;
+    Mock::given(method("PUT"))
+        .and(path("/v1/entries"))
+        .respond_with(
+            ResponseTemplate::new(302)
+                .insert_header("location", "https://elsewhere.invalid/v1/entries"),
+        )
+        .mount(&server)
+        .await;
+    let client = client_for(&server);
+    let mut db = seeded_db(3);
+
+    db.with_tx(|tx| {
+        for id in 1..=3 {
+            outbox::queue(tx, EntryId(id), DesiredValue::Status(EntryStatus::Read), 1)?;
+        }
+        Ok(())
+    })
+    .unwrap();
+
+    let outcome = replay::flush(&mut db, &client).await.unwrap();
+
+    assert_eq!(
+        outcome.dropped, 0,
+        "a cross-origin redirect means the SERVER is misconfigured, not that the \
+         user's marks are invalid. Dropping them is unrecoverable data loss."
+    );
+    assert_eq!(
+        outbox::len(db.conn()).unwrap(),
+        3,
+        "every queued action must still be there, waiting for a human to fix the URL"
+    );
+    assert_eq!(
+        outbox::pending(db.conn())
+            .unwrap()
+            .first()
+            .map(|m| m.attempts),
+        Some(1),
+        "and the attempt must be recorded, so the UI can say why nothing is syncing"
     );
 }
 

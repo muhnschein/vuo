@@ -15,7 +15,7 @@ use vuo_core::db::store;
 use vuo_core::model::EntryId;
 use vuo_core::sync::pull;
 use wiremock::matchers::{method, path, query_param};
-use wiremock::{Mock, MockServer, ResponseTemplate};
+use wiremock::{Mock, MockServer, Request, ResponseTemplate};
 
 #[tokio::test]
 async fn pagination_uses_a_keyset_and_never_an_offset() {
@@ -132,6 +132,60 @@ async fn the_cursor_comes_from_the_servers_clock_minus_a_skew() {
         outcome.next_cursor,
         Some(1_767_323_045 - pull::CURSOR_SKEW_SECS),
         "the cursor must trail the server's clock by the skew"
+    );
+}
+
+#[tokio::test]
+async fn the_cursor_anchors_to_the_first_pages_clock_not_the_last() {
+    // A multi-page pull takes minutes. Anchoring to the LAST page's Date marks
+    // as "seen" a window that ends after mutations this pass could not have
+    // read: every entry changed during the pass with an id at or below the
+    // last one read is skipped permanently.
+    //
+    // One page cannot show this -- first and last are the same response -- so
+    // the single-page test above passes with the rule inverted. This serves
+    // two pages with clocks five minutes apart.
+    let server = MockServer::start().await;
+    // Fri, 02 Jan 2026 03:04:05 GMT == 1767323045
+    Mock::given(method("GET"))
+        .and(path("/v1/entries"))
+        .and(query_param("after_entry_id", "250"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("Date", "Fri, 02 Jan 2026 03:09:05 GMT")
+                .set_body_json(entries_response(vec![], 0)),
+        )
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/v1/entries"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("Date", "Fri, 02 Jan 2026 03:04:05 GMT")
+                .set_body_json(entries_response(
+                    (1..=250)
+                        .map(|i| entry_json(i, 1, "unread", false))
+                        .collect(),
+                    250,
+                )),
+        )
+        .mount(&server)
+        .await;
+
+    let client = client_for(&server);
+    let mut db = memory_db();
+    db.with_tx(|tx| {
+        tx.execute("INSERT INTO feeds (id, title) VALUES (1, 'f')", [])?;
+        Ok(())
+    })
+    .unwrap();
+
+    let outcome = pull::entries(&mut db, &client, None, 1).await.unwrap();
+    assert_eq!(outcome.pages, 2, "the fixture must actually take two pages");
+    assert_eq!(
+        outcome.next_cursor,
+        Some(1_767_323_045 - pull::CURSOR_SKEW_SECS),
+        "the FIRST page's clock (03:04:05), not the second's (03:09:05)"
     );
 }
 
@@ -291,6 +345,8 @@ async fn the_counters_check_finds_diverging_feeds() {
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
             "reads":   { "1": 2 },
             "unreads": { "1": 1, "2": 4 }
+            // Feed 3 has entries locally and is absent here entirely, which
+            // the server means as zero. Feed 4 agrees at zero on both sides.
         })))
         .mount(&server)
         .await;
@@ -299,11 +355,13 @@ async fn the_counters_check_finds_diverging_feeds() {
     let mut db = memory_db();
     db.with_tx(|tx| {
         tx.execute(
-            "INSERT INTO feeds (id, title) VALUES (1, 'a'), (2, 'b')",
+            "INSERT INTO feeds (id, title) VALUES (1, 'a'), (2, 'b'), (3, 'c')",
             [],
         )?;
-        // Feed 1 agrees (3 local, 2+1 server). Feed 2 does not (1 local, 4 server).
-        for (id, feed) in [(1i64, 1i64), (2, 1), (3, 1), (4, 2)] {
+        // Feed 1 agrees (3 local, 2+1 server).
+        // Feed 2 has FEWER locally than the server (1 local, 4 server).
+        // Feed 3 has MORE locally than the server (2 local, absent = 0).
+        for (id, feed) in [(1i64, 1i64), (2, 1), (3, 1), (4, 2), (5, 3), (6, 3)] {
             tx.execute(
                 "INSERT INTO entries (id, feed_id, status) VALUES (?1, ?2, 'unread')",
                 [id, feed],
@@ -316,8 +374,11 @@ async fn the_counters_check_finds_diverging_feeds() {
     let diverging = pull::diverging_feeds(&db, &client).await.unwrap();
     assert_eq!(
         diverging,
-        vec![2],
-        "only the feed whose counts disagree needs work"
+        vec![2, 3],
+        "divergence is a DISAGREEMENT, in either direction. Only ever testing \
+         the server-has-more case meant weakening the comparison to `>` -- so \
+         deletions could never raise divergence, which is what the check is \
+         for -- left every test green."
     );
 }
 
@@ -381,9 +442,15 @@ async fn the_reconcile_pages_beyond_the_servers_limit_cap() {
     let first: Vec<i64> = (1..=1000).rev().collect();
     let second: Vec<i64> = (1001..=1500).rev().collect();
 
+    // `limit` is asserted, not just `offset`. Without it the stub answers 1000
+    // ids whatever was requested, so a request for a limit SMALLER than the
+    // PAGE the loop compares against -- "a short page means done", firing on
+    // page one again -- was invisible. §8.3: the mock is the contract, and the
+    // request is half of it.
     Mock::given(method("GET"))
         .and(path("/v1/entries/ids"))
         .and(query_param("offset", "0"))
+        .and(query_param("limit", "1000"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
             "total": 1500, "entry_ids": first
         })))
@@ -392,6 +459,7 @@ async fn the_reconcile_pages_beyond_the_servers_limit_cap() {
     Mock::given(method("GET"))
         .and(path("/v1/entries/ids"))
         .and(query_param("offset", "1000"))
+        .and(query_param("limit", "1000"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
             "total": 1500, "entry_ids": second
         })))
@@ -424,6 +492,64 @@ async fn the_reconcile_pages_beyond_the_servers_limit_cap() {
 
 #[tokio::test]
 async fn stopping_at_the_page_cap_does_not_advance_the_cursor() {
+    // The PAGE CAP branch, reached for real.
+    //
+    // This test used to be served by a mock whose pages always ended on id
+    // 250, so the pass exited through the *other* early-exit -- the
+    // after_entry_id stall check -- after two pages. The cap's own branch was
+    // dead under test: replacing its body with a panic left all 14 tests here
+    // green, so the cap could bail WITHOUT holding the cursor back and nothing
+    // would notice. The stall case is covered separately below.
+    let server = MockServer::start().await;
+    // Every page is full and its last id keeps advancing, so only the cap can
+    // stop this pass.
+    Mock::given(method("GET"))
+        .and(path("/v1/entries"))
+        .respond_with(|req: &Request| {
+            let after: i64 = req
+                .url
+                .query_pairs()
+                .find(
+                    |(k, _): &(std::borrow::Cow<'_, str>, std::borrow::Cow<'_, str>)| {
+                        k == "after_entry_id"
+                    },
+                )
+                .and_then(|(_, v)| v.parse().ok())
+                .unwrap_or(0);
+            ResponseTemplate::new(200)
+                .insert_header("Date", "Fri, 02 Jan 2026 03:04:05 GMT")
+                .set_body_json(entries_response(
+                    (after + 1..=after + 250)
+                        .map(|i| entry_json(i, 1, "unread", false))
+                        .collect(),
+                    1_000_000,
+                ))
+        })
+        .mount(&server)
+        .await;
+
+    let client = client_for(&server);
+    let mut db = memory_db();
+    db.with_tx(|tx| {
+        tx.execute("INSERT INTO feeds (id, title) VALUES (1, 'f')", [])?;
+        Ok(())
+    })
+    .unwrap();
+
+    let outcome = pull::entries_with_page_cap(&mut db, &client, Some(1000), 1, 3)
+        .await
+        .unwrap();
+
+    assert_eq!(outcome.pages, 3, "the pass must stop AT the cap");
+    assert_eq!(
+        outcome.next_cursor, None,
+        "a pass that stopped at the page cap must leave the cursor alone; \
+         advancing it marks as seen a window it never finished reading"
+    );
+}
+
+#[tokio::test]
+async fn a_server_whose_keyset_never_advances_does_not_advance_the_cursor() {
     // Regression: the pass returned an advanced cursor even when it bailed
     // early, marking as "seen" a window it never finished reading. Every entry
     // beyond the stopping point would be skipped forever.

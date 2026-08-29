@@ -38,12 +38,20 @@ use vuo_core::api::{EntriesQuery, EntryMutation, MinifluxClient, Transport, Tran
 use vuo_core::model::{EntryId, EntryStatus};
 use vuo_core::redact::ApiToken;
 
+/// `None` only when the opt-in has NOT been taken.
+///
+/// Once `VUO_LIVE_BASE_URL` is set, a URL that will not parse or a transport
+/// that will not build is a configuration error and panics. It used to be a
+/// chain of `.ok()?`, so a typo'd URL made every live test return early --
+/// which cargo reports as `ok`. `make live-test` then passed having contacted
+/// nothing, which is exactly the silent skip the module doc says it is not.
 fn live_client() -> Option<MinifluxClient> {
     let base = std::env::var("VUO_LIVE_BASE_URL").ok()?;
-    let token = std::env::var("VUO_LIVE_TOKEN").ok()?;
-    let origin = url::Url::parse(&base).ok()?;
-    let transport =
-        Transport::new(origin, ApiToken::new(token), &TransportConfig::default()).ok()?;
+    let token = std::env::var("VUO_LIVE_TOKEN")
+        .expect("VUO_LIVE_BASE_URL is set, so VUO_LIVE_TOKEN must be too");
+    let origin = url::Url::parse(&base).expect("VUO_LIVE_BASE_URL must be a valid URL");
+    let transport = Transport::new(origin, ApiToken::new(token), &TransportConfig::default())
+        .expect("the live transport must build");
     Some(MinifluxClient::new(transport))
 }
 
@@ -56,6 +64,26 @@ macro_rules! client_or_skip {
                 return;
             }
         }
+    };
+}
+
+/// Fail rather than return when the instance cannot exercise the contract.
+///
+/// An early `return` is a PASS. Both contract tests used to take one when the
+/// instance held too few entries -- and that is the state the weekly CI job
+/// produces, since it imports an OPML and runs immediately, before Miniflux's
+/// poller has fetched anything. So the job could report green having asserted
+/// nothing about the two API behaviours it exists to watch.
+macro_rules! require_entries {
+    ($have:expr, $need:expr, $what:literal) => {
+        assert!(
+            $have >= $need,
+            "the live instance has {} entries; {} needs at least {}. Seed it before \
+             running: a green run against an empty instance proves nothing.",
+            $have,
+            $what,
+            $need
+        );
     };
 }
 
@@ -86,10 +114,11 @@ async fn keyset_pagination_returns_strictly_increasing_ids() {
         .entries(&EntriesQuery::keyset(5))
         .await
         .expect("first page");
-    if first.entries.len() < 2 {
-        eprintln!("skipping: the instance has too few entries");
-        return;
-    }
+    require_entries!(
+        first.entries.len(),
+        2,
+        "keyset_pagination_returns_strictly_increasing_ids"
+    );
 
     let ids: Vec<i64> = first.entries.iter().map(|e| e.id).collect();
     assert!(
@@ -200,30 +229,57 @@ async fn changed_after_is_bumped_by_our_own_writes() {
     // changed_at, so Vuo sees its own writes come back. The sync applies them
     // as no-ops; this test documents that the echo is real and expected rather
     // than a sign something is wrong.
+    // This had NO assertions at all. Both outcomes were accepted -- if
+    // changed_at did not move it printed a note saying "the pull tolerates
+    // both" and returned Ok -- so the only way it could fail was an HTTP error.
+    // A contract test that accepts either answer is a liveness check on the
+    // server, not a check of the contract the sync depends on.
+    //
+    // The reason it hedged is real, though: if the entry is ALREADY read, the
+    // write is a no-op and no sane server bumps a timestamp for it. So set up
+    // the precondition first, then assert.
     let client = client_or_skip!();
     let (page, _) = client
         .entries(&EntriesQuery::keyset(1))
         .await
         .expect("an entry");
-    let Some(entry) = page.entries.first() else {
-        return;
-    };
-    let id = EntryId(entry.id);
+    require_entries!(
+        page.entries.len(),
+        1,
+        "changed_after_is_bumped_by_our_own_writes"
+    );
+    let id = EntryId(page.entries[0].id);
 
-    let before = client.entry(id).await.expect("before").changed_at;
+    // Force the opposite status, so the mutation below is a real change.
+    client
+        .update_entries(&[id], EntryMutation::Status(EntryStatus::Unread))
+        .await
+        .expect("set up the precondition");
+    let before = client
+        .entry(id)
+        .await
+        .expect("before")
+        .changed_at
+        .expect("the server must report changed_at");
+
     client
         .update_entries(&[id], EntryMutation::Status(EntryStatus::Read))
         .await
         .expect("mutate");
-    let after = client.entry(id).await.expect("after").changed_at;
+    let after = client
+        .entry(id)
+        .await
+        .expect("after")
+        .changed_at
+        .expect("the server must report changed_at");
 
-    if before.is_some() && after.is_some() && before == after {
-        eprintln!(
-            "NOTE: changed_at did not move. Either the value was already 'read' \
-             or this server does not bump changed_at on status writes. The pull \
-             tolerates both."
-        );
-    }
+    assert!(
+        after > before,
+        "a real status change must bump changed_at ({before:?} -> {after:?}). \
+         The pull's cursor is `changed_after`: a server that does not bump it \
+         means Vuo never sees its own writes come back, and worse, never sees \
+         anyone else's either."
+    );
 }
 
 #[tokio::test]
@@ -237,16 +293,53 @@ async fn the_entry_ids_endpoint_matches_its_declared_total() {
         eprintln!("skipping: /v1/entries/ids needs Miniflux 2.3.2+");
         return;
     }
+    // `assert!(ids.total >= 0)` was the only assertion, which the server can
+    // only fail by sending a negative count -- and the actual claim, that
+    // `entry_ids.len()` matches `total`, was an eprintln! note. That claim is
+    // the one the reconcile's deletion guard rests on: a server declaring 999
+    // and returning one id is exactly the torn listing that makes the guard
+    // abort, so a test named for the match has to check the match.
+    const LIMIT: u32 = 1000;
     let ids = client
-        .entry_ids(&EntriesQuery::default().with_limit(1000), 0)
+        .entry_ids(&EntriesQuery::default().with_limit(LIMIT), 0)
         .await
         .expect("ids");
-    if ids.entry_ids.len() < ids.total as usize {
-        eprintln!(
-            "note: the listing is paged; total={} page={}",
+    assert!(ids.total >= 0, "a negative total is not a count");
+
+    if ids.total <= i64::from(LIMIT) {
+        assert_eq!(
+            ids.entry_ids.len() as i64,
             ids.total,
-            ids.entry_ids.len()
+            "one page holds the whole listing, so the ids must match the declared total"
+        );
+    } else {
+        // Page through and check the union, which is what the reconcile does.
+        let mut collected: Vec<i64> = ids.entry_ids.clone();
+        let mut offset: u32 = LIMIT;
+        while (collected.len() as i64) < ids.total {
+            let page = client
+                .entry_ids(&EntriesQuery::default().with_limit(LIMIT), offset)
+                .await
+                .expect("a later page");
+            if page.entry_ids.is_empty() {
+                break;
+            }
+            offset = offset.saturating_add(u32::try_from(page.entry_ids.len()).unwrap_or(LIMIT));
+            collected.extend(page.entry_ids);
+        }
+        assert_eq!(
+            collected.len() as i64,
+            ids.total,
+            "paging the listing must yield exactly the declared total"
+        );
+        let mut sorted = collected.clone();
+        sorted.sort_unstable();
+        sorted.dedup();
+        assert_eq!(
+            sorted.len(),
+            collected.len(),
+            "a paged listing must not repeat an id; the reconcile would then \
+             under-count and delete live entries"
         );
     }
-    assert!(ids.total >= 0);
 }

@@ -4,4 +4,7 @@ expression: render(&document)
 ---
 p: Benchmarks:
 table: 3 rows
+  | th:Implementation | th:Time
+  | td:Before | td:1.20 s
+  | td:After | td:<b>0.31 s</b>
 p: Measured on a warm cache.

@@ -141,6 +141,16 @@ pub fn transform(html: &str, ctx: &TransformContext) -> Document {
         (html, None)
     };
 
+    drive(input, ctx, pre_truncated).finish()
+}
+
+/// Tokenize into a [`Builder`] without finishing it.
+///
+/// Split out so a test can inspect builder state after the run. The §9.2 depth
+/// cap needs that: inside a SKIPPED subtree it has no observable consequence at
+/// all -- nothing is emitted either way -- so the only way to check the cap
+/// holds is to look at how deep the open-element stack actually got.
+fn drive(input: &str, ctx: &TransformContext, pre_truncated: Option<Truncation>) -> Builder {
     let mut builder = Builder::new(ctx.clone());
     builder.truncated = pre_truncated;
 
@@ -163,7 +173,7 @@ pub fn transform(html: &str, ctx: &TransformContext) -> Document {
     let _ = tok.feed(&mut queue);
     tok.end();
 
-    tok.sink.finish()
+    tok.sink
 }
 
 /// What the transform does with an element.
@@ -325,6 +335,14 @@ struct Builder {
     table_depth: u32,
 
     text_bytes: usize,
+    /// The deepest `open` ever got. See [`drive`].
+    peak_open: usize,
+    /// `text_bytes` as of the last block actually emitted.
+    ///
+    /// Lets `push_block` tell "this block is the one that reached the cap"
+    /// from "we were already over it and this block adds nothing", which is
+    /// the difference between truncating an article and erasing it.
+    text_committed: usize,
 }
 
 #[derive(Debug, Default)]
@@ -354,6 +372,8 @@ impl Builder {
             table: None,
             table_depth: 0,
             text_bytes: 0,
+            peak_open: 0,
+            text_committed: 0,
         }
     }
 
@@ -407,8 +427,18 @@ impl Builder {
         }
         if self.text_bytes >= self.ctx.limits.max_text_bytes {
             self.record_truncation(Truncation::TooMuchText);
-            return;
+            // Only DROP the block when it adds no text of its own. The block
+            // that reaches the cap still gets emitted: `push_text` has already
+            // clamped its text to the remaining budget, so it is bounded, and
+            // dropping it discards the very content the cap was meant to
+            // truncate. An article that is a single long <p> -- a shape plenty
+            // of feeds produce -- rendered as ZERO blocks and a blank screen
+            // because of this, while reporting `truncated: TooMuchText`.
+            if self.text_bytes == self.text_committed {
+                return;
+            }
         }
+        self.text_committed = self.text_bytes;
         self.blocks
             .push(RenderBlock::quoted(kind, self.quote_depth));
     }
@@ -583,6 +613,8 @@ impl Builder {
         // 2 MiB input cap. §9.2's caps exist to prevent exactly that.
         if self.skip_from.is_some() {
             if !childless && self.open.len() < self.ctx.limits.max_depth {
+                self.peak_open = self.peak_open.max(self.open.len() + 1);
+                self.peak_open = self.peak_open.max(self.open.len() + 1);
                 self.open.push(OpenElement {
                     name,
                     disposition: Disposition::Skip,
@@ -615,6 +647,7 @@ impl Builder {
             }
             self.skip_from = Some(self.open.len());
             let raw = raw_text_kind(&name);
+            self.peak_open = self.peak_open.max(self.open.len() + 1);
             self.open.push(OpenElement {
                 name,
                 disposition: Disposition::Skip,
@@ -667,6 +700,7 @@ impl Builder {
         }
 
         if !childless {
+            self.peak_open = self.peak_open.max(self.open.len() + 1);
             self.open.push(OpenElement {
                 name,
                 disposition,
@@ -1389,6 +1423,15 @@ mod tests {
             text_of(&doc).contains("deep"),
             "content lost under deep nesting"
         );
+        // And the structural cap fired. Without this the test says only "it
+        // did not crash" -- which the tokenizer-not-DOM design guarantees on
+        // its own, so the whole §9.2 depth cap could be deleted with every
+        // content test still green.
+        assert_eq!(
+            doc.truncated,
+            Some(Truncation::TooDeep),
+            "50,000 levels must hit the depth cap and say so"
+        );
     }
 
     #[test]
@@ -1397,6 +1440,7 @@ mod tests {
         let html = format!("{}tail", "<div><span><em>".repeat(20_000));
         let doc = transform(&html, &lenient_ctx());
         assert!(text_of(&doc).contains("tail"));
+        assert_eq!(doc.truncated, Some(Truncation::TooDeep));
     }
 
     #[test]
@@ -1434,7 +1478,12 @@ mod tests {
     }
 
     #[test]
-    fn text_volume_is_capped() {
+    fn one_oversized_paragraph_is_truncated_not_erased() {
+        // Regression: `push_block` dropped the block that REACHED the text
+        // cap, not just the ones after it. An article that is a single long
+        // <p> -- which plenty of feeds produce -- therefore rendered as zero
+        // blocks and a blank screen, while reporting `truncated: TooMuchText`.
+        // The transform's contract is to truncate, not to erase.
         let ctx = TransformContext {
             limits: Limits {
                 max_text_bytes: 512,
@@ -1444,8 +1493,59 @@ mod tests {
         };
         let html = format!("<p>{}</p>", "abcd ".repeat(10_000));
         let doc = transform(&html, &ctx);
-        assert!(doc.truncated.is_some());
-        assert!(text_of(&doc).len() <= 600, "text cap overshot");
+
+        assert_eq!(
+            doc.blocks.len(),
+            1,
+            "the paragraph must survive, truncated: {doc:?}"
+        );
+        let text = text_of(&doc);
+        assert!(text.starts_with("abcd"), "text was {text:?}");
+        assert!(
+            text.len() <= 600,
+            "truncated text is {} bytes for a 512-byte budget",
+            text.len()
+        );
+        assert_eq!(doc.truncated, Some(Truncation::TooMuchText));
+    }
+
+    #[test]
+    fn text_volume_is_capped() {
+        let ctx = TransformContext {
+            limits: Limits {
+                max_text_bytes: 512,
+                ..Limits::default()
+            },
+            ..lenient_ctx()
+        };
+        // MANY SMALL paragraphs, not one huge one. With a single 50 KB
+        // paragraph the transform drops it wholesale and returns NO blocks, so
+        // the rendered text is "" -- and `"".len() <= 600` holds whether the
+        // cap exists or not. Deleting the per-token byte budget from
+        // `push_text` outright left the old version of this test green.
+        let html = "<p>abcd abcd abcd abcd</p>".repeat(500);
+        let doc = transform(&html, &ctx);
+        let text = text_of(&doc);
+
+        assert!(
+            doc.truncated.is_some(),
+            "silently dropping most of an article reads as 'this is all of it'"
+        );
+        assert!(
+            !text.is_empty(),
+            "the cap must truncate the article, not erase it"
+        );
+        assert!(
+            text.len() <= 600,
+            "text cap overshot: {} bytes for a 512-byte budget",
+            text.len()
+        );
+        assert!(
+            text.len() >= 256,
+            "the transform kept only {} bytes of a 512-byte budget, so this fixture \
+             is not actually exercising the cap",
+            text.len()
+        );
     }
 
     #[test]
@@ -1656,6 +1756,7 @@ mod tests_support {
 #[cfg(test)]
 mod resource_exhaustion_tests {
     use super::tests_support::ctx;
+    use super::{Limits, TransformContext};
     use std::time::Instant;
 
     /// A depth-capped stack must stay depth-capped on *every* path.
@@ -1695,10 +1796,29 @@ mod resource_exhaustion_tests {
     #[test]
     fn the_depth_cap_holds_through_a_skipped_subtree() {
         // The same input, checked structurally rather than by timing.
+        //
+        // `assert!(doc.blocks.is_empty())` on its own says nothing about the
+        // cap: every element here is inside a skipped <svg> and carries no
+        // text, so zero blocks come out whether the stack stops at 128 or
+        // grows to 5000. The stack itself has to be the thing observed.
+        let limits = Limits {
+            max_depth: 8,
+            ..Limits::default()
+        };
+        let context = TransformContext { limits, ..ctx() };
         let html = format!("<svg>{}", "<b>".repeat(5_000));
-        let doc = super::transform(&html, &ctx());
-        // Nothing should have been emitted, and crucially it should return
-        // promptly rather than having built a 5000-deep stack.
-        assert!(doc.blocks.is_empty());
+
+        let builder = super::drive(&html, &context, None);
+        let peak = builder.peak_open;
+        let doc = builder.finish();
+
+        assert!(doc.blocks.is_empty(), "a skipped subtree emits nothing");
+        assert!(
+            peak <= limits.max_depth,
+            "the open-element stack reached {peak}, past the cap of {}. \
+             A skipped subtree must not be a way around the §9.2 depth cap: \
+             that is a 5000-deep stack built from attacker-controlled bytes.",
+            limits.max_depth
+        );
     }
 }

@@ -75,7 +75,11 @@ pub fn decode_icon(w: &wire::Icon, limits: IconLimits) -> Result<Icon> {
     #[allow(clippy::integer_division)]
     let decoded_upper_bound = payload.len() / 4 * 3;
     if decoded_upper_bound > limits.max_bytes {
-        return Err(reject("icon exceeds the size cap"));
+        // Distinct wording from the post-decode check below, so a test can
+        // tell WHICH gate refused. With one shared message the pre-check could
+        // be deleted outright and every icon test stayed green -- the check
+        // whose whole job is to avoid allocating for an obviously huge payload.
+        return Err(reject("icon exceeds the size cap (declared)"));
     }
 
     let bytes = base64::engine::general_purpose::STANDARD
@@ -83,7 +87,7 @@ pub fn decode_icon(w: &wire::Icon, limits: IconLimits) -> Result<Icon> {
         .map_err(|_| reject("icon payload is not valid base64"))?;
 
     if bytes.len() > limits.max_bytes {
-        return Err(reject("icon exceeds the size cap"));
+        return Err(reject("icon exceeds the size cap (decoded)"));
     }
 
     // The claimed `mime_type` is deliberately ignored here. It is foreign
@@ -222,8 +226,15 @@ fn read_dimensions(b: &[u8], format: ImageFormat) -> Option<(u32, u32)> {
 
 /// Walk JPEG segments looking for a Start-Of-Frame marker.
 ///
-/// Bounded by construction: every step advances by at least one segment, and
-/// the loop is additionally capped so a crafted file cannot spin.
+/// Bounded by construction: every branch advances `i` by at least one, so the
+/// walk is O(len) whatever the bytes say, and `len` is already bounded by
+/// `IconLimits::max_bytes` before this is reached.
+///
+/// The iteration cap below is a cheap second ceiling on top of that, not the
+/// termination argument. It is deliberately NOT separately observable -- both
+/// "hit the cap" and "walked off the end" return `None` -- so no test here
+/// distinguishes them, and the test below says so rather than claiming to
+/// cover it.
 fn jpeg_dimensions(b: &[u8]) -> Option<(u32, u32)> {
     let mut i = 2usize; // skip SOI
     let mut guard = 0u32;
@@ -347,7 +358,31 @@ mod tests {
             ..IconLimits::default()
         };
         let big = icon_body(&vec![0x89; 8192], "image/png");
-        assert!(decode_icon(&big, limits).is_err());
+        let err = decode_icon(&big, limits).unwrap_err();
+        // BEFORE, not merely refused. `is_err()` alone cannot tell the two
+        // gates apart -- the post-decode check produces the same Err for the
+        // same input -- so deleting the pre-check left every icon test green.
+        assert!(
+            err.to_string().contains("(declared)"),
+            "the pre-decode gate must be the one that refused: {err}"
+        );
+    }
+
+    #[test]
+    fn a_payload_that_only_the_pre_check_can_catch_is_refused() {
+        // Valid base64 far past the cap. Reaching the post-decode check means
+        // allocating the whole decoded body first, which is exactly what the
+        // pre-check exists to avoid on a phone.
+        let limits = IconLimits {
+            max_bytes: 4096,
+            ..IconLimits::default()
+        };
+        let huge = icon_body(&vec![0x89; 2 * 1024 * 1024], "image/png");
+        let err = decode_icon(&huge, limits).unwrap_err();
+        assert!(
+            err.to_string().contains("(declared)"),
+            "a 2 MB payload must be refused on its length, before decoding: {err}"
+        );
     }
 
     #[test]
@@ -401,8 +436,30 @@ mod tests {
 
     #[test]
     fn a_jpeg_marker_loop_cannot_spin() {
-        // All-0xFF is a pathological marker stream; the guard must stop it.
+        // What this covers is TERMINATION on hostile input, which is the
+        // property that matters: every branch advances `i`, so both of these
+        // walk out in O(len) whatever the bytes claim.
+        //
+        // It does not cover the iteration cap, and cannot: hitting the cap and
+        // walking off the end both return `None`, so the two are
+        // indistinguishable from outside. Deleting the cap leaves this test
+        // green, and that is a fact about the cap being unobservable rather
+        // than a hole worth papering over with a timing assertion.
         let pathological = vec![0xFFu8; 100_000];
         assert!(jpeg_dimensions(&pathological).is_none());
+
+        // A long run of well-formed, empty two-byte segments, none of them the
+        // SOF marker the walk is looking for.
+        let mut many_segments = vec![0xFFu8, 0xD8]; // SOI
+        for _ in 0..8192 {
+            // APP0 with a length of exactly 2, i.e. no payload.
+            many_segments.extend_from_slice(&[0xFF, 0xE0, 0x00, 0x02]);
+        }
+        assert!(jpeg_dimensions(&many_segments).is_none());
+
+        // A truncated segment header, and a length field that points past the
+        // end: neither may loop and neither may index out of bounds.
+        assert!(jpeg_dimensions(&[0xFF, 0xD8, 0xFF]).is_none());
+        assert!(jpeg_dimensions(&[0xFF, 0xD8, 0xFF, 0xE0, 0xFF, 0xFF, 0x00]).is_none());
     }
 }

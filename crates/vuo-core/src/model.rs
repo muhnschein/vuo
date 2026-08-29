@@ -249,21 +249,19 @@ impl ServerVersion {
     }
 
     /// 2.3.x enforces `limit <= 1000` with a hard 400.
+    ///
+    /// Vuo caps every request at 1000 regardless -- `EntriesQuery::with_limit`
+    /// clamps, and `api::client::tests::limit_can_never_be_zero_or_unbounded`
+    /// is what holds that. This gate is only about whether the SERVER would
+    /// reject a larger one, which `sync` uses to decide how to page.
+    ///
+    /// (There used to be a `max_entry_limit()` beside this whose two branches
+    /// both returned 1000 and which no request path called, plus a test
+    /// guarding it. Both are gone: a test over a function nothing calls cannot
+    /// fail for a reason anyone cares about.)
     #[must_use]
     pub fn enforces_entry_limit_cap(&self) -> bool {
         self.at_least(2, 3, 0)
-    }
-
-    /// The largest `limit` this server will accept.
-    #[must_use]
-    pub fn max_entry_limit(&self) -> u32 {
-        if self.enforces_entry_limit_cap() {
-            1000
-        } else {
-            // Older servers accept anything, but Vuo still refuses to ask for
-            // an unbounded page: this is a phone.
-            1000
-        }
     }
 }
 
@@ -330,18 +328,15 @@ mod tests {
 
     #[test]
     fn unknown_version_assumes_the_oldest_supported_behaviour() {
+        // Assert the DEFAULT, not one consequence of it. `ServerVersion` gates
+        // two behaviours -- has_entry_ids_endpoint() at >= 2.3.2 and
+        // enforces_entry_limit_cap() at >= 2.3.0 -- and checking only the first
+        // left any default in [2.3.0, 2.3.2) passing while silently flipping
+        // the second.
         // Guessing high would mean calling endpoints that 404.
         let v = ServerVersion::default();
+        assert_eq!((v.major, v.minor, v.patch), (2, 0, 0));
         assert!(!v.has_entry_ids_endpoint());
-    }
-
-    #[test]
-    fn limit_is_never_unbounded_even_on_permissive_servers() {
-        let old = ServerVersion::parse("2.2.0").unwrap();
-        assert_eq!(
-            old.max_entry_limit(),
-            1000,
-            "a phone must not request the whole corpus"
-        );
+        assert!(!v.enforces_entry_limit_cap());
     }
 }

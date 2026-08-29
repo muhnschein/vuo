@@ -1,0 +1,1 @@
+{"id": 7, "user_id": 1, "title": "Example Feed", "site_url": "https://blog.example/", "feed_url": "https://blog.example/feed.xml", "checked_at": "2026-01-02T03:04:05Z", "parsing_error_count": 0, "parsing_error_message": "", "disabled": false, "icon": {"feed_id": 7, "icon_id": 9}, "category": {"id": 3, "user_id": 1, "title": "News"}}
