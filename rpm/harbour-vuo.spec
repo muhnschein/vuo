@@ -51,8 +51,11 @@ BuildRequires:  pkgconfig(sailfishapp) >= 1.0.3
 BuildRequires:  pkgconfig(Qt5Core)
 BuildRequires:  pkgconfig(Qt5Qml)
 BuildRequires:  pkgconfig(Qt5Quick)
-# qttypes links Qt5Widgets unconditionally, even though Vuo never instantiates
-# a QApplication. Without this the link fails late and confusingly.
+# Qt5Widgets is a BUILD dependency only, and the shipped binary does NOT link
+# it -- patches/qttypes-0.2.12-drop-widgets.patch removes the unconditional
+# link_lib("Widgets"), because Harbour's allowed_libraries.conf has no entry
+# for it. The headers are still on qttypes' include path during compilation.
+# BuildRequires are not validated by Harbour; only runtime Requires are.
 BuildRequires:  pkgconfig(Qt5Widgets)
 BuildRequires:  rust >= 1.75
 BuildRequires:  rust-std-static >= 1.75
@@ -188,6 +191,13 @@ jobs_opt="--jobs %{?_smp_build_ncpus:%{_smp_build_ncpus}}%{!?_smp_build_ncpus:1}
 if [ -n "${SBOX_SESSION_DIR:-}" ]; then
     jobs_opt="-j1"
 fi
+
+# The two forked dependencies have to exist before cargo reads Cargo.toml:
+# [patch.crates-io] names third_party/qmetaobject and third_party/qttypes, and
+# cargo fails outright if those paths are missing. The script builds them from
+# patches/ plus the pristine crates, which under mb2 come from pristine/ in the
+# vendor tarball -- there is no crates.io route inside the SDK. See PATCHES.md.
+bash scripts/patch-deps.sh
 
 # `--package`, not only `--bin`: `--features` resolves against the SELECTED
 # packages, and the workspace's default-members is just vuo-core, which has no
