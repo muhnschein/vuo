@@ -40,12 +40,12 @@ endif
 endif
 
 .PHONY: all check fmt fmt-check clippy test qmllint qml-load shim deny \
-        fuzz-check packaging msrv fuzz-quick live-test rpm vendor clean help
+        fuzz-check packaging harbour patch-deps msrv fuzz-quick live-test rpm vendor clean help
 
 all: check
 
 ## check: everything CI runs. No phone, no server, no network.
-check: fmt-check clippy test qmllint qml-load fuzz-check packaging lockfile deny
+check: patch-deps fmt-check clippy test qmllint qml-load fuzz-check packaging harbour lockfile deny
 ifeq ($(HAVE_QT),yes)
 	@echo "== make check passed =="
 else
@@ -129,6 +129,23 @@ lockfile:
 ## packaging: spec, desktop entry and installed-file checks (no SDK needed)
 packaging:
 	scripts/check-packaging.sh
+
+## patch-deps: materialise third_party/ from patches/ (needed before any build)
+##
+## `cargo` fails immediately if the paths in [patch.crates-io] are missing, so
+## this has to run first. Idempotent, so every target that builds can depend on
+## it without cost.
+patch-deps:
+	bash scripts/patch-deps.sh
+
+## harbour: the Harbour rules checkable from a built binary (libs, exported main)
+##
+## The real gate is sdk-harbour-rpmvalidator, which needs an RPM and the SDK.
+## This is its fast half, so a regression is caught before a twenty-minute cross
+## build rather than after one. Skips cleanly where the binary is not built.
+harbour:
+	@echo "== harbour binary rules =="
+	bash scripts/check-harbour.sh
 
 ## deny: advisories, licences, banned and duplicated crates
 deny:
