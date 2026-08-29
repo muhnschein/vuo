@@ -79,6 +79,11 @@ skip = [
     "syn",
     # pulled at different versions by tokio/rustls-native-certs.
     "windows-sys",
+    # windows-sys' sibling, and the same story: chrono -> iana-time-zone wants
+    # 0.1, the rustls chain wants 0.2, and neither will move. Windows-only, so
+    # it is never compiled for the device at all -- but it is in the lockfile,
+    # and this gate reads the lockfile.
+    "windows-link",
 ]
 skip-tree = []
 

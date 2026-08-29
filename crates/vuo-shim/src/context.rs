@@ -13,7 +13,7 @@ use std::rc::Rc;
 
 use vuo_core::db::Database;
 
-use crate::worker::Command;
+use crate::worker::{Account, AppPaths, Command, Event, Worker};
 
 pub struct AppContext {
     db: Rc<RefCell<Database>>,
@@ -32,11 +32,21 @@ pub struct AppContext {
     media_policy: std::cell::Cell<i32>,
     /// Bumped by the worker when the mirror changes; polled by the models.
     signal: std::sync::Arc<SyncSignal>,
+    /// Which stored account this context was built for; see [`fingerprint`].
+    ///
+    /// The worker captures the server URL and the API key when it spawns, so
+    /// a context outlives the credentials it was built from. This is how a
+    /// save decides whether the running worker is still the right one.
+    fingerprint: u64,
     /// Owned here so the worker thread lives exactly as long as the context
     /// that talks to it. Dropping the context sends Shutdown and joins the
     /// thread; the alternative — leaking the handle with `mem::forget` — would
     /// mean the thread is never told to stop and never joined.
-    _worker: crate::worker::Worker,
+    ///
+    /// `Option`, because a context that is being *replaced* rather than shut
+    /// down retires its worker instead of joining it. See
+    /// [`AppContext::retire`].
+    worker: RefCell<Option<Worker>>,
 }
 
 impl std::fmt::Debug for AppContext {
@@ -49,9 +59,10 @@ impl AppContext {
     #[must_use]
     pub fn new(
         db: Database,
-        worker: crate::worker::Worker,
+        worker: Worker,
         instance: url::Url,
         signal: std::sync::Arc<SyncSignal>,
+        fingerprint: u64,
     ) -> Rc<Self> {
         let commands = worker.sender();
         Rc::new(AppContext {
@@ -60,8 +71,33 @@ impl AppContext {
             instance,
             media_policy: std::cell::Cell::new(crate::settings::MEDIA_ASK),
             signal,
-            _worker: worker,
+            fingerprint,
+            worker: RefCell::new(Some(worker)),
         })
+    }
+
+    /// Which stored account this context was built for.
+    #[must_use]
+    pub fn fingerprint(&self) -> u64 {
+        self.fingerprint
+    }
+
+    /// Tell the worker to stop, without waiting for it.
+    ///
+    /// `Drop` joins, which is what process shutdown wants. Replacing a live
+    /// context is the other case, and there a join is a hazard: it runs on the
+    /// Qt thread, and a worker in the middle of a request holds its thread
+    /// until the network times out — so the join would freeze the UI for
+    /// exactly that long. Retiring drops the join handle instead. The thread
+    /// still receives `Shutdown` and still winds down; it is simply not waited
+    /// for, and the mirror tolerates the overlap (WAL, a 5-second busy
+    /// timeout, and a second *process* already writes it on the sync timer).
+    pub fn retire(&self) {
+        if let Ok(mut slot) = self.worker.try_borrow_mut() {
+            if let Some(mut worker) = slot.take() {
+                worker.retire();
+            }
+        }
     }
 
     #[must_use]
@@ -113,7 +149,12 @@ impl AppContext {
 }
 
 thread_local! {
-    /// The single application context, installed once at start-up.
+    /// The single application context.
+    ///
+    /// Installed at start-up when there is already an account to build it
+    /// from, and again by the settings screen when one is saved or changed.
+    /// It was *only* the first of those for a while, which meant a first run
+    /// left this empty for the whole session — see [`refresh`].
     ///
     /// A thread-local rather than a `static`: everything that reads this is a
     /// `QObject` living on the Qt thread, and a thread-local makes that
@@ -128,8 +169,11 @@ thread_local! {
     static CURRENT: RefCell<Option<Rc<AppContext>>> = const { RefCell::new(None) };
 }
 
-/// Install the application context. Call once, from the Qt thread, before QML
-/// loads.
+/// Install the application context, replacing any already installed.
+///
+/// From the Qt thread only. Prefer [`refresh`], which decides whether a
+/// replacement is warranted and retires the outgoing worker; this is the raw
+/// store behind it.
 pub fn install(ctx: Rc<AppContext>) {
     CURRENT.with(|c| {
         if let Ok(mut slot) = c.try_borrow_mut() {
@@ -146,6 +190,139 @@ pub fn install(ctx: Rc<AppContext>) {
 #[must_use]
 pub fn current() -> Option<Rc<AppContext>> {
     CURRENT.with(|c| c.try_borrow().ok().and_then(|slot| slot.clone()))
+}
+
+/// Identify an account without keeping a second copy of its credentials.
+///
+/// A save that changed nothing must not restart the worker; a save that changed
+/// the server or the key must, because the worker captures both when it spawns.
+/// Hashing rather than storing the strings keeps the token out of one more live
+/// object: this is change detection, not authentication, so a non-cryptographic
+/// hash is the right tool for it.
+fn fingerprint(account: &Account) -> u64 {
+    use std::hash::{Hash as _, Hasher as _};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    account.server_url.hash(&mut hasher);
+    account.token.hash(&mut hasher);
+    account.use_custom_ca.hash(&mut hasher);
+    hasher.finish()
+}
+
+/// Where the worker's events go.
+///
+/// Logging only, and deliberately *not* wrapped in `queued_callback`. It
+/// touches no `QObject`, and `tracing` is built to be called from any thread,
+/// so marshalling it back to the Qt thread would buy nothing and cost
+/// something real: it would tie every rebuild of the context to a live Qt
+/// event loop, which start-up has and the settings screen cannot promise. The
+/// results the UI has to *show* travel by [`SyncSignal`] instead; see that
+/// type for why it is a poll.
+fn log_event(event: Event) {
+    match &event {
+        Event::SyncFinished { unread, .. } => tracing::info!(unread, "sync finished"),
+        Event::AuthFailed => tracing::warn!("the server rejected the API key"),
+        Event::SyncFailed { message } => tracing::warn!(%message, "sync failed"),
+        other => tracing::debug!(?other, "sync event"),
+    }
+}
+
+/// What the settings screen shows when the stored address will not parse.
+///
+/// Deliberately does not echo the address back: it is the user's own, this text
+/// reaches the log as well as the screen, and a URL may carry userinfo. Naming
+/// the missing part is more use anyway — `10.77.0.1:8083` is the natural thing
+/// to type into that field, and it is not a URL.
+const NOT_A_URL: &str =
+    "the server address is not a URL. It needs a scheme, as in https://miniflux.example.com/";
+
+/// Build a context for the account stored at `paths`.
+///
+/// Nothing is installed here; [`refresh`] does that. Split out so the whole
+/// path — account file to running worker — can be exercised without a Qt event
+/// loop. It used to live in the application binary, which has no tests at all
+/// and is not even built by most of `make check`, and that is precisely why the
+/// defect below survived to a device.
+pub fn build(
+    paths: &AppPaths,
+    on_event: impl Fn(Event) + Send + 'static,
+) -> vuo_core::Result<Rc<AppContext>> {
+    let account = crate::worker::load_account(&paths.account)?;
+    build_from(paths, account, on_event)
+}
+
+fn build_from(
+    paths: &AppPaths,
+    account: Account,
+    on_event: impl Fn(Event) + Send + 'static,
+) -> vuo_core::Result<Rc<AppContext>> {
+    let server = url::Url::parse(&account.server_url)
+        .map_err(|_| vuo_core::Error::Config(NOT_A_URL.to_owned()))?;
+    let config = crate::worker::transport_config_for(paths, &account)?;
+    let db = Database::open(&paths.database)?;
+    let fingerprint = fingerprint(&account);
+
+    let signal = std::sync::Arc::new(SyncSignal::default());
+    let worker = Worker::spawn(
+        paths.database.clone(),
+        server.clone(),
+        vuo_core::redact::ApiToken::new(account.token),
+        config,
+        std::sync::Arc::clone(&signal),
+        on_event,
+    );
+
+    let ctx = AppContext::new(db, worker, server, signal, fingerprint);
+    // Seed the Images setting from the stored account, so the first article
+    // opened after this honours it rather than falling back to Ask.
+    ctx.set_media_policy(account.media_policy);
+    Ok(ctx)
+}
+
+/// Make the installed context match the account stored at `paths`.
+///
+/// Installs one when there is none. That is the case this exists for: the
+/// context used to be built exactly once, at start-up, from an account file
+/// that **does not exist until the user has saved one**. So on a first run the
+/// build failed, nothing ever retried it, and every worker-backed action —
+/// "Test connection", the pulley menu's Refresh — reached no worker at all and
+/// did nothing, with no error and no spinner, until Vuo was restarted.
+///
+/// Rebuilds when the stored server or key changed, because the worker captures
+/// both when it spawns. Without that, testing a connection after editing the
+/// server address would report a confident answer about the *previous* account.
+///
+/// Idempotent and cheap when nothing changed: one file read and a hash.
+pub fn refresh(paths: &AppPaths) -> vuo_core::Result<Rc<AppContext>> {
+    let account = crate::worker::load_account(&paths.account)?;
+    let wanted = fingerprint(&account);
+
+    if let Some(existing) = current() {
+        if existing.fingerprint() == wanted {
+            return Ok(existing);
+        }
+        // Told to stop, but not waited for: a join here runs on the Qt thread.
+        existing.retire();
+    }
+
+    let ctx = build_from(paths, account, log_event)?;
+    install(Rc::clone(&ctx));
+    Ok(ctx)
+}
+
+/// [`refresh`] against the standard locations.
+///
+/// `None` when there is no data directory or no usable account yet — both of
+/// which are ordinary states before the user has been to Settings, not faults.
+#[must_use]
+pub fn refresh_current() -> Option<Rc<AppContext>> {
+    let paths = AppPaths::resolve()?;
+    match refresh(&paths) {
+        Ok(ctx) => Some(ctx),
+        Err(e) => {
+            tracing::info!(error = %e, "no usable account yet");
+            None
+        }
+    }
 }
 
 #[cfg(test)]
@@ -179,6 +356,7 @@ mod tests {
             worker,
             url::Url::parse("https://unreachable.invalid/").expect("url"),
             signal,
+            0,
         )
     }
 
@@ -216,6 +394,78 @@ mod tests {
 
         // And the refusal is temporary: the borrow is released afterwards.
         assert!(ctx.write(|_| ()).is_some());
+    }
+
+    fn account_at(dir: &tempfile::TempDir, server: &str) -> AppPaths {
+        let paths = AppPaths::under(dir.path().join("harbour-vuo"));
+        crate::worker::save_account(
+            &paths.account,
+            &Account {
+                server_url: server.to_owned(),
+                token: "k".to_owned(),
+                ..Account::default()
+            },
+        )
+        .expect("write the account");
+        paths
+    }
+
+    #[test]
+    fn refresh_installs_a_context_for_a_stored_account() {
+        // The first-run path: `main` builds the context once, before any
+        // account exists, so this is the call that has to work afterwards.
+        let dir = tempfile::tempdir().expect("tempdir");
+        // Plain http, as a WireGuard-only deployment uses. The transport
+        // accepts it; nothing in this path may quietly require TLS.
+        let paths = account_at(&dir, "http://10.77.0.1:8083/");
+        assert!(current().is_none());
+
+        let ctx = refresh(&paths).expect("a stored account must yield a context");
+        assert_eq!(ctx.instance().as_str(), "http://10.77.0.1:8083/");
+        assert!(
+            ctx.send(Command::TestConnection),
+            "the worker must be alive"
+        );
+
+        let installed = current().expect("and it must be installed, not just returned");
+        assert!(Rc::ptr_eq(&ctx, &installed));
+
+        // Idempotent: calling it again for the same account returns the same
+        // context rather than restarting a worker on every save.
+        let again = refresh(&paths).expect("a context");
+        assert!(Rc::ptr_eq(&ctx, &again));
+    }
+
+    #[test]
+    fn refresh_reports_an_address_that_is_not_a_url_rather_than_swallowing_it() {
+        // `10.77.0.1:8083` is the natural thing to type and is not a URL. It
+        // saves fine, so the failure lands here -- and used to land in a log
+        // line at a level the default filter drops, leaving the app with no
+        // worker and the user with no explanation.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let paths = account_at(&dir, "10.77.0.1:8083");
+
+        let e = refresh(&paths).expect_err("that is not a URL");
+        assert!(
+            e.to_string().contains("scheme"),
+            "the message has to name what is missing: {e}"
+        );
+        assert!(current().is_none(), "and nothing half-built is installed");
+    }
+
+    #[test]
+    fn a_retired_worker_is_not_waited_for() {
+        // `retire` is what makes replacing a context safe on the Qt thread: a
+        // join there blocks the UI until an in-flight request times out. It
+        // must still stop the worker.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let ctx = refresh(&account_at(&dir, "http://10.77.0.1:8083/")).expect("a context");
+
+        ctx.retire();
+        // The channel's receiver is dropped when the worker thread ends, so
+        // this settles rather than hanging either way; what matters is that
+        // `retire` itself returned without waiting for the thread.
+        ctx.retire();
     }
 
     #[test]

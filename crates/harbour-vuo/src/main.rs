@@ -53,58 +53,19 @@ fn main() {
 }
 
 /// Open the mirror, start the worker, and install the app context.
+///
+/// The whole body of this used to live here, in a crate with no tests that
+/// most of `make check` does not even build. It now lives in `vuo-shim`, where
+/// it is tested — and, more importantly, where the settings screen can call it
+/// again. Building the context exactly once, here, meant that on a first run
+/// (no account file, so this fails) nothing ever retried it, and every
+/// worker-backed action in the running app silently did nothing until Vuo was
+/// restarted. See `vuo_shim::context::refresh`.
 fn install_context() -> vuo_core::Result<()> {
-    use vuo_shim::context::AppContext;
-    use vuo_shim::worker::{self, AppPaths};
-
-    let paths = AppPaths::resolve().ok_or_else(|| {
+    let paths = vuo_shim::worker::AppPaths::resolve().ok_or_else(|| {
         vuo_core::Error::Config("could not resolve the data directory".to_owned())
     })?;
-    let account = worker::load_account(&paths.account)?;
-    let server = url::Url::parse(&account.server_url)
-        .map_err(|_| vuo_core::Error::Config("the stored server URL is not a URL".to_owned()))?;
-
-    let config = worker::transport_config_for(&paths, &account)?;
-    let db = vuo_core::db::Database::open(&paths.database)?;
-
-    // The worker's events arrive on ITS thread, so everything that touches a
-    // QObject has to be marshalled back. `queued_callback` is qmetaobject's
-    // primitive for that; without it this would be a data race on Qt internals.
-    //
-    // Logging only, and that is now correct: the models learn that the mirror
-    // changed by polling `SyncSignal`, which the worker bumps, and a result
-    // the UI has to SHOW (the answer to "test this connection", a rejected
-    // feed URL) is left in that signal's notice slot for the page to drain.
-    // See context::SyncSignal for why both are polls rather than callbacks
-    // into QML-owned objects.
-    //
-    // (The paragraph that used to sit here said the opposite -- "the callback
-    // must DO something" -- and was left over from before the SyncSignal
-    // rewrite. Two adjacent contradictory comments are worse than neither.)
-    let deliver = qmetaobject::queued_callback(|event: worker::Event| match &event {
-        worker::Event::SyncFinished { unread, .. } => tracing::info!(unread, "sync finished"),
-        worker::Event::AuthFailed => tracing::warn!("the server rejected the API key"),
-        worker::Event::SyncFailed { message } => tracing::warn!(%message, "sync failed"),
-        other => tracing::debug!(?other, "sync event"),
-    });
-
-    let signal = std::sync::Arc::new(vuo_shim::context::SyncSignal::default());
-    let worker = worker::Worker::spawn(
-        paths.database.clone(),
-        server.clone(),
-        vuo_core::redact::ApiToken::new(account.token),
-        config,
-        std::sync::Arc::clone(&signal),
-        deliver,
-    );
-
-    // The context owns the worker, so the thread lives exactly as long as the
-    // thing that talks to it.
-    let ctx = AppContext::new(db, worker, server, signal);
-    // Seed the Images setting from the stored account, so the first article
-    // opened after launch honours it rather than falling back to Ask.
-    ctx.set_media_policy(account.media_policy);
-    vuo_shim::context::install(ctx);
+    vuo_shim::context::refresh(&paths)?;
     Ok(())
 }
 

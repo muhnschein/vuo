@@ -393,7 +393,7 @@ mod tests {
             std::sync::Arc::clone(&signal),
             |_| {},
         );
-        let ctx = AppContext::new(db, worker, instance, signal);
+        let ctx = AppContext::new(db, worker, instance, signal, 0);
         let model = ArticleModel::default();
 
         for (setting, expected) in [

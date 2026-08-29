@@ -78,6 +78,18 @@ pub struct Settings {
     /// this is false, because writing properties that were never read is
     /// exactly how a blank Settings page overwrote a configured account.
     loaded: bool,
+
+    /// A result this page produced itself, with no worker involved: "there is
+    /// nothing to test yet", "the address is not a URL", "the account could
+    /// not be written".
+    ///
+    /// It waits in a one-shot slot and is drained by the same poll the
+    /// worker's answers arrive through, rather than firing `connectionTested`
+    /// straight from inside the tap. QML starts that poll *after*
+    /// `testConnection()` returns, so a signal emitted during the call would
+    /// be missed and the poll would then run forever waiting for an answer
+    /// that had already been given.
+    local_notice: Option<(bool, String)>,
 }
 
 impl Settings {
@@ -127,6 +139,7 @@ impl Settings {
 
     fn save(&mut self) {
         let Some(paths) = AppPaths::resolve() else {
+            tracing::warn!("no data directory: the account cannot be stored");
             return;
         };
         self.save_to(&paths);
@@ -161,11 +174,40 @@ impl Settings {
             return;
         }
         // Written with mode 0600; see worker::save_account.
-        let _ = worker::save_account(&paths.account, &account);
-        // And publish it to the live context, or the open article keeps the
-        // policy it was built with. This is the hop that was missing: the
-        // control was rendered, persisted, and read back on the next launch,
-        // but never reached the transform.
+        //
+        // The result used to be discarded. It cannot be: everything below
+        // assumes the file on disk now says what this screen says, and if the
+        // write failed the context rebuild would happily come back with the
+        // PREVIOUS account and report a confident answer about it.
+        if let Err(e) = worker::save_account(&paths.account, &account) {
+            tracing::warn!(error = %e, "could not write the account file");
+            self.local_notice = Some((false, e.to_string()));
+            return;
+        }
+
+        // Make the running app match what was just written.
+        //
+        // This is the hop the first-run failure hid behind. The context — the
+        // mirror and the worker thread — was built exactly once, at start-up,
+        // from an account file that does not exist until this function has run
+        // at least once. So the first time a user filled in a server and a key,
+        // there was still no worker: "Test connection" and the pulley menu's
+        // Refresh reached nothing and did nothing, with no error and no
+        // spinner, until Vuo was restarted.
+        //
+        // It also matters on every later save. The worker captures the server
+        // URL and the API key when it spawns, so without this a test after
+        // editing the address would answer for the address it replaced.
+        // `refresh` is a no-op when neither changed.
+        if let Err(e) = crate::context::refresh(paths) {
+            tracing::warn!(error = %e, "the saved account did not yield a usable context");
+            self.local_notice = Some((false, e.to_string()));
+        }
+
+        // And publish the media policy to the live context, or the open article
+        // keeps the policy it was built with. This is the hop that was missing:
+        // the control was rendered, persisted, and read back on the next
+        // launch, but never reached the transform.
         if let Some(ctx) = self.ctx.clone().or_else(crate::context::current) {
             ctx.set_media_policy(self.mediaPolicy);
         }
@@ -178,13 +220,70 @@ impl Settings {
     }
 
     fn testConnection(&mut self) {
-        self.save();
-        if let Some(ctx) = self.ctx.clone().or_else(crate::context::current) {
-            ctx.send(Command::TestConnection);
+        let Some(paths) = AppPaths::resolve() else {
+            self.local_notice = Some((
+                false,
+                "could not work out where to store the account".to_owned(),
+            ));
+            return;
+        };
+        self.test_connection_with(&paths);
+    }
+
+    /// [`Settings::testConnection`] against explicit paths.
+    ///
+    /// Split out for the same reason `save_to` is: the no-arg version resolves
+    /// `$XDG_DATA_HOME`/`$HOME`, so a test that drove it would be reading — and
+    /// writing — the developer's real account file.
+    ///
+    /// Every branch here leaves the user something to read. The button used to
+    /// have three ways to do nothing at all: no context to send through, a
+    /// worker that had already stopped, and a send whose result was discarded.
+    /// "Nothing happened" is the one answer a Test button must never give.
+    pub fn test_connection_with(&mut self, paths: &AppPaths) {
+        // Each tap starts fresh. An answer left over from the previous one --
+        // not yet drained, since the page polls every 400ms -- would otherwise
+        // be read as this tap's, and would short-circuit the check below.
+        self.local_notice = None;
+        self.save_to(paths);
+
+        // `save_to` refreshes the context, so by here there is one unless the
+        // account could not be written or does not describe a usable
+        // configuration -- in which case it left the reason here, and that
+        // reason is better than anything this could add.
+        if self.local_notice.is_some() {
+            return;
+        }
+
+        let Some(ctx) = self.ctx.clone().or_else(crate::context::current) else {
+            // `save_to` returns early, without writing, when either field is
+            // blank -- so this is what an empty form reaches.
+            self.local_notice = Some((
+                false,
+                "fill in the server address and the API key first".to_owned(),
+            ));
+            return;
+        };
+
+        if !ctx.send(Command::TestConnection) {
+            // The worker stops itself if the mirror or the HTTP client could
+            // not be built, and a send into its closed channel is silent.
+            self.local_notice = Some((
+                false,
+                "the sync worker is not running; restart Vuo".to_owned(),
+            ));
         }
     }
 
     fn pollNotice(&mut self) -> bool {
+        // This page's own result comes first, and is checked before the
+        // context is: it exists precisely for the cases where the request
+        // never reached a worker, and in the worst of those there is no
+        // context to poll at all.
+        if let Some((ok, message)) = self.local_notice.take() {
+            self.on_connection_tested(ok, &message);
+            return true;
+        }
         let Some(ctx) = self.ctx.clone().or_else(crate::context::current) else {
             return false;
         };
@@ -442,6 +541,153 @@ mod tests {
         );
     }
 
+    /// §the first run, end to end: an account is configured and the app works.
+    ///
+    /// This is the defect a real device found. The context — the mirror and
+    /// the worker thread — was built exactly once, in `main`, from an account
+    /// file that does not exist before the user has been to Settings. On a
+    /// first run that build failed, nothing retried it, and every
+    /// worker-backed action in the running app silently did nothing: "Test
+    /// connection" gave no answer of any kind, and the pulley menu's Refresh
+    /// did not even spin. Restarting Vuo fixed it, which is why it survived.
+    ///
+    /// Nothing could catch it. `main` is in `harbour-vuo`, which has no tests
+    /// and which `make check` only lints.
+    #[test]
+    fn configuring_an_account_makes_the_app_work_without_a_restart() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let paths = temp_paths(&dir);
+        assert!(
+            crate::context::current().is_none(),
+            "a first run starts with no context; that is the whole premise"
+        );
+
+        // Exactly what the user types into the two fields, for the setup that
+        // found this: plain http to a WireGuard address, no TLS.
+        let mut s = Settings {
+            serverUrl: QString::from("http://10.77.0.1:8083/"),
+            apiKey: QString::from("k"),
+            // The page loads before it saves -- SettingsPage has
+            // `Component.onCompleted: settings.load()` -- and `save_to` now
+            // refuses to write state it never read, so a blank page cannot
+            // overwrite a configured account. `load` sets this even when
+            // there is no account file yet, which is the first-run case here.
+            loaded: true,
+            ..Settings::default()
+        };
+        s.test_connection_with(&paths);
+
+        let ctx = crate::context::current()
+            .expect("configuring an account must make the app usable without a restart");
+        assert_eq!(ctx.instance().as_str(), "http://10.77.0.1:8083/");
+        assert!(
+            ctx.send(Command::TestConnection),
+            "and there must be a worker listening for the command"
+        );
+        assert!(
+            s.local_notice.is_none(),
+            "the request went through, so the page has nothing of its own to report: {:?}",
+            s.local_notice
+        );
+    }
+
+    /// The worker captures the server URL and the API key when it spawns, so a
+    /// context outlives the credentials it was built from. Editing either and
+    /// testing again used to ask the OLD worker, which answered confidently
+    /// about the account the user had just replaced.
+    #[test]
+    fn changing_the_server_replaces_the_worker_that_answers_for_it() {
+        use std::rc::Rc;
+
+        let dir = tempfile::tempdir().expect("tempdir");
+        let paths = temp_paths(&dir);
+
+        let mut s = Settings {
+            serverUrl: QString::from("http://10.77.0.1:8083/"),
+            apiKey: QString::from("k"),
+            // `save_to` refuses to write state it never read; the page has
+            // loaded by this point. See the first-run test above.
+            loaded: true,
+            ..Settings::default()
+        };
+        s.save_to(&paths);
+        let first = crate::context::current().expect("a context");
+
+        // A save that changed no credential must NOT churn the worker: the
+        // Wi-Fi switch has no business restarting a sync in flight.
+        s.wifiOnly = true;
+        s.save_to(&paths);
+        let after_unrelated_save = crate::context::current().expect("a context");
+        assert!(
+            Rc::ptr_eq(&first, &after_unrelated_save),
+            "an unrelated setting must not restart the worker"
+        );
+
+        // A changed address must.
+        s.serverUrl = QString::from("http://10.77.0.2:8083/");
+        s.save_to(&paths);
+        let after_new_server = crate::context::current().expect("a context");
+        assert!(
+            !Rc::ptr_eq(&first, &after_new_server),
+            "a changed server must not keep answering through the old worker"
+        );
+        assert_eq!(
+            after_new_server.instance().as_str(),
+            "http://10.77.0.2:8083/"
+        );
+
+        // So must a changed key, which does not show up in the origin at all.
+        s.apiKey = QString::from("k2");
+        s.save_to(&paths);
+        let after_new_key = crate::context::current().expect("a context");
+        assert!(
+            !Rc::ptr_eq(&after_new_server, &after_new_key),
+            "a changed API key must not keep answering through the old worker"
+        );
+    }
+
+    /// "Nothing happened" is the one answer a Test button must never give.
+    #[test]
+    fn a_connection_test_that_reaches_no_worker_still_answers() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let paths = temp_paths(&dir);
+
+        // An empty form. `save_to` declines to write it, so nothing downstream
+        // exists to send through -- which used to mean the tap did nothing at
+        // all, right down to leaving the QML poll spinning for an answer that
+        // was never coming.
+        let mut s = Settings::default();
+        s.test_connection_with(&paths);
+        assert!(
+            s.local_notice.is_some(),
+            "an empty form must be told what is missing, not ignored"
+        );
+        assert!(s.pollNotice(), "and the page's poll must deliver it");
+        assert!(
+            !s.pollNotice(),
+            "one-shot: a drained result must not repeat forever"
+        );
+
+        // An address that is not a URL is the other way to get here, and the
+        // likeliest typo: a host and port with no scheme saves fine and then
+        // fails to build anything.
+        let mut s = Settings {
+            serverUrl: QString::from("10.77.0.1:8083"),
+            apiKey: QString::from("k"),
+            // `save_to` refuses to write state it never read; the page has
+            // loaded by this point. See the first-run test above.
+            loaded: true,
+            ..Settings::default()
+        };
+        s.test_connection_with(&paths);
+        let (ok, message) = s.local_notice.clone().expect("a reason");
+        assert!(!ok);
+        assert!(
+            message.contains("scheme"),
+            "the message must name what is missing: {message}"
+        );
+    }
+
     #[test]
     fn manual_only_means_no_timer() {
         let mut s = Settings {
@@ -482,10 +728,14 @@ mod tests {
         let paths = temp_paths(&dir);
 
         // A configured device.
-        let mut configured = Settings::default();
-        configured.loaded = true;
-        configured.serverUrl = QString::from("https://miniflux.example/");
-        configured.apiKey = QString::from("secret-key");
+        let mut configured = Settings {
+            serverUrl: QString::from("https://miniflux.example/"),
+            apiKey: QString::from("secret-key"),
+            // `save_to` refuses to write state it never read; the page has
+            // loaded by this point. See the first-run test above.
+            loaded: true,
+            ..Settings::default()
+        };
         configured.save_to(&paths);
         assert!(paths.account.exists());
 

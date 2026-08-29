@@ -107,7 +107,6 @@ pub struct BoundedResponse {
 #[derive(Debug, Clone)]
 pub struct Transport {
     api: reqwest::Client,
-    media: reqwest::Client,
     origin: Url,
     token: ApiToken,
     config_max_bytes: usize,
@@ -172,16 +171,23 @@ impl Transport {
             .build()
             .map_err(|_| Error::Config("could not build the HTTP client".to_owned()))?;
 
-        // The media client gets neither the token nor the extra CA, and is
-        // used for third-party hosts. Keeping it separate is what makes the
-        // API client's private CA genuinely host-scoped.
-        let media = base()
-            .build()
-            .map_err(|_| Error::Config("could not build the media HTTP client".to_owned()))?;
+        // There is deliberately NO second client for third-party hosts, because
+        // this crate never fetches from one. A client that gets neither the
+        // token nor the private CA used to be built here, and nothing ever
+        // called its accessor -- the separation it advertised was not enforced
+        // anywhere, which is worse than not claiming it.
+        //
+        // Where the boundary actually lives:
+        //   - feed icons arrive INSIDE Miniflux's own JSON (api::wire::Icon,
+        //     base64), so they come over this client, with the token, correctly.
+        //   - article images are decided by content::MediaPolicy and fetched by
+        //     Qt, from QML. Rust never issues those requests, so it cannot leak
+        //     the token or extend the private CA to them.
+        //
+        // If a direct fetch is ever added here, it needs its own client again.
 
         Ok(Transport {
             api,
-            media,
             origin,
             token,
             config_max_bytes: config.max_response_bytes,

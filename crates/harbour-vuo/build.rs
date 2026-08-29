@@ -19,8 +19,8 @@ fn main() {
         // sb2). Reusing it keeps one source of truth. The per-module
         // subdirectories are needed because Qt headers include each other
         // unqualified.
-        let qt_include = std::env::var("QT_INCLUDE_PATH")
-            .unwrap_or_else(|_| "/usr/include/qt5".to_owned());
+        let qt_include =
+            std::env::var("QT_INCLUDE_PATH").unwrap_or_else(|_| "/usr/include/qt5".to_owned());
         config.include(&qt_include);
         for module in ["QtCore", "QtGui", "QtQuick", "QtQml"] {
             config.include(format!("{qt_include}/{module}"));

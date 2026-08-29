@@ -26,10 +26,18 @@ jobs:
   check:
     name: host checks
     runs-on: ubuntu-latest
-    env:
-      # Not workflow-global: cargo-fuzz composes its own RUSTFLAGS, and having
-      # ours merged in there is noise at best.
-      RUSTFLAGS: -D warnings
+    # NO blanket `RUSTFLAGS: -D warnings` here, deliberately.
+    #
+    # RUSTFLAGS applies to every crate compiled, and cargo caps lints only for
+    # crates it fetched itself -- a PATH dependency counts as local. Since
+    # [patch.crates-io] points qmetaobject and qttypes at third_party/, their
+    # 46 upstream warnings became hard errors and `make check` failed on code
+    # this repository does not own and will not fix.
+    #
+    # The Makefile already denies warnings where it matters, per package and
+    # after `--`: `cargo clippy -p vuo-shim --all-targets -- -D warnings`.
+    # That form applies to the selected package only, so our crates are held to
+    # the same standard and the forks are left alone.
     steps:
       - uses: actions/checkout@v4
 
