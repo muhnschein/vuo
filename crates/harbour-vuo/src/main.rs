@@ -137,7 +137,7 @@ fn sync_once() -> i32 {
 
 #[cfg(feature = "sailfishapp")]
 fn run() {
-    use qmetaobject::cpp;
+    use cpp::cpp;
 
     cpp! {{
         #include <sailfishapp.h>

@@ -538,6 +538,7 @@ dependencies = [
 name = "harbour-vuo"
 version = "0.1.0"
 dependencies = [
+ "cpp",
  "cpp_build",
  "qmetaobject",
  "tracing",

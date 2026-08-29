@@ -29,6 +29,12 @@ unimplemented = "deny"
 vuo-core = { path = "../vuo-core" }
 vuo-shim = { path = "../vuo-shim" }
 qmetaobject = "=0.2.10"
+# The `cpp!` macro, used by the device entry point's C++ glue. qmetaobject
+# depends on this crate but does NOT re-export the macro -- `use
+# qmetaobject::cpp` fails with "macro `cpp` is private" -- and nothing on a
+# host compiles that path, so it went unnoticed until the first device build.
+# Same version qmetaobject itself pins, so one cpp_build runs for both.
+cpp = { version = "0.5", optional = true }
 url = "2.5"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "env-filter"] }
@@ -46,4 +52,4 @@ default = []
 # Wayland, booster and theme setup -- QmlEngine's QtWidgets QApplication is
 # wrong for a Silica app. Requires sailfishapp headers, so it only builds
 # inside the SDK; rpm/harbour-vuo.spec passes it.
-sailfishapp = ["dep:cpp_build"]
+sailfishapp = ["dep:cpp_build", "dep:cpp"]
