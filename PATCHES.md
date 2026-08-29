@@ -1,9 +1,21 @@
 # Forked dependencies
 
-Two crates under `third_party/` are copies of published releases with small
-patches applied. They are wired in through `[patch.crates-io]` at the bottom of
-the workspace `Cargo.toml`, and excluded from the workspace so they are not
-swept into `make msrv`, `scripts/check-lockfile.sh` or this workspace's lints.
+Two crates are patched: qmetaobject 0.2.10 and qttypes 0.2.12. The diffs live
+in `patches/`, and `scripts/patch-deps.sh` materialises `third_party/` from
+them plus the pristine crates. That directory is generated and gitignored --
+run `make patch-deps` after cloning, or any `make` target that builds.
+
+The patched copies are wired in through `[patch.crates-io]` at the bottom of the
+workspace `Cargo.toml`, and excluded from the workspace so they are not swept
+into `make msrv`, `scripts/check-lockfile.sh` or this workspace's lints.
+
+**Why patches rather than vendored source.** The change is four lines. Checking
+the crates in would put ~440 KB of unmodified upstream Rust in this repository
+and bury those four lines in it, so every dependency bump would be reviewed as
+a vendored tree rather than as a diff. The cost is that `cargo build` fails
+until `patch-deps` has run once -- cargo resolves `[patch.crates-io]` paths
+before it does anything else, so the failure is immediate and total rather than
+subtle.
 
 Both patches exist for one reason: **keeping `libQt5Widgets.so.5` out of the
 shipped binary.** Harbour's `allowed_libraries.conf` does not list it, so
@@ -82,10 +94,21 @@ readelf -d <binary> | grep NEEDED     # no libQt5Widgets.so.5
 the linked artifact, not of any Rust code. `scripts/check-harbour.sh` checks it
 against a built binary.
 
-## What is not vendored
+## What patch-deps strips
 
-`tests/`, `README.md` and `Cargo.toml.orig` are stripped from both copies. They
-are not built by a path dependency, and carrying a few hundred KB of upstream
-test suites into this repository buys nothing -- the crates' own CI covers
-them, and the patched behaviour is verified here by
-`scripts/check-harbour.sh` against the linked artifact.
+`tests/`, `README.md`, `Cargo.toml.orig` and cargo's vendoring markers are
+removed from both copies. A path dependency does not build them.
+
+## What patch-deps verifies
+
+Applying a patch cleanly is not the same as it having done the right thing --
+`patch` will take a hunk at an offset, and a fuzzy apply against the wrong
+context still exits 0. So after patching, the script greps for the thing each
+patch was supposed to remove, anchored to the start of a line so the comments
+the patches leave behind do not count as the thing itself:
+
+    qttypes       ^\s*link_lib\("Widgets"\)
+    qmetaobject   ^\s*#include <QtWidgets/QApplication>
+
+A hit fails the build. Verified by mutation: corrupting either patch makes the
+script exit 1 rather than producing a quietly unpatched tree.
