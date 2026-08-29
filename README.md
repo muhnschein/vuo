@@ -52,9 +52,18 @@ See [`docs/scope.md`](docs/scope.md) for the full scope and non-goals.
 `vuo-core` builds and tests on a plain host toolchain — no Qt, no Sailfish SDK:
 
 ```sh
+make patch-deps # once after cloning: applies patches/ to two dependencies
 make check      # fmt, clippy, tests, qmllint, packaging checks — exactly what CI runs
 make msrv       # re-check against the Sailfish Rust floor
 ```
+
+`patch-deps` is not optional and not cosmetic. Two crates are patched so the
+device binary stops linking `libQt5Widgets.so.5`, which Harbour rejects, and
+`[patch.crates-io]` points at the patched copies — so a bare `cargo build`
+before it has run fails with *failed to load source for dependency
+`qmetaobject`*. Every `make` target that builds depends on it, so this is only
+needed if you drive cargo directly. [`PATCHES.md`](PATCHES.md) has the diffs
+and the reasoning.
 
 The governing rule: **`make check` runs exactly what CI runs, from a clean
 checkout, with no phone, no server account, and no network.** Anything that
@@ -70,8 +79,24 @@ scripts/build-rpm.sh aarch64
 
 ## Status
 
-Pre-1.0, under active development. Targets Chum / OpenRepos; Harbour's library
-restrictions and its background-service rules make it a stretch goal at best.
+Pre-1.0, under active development.
+
+**The store package passes Harbour validation.** `rpmvalidation.sh` from the
+SailfishOS 5.0.0.43 SDK reports `Validation succeeded` on
+`harbour-vuo-0.1.0-1.aarch64.rpm`, every section passing. Getting there needed
+two things the README previously called stretch goals:
+
+- **The library restriction.** qttypes linked Qt5Widgets unconditionally and
+  qmetaobject's QmlEngine built a QtWidgets `QApplication`, so every
+  qmetaobject app carries `libQt5Widgets.so.5` -- which Harbour does not allow.
+  Both are patched; see [`PATCHES.md`](PATCHES.md).
+- **The background-service rule.** `validatepaths` permits only the binary, the
+  desktop file, the icons and `%{_datadir}/harbour-vuo`, so the systemd sync
+  timer cannot ship. The store build (`--with harbour`, the default) drops it
+  and syncs on a QML timer instead; `--without harbour` keeps the unit for
+  Chum / OpenRepos, where it also covers the app being closed.
+
+Not yet submitted, and not yet run on a physical device.
 
 ## Licence
 
