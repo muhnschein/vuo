@@ -20,12 +20,15 @@ members = ["crates/vuo-core", "crates/vuo-shim", "crates/harbour-vuo"]
 # explicitly with `-p vuo-shim` / `-p harbour-vuo` (see `make shim`).
 default-members = ["crates/vuo-core"]
 
+# Forked dependencies. NOT workspace members: cargo auto-promotes in-workspace
+# path dependencies to members, which would sweep third-party code into
+# `make msrv`, check-lockfile.sh and this workspace's lints (unsafe_code =
+# "deny" would fail immediately). See PATCHES.md for what was changed and why.
+exclude = ["third_party/qmetaobject", "third_party/qttypes"]
+
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
-# The SailfishOS SDK ships an older Rust than current stable. Every crate in
-# the workspace pins the same floor, and `make msrv` re-checks against it so a
-# dependency bump cannot silently break the device build. See docs/toolchain.md.
 # The Rust the SailfishOS SDK ships, and therefore the only floor that matters:
 # a package that will not build on the device toolchain is not a package.
 #
@@ -77,3 +80,23 @@ lto = true
 codegen-units = 1
 panic = "abort"
 strip = true
+
+# Two upstream crates are forked to keep libQt5Widgets.so.5 out of the binary.
+#
+# Harbour's allowed_libraries.conf does not list it, and rpmvalidation.sh fails
+# twice over -- "Cannot link to shared library" and "Cannot require shared
+# library" -- so a qmetaobject app cannot reach the store unpatched. qttypes
+# called link_lib("Widgets") unconditionally, and qmetaobject's QmlEngine glue
+# built a QtWidgets QApplication.
+#
+# Both patches are needed together: dropping the link alone fails with
+# undefined QApplication::QApplication and QApplication::exec(), and changing
+# only the glue leaves -lQt5Widgets on the link line, where its absence from
+# DT_NEEDED would depend on --as-needed holding under sb2.
+#
+# Versions must stay exactly 0.2.10 / 0.2.12 -- the qmetaobject dependency is
+# pinned with "=" and these are what the lockfile and the offline registry
+# have. PATCHES.md records the diff so the fork can be re-applied on a bump.
+[patch.crates-io]
+qmetaobject = { path = "third_party/qmetaobject" }
+qttypes = { path = "third_party/qttypes" }
