@@ -15,7 +15,34 @@ Page {
     property int scopeKind: 0
     property int scopeId: 0
 
-    Component.onCompleted: if (page.model) page.model.setScope(page.scopeKind, page.scopeId)
+    Component.onCompleted: page.applyScope()
+
+    // Re-assert this page's scope whenever it becomes the visible one.
+    //
+    // Every list page shares ONE EntryModel -- FeedListPage hands its own
+    // `entryModel` straight to the page it pushes -- so opening a feed
+    // re-scopes the very object the Unread page is showing. Setting the scope
+    // only in Component.onCompleted meant that scope then stuck: coming back
+    // from a feed left the Unread page listing that feed's entries under an
+    // "Unread" header, and no amount of navigating fixed it because no page
+    // ever set the scope again. Restarting the app was the only way out.
+    // Both hooks fire when a page is first shown, so the scope is applied
+    // twice there. That is deliberate: `onCompleted` alone cannot survive the
+    // back-navigation above, and relying on `Activating` alone would leave a
+    // page that somehow never got a status change showing nothing at all. The
+    // cost is one extra query against an already-open SQLite connection.
+    //
+    // The reload it causes is wanted for its own sake, too: marking an article
+    // read from the article view changes the mirror but not this page's rows,
+    // so without a reload on the way back the entry would still be listed as
+    // unread until the next sync.
+    onStatusChanged: if (status === PageStatus.Activating) page.applyScope()
+
+    function applyScope() {
+        if (page.model) {
+            page.model.setScope(page.scopeKind, page.scopeId)
+        }
+    }
 
     allowedOrientations: Orientation.All
 

@@ -24,7 +24,7 @@ use vuo_core::content::{
     BlockKind, MediaFetch, MediaPolicy, RenderBlock, Span, TransformContext, UnproxiedMedia,
 };
 use vuo_core::db::store;
-use vuo_core::model::EntryId;
+use vuo_core::model::{EntryId, EntryStatus};
 
 use crate::context::AppContext;
 use crate::worker::Command;
@@ -42,6 +42,7 @@ pub const ROLE_NEEDS_CONSENT: i32 = USER_ROLE + 9;
 pub const ROLE_CODE_LANGUAGE: i32 = USER_ROLE + 10;
 pub const ROLE_PLAIN_TEXT: i32 = USER_ROLE + 11;
 pub const ROLE_IMAGE_HOST: i32 = USER_ROLE + 12;
+pub const ROLE_IMAGE_RATIO: i32 = USER_ROLE + 13;
 
 /// A flattened block, ready for a delegate.
 #[derive(Debug, Clone, Default)]
@@ -67,6 +68,15 @@ pub struct BlockRow {
     /// True when the image is third-party and un-proxied: the delegate shows a
     /// tap-to-load placeholder naming the host and fetches nothing (§9.3).
     pub needs_consent: bool,
+    /// height / width from the `<img>` tag's own attributes; 0 when it gave
+    /// none usable.
+    ///
+    /// A ratio rather than the pair, because reserving space is all the
+    /// delegate does with it and the width it renders at is its own. 0 means
+    /// "no hint": the delegate falls back to a fixed placeholder rather than
+    /// collapsing the row to nothing, which is what made an article re-flow
+    /// under the reader every time an image landed.
+    pub image_ratio: f64,
     pub code_language: String,
 }
 
@@ -110,13 +120,22 @@ fn row_for(block: &RenderBlock) -> BlockRow {
             row.code_language = language.clone().unwrap_or_default();
         }
         BlockKind::Image {
-            src, alt, fetch, ..
+            src,
+            alt,
+            fetch,
+            intrinsic,
+            ..
         } => {
             row.kind = "image".to_owned();
             row.image_src = src.as_str().to_owned();
             row.image_alt = alt.clone();
             row.image_host = src.as_url().host_str().unwrap_or_default().to_owned();
             row.needs_consent = matches!(fetch, MediaFetch::NeedsConsent);
+            // The core caps both dimensions well below the point where this
+            // division could lose precision or produce a silly rectangle.
+            row.image_ratio = intrinsic
+                .map(|(w, h)| f64::from(h) / f64::from(w))
+                .unwrap_or(0.0);
         }
         BlockKind::Table { rows } => {
             row.kind = "table".to_owned();
@@ -163,6 +182,16 @@ pub struct ArticleModel {
     pub blockedImages: qt_property!(i32; NOTIFY blockedImagesChanged),
     blockedImagesChanged: qt_signal!(),
 
+    /// Whether the open article is read, and whether it is starred.
+    ///
+    /// The article view could show neither and change neither: the only place
+    /// either could be seen or set was the entry list's context menu, so a
+    /// reader who opened an article had no way to star it, and no way to tell
+    /// whether the one they were looking at was already starred.
+    pub isRead: qt_property!(bool; NOTIFY entryStateChanged),
+    pub isStarred: qt_property!(bool; NOTIFY entryStateChanged),
+    entryStateChanged: qt_signal!(),
+
     clear: qt_method!(fn(&mut self)),
     /// Load an entry from the mirror and transform its stored HTML.
     ///
@@ -175,6 +204,13 @@ pub struct ArticleModel {
     /// Consent to loading images from the origin of the block at `row`, for
     /// this article. Re-transforms so the placeholders become images.
     allowImagesFrom: qt_method!(fn(&mut self, row: i32)),
+    /// Flip read/unread, and flip starred, for the open article.
+    ///
+    /// Local first and enqueued, exactly as the entry list's own toggles are:
+    /// the mirror is the source of truth and the outbox carries the intent to
+    /// the server whenever there is a network.
+    toggleRead: qt_method!(fn(&mut self)),
+    toggleStarred: qt_method!(fn(&mut self)),
 
     rows: Vec<BlockRow>,
     entry_id: i64,
@@ -211,6 +247,9 @@ impl ArticleModel {
             .as_ref()
             .map(|u| u.as_str().to_owned())
             .unwrap_or_default();
+        self.isRead = entry.status == EntryStatus::Read;
+        self.isStarred = entry.starred;
+        self.entryStateChanged();
 
         let stored_consent = ctx.read(|db| store::media_consent(db.conn()).unwrap_or_default());
         self.consented = stored_consent.unwrap_or_default();
@@ -307,11 +346,67 @@ impl ArticleModel {
         self.blockedImagesChanged();
     }
 
+    fn toggleRead(&mut self) {
+        let want_read = !self.isRead;
+        let status = if want_read {
+            EntryStatus::Read
+        } else {
+            EntryStatus::Unread
+        };
+        if self.apply_local(|db, id| crate::worker::apply_local_status(db, id, status)) {
+            self.isRead = want_read;
+            self.entryStateChanged();
+        }
+    }
+
+    fn toggleStarred(&mut self) {
+        let want_starred = !self.isStarred;
+        if self.apply_local(|db, id| crate::worker::apply_local_starred(db, id, want_starred)) {
+            self.isStarred = want_starred;
+            self.entryStateChanged();
+        }
+    }
+
+    /// Queue a local mutation for the open entry and nudge the outbox.
+    ///
+    /// `false` when there is no context, no entry open, or the write was
+    /// refused -- in which case the caller leaves the displayed state alone
+    /// rather than showing a change that did not happen.
+    fn apply_local(
+        &self,
+        write: impl FnOnce(&mut vuo_core::db::Database, EntryId) -> vuo_core::Result<()>,
+    ) -> bool {
+        if self.entry_id == 0 {
+            return false;
+        }
+        let Some(ctx) = self.context() else {
+            return false;
+        };
+        let applied = ctx
+            .write(|db| write(db, EntryId(self.entry_id)))
+            .transpose()
+            .ok()
+            .flatten()
+            .is_some();
+        if applied {
+            // Opportunistic: with no network the intent waits in the outbox
+            // and the next sync carries it.
+            ctx.send(Command::FlushOutbox);
+        }
+        applied
+    }
+
     fn clear(&mut self) {
         (self as &mut dyn QAbstractListModel).begin_reset_model();
         self.rows.clear();
         (self as &mut dyn QAbstractListModel).end_reset_model();
         self.countChanged();
+        // Forget which entry this was, or the next `clear`-then-toggle would
+        // mutate the article that is no longer open.
+        self.entry_id = 0;
+        self.isRead = false;
+        self.isStarred = false;
+        self.entryStateChanged();
     }
 
     #[must_use]
@@ -345,6 +440,7 @@ impl QAbstractListModel for ArticleModel {
             ROLE_IMAGE_ALT => QString::from(row.image_alt.clone()).into(),
             ROLE_IMAGE_HOST => QString::from(row.image_host.clone()).into(),
             ROLE_NEEDS_CONSENT => row.needs_consent.into(),
+            ROLE_IMAGE_RATIO => row.image_ratio.into(),
             ROLE_CODE_LANGUAGE => QString::from(row.code_language.clone()).into(),
             _ => QVariant::default(),
         }
@@ -364,6 +460,7 @@ impl QAbstractListModel for ArticleModel {
         names.insert(ROLE_IMAGE_ALT, "imageAlt".into());
         names.insert(ROLE_IMAGE_HOST, "imageHost".into());
         names.insert(ROLE_NEEDS_CONSENT, "needsConsent".into());
+        names.insert(ROLE_IMAGE_RATIO, "imageRatio".into());
         names.insert(ROLE_CODE_LANGUAGE, "codeLanguage".into());
         names
     }
@@ -425,5 +522,103 @@ mod tests {
             panic!("the policy must proxy through the instance");
         };
         assert_eq!(fallback, UnproxiedMedia::Ask);
+    }
+
+    /// §the article view can see and change read/starred.
+    ///
+    /// Reported from a device: with an article open there was no way to tell
+    /// whether it was read or starred, and no way to set either. Both states
+    /// existed in the mirror and both mutations existed on `EntryModel`, but
+    /// `ArticleModel` exposed neither -- so the only place a reader could star
+    /// an article was the entry list's context menu, before opening it.
+    #[test]
+    fn the_open_article_reports_and_changes_its_own_read_and_starred_state() {
+        use vuo_core::db::outbox;
+        use vuo_core::model::{Entry, EntryStatus, FeedId};
+
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("m.sqlite");
+        let mut db = vuo_core::db::Database::open(&path).expect("mirror");
+
+        let entry = Entry {
+            id: EntryId(7),
+            feed_id: FeedId(1),
+            status: EntryStatus::Unread,
+            starred: false,
+            title: "t".to_owned(),
+            url: None,
+            comments_url: None,
+            author: String::new(),
+            content: "<p>body</p>".to_owned(),
+            published_at: None,
+            created_at: None,
+            changed_at: None,
+            reading_time: 1,
+            tags: Vec::new(),
+            enclosures: Vec::new(),
+        };
+        db.with_tx(|tx| {
+            vuo_core::db::store::upsert_feed(
+                tx,
+                &vuo_core::model::Feed {
+                    id: FeedId(1),
+                    category_id: None,
+                    title: "f".to_owned(),
+                    site_url: None,
+                    feed_url: None,
+                    icon_id: None,
+                    checked_at: None,
+                    parsing_error_message: String::new(),
+                    parsing_error_count: 0,
+                    disabled: false,
+                    hide_globally: false,
+                },
+                1,
+            )?;
+            vuo_core::db::store::upsert_entry(tx, &entry, 1)
+        })
+        .expect("seed");
+
+        let signal = std::sync::Arc::new(crate::context::SyncSignal::default());
+        let instance = url::Url::parse("https://miniflux.example/").expect("url");
+        let worker = crate::worker::Worker::spawn(
+            path,
+            instance.clone(),
+            vuo_core::redact::ApiToken::new("t"),
+            vuo_core::api::TransportConfig::default(),
+            std::sync::Arc::clone(&signal),
+            |_| {},
+        );
+        let ctx = AppContext::new(db, worker, instance, signal, 0);
+        crate::context::install(std::rc::Rc::clone(&ctx));
+
+        let mut model = ArticleModel::default();
+        model.load(7);
+        assert!(!model.isRead, "the seeded entry is unread");
+        assert!(!model.isStarred);
+
+        model.toggleRead();
+        model.toggleStarred();
+        assert!(model.isRead, "the view must reflect what it just did");
+        assert!(model.isStarred);
+
+        // And both intents actually reached the outbox, rather than only
+        // flipping a label the server will never hear about.
+        let queued = ctx
+            .read(|db| outbox::len(db.conn()).unwrap_or(0))
+            .expect("read the mirror");
+        assert_eq!(queued, 2, "a read and a star must both be enqueued");
+
+        // Toggling back is symmetric.
+        model.toggleRead();
+        model.toggleStarred();
+        assert!(!model.isRead);
+        assert!(!model.isStarred);
+
+        // With nothing open, a toggle is a no-op rather than a mutation of
+        // whichever entry happened to be loaded last.
+        model.clear();
+        model.toggleStarred();
+        assert!(!model.isStarred);
     }
 }

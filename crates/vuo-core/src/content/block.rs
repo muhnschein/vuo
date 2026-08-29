@@ -209,6 +209,16 @@ pub enum BlockKind {
         /// such images in the document as placeholders rather than dropping
         /// them. Nothing is fetched until the user agrees.
         fetch: MediaFetch,
+        /// The `width`/`height` attributes off the `<img>` tag, when it gave
+        /// usable ones.
+        ///
+        /// Carried purely so the UI can reserve the right amount of room
+        /// before the pixels arrive. An image list whose rows have no height
+        /// until each image decodes re-lays-out under the reader's thumb every
+        /// time one lands, which is what an article scrolled on a phone
+        /// actually felt like. Advisory and untrusted: a feed can say
+        /// anything, so it is a ratio hint and never a fetch or decode bound.
+        intrinsic: Option<(u32, u32)>,
     },
     /// Fixed three-level nesting: rows of cells of spans. Not self-referential,
     /// so the drop-recursion argument above does not apply.
