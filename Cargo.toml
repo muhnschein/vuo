@@ -70,6 +70,9 @@ unimplemented = "deny"
 # The device build is size-sensitive; a phone does not need 16 codegen units'
 # worth of parallel compilation more than it needs a smaller binary.
 opt-level = "z"
+# Fat LTO by default for host/desktop builds. The DEVICE build overrides this
+# to "off" from the spec: cpp_build compiles the sailfishapp C++ glue with
+# -fno-lto, and rustc cannot LTO objects that carry no bitcode.
 lto = true
 codegen-units = 1
 panic = "abort"

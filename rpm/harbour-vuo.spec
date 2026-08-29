@@ -142,8 +142,19 @@ export PKG_CONFIG_ALLOW_CROSS_i686_unknown_linux_gnu=1
 export PKG_CONFIG_ALLOW_CROSS_armv7_unknown_linux_gnueabihf=1
 export PKG_CONFIG_ALLOW_CROSS_aarch64_unknown_linux_gnu=1
 
+# LTO is decided HERE, not in Cargo.toml, because the bcond has to be able to
+# turn it off. `[profile.release] lto = true` applies whatever this spec says,
+# so `--without lto` was not actually disabling anything.
+#
+# And it must be off wherever the C++ glue is linked: cpp_build compiles those
+# objects with -fno-lto, so they carry no bitcode, and a fat-LTO link fails
+# with "failed to get bitcode from object file for LTO (could not find
+# requested section)" at the very last step of a twenty-minute cross build.
+# opt-level = "z" and codegen-units = 1 still do the size work.
 %if %{with lto}
 export CARGO_PROFILE_RELEASE_LTO=thin
+%else
+export CARGO_PROFILE_RELEASE_LTO=off
 %endif
 
 # Works around a Scratchbox bug where /tmp/[...]/symbols.o is not found.
