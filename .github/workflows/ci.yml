@@ -95,6 +95,10 @@ jobs:
         # --locked: the committed lockfile is what OBS builds offline, so the
         # check has to apply to those exact versions.
         run: |
+          # third_party/ is generated; [patch.crates-io] points at it, and cargo
+          # refuses to resolve anything without it. `make check` gets this via
+          # its patch-deps prerequisite; a job driving cargo directly does not.
+          make patch-deps
           cargo +${{ steps.msrv.outputs.version }} --version
           cargo +${{ steps.msrv.outputs.version }} check \
             --workspace --exclude vuo-shim --exclude harbour-vuo --locked --all-targets
@@ -120,6 +124,10 @@ jobs:
           # RUSTUP_TOOLCHAIN takes precedence over the toolchain file.
           RUSTUP_TOOLCHAIN: nightly
         run: |
+          # Same reason as the MSRV job: third_party/ is generated and
+          # [patch.crates-io] points at it, so cargo cannot resolve until this
+          # has run.
+          make patch-deps
           # cargo-fuzz defaults --target to the triple IT was built for, and
           # the prebuilt binary install-action fetches is musl-static. A
           # sanitizer cannot be linked against a static libc, so the build
