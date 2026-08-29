@@ -94,6 +94,27 @@ pub async fn flush(db: &mut Database, client: &MinifluxClient) -> Result<ReplayO
                 // They wait for a human to fix the configuration.
                 db.with_tx(|tx| outbox::record_failure(tx, &batch, &e.to_string()))?;
                 outcome.deferred += batch.entry_ids.len();
+
+                // Both cases stay queued, so the DATABASE cannot tell them
+                // apart -- but the user debugging "sync does nothing" very much
+                // needs to. `should_retry` is the distinction its own doc
+                // comment calls the point of the pair, and until this line it
+                // had no production caller at all: nine tests asserted on a
+                // rule the app never consulted.
+                if should_retry(&e) {
+                    tracing::debug!(
+                        error = %e,
+                        count = batch.entry_ids.len(),
+                        "queued user actions deferred; the next pass will retry"
+                    );
+                } else {
+                    tracing::warn!(
+                        error = %e,
+                        count = batch.entry_ids.len(),
+                        "queued user actions are STUCK: this will not clear by \
+                         retrying, and needs the server URL or configuration fixed"
+                    );
+                }
             }
         }
     }

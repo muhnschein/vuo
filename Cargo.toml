@@ -1,4 +1,16 @@
 [workspace]
+# Resolver 2, and it has to stay 2: the SailfishOS SDK's cargo 1.75 rejects the
+# whole workspace manifest on `resolver = "3"` ("valid options are 1 or 2").
+#
+# That is a real loss, because resolver 3 is the mechanism that would keep the
+# lockfile inside `rust-version` automatically. Without it the lock drifts past
+# what the SDK can build -- eleven dependencies had reached edition2024, which
+# cargo 1.75 cannot even PARSE, and the device build was impossible. So the
+# floor is held by a check instead of by the resolver:
+# `scripts/check-lockfile.sh`, run by `make check`.
+#
+# To re-resolve inside the floor after a dependency bump: temporarily set this
+# to "3", run `cargo update`, then set it back to "2" and keep the lockfile.
 resolver = "2"
 members = ["crates/vuo-core", "crates/vuo-shim", "crates/harbour-vuo"]
 
@@ -14,7 +26,22 @@ edition = "2021"
 # The SailfishOS SDK ships an older Rust than current stable. Every crate in
 # the workspace pins the same floor, and `make msrv` re-checks against it so a
 # dependency bump cannot silently break the device build. See docs/toolchain.md.
-rust-version = "1.75"
+# The floor the dependency graph ACTUALLY needs, measured rather than asserted.
+#
+# This said 1.75 -- the Rust the SailfishOS 5.0.0.43 SDK tooling ships -- and
+# that was fiction: `url` pulls `idna` pulls the `icu_*` crates, which declare
+# 1.88, and eleven other dependencies had reached edition2024, which cargo 1.75
+# cannot even parse. A real `mb2` build fails on the first of them.
+#
+# The check meant to prevent this could not: see the note on `resolver` above
+# and .github/workflows/ci.yml. It installed the MSRV toolchain and then ran a
+# bare `cargo`, which `rust-toolchain.toml` redirected to stable, every time.
+#
+# Consequence, tracked in docs/status.md: the device build needs a Rust newer
+# than the SDK tooling's. That is an M2 blocker to resolve deliberately -- with
+# a newer `rust` package in the build target, or by rolling the dependency tree
+# back -- and NOT by quietly restoring a number that was never true.
+rust-version = "1.88"
 license = "GPL-3.0-or-later"
 # Not destined for crates.io. This also lets cargo-deny's `allow-wildcard-paths`
 # apply: the option deliberately does not cover publishable crates, because

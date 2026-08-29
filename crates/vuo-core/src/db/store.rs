@@ -234,15 +234,6 @@ pub fn upsert_entry(tx: &Transaction<'_>, e: &Entry, generation: i64) -> Result<
     Ok(())
 }
 
-/// Mark an entry as still present on the server without rewriting it.
-pub fn touch_entry(tx: &Transaction<'_>, id: EntryId, generation: i64) -> Result<()> {
-    tx.execute(
-        "UPDATE entries SET last_seen_sync = ?2 WHERE id = ?1",
-        rusqlite::params![id.get(), generation],
-    )?;
-    Ok(())
-}
-
 /// Delete an entry the server no longer has.
 ///
 /// Any pending outbox intent for it goes too: replaying a mutation against an

@@ -108,12 +108,6 @@ impl TransformContext {
             limits: Limits::default(),
         }
     }
-
-    #[must_use]
-    pub fn with_base_url(mut self, base: Option<Url>) -> Self {
-        self.base_url = base;
-        self
-    }
 }
 
 /// Transform article HTML into a flat block list.
@@ -1168,10 +1162,14 @@ mod tests {
 
     fn strict_ctx() -> TransformContext {
         TransformContext {
-            media: MediaPolicy::strict_for(instance()),
+            media: MediaPolicy::ProxyThroughInstance {
+                instance: instance(),
+                extra_trusted: Vec::new(),
+                fallback: UnproxiedMedia::Strict,
+            },
+            base_url: Some(Url::parse("https://blog.example/post/").unwrap()),
             ..TransformContext::new(instance())
         }
-        .with_base_url(Some(Url::parse("https://blog.example/post/").unwrap()))
     }
 
     fn text_of(doc: &Document) -> String {

@@ -91,7 +91,6 @@ pub struct EntriesQuery {
     direction: SortDirection,
     after_entry_id: Option<EntryId>,
     changed_after: Option<i64>,
-    statuses: Vec<EntryStatus>,
     starred: Option<bool>,
     feed_id: Option<i64>,
     category_id: Option<i64>,
@@ -105,7 +104,6 @@ impl Default for EntriesQuery {
             direction: SortDirection::Asc,
             after_entry_id: None,
             changed_after: None,
-            statuses: Vec::new(),
             starred: None,
             feed_id: None,
             category_id: None,
@@ -147,12 +145,6 @@ impl EntriesQuery {
     }
 
     #[must_use]
-    pub fn with_status(mut self, status: EntryStatus) -> Self {
-        self.statuses.push(status);
-        self
-    }
-
-    #[must_use]
     pub fn starred(mut self, starred: Option<bool>) -> Self {
         self.starred = starred;
         self
@@ -185,11 +177,6 @@ impl EntriesQuery {
         }
         if let Some(secs) = self.changed_after {
             q.append_pair("changed_after", &secs.to_string());
-        }
-        // Multiple statuses are expressed by repeating the key; the server
-        // ORs them.
-        for status in &self.statuses {
-            q.append_pair("status", status.as_api_str());
         }
         if let Some(starred) = self.starred {
             // Exactly "true"/"false": /v1/entries/ids 400s on anything else.
@@ -413,22 +400,6 @@ impl MinifluxClient {
             .await
     }
 
-    /// `PUT /v1/users/{id}/mark-all-as-read`. The id must be the authenticated
-    /// user's own or the server answers 403.
-    pub async fn mark_user_read(&self, user_id: i64) -> Result<()> {
-        self.put_empty(&format!("/v1/users/{user_id}/mark-all-as-read"))
-            .await
-    }
-
-    /// `PUT /v1/feeds/{id}/refresh` — ask the server to poll a feed now.
-    ///
-    /// Note what this is *not*: Vuo never fetches a feed URL itself. §3 makes
-    /// local feed fetching the single most important boundary in the project.
-    pub async fn refresh_feed(&self, feed_id: i64) -> Result<()> {
-        self.put_empty(&format!("/v1/feeds/{feed_id}/refresh"))
-            .await
-    }
-
     async fn put_empty(&self, path: &str) -> Result<()> {
         let url = self.url(path)?;
         let safe = SafeUrl::from(&url);
@@ -551,18 +522,6 @@ mod tests {
         assert!(
             query_string(&EntriesQuery::keyset(10).changed_after(Some(42)))
                 .contains("changed_after=42")
-        );
-    }
-
-    #[test]
-    fn multiple_statuses_repeat_the_key() {
-        let q = EntriesQuery::keyset(10)
-            .with_status(EntryStatus::Read)
-            .with_status(EntryStatus::Unread);
-        let s = query_string(&q);
-        assert!(
-            s.contains("status=read") && s.contains("status=unread"),
-            "{s}"
         );
     }
 

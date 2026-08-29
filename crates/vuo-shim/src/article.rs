@@ -155,12 +155,12 @@ pub struct ArticleModel {
 
     /// True when the transform had to cut the article short. The UI says so
     /// rather than presenting a fragment as the whole thing.
-    truncated: qt_property!(bool; NOTIFY truncatedChanged),
+    pub truncated: qt_property!(bool; NOTIFY truncatedChanged),
     truncatedChanged: qt_signal!(),
 
     /// How many images are held back awaiting consent, so the UI can offer a
     /// single "load images from example.com" affordance rather than N.
-    blockedImages: qt_property!(i32; NOTIFY blockedImagesChanged),
+    pub blockedImages: qt_property!(i32; NOTIFY blockedImagesChanged),
     blockedImagesChanged: qt_signal!(),
 
     clear: qt_method!(fn(&mut self)),
@@ -317,18 +317,6 @@ impl ArticleModel {
     #[must_use]
     pub fn rows(&self) -> &[BlockRow] {
         &self.rows
-    }
-
-    /// Whether the transform had to cut the article short.
-    #[must_use]
-    pub fn is_truncated(&self) -> bool {
-        self.truncated
-    }
-
-    /// How many images are held back awaiting the user's consent.
-    #[must_use]
-    pub fn blocked_image_count(&self) -> i32 {
-        self.blockedImages
     }
 }
 

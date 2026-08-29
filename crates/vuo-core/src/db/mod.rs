@@ -133,13 +133,20 @@ impl Database {
         )))
     }
 
+    /// The connection, mutably.
+    ///
+    /// Needed for `transaction_with_behavior`, which takes `&mut Connection`.
+    /// Only `tests/concurrent_writers.rs` uses it -- to hold an IMMEDIATE
+    /// transaction open while a second connection tries to write -- and an
+    /// integration test is a separate crate, so this cannot be `#[cfg(test)]`.
+    /// It is listed in `workspace_guards`' EXEMPT list for that reason.
     #[must_use]
-    pub fn conn(&self) -> &Connection {
-        &self.conn
-    }
-
     pub fn conn_mut(&mut self) -> &mut Connection {
         &mut self.conn
+    }
+
+    pub fn conn(&self) -> &Connection {
+        &self.conn
     }
 
     /// Run `f` inside a WRITE transaction, committing on `Ok` and rolling back

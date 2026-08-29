@@ -45,7 +45,7 @@ endif
 all: check
 
 ## check: everything CI runs. No phone, no server, no network.
-check: fmt-check clippy test qmllint qml-load fuzz-check packaging deny
+check: fmt-check clippy test qmllint qml-load fuzz-check packaging lockfile deny
 ifeq ($(HAVE_QT),yes)
 	@echo "== make check passed =="
 else
@@ -120,6 +120,11 @@ shim:
 fuzz-check:
 	@echo "== fuzz targets type-check =="
 	cd crates/vuo-core/fuzz && $(CARGO) check --all-targets
+
+## lockfile: Cargo.lock format and dependency editions the SDK's cargo must read
+lockfile:
+	@echo "== lockfile (SailfishOS SDK constraints) =="
+	scripts/check-lockfile.sh
 
 ## packaging: spec, desktop entry and installed-file checks (no SDK needed)
 packaging:

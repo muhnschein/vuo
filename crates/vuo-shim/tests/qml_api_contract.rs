@@ -56,7 +56,17 @@ fn declared_members(root: &Path) -> BTreeSet<String> {
             {
                 continue;
             }
-            let name = name.trim();
+            // Strip a visibility modifier: `pub blockedImages: qt_property!(...)`
+            // declares the member `blockedImages`, not `pub blockedImages`.
+            // Without this the member silently fails to register and the test
+            // reports the QML that uses it as calling something undeclared --
+            // pointing at the wrong file entirely.
+            let name = name
+                .trim()
+                .strip_prefix("pub(crate) ")
+                .or_else(|| name.trim().strip_prefix("pub "))
+                .unwrap_or_else(|| name.trim())
+                .trim();
             if name.is_empty() || name == "base" {
                 continue;
             }
