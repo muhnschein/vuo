@@ -197,7 +197,7 @@ fi
 # cargo fails outright if those paths are missing. The script builds them from
 # patches/ plus the pristine crates, which under mb2 come from pristine/ in the
 # vendor tarball -- there is no crates.io route inside the SDK. See PATCHES.md.
-bash scripts/patch-deps.sh
+scripts/patch-deps.sh
 
 # `--package`, not only `--bin`: `--features` resolves against the SELECTED
 # packages, and the workspace's default-members is just vuo-core, which has no

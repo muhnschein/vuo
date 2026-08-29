@@ -136,7 +136,7 @@ packaging:
 ## this has to run first. Idempotent, so every target that builds can depend on
 ## it without cost.
 patch-deps:
-	bash scripts/patch-deps.sh
+	scripts/patch-deps.sh
 
 ## harbour: the Harbour rules checkable from a built binary (libs, exported main)
 ##
@@ -145,7 +145,7 @@ patch-deps:
 ## build rather than after one. Skips cleanly where the binary is not built.
 harbour:
 	@echo "== harbour binary rules =="
-	bash scripts/check-harbour.sh
+	scripts/check-harbour.sh
 
 ## deny: advisories, licences, banned and duplicated crates
 deny:
