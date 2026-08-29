@@ -40,7 +40,7 @@ tokio = { version = "1", features = ["rt", "macros", "sync", "time"] }
 # device happens to ship. That keeps the mirror's behaviour identical between
 # the host test suite and the phone, which matters because the mirror is the
 # UI's source of truth.
-rusqlite = { version = "0.32", features = ["bundled", "backup"] }
+rusqlite = { version = "0.31", features = ["bundled", "backup"] }
 
 # --- content transform -------------------------------------------------------
 # Only html5ever's TOKENIZER is used, never its tree builder or RcDom: an

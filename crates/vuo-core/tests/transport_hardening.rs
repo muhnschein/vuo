@@ -252,7 +252,7 @@ async fn chunked_no_content_length_over_cap() {
     let mut r = b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n".to_vec();
     for _ in 0..8 {
         r.extend_from_slice(b"400\r\n");
-        r.extend(std::iter::repeat_n(b'A', 1024));
+        r.extend(std::iter::repeat(b'A').take(1024));
         r.extend_from_slice(b"\r\n");
     }
     r.extend_from_slice(b"0\r\n\r\n");
@@ -301,7 +301,7 @@ async fn gzip_bomb() {
 #[tokio::test(flavor = "multi_thread")]
 async fn lying_content_length_small_body_big() {
     let mut r = b"HTTP/1.1 200 OK\r\nContent-Length: 10\r\n\r\n".to_vec();
-    r.extend(std::iter::repeat_n(b'B', 100_000));
+    r.extend(std::iter::repeat(b'B').take(100_000));
     let (base, rx, _h) = raw_server(vec![r]);
     let t = transport(&base, &cfg());
     let res = t
@@ -332,7 +332,7 @@ async fn content_length_above_the_cap_is_refused_before_the_body() {
     // stop this eventually, which is exactly why it needs its own test -- with
     // the pre-check disabled the streaming cap silently covers for it.
     let mut r = b"HTTP/1.1 200 OK\r\nContent-Length: 4294967296\r\n\r\n".to_vec();
-    r.extend(std::iter::repeat_n(b'C', 64));
+    r.extend(std::iter::repeat(b'C').take(64));
     let (base, rx, _h) = raw_server(vec![r]);
     let t = transport(&base, &cfg());
     let res = t

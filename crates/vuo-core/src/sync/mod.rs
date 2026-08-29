@@ -98,7 +98,7 @@ pub async fn sync(
     // 4. Deletions are invisible to the cursor, so they need their own signal.
     let due = state
         .last_full_reconcile_at
-        .is_none_or(|last| now - last >= options.reconcile_interval_secs);
+        .map_or(true, |last| now - last >= options.reconcile_interval_secs);
     let diverging = pull::diverging_feeds(db, client).await.unwrap_or_default();
     if version.has_entry_ids_endpoint() && (due || !diverging.is_empty()) {
         let outcome = pull::reconcile(db, client).await?;

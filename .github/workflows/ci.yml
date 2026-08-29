@@ -87,9 +87,10 @@ jobs:
         # channel = "stable", and a rustup toolchain FILE overrides the
         # toolchain this job installs -- so the bare `cargo check` that used to
         # be here ran on stable every single time. The job installed the MSRV,
-        # ignored it, and reported success; the device build was meanwhile
-        # impossible. Verified by reproducing it: with 1.75 as the rustup
-        # default, `cargo --version` in this repo still answers 1.94.
+        # ignored it, and reported success while the graph drifted to needing
+        # 1.88 and the device build became impossible. Verified by reproducing
+        # it: with 1.75 as the rustup default, `cargo --version` in this repo
+        # still answers 1.94.
         #
         # --locked: the committed lockfile is what OBS builds offline, so the
         # check has to apply to those exact versions.

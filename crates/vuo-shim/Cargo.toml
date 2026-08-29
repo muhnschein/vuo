@@ -46,7 +46,7 @@ serde_json = "1"
 url = "2.5"
 # Only for the one UPDATE that stores scraped article content; the shim does
 # not otherwise touch SQL.
-rusqlite = { version = "0.32", features = ["bundled"] }
+rusqlite = { version = "0.31", features = ["bundled"] }
 
 [dev-dependencies]
 tempfile = "3"
