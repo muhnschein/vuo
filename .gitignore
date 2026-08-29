@@ -37,3 +37,6 @@
 /fuoten/
 /sm/
 /reference/
+
+# Cross-built RPMs, staged for a device test rather than committed.
+/dist/

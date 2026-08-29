@@ -30,7 +30,13 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// Why a request never produced an HTTP response.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TransportKind {
-    /// DNS failure, connection refused, unreachable network.
+    /// DNS failure, connection refused, unreachable network, or a connection
+    /// that was never established before the deadline.
+    ///
+    /// Distinct from [`TransportKind::Timeout`], which means the server *did*
+    /// answer and then stalled. The two point at different things to check --
+    /// the network or the VPN, versus the server itself -- so `classify` tests
+    /// for this one first, because reqwest reports a connect timeout as both.
     Connect,
     /// The TLS handshake failed, including certificate verification.
     ///
@@ -57,7 +63,7 @@ pub enum TransportKind {
 impl fmt::Display for TransportKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let s = match self {
-            TransportKind::Connect => "could not connect",
+            TransportKind::Connect => "could not reach the server",
             TransportKind::Tls => "TLS handshake or certificate verification failed",
             TransportKind::Timeout => "timed out",
             TransportKind::BodyTooLarge => "response body exceeded the size cap",

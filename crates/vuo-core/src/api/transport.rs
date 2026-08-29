@@ -385,9 +385,13 @@ impl Transport {
 /// defeating the redaction in [`crate::redact`]. Only the classification is
 /// kept; the detail string is written here and contains nothing foreign.
 fn classify(e: reqwest::Error, endpoint: &SafeUrl) -> Error {
-    let kind = if e.is_timeout() {
-        TransportKind::Timeout
-    } else if e.is_connect() {
+    // `is_connect` FIRST, and deliberately so: reqwest sets `is_timeout` on a
+    // connect timeout as well, so testing timeout first collapsed "nothing
+    // answered at that address" into a bare "timed out". Those need different
+    // actions from the user -- one is the network or the VPN, the other is a
+    // server that accepted the connection and then stalled -- and the vaguer of
+    // the two was winning every time.
+    let kind = if e.is_connect() {
         // reqwest folds TLS failures into connect errors. Distinguishing them
         // matters for the message the user sees: "check your certificate" and
         // "check your network" are different actions.
@@ -396,6 +400,8 @@ fn classify(e: reqwest::Error, endpoint: &SafeUrl) -> Error {
         } else {
             TransportKind::Connect
         }
+    } else if e.is_timeout() {
+        TransportKind::Timeout
     } else {
         // Body and decode failures are deliberately not distinguished here:
         // callers act on the retry classification, and both are equally
@@ -427,6 +433,47 @@ mod tests {
             ApiToken::new("secret-token"),
             &TransportConfig::default(),
         )
+    }
+
+    #[tokio::test]
+    async fn an_unreachable_server_says_so_rather_than_just_timing_out() {
+        // A connect timeout sets BOTH `is_timeout` and `is_connect` on the
+        // reqwest error, and the classifier tested timeout first -- so a server
+        // nothing answered at reported the vaguer "timed out", which points at
+        // the server rather than at the network or the VPN that is actually
+        // the thing to check. Reported from a device.
+        //
+        // 203.0.113.0/24 is TEST-NET-3 (RFC 5737): reserved for documentation
+        // and routed nowhere, so this connects to nothing without depending on
+        // the runner having no network.
+        let config = TransportConfig {
+            connect_timeout: Duration::from_millis(250),
+            request_timeout: Duration::from_secs(5),
+            ..TransportConfig::default()
+        };
+        let t = Transport::new(
+            Url::parse("http://203.0.113.1:8083/").unwrap(),
+            ApiToken::new("t"),
+            &config,
+        )
+        .unwrap();
+
+        let err = t
+            .send(
+                reqwest::Method::GET,
+                Url::parse("http://203.0.113.1:8083/v1/me").unwrap(),
+                None,
+            )
+            .await
+            .expect_err("nothing answers there");
+        match err {
+            Error::Transport { kind, .. } => assert_eq!(
+                kind,
+                TransportKind::Connect,
+                "an unreachable address is a reachability failure, not a stalled server"
+            ),
+            other => panic!("expected a transport error, got {other:?}"),
+        }
     }
 
     #[test]
