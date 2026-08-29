@@ -30,5 +30,31 @@ fn main() {
         println!("cargo:rustc-link-lib=sailfishapp");
         println!("cargo:rerun-if-env-changed=QT_INCLUDE_PATH");
     }
+    // Harbour's validatesymbols (rpmvalidation.sh:807-812) is a hard ERROR --
+    // not a warning -- when the binary does not export `main`, because every
+    // QML file imports Sailfish.Silica and that flips the branch. It is also a
+    // real launch bug: harbour-vuo.desktop declares
+    // `X-Nemo-Application-Type=silica-qt5`, so the app starts through the
+    // mdeclarativecache booster, which dlopens the binary and looks up `main`.
+    //
+    // `[profile.release] strip = true` deletes .symtab, and RPM's own
+    // %__os_install_post strips again at package time, so turning strip off is
+    // not a fix -- validatelibraries then warns "file is not stripped!". The
+    // symbol has to be in .dynsym.
+    //
+    // `--dynamic-list` rather than `--export-dynamic-symbol`: the latter needs
+    // binutils >= 2.35 and an unrecognised linker option would hard-fail the
+    // device link, while --dynamic-list has worked since binutils 2.16. And
+    // rather than -rdynamic, which would export everything.
+    //
+    // Outside the sailfishapp cfg on purpose: the export is wanted for every
+    // build that produces the shipped binary.
+    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".to_owned());
+    let dynlist = std::path::Path::new(&manifest_dir).join("main.dynlist");
+    println!(
+        "cargo:rustc-link-arg-bins=-Wl,--dynamic-list={}",
+        dynlist.display()
+    );
+    println!("cargo:rerun-if-changed=main.dynlist");
     println!("cargo:rerun-if-changed=src/main.rs");
 }
