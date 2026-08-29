@@ -274,21 +274,30 @@ impl Settings {
         }
         // `daemon-reload` then `restart`: a reload alone leaves the running
         // timer on its old schedule until it next fires.
-        for args in [
-            ["--user", "daemon-reload"].as_slice(),
-            ["--user", "restart", "harbour-vuo-sync.timer"].as_slice(),
-        ] {
-            match std::process::Command::new("systemctl").args(args).status() {
-                Ok(status) if status.success() => {}
-                Ok(status) => {
-                    tracing::info!(?args, %status, "systemctl declined; the drop-in applies at next login")
-                }
-                Err(e) => {
-                    tracing::info!(error = %e, "no systemctl here; the drop-in applies wherever one runs");
-                    return;
+        //
+        // On a detached thread, because `save` is called from QML and therefore
+        // runs on the Qt UI thread. `Command::status()` blocks until the child
+        // exits, and `daemon-reload` on a phone is not instant -- waiting for
+        // two of them would freeze the Settings page for as long as systemd
+        // takes. Nothing here needs the exit status; the drop-in is already on
+        // disk and applies at the next login even if this never runs.
+        std::thread::spawn(|| {
+            for args in [
+                ["--user", "daemon-reload"].as_slice(),
+                ["--user", "restart", "harbour-vuo-sync.timer"].as_slice(),
+            ] {
+                match std::process::Command::new("systemctl").args(args).status() {
+                    Ok(status) if status.success() => {}
+                    Ok(status) => {
+                        tracing::info!(?args, %status, "systemctl declined; the drop-in applies at next login");
+                    }
+                    Err(e) => {
+                        tracing::info!(error = %e, "no systemctl here; the drop-in applies wherever one runs");
+                        return;
+                    }
                 }
             }
-        }
+        });
     }
 
     /// The chosen sync interval in minutes, or `None` for "Manual only".
