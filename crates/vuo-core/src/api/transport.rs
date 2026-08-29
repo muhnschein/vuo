@@ -467,19 +467,58 @@ mod tests {
     fn there_is_no_way_to_disable_verification() {
         // A guard against someone adding a "trust invalid certs" toggle later.
         // §9.1 is explicit that this gets no setting.
-        let source = include_str!("transport.rs");
+        //
+        // Scans the WHOLE crate, not `include_str!("transport.rs")`. Reading
+        // only its own file made the guard trivial to walk around: a
+        // `ClientBuilder` configured in any sibling module -- api/icon.rs,
+        // api/client.rs, a new api/media.rs -- was invisible to it, and
+        // `reqwest` is a workspace dependency so any of them can build one.
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut files = Vec::new();
+        collect_rs(&root, &mut files);
+        assert!(
+            files.len() > 5,
+            "found too few sources to be scanning the crate"
+        );
+
         // The needles are assembled at runtime so that this test's own text
         // does not contain the literals it forbids.
-        for needle in [
+        let needles = [
             ["danger_accept", "_invalid_certs"].concat(),
             ["danger_accept", "_invalid_hostnames"].concat(),
             ["tls_built_in", "_root_certs"].concat(),
+            // Hands the whole verifier over to a caller-supplied one.
+            ["use_preconfigured", "_tls"].concat(),
+            ["dangerous", "()"].concat(),
             ["cookie", "_store"].concat(),
-        ] {
-            assert!(
-                !source.contains(&needle),
-                "TLS verification must not be defeatable: found {needle}"
-            );
+        ];
+
+        for file in files {
+            let source = std::fs::read_to_string(&file).unwrap_or_default();
+            // This test's own module is where the needles are written down.
+            let source = source.split("#[cfg(test)]").next().unwrap_or("").to_owned();
+            for needle in &needles {
+                assert!(
+                    !source.contains(needle.as_str()),
+                    "TLS verification must not be defeatable: found {needle} in {}",
+                    file.display()
+                );
+            }
+        }
+    }
+
+    /// Every `.rs` file under a directory.
+    fn collect_rs(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                collect_rs(&path, out);
+            } else if path.extension().and_then(|e| e.to_str()) == Some("rs") {
+                out.push(path);
+            }
         }
     }
 }

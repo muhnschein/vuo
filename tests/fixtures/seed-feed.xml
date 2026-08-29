@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  A deterministic feed for the live-contract job, served from the runner itself.
+
+  The job used to import an OPML of real feeds and run the contract tests
+  immediately. Miniflux's poller had not fetched anything yet, so the instance
+  held zero entries and both contract tests took their "too few entries" early
+  return, which cargo reports as a pass. The job could go green having checked
+  neither of the two API behaviours it exists to watch.
+
+  Six entries, fixed ids and dates, no outbound network.
+-->
+<rss version="2.0">
+  <channel>
+    <title>Vuo contract fixture</title>
+    <link>http://127.0.0.1:8099/</link>
+    <description>Fixed entries for the live-contract job.</description>
+    <item>
+      <title>Entry one</title>
+      <link>http://127.0.0.1:8099/1</link>
+      <guid isPermaLink="false">vuo-fixture-1</guid>
+      <pubDate>Mon, 05 Jan 2026 09:00:00 GMT</pubDate>
+      <description>&lt;p&gt;First entry, with &lt;b&gt;markup&lt;/b&gt;.&lt;/p&gt;</description>
+    </item>
+    <item>
+      <title>Entry two</title>
+      <link>http://127.0.0.1:8099/2</link>
+      <guid isPermaLink="false">vuo-fixture-2</guid>
+      <pubDate>Mon, 05 Jan 2026 10:00:00 GMT</pubDate>
+      <description>&lt;p&gt;Second entry.&lt;/p&gt;</description>
+    </item>
+    <item>
+      <title>Entry three</title>
+      <link>http://127.0.0.1:8099/3</link>
+      <guid isPermaLink="false">vuo-fixture-3</guid>
+      <pubDate>Mon, 05 Jan 2026 11:00:00 GMT</pubDate>
+      <description>&lt;p&gt;Third entry.&lt;/p&gt;</description>
+    </item>
+    <item>
+      <title>Entry four</title>
+      <link>http://127.0.0.1:8099/4</link>
+      <guid isPermaLink="false">vuo-fixture-4</guid>
+      <pubDate>Mon, 05 Jan 2026 12:00:00 GMT</pubDate>
+      <description>&lt;p&gt;Fourth entry.&lt;/p&gt;</description>
+    </item>
+    <item>
+      <title>Entry five</title>
+      <link>http://127.0.0.1:8099/5</link>
+      <guid isPermaLink="false">vuo-fixture-5</guid>
+      <pubDate>Mon, 05 Jan 2026 13:00:00 GMT</pubDate>
+      <description>&lt;p&gt;Fifth entry.&lt;/p&gt;</description>
+    </item>
+    <item>
+      <title>Entry six</title>
+      <link>http://127.0.0.1:8099/6</link>
+      <guid isPermaLink="false">vuo-fixture-6</guid>
+      <pubDate>Mon, 05 Jan 2026 14:00:00 GMT</pubDate>
+      <description>&lt;p&gt;Sixth entry.&lt;/p&gt;</description>
+    </item>
+  </channel>
+</rss>

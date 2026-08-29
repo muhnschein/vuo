@@ -18,10 +18,26 @@ QMLLINT ?= $(shell command -v qmllint 2>/dev/null || echo /usr/lib/qt5/bin/qmlli
 QMAKE ?= $(shell command -v qmake 2>/dev/null || echo /usr/lib/qt5/bin/qmake)
 ARCH ?= aarch64
 
-# The shim links against Qt, so it is checked only where Qt is present. On a
-# runner without it, `make check` still runs everything else rather than
-# failing for a reason that has nothing to do with the change.
+# The shim links against Qt, so it is checked only where Qt is present.
+#
+# Missing Qt is a HARD FAILURE by default. It used to be a silent skip, so on a
+# runner without qmake three of `check`'s eight subjects -- clippy on vuo-shim,
+# the offscreen shim tests, and the QML load test -- printed SKIPPED and the
+# target still printed "make check passed" and exited 0. A green line that means
+# "I did not check the QML, the shim, or §9.3's textFormat defence" is worse
+# than a red one.
+#
+# `make check SKIP_QT=1` is the explicit opt-out for a machine that genuinely
+# has no Qt, and it says so in the summary.
+SKIP_QT ?=
 HAVE_QT := $(shell test -x "$(QMAKE)" && echo yes)
+ifneq ($(HAVE_QT),yes)
+ifndef SKIP_QT
+$(error qmake not found at $(QMAKE), so the shim, the QML load test and shim clippy \
+cannot run. Install qtbase5-dev qtdeclarative5-dev qtdeclarative5-dev-tools \
+qml-module-qtquick2, or run `make $(MAKECMDGOALS) SKIP_QT=1` to skip them knowingly)
+endif
+endif
 
 .PHONY: all check fmt fmt-check clippy test qmllint qml-load shim deny \
         fuzz-check packaging msrv fuzz-quick live-test rpm vendor clean help
@@ -30,7 +46,11 @@ all: check
 
 ## check: everything CI runs. No phone, no server, no network.
 check: fmt-check clippy test qmllint qml-load fuzz-check packaging deny
+ifeq ($(HAVE_QT),yes)
 	@echo "== make check passed =="
+else
+	@echo "== make check passed, WITHOUT Qt: the shim, the QML load test and shim clippy did NOT run =="
+endif
 
 ## fmt: format the workspace
 fmt:
