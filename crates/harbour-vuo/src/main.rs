@@ -98,6 +98,9 @@ fn install_context() -> vuo_core::Result<()> {
     // The context owns the worker, so the thread lives exactly as long as the
     // thing that talks to it.
     let ctx = AppContext::new(db, worker, server, signal);
+    // Seed the Images setting from the stored account, so the first article
+    // opened after launch honours it rather than falling back to Ask.
+    ctx.set_media_policy(account.media_policy);
     vuo_shim::context::install(ctx);
     Ok(())
 }

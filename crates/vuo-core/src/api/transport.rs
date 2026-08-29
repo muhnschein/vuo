@@ -226,10 +226,16 @@ impl Transport {
         loop {
             let safe = SafeUrl::from(&current);
 
-            // The token is attached only for the configured origin. If a
-            // redirect ever walked us elsewhere, the request goes out
-            // unauthenticated rather than leaking the key -- though in
-            // practice the origin check below refuses the hop first.
+            // The token is attached only for the configured origin.
+            //
+            // Belt-and-braces: the origin check below refuses an off-origin hop
+            // outright, so `current` is always the configured origin by the
+            // time it gets here and this condition is always true. It stays as
+            // a second line of defence if that refusal is ever loosened -- but
+            // being unreachable, it has no behaviour a test can observe, and
+            // the comment in
+            // `tests::the_token_is_withheld_from_any_origin_but_the_configured_one`
+            // says so rather than implying coverage that does not exist.
             let remaining = self.request_timeout.checked_sub(started.elapsed());
             let Some(remaining) = remaining.filter(|r| !r.is_zero()) else {
                 return Err(Error::Transport {
@@ -461,6 +467,61 @@ mod tests {
             t.is_err(),
             "a bad CA must fail loudly, never fall back to no CA"
         );
+    }
+
+    #[test]
+    fn the_token_is_withheld_from_any_origin_but_the_configured_one() {
+        // The origin comparison itself, which is what the off-origin redirect
+        // refusal decides on. Getting it wrong -- accepting a different port,
+        // a different scheme, or a suffix like `miniflux.example.evil.invalid`
+        // -- is a key leak, and the integration test can only exercise one
+        // foreign origin.
+        //
+        // Note what this does NOT cover, because nothing can: the conditional
+        // at the attach site (`if self.is_configured_origin(&current)`).
+        // `current` only ever advances past the refusal above, so it is always
+        // the configured origin by construction, and attaching the header
+        // unconditionally there is behaviourally identical. It is deliberate
+        // belt-and-braces for a state the refusal makes unreachable -- not a
+        // second layer with its own observable behaviour, and not something a
+        // test can distinguish.
+        let t = Transport::new(
+            Url::parse("https://miniflux.example:8080/").unwrap(),
+            ApiToken::new("t"),
+            &TransportConfig::default(),
+        )
+        .unwrap();
+
+        assert!(t.is_configured_origin(
+            &Url::parse("https://miniflux.example:8080/v1/entries?x=1").unwrap()
+        ));
+
+        for foreign in [
+            // a different port
+            "https://miniflux.example:8443/v1/entries",
+            // the default port for the scheme, which is NOT 8080
+            "https://miniflux.example/v1/entries",
+            // a different scheme
+            "http://miniflux.example:8080/v1/entries",
+            // a different host
+            "https://evil.invalid:8080/v1/entries",
+            // A SUBDOMAIN. `ends_with` accepts this, and it is the classic
+            // way an origin check written as a suffix comparison leaks a
+            // credential -- anyone who can create a host under the domain gets
+            // the token.
+            "https://evil.miniflux.example:8080/v1/entries",
+            // A host that merely ends with the same characters, which a
+            // careless suffix comparison also accepts.
+            "https://notminiflux.example:8080/v1/entries",
+            // And the other direction: a longer host that starts the same.
+            "https://miniflux.example.evil.invalid:8080/v1/entries",
+            "https://miniflux.example.co:8080/v1/entries",
+        ] {
+            assert!(
+                !t.is_configured_origin(&Url::parse(foreign).unwrap()),
+                "{foreign} is not the configured origin; the token must not be attached"
+            );
+        }
     }
 
     #[test]

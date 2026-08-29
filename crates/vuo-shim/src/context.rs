@@ -20,6 +20,16 @@ pub struct AppContext {
     commands: std::sync::mpsc::Sender<Command>,
     /// The configured Miniflux origin, for the content transform's media policy.
     instance: url::Url,
+    /// The user's Images setting (`settings::MEDIA_*`).
+    ///
+    /// Lives here because the two objects that care are both constructed by
+    /// QML and cannot reach each other: `Settings` writes it on save, and
+    /// `ArticleModel` reads it when it builds a transform context. Before this
+    /// existed, `ArticleModel` hardcoded `UnproxiedMedia::Ask` and
+    /// `Settings::media_policy_for` had no production caller at all -- so the
+    /// Images control was wired to nothing and a user who chose Strict still
+    /// got Ask (§9.3).
+    media_policy: std::cell::Cell<i32>,
     /// Bumped by the worker when the mirror changes; polled by the models.
     signal: std::sync::Arc<SyncSignal>,
     /// Owned here so the worker thread lives exactly as long as the context
@@ -48,6 +58,7 @@ impl AppContext {
             db: Rc::new(RefCell::new(db)),
             commands,
             instance,
+            media_policy: std::cell::Cell::new(crate::settings::MEDIA_ASK),
             signal,
             _worker: worker,
         })
@@ -67,6 +78,17 @@ impl AppContext {
     #[must_use]
     pub fn instance(&self) -> &url::Url {
         &self.instance
+    }
+
+    /// The user's Images setting (`settings::MEDIA_*`).
+    #[must_use]
+    pub fn media_policy(&self) -> i32 {
+        self.media_policy.get()
+    }
+
+    /// Record the Images setting. Called on start-up and whenever it is saved.
+    pub fn set_media_policy(&self, policy: i32) {
+        self.media_policy.set(policy);
     }
 
     /// Borrow the mirror for a read.

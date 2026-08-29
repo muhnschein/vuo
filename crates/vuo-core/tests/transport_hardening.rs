@@ -20,7 +20,9 @@
 //!   comparison;
 //! - a same-origin relative redirect, confirming the token IS still sent where
 //!   it should be — a hardening test that only proves things are refused can
-//!   pass on a client that refuses everything.
+//!   pass on a client that refuses everything;
+//! - an absolute redirect to a SECOND raw server, confirming that server hears
+//!   nothing at all. That is §9.1's headline rule, and it had no test.
 
 #![allow(
     clippy::unwrap_used,
@@ -101,6 +103,63 @@ async fn relative_redirect_is_followed_with_token() {
         req2.contains("SECRET-TOKEN"),
         "token should be re-attached same-origin"
     );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn an_absolute_cross_origin_redirect_never_reaches_the_other_host() {
+    // §9.1's headline rule: "Do not follow redirects with the API token
+    // attached." It had NO coverage. The suite held a same-origin relative
+    // redirect, a protocol-relative one asserting only `is_err()`, and a hop
+    // cap -- but nothing that stands up a SECOND host and looks at what it
+    // received. Removing both layers (the off-origin refusal and the
+    // conditional attach) left all eleven test binaries green while the token
+    // went to the attacker in plain text.
+    //
+    // This is the scenario the module doc opens with: a hostile or compromised
+    // instance answering 302 to somewhere it controls.
+    let (attacker, attacker_rx, _ah) = raw_server(vec![
+        b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok".to_vec(),
+    ]);
+    let redirect =
+        format!("HTTP/1.1 302 Found\r\nLocation: {attacker}/collect\r\nContent-Length: 0\r\n\r\n");
+    let (base, rx, _h) = raw_server(vec![redirect.into_bytes()]);
+
+    let t = transport(&base, &cfg());
+    let res = t
+        .send(
+            reqwest::Method::GET,
+            Url::parse(&format!("{base}/v1/entries")).unwrap(),
+            None,
+        )
+        .await;
+
+    let first = rx.recv().unwrap();
+    assert!(
+        first.contains("SECRET-TOKEN"),
+        "the token belongs on the CONFIGURED origin; without this the test could \
+         pass on a client that never authenticates at all"
+    );
+
+    assert!(
+        matches!(
+            res,
+            Err(Error::Transport {
+                kind: TransportKind::RedirectRefused,
+                ..
+            })
+        ),
+        "a redirect off the configured origin must be refused: {res:?}"
+    );
+
+    // And the other host heard nothing at all -- not an unauthenticated
+    // request, not a connection.
+    match attacker_rx.recv_timeout(Duration::from_millis(500)) {
+        Err(_) => {}
+        Ok(head) => panic!(
+            "the redirect was followed to another origin. It received:\n{head}\n\
+             (a request at all is a failure; one carrying the token is a key leak)"
+        ),
+    }
 }
 
 #[tokio::test(flavor = "multi_thread")]

@@ -142,6 +142,13 @@ impl Settings {
         }
         // Written with mode 0600; see worker::save_account.
         let _ = worker::save_account(&paths.account, &account);
+        // And publish it to the live context, or the open article keeps the
+        // policy it was built with. This is the hop that was missing: the
+        // control was rendered, persisted, and read back on the next launch,
+        // but never reached the transform.
+        if let Some(ctx) = self.ctx.clone().or_else(crate::context::current) {
+            ctx.set_media_policy(self.mediaPolicy);
+        }
         self.changed();
     }
 

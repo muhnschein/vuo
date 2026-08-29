@@ -66,6 +66,15 @@ clippy:
 ifeq ($(HAVE_QT),yes)
 	@echo "== clippy (shim) =="
 	$(CARGO) clippy -p vuo-shim --all-targets -- -D warnings
+	@echo "== clippy (app binary) =="
+	# `harbour-vuo` is not in default-members and was excluded from every
+	# target here, so NOTHING in `make check` compiled the application entry
+	# point: main.rs could fail to type-check, or contain an `unimplemented!`
+	# that §9.5 denies, and the full gate stayed green. The only thing that
+	# built it was a 40-minute SDK build -- the exact failure mode the
+	# packaging checks exist to pre-empt. Default features build without the
+	# SDK; that is what the `sailfishapp` gate is for.
+	$(CARGO) clippy -p harbour-vuo --all-targets -- -D warnings
 else
 	@echo "== clippy (shim) SKIPPED: no qmake found at $(QMAKE) =="
 endif

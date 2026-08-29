@@ -567,3 +567,300 @@ pub fn media_consent(conn: &rusqlite::Connection) -> Result<Vec<url::Url>> {
     }
     Ok(out)
 }
+
+#[cfg(test)]
+mod tests {
+    //! `store` is the UI's whole read path, and had no tests at all.
+    //!
+    //! Only five of its ~20 functions were reached by any test, and only
+    //! incidentally, through `sync`. `list_entries` -- every article list the
+    //! app renders -- was called from `vuo-shim/src/models.rs` and nowhere
+    //! else, and models.rs has no tests either. Measured: swapping the unread
+    //! filter's `status = 'unread'` for `'read'` and its ordering from DESC to
+    //! ASC, and routing `EntryFilter::Category` through the by-feed statement,
+    //! left every one of the eleven test binaries green. The unread screen
+    //! showing read articles oldest-first, and category browsing showing one
+    //! feed, were both invisible.
+
+    use super::*;
+    use crate::db::outbox;
+    use crate::db::Database;
+    use crate::model::{Category, Enclosure, EntryStatus};
+
+    fn ts(secs: i64) -> Option<chrono::DateTime<chrono::Utc>> {
+        chrono::DateTime::from_timestamp(secs, 0)
+    }
+
+    fn entry_at(id: i64, feed: i64, status: EntryStatus, starred: bool, published: i64) -> Entry {
+        Entry {
+            id: EntryId(id),
+            feed_id: FeedId(feed),
+            status,
+            starred,
+            title: format!("entry {id}"),
+            url: None,
+            comments_url: None,
+            author: String::new(),
+            content: String::new(),
+            published_at: ts(published),
+            created_at: ts(published),
+            changed_at: ts(published),
+            reading_time: 1,
+            tags: Vec::new(),
+            enclosures: Vec::new(),
+        }
+    }
+
+    fn feed_in(id: i64, category: Option<i64>) -> Feed {
+        Feed {
+            id: FeedId(id),
+            category_id: category.map(CategoryId),
+            title: format!("feed {id}"),
+            site_url: None,
+            feed_url: None,
+            icon_id: None,
+            checked_at: None,
+            parsing_error_message: String::new(),
+            parsing_error_count: 0,
+            disabled: false,
+            hide_globally: false,
+        }
+    }
+
+    /// Two categories, three feeds, six entries with distinct publish times.
+    fn populated() -> Database {
+        let mut db = Database::open_in_memory().expect("mirror");
+        db.with_tx(|tx| {
+            for (id, title) in [(1i64, "News"), (2, "Code")] {
+                upsert_category(
+                    tx,
+                    &Category {
+                        id: CategoryId(id),
+                        title: title.to_owned(),
+                        hide_globally: false,
+                    },
+                    1,
+                )?;
+            }
+            upsert_feed(tx, &feed_in(10, Some(1)), 1)?;
+            upsert_feed(tx, &feed_in(11, Some(1)), 1)?;
+            upsert_feed(tx, &feed_in(20, Some(2)), 1)?;
+
+            // published_at ascending with id, so "newest first" is id-descending.
+            upsert_entry(tx, &entry_at(1, 10, EntryStatus::Unread, false, 100), 1)?;
+            upsert_entry(tx, &entry_at(2, 10, EntryStatus::Read, true, 200), 1)?;
+            upsert_entry(tx, &entry_at(3, 11, EntryStatus::Unread, true, 300), 1)?;
+            upsert_entry(tx, &entry_at(4, 11, EntryStatus::Read, false, 400), 1)?;
+            upsert_entry(tx, &entry_at(5, 20, EntryStatus::Unread, false, 500), 1)?;
+            upsert_entry(tx, &entry_at(6, 20, EntryStatus::Read, false, 600), 1)?;
+            Ok(())
+        })
+        .expect("seed");
+        db
+    }
+
+    fn ids(entries: &[Entry]) -> Vec<i64> {
+        entries.iter().map(|e| e.id.get()).collect()
+    }
+
+    #[test]
+    fn each_filter_selects_its_own_rows_newest_first() {
+        let db = populated();
+        let list = |f| list_entries(db.conn(), f, 100, 0).expect("list");
+
+        assert_eq!(
+            ids(&list(EntryFilter::Unread)),
+            vec![5, 3, 1],
+            "unread only, newest first"
+        );
+        assert_eq!(ids(&list(EntryFilter::Starred)), vec![3, 2], "starred only");
+        assert_eq!(
+            ids(&list(EntryFilter::All)),
+            vec![6, 5, 4, 3, 2, 1],
+            "everything, newest first"
+        );
+        assert_eq!(ids(&list(EntryFilter::Feed(11))), vec![4, 3], "one feed");
+        assert_eq!(
+            ids(&list(EntryFilter::Category(1))),
+            vec![4, 3, 2, 1],
+            "a category spans its feeds. Routing this through the by-feed \
+             statement -- so it matched feed_id 1, which does not exist -- \
+             returned an empty list, and nothing noticed."
+        );
+        assert_eq!(ids(&list(EntryFilter::Category(2))), vec![6, 5]);
+    }
+
+    #[test]
+    fn limit_and_offset_page_without_skipping_or_repeating() {
+        let db = populated();
+        let page = |limit, offset| {
+            ids(&list_entries(db.conn(), EntryFilter::All, limit, offset).expect("list"))
+        };
+        assert_eq!(page(2, 0), vec![6, 5]);
+        assert_eq!(page(2, 2), vec![4, 3]);
+        assert_eq!(page(2, 4), vec![2, 1]);
+        assert_eq!(page(2, 6), Vec::<i64>::new());
+    }
+
+    #[test]
+    fn a_pending_intent_wins_per_field_in_both_directions() {
+        // §8.3's "a server-side change to an entry mutated locally resolves by
+        // a stated rule", and the rule is local intent wins PER FIELD.
+        //
+        // Only one direction was covered -- a pending STAR against a remote
+        // status change. Making resolution per-ENTRY in the other direction
+        // (honour a pending status only when a star intent also exists) left
+        // all eleven binaries green, and that is the common case: mark read
+        // offline, the pull echoes the entry back unread, the mark vanishes
+        // from the list while the outbox still holds it.
+        let mut db = populated();
+
+        // Pending STATUS, remote changes STARRED.
+        db.with_tx(|tx| {
+            outbox::queue(
+                tx,
+                EntryId(1),
+                outbox::DesiredValue::Status(EntryStatus::Read),
+                1,
+            )
+        })
+        .expect("queue status");
+        db.with_tx(|tx| {
+            let mut remote = entry_at(1, 10, EntryStatus::Unread, true, 100);
+            remote.title = "remote title".to_owned();
+            upsert_entry(tx, &remote, 2)
+        })
+        .expect("pull");
+        let e = entry(db.conn(), EntryId(1))
+            .expect("read")
+            .expect("present");
+        assert_eq!(
+            e.status,
+            EntryStatus::Read,
+            "the pending status must win over the server's"
+        );
+        assert!(e.starred, "and the field with no intent takes the server's");
+        assert_eq!(e.title, "remote title", "as does everything else");
+
+        // Pending STARRED, remote changes STATUS. The mirror case.
+        db.with_tx(|tx| outbox::queue(tx, EntryId(5), outbox::DesiredValue::Starred(true), 1))
+            .expect("queue star");
+        db.with_tx(|tx| upsert_entry(tx, &entry_at(5, 20, EntryStatus::Read, false, 500), 2))
+            .expect("pull");
+        let e = entry(db.conn(), EntryId(5))
+            .expect("read")
+            .expect("present");
+        assert!(e.starred, "the pending star must win");
+        assert_eq!(
+            e.status,
+            EntryStatus::Read,
+            "and the field with no intent takes the server's"
+        );
+    }
+
+    #[test]
+    fn media_consent_round_trips_per_origin() {
+        // §9.3's consent store: agreeing to one host must not agree to every
+        // host. Nothing tested it -- rewriting the SELECT left the crate green.
+        let mut db = populated();
+        assert!(media_consent(db.conn()).expect("read").is_empty());
+
+        db.with_tx(|tx| {
+            grant_media_consent(tx, "https://images.example", 1)?;
+            grant_media_consent(tx, "https://cdn.example", 2)
+        })
+        .expect("grant");
+
+        let mut got: Vec<String> = media_consent(db.conn())
+            .expect("read")
+            .iter()
+            .map(url::Url::to_string)
+            .collect();
+        got.sort();
+        assert_eq!(
+            got,
+            vec![
+                "https://cdn.example/".to_owned(),
+                "https://images.example/".to_owned()
+            ]
+        );
+
+        // Granting the same origin twice is not a duplicate.
+        db.with_tx(|tx| grant_media_consent(tx, "https://cdn.example", 3))
+            .expect("regrant");
+        assert_eq!(media_consent(db.conn()).expect("read").len(), 2);
+    }
+
+    #[test]
+    fn deleting_a_feed_takes_its_entries_with_it() {
+        let mut db = populated();
+        db.with_tx(|tx| delete_feed(tx, FeedId(10)))
+            .expect("delete");
+
+        assert_eq!(
+            ids(&list_entries(db.conn(), EntryFilter::All, 100, 0).expect("list")),
+            vec![6, 5, 4, 3],
+            "the feed's entries go with it, and no others"
+        );
+        assert!(feeds(db.conn())
+            .expect("feeds")
+            .iter()
+            .all(|f| f.id != FeedId(10)));
+    }
+
+    #[test]
+    fn unread_counts_are_reported_per_feed_and_in_total() {
+        let db = populated();
+        assert_eq!(unread_count(db.conn()).expect("count"), 3);
+
+        let per_feed = unread_counts_by_feed(db.conn()).expect("per feed");
+        assert_eq!(per_feed.get(&10), Some(&1));
+        assert_eq!(per_feed.get(&11), Some(&1));
+        assert_eq!(per_feed.get(&20), Some(&1));
+
+        let totals = entry_counts_by_feed(db.conn()).expect("totals");
+        assert_eq!(totals.get(&10), Some(&2));
+        assert_eq!(totals.get(&11), Some(&2));
+        assert_eq!(totals.get(&20), Some(&2));
+    }
+
+    #[test]
+    fn enclosures_are_replaced_rather_than_accumulated() {
+        // The pull upserts the same entry on every pass it appears in. An
+        // INSERT that did not clear first would grow the table without bound.
+        let mut db = populated();
+        let with_two = |n: usize| {
+            let mut e = entry_at(1, 10, EntryStatus::Unread, false, 100);
+            e.enclosures = (0..n)
+                .map(|i| Enclosure {
+                    id: i64::try_from(i).unwrap_or(0),
+                    entry_id: EntryId(1),
+                    url: None,
+                    mime_type: "audio/mpeg".to_owned(),
+                    size: 1,
+                })
+                .collect();
+            e
+        };
+        let count = |db: &Database| -> i64 {
+            db.conn()
+                .query_row(
+                    "SELECT COUNT(*) FROM enclosures WHERE entry_id = 1",
+                    [],
+                    |r| r.get(0),
+                )
+                .expect("count")
+        };
+
+        db.with_tx(|tx| upsert_entry(tx, &with_two(3), 2))
+            .expect("first");
+        assert_eq!(count(&db), 3);
+        db.with_tx(|tx| upsert_entry(tx, &with_two(1), 3))
+            .expect("second");
+        assert_eq!(
+            count(&db),
+            1,
+            "the previous set must be replaced, not added to"
+        );
+    }
+}
