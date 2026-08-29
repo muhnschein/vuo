@@ -18,20 +18,49 @@ change; nothing in the second has ever run on a phone.
 | QML | every file compiled in a real QML engine against the Silica stubs |
 | Packaging | spec/version consistency, installed-file existence, desktop entry validity |
 
-## NOT verified — milestone 2 is outstanding
+## Milestone 2: the SDK build, and where it stops
 
-**No part of this has run on a SailfishOS device, or been built with the
-SailfishOS SDK.** The environment this was developed in has neither. Concretely:
+A real Platform SDK build has now been attempted — image pulled and unpacked as
+a chroot, sb2 targets working, and the aarch64 Rust standard library
+reconstructed from source with the tooling's own compiler (a hello-world
+cross-compiles to a proper `ELF 64-bit ... ARM aarch64` PIE). The full recipe
+and its evidence are in [docs/sdk-build.md](sdk-build.md).
 
-- **The RPM has never been built.** `rpm/harbour-vuo.spec` is written from
-  Whisperfish's working spec and is internally consistent
-  (`scripts/check-packaging.sh` checks what it can without an SDK), but a spec
-  that has never been run is a hypothesis.
-- **The cross-compile has never run.** The `SB2_RUST_TARGET_TRIPLE` and
-  per-target linker exports are taken from a project that ships this way; they
-  are not confirmed for this dependency set. `rusqlite`'s bundled SQLite and
-  `rustls`'s crypto backend are the two most likely to need attention on
-  `armv7hl`.
+**It does not complete, and the reason is a defect rather than a missing step.**
+
+- **The spec had four bugs that only a real build could surface**, all now
+  fixed: it selected `--bin` without `--package`, so `--features sailfishapp`
+  never resolved and the device binary could *never* have been produced;
+  parallel cargo deadlocks under sb2; build-script links need
+  `CARGO_TARGET_<HOST>_LINKER=host-gcc`; and qttypes needs
+  `QT_INCLUDE_PATH`/`QT_LIBRARY_PATH` rather than `QMAKE`, with the library path
+  at `%{_libdir}` because Qt is in `/usr/lib64` on aarch64.
+- **The blocker is the Rust version.** Vuo's locked graph needs **1.88** (via
+  `url` → `idna` → `icu_*`), and 19 of its dependencies use edition2024, which
+  the SDK tooling's cargo 1.75 cannot even parse — and vendoring, which is how
+  OBS and SDK builds get their crates, parses every manifest whether or not it
+  compiles it.
+- **`rust-version` said 1.75 and that was fiction.** The CI job meant to hold
+  the floor installed the MSRV toolchain and then ran a bare `cargo check`,
+  which `rust-toolchain.toml` redirected to stable — so it passed every time
+  while the device build was impossible. Both are fixed; `make lockfile`
+  reports the remaining gap on every run.
+- **Resolving it is a decision, not a cleanup.** Either the build target gets a
+  newer `rust` package than the tooling's 1.75 (unverified here — the Jolla
+  repos are unreachable), or the dependency tree rolls back through
+  `reqwest` → `tower-http` → `async-compression`, taking the TLS stack with it.
+  That second option was tried and deliberately abandoned: trading current
+  rustls for an SDK version number is the wrong way round for an app whose
+  §9.1 is about TLS.
+
+**Still true: no part of this has run on a SailfishOS device.** Concretely:
+
+- **The RPM has never been produced**, for the reason above. Everything in the
+  spec up to the cargo invocation is now exercised.
+- **The cross-compile has run only for the standard library**, not for Vuo's
+  own dependency set. `rusqlite`'s bundled SQLite and `rustls`'s crypto backend
+  remain the two most likely to need attention, on `armv7hl` especially — which
+  has not been attempted at all.
 - **The shim is compiled against Qt 5.15, not Qt 5.6.** The Silica target is
   5.6. `qmetaobject` sets no `qt_5_*` cfg at all on 5.6, so
   `qml_register_enum` and friends do not exist there — the code already avoids

@@ -46,12 +46,7 @@ pub struct SpanStyle {
     pub subscript: bool,
 }
 
-impl SpanStyle {
-    #[must_use]
-    pub fn is_plain(&self) -> bool {
-        *self == SpanStyle::default()
-    }
-}
+impl SpanStyle {}
 
 /// A run of text with uniform styling, optionally hyperlinked.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

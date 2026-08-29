@@ -68,11 +68,6 @@ impl MediaUrl {
         &self.0
     }
 
-    #[must_use]
-    pub fn into_url(self) -> Url {
-        self.0
-    }
-
     /// `true` when this URL points at the given origin (scheme, host, port).
     #[must_use]
     pub fn is_same_origin_as(&self, other: &Url) -> bool {
@@ -202,16 +197,6 @@ impl MediaPolicy {
         }
     }
 
-    /// A policy that never fetches un-proxied media.
-    #[must_use]
-    pub fn strict_for(instance: Url) -> Self {
-        MediaPolicy::ProxyThroughInstance {
-            instance,
-            extra_trusted: Vec::new(),
-            fallback: UnproxiedMedia::Strict,
-        }
-    }
-
     /// Decide what to do with one media URL.
     ///
     /// `consented` are origins the user has already agreed to load from.
@@ -331,7 +316,12 @@ mod tests {
         let instance = Url::parse("https://miniflux.example/").unwrap();
         let third_party = MediaUrl::parse("https://tracker.example/pixel.gif").unwrap();
         assert_eq!(
-            MediaPolicy::strict_for(instance).decide(&third_party),
+            MediaPolicy::ProxyThroughInstance {
+                instance,
+                extra_trusted: Vec::new(),
+                fallback: UnproxiedMedia::Strict,
+            }
+            .decide(&third_party),
             MediaDecision::Drop
         );
     }

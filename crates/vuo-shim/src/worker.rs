@@ -432,6 +432,12 @@ pub struct AppPaths {
     /// rather than a file picker: it is a rare, deliberate act, and a path the
     /// user chose would be one more thing to validate.
     pub ca_certificate: PathBuf,
+    /// Where the systemd user drop-in for the sync timer is written.
+    ///
+    /// Under `XDG_CONFIG_HOME`, not the data dir the rest of these live in:
+    /// systemd reads unit configuration from the config hierarchy and would
+    /// never look at a file placed beside the database.
+    pub timer_dropin_dir: PathBuf,
 }
 
 impl AppPaths {
@@ -443,10 +449,14 @@ impl AppPaths {
     #[must_use]
     pub fn under(base: impl Into<PathBuf>) -> Self {
         let base = base.into();
+        // Kept under the same base so a test can point everything at one
+        // tempdir; `resolve` below puts it in the real systemd location.
+        let timer_dropin_dir = base.join("systemd/user/harbour-vuo-sync.timer.d");
         AppPaths {
             database: base.join("vuo.sqlite"),
             account: base.join("account.json"),
             ca_certificate: base.join("ca.pem"),
+            timer_dropin_dir,
         }
     }
 
@@ -457,7 +467,14 @@ impl AppPaths {
             .map(PathBuf::from)
             .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local/share")))?
             .join("harbour-vuo");
-        Some(Self::under(base))
+        let mut paths = Self::under(base);
+        // The real location, which is NOT under the data dir: systemd only
+        // reads unit drop-ins out of the config hierarchy.
+        paths.timer_dropin_dir = std::env::var_os("XDG_CONFIG_HOME")
+            .map(PathBuf::from)
+            .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))?
+            .join("systemd/user/harbour-vuo-sync.timer.d");
+        Some(paths)
     }
 
     /// `Some` only once an account has been written.
@@ -630,6 +647,7 @@ mod tests {
             database: dir.path().join("db.sqlite"),
             account: dir.path().join("account.json"),
             ca_certificate: dir.path().join("absent.pem"),
+            timer_dropin_dir: dir.path().join("tdd"),
         };
         let account = Account {
             server_url: "https://h.example/".into(),
@@ -676,6 +694,7 @@ EQBBQIobIy41+aQiMsM0XBYH3Q==\n\
             database: dir.path().join("db.sqlite"),
             account: dir.path().join("account.json"),
             ca_certificate: ca,
+            timer_dropin_dir: dir.path().join("tdd"),
         };
         let account = Account {
             server_url: "https://h.example/".into(),

@@ -120,8 +120,16 @@ export CC_aarch64_unknown_linux_gnu=aarch64-meego-linux-gnu-gcc
 export CXX_aarch64_unknown_linux_gnu=aarch64-meego-linux-gnu-g++
 export AR_aarch64_unknown_linux_gnu=aarch64-meego-linux-gnu-ar
 
-# qttypes probes for qmake6 first and errors out when it is absent.
-export QMAKE=/usr/bin/qmake
+# qttypes' build script shells out to `qmake -query` by default, and a Rust
+# build script running under sb2 cannot reliably exec the target's qmake.
+# Setting BOTH of these makes qttypes skip qmake entirely and read the Qt
+# version out of qtcoreversion.h instead (verified against the crate's
+# build.rs). Setting only QMAKE, as this did, leaves it shelling out.
+#
+# %{_libdir}, not a hardcoded /usr/lib: Qt lives in /usr/lib64 on the aarch64
+# target. Both of these are target-rootfs paths as seen from inside sb2.
+export QT_INCLUDE_PATH=%{_includedir}/qt5
+export QT_LIBRARY_PATH=%{_libdir}
 export PKG_CONFIG_ALLOW_CROSS_i686_unknown_linux_gnu=1
 export PKG_CONFIG_ALLOW_CROSS_armv7_unknown_linux_gnueabihf=1
 export PKG_CONFIG_ALLOW_CROSS_aarch64_unknown_linux_gnu=1
@@ -134,11 +142,44 @@ export CARGO_PROFILE_RELEASE_LTO=thin
 export TMPDIR=${TMPDIR:-"$PWD/.tmp"}
 mkdir -p $TMPDIR
 
+# Build scripts and proc-macros are compiled for the tooling's own
+# architecture, and rustc links them by calling plain `cc` -- which sb2
+# rewrites to the CROSS compiler, so the build dies with
+# "aarch64-meego-linux-gnu-cc: error: unrecognized command-line option '-m32'"
+# before the first crate finishes. scratchbox2 exposes the native compiler as
+# `host-gcc` (SBOX_HOST_GCC_NAME in the target's sb2.config) for exactly this.
+# Pointing at the tooling's gcc by absolute path is NOT enough: sb2 still
+# rewrites the `ld` that gcc invokes and you get "cannot find /lib/libgcc_s.so.1".
+# SBOX_SESSION_DIR is set by sb2 itself, so outside sb2 nothing is overridden.
+if [ -n "${SBOX_SESSION_DIR:-}" ]; then
+    host_triple=$(rustc -vV | sed -n 's/^host: //p')
+    export "CARGO_TARGET_$(echo "$host_triple" | tr 'a-z-' 'A-Z_')_LINKER"=host-gcc
+fi
+
 # The workspace's default-members are the Qt-free set, so a bare
 # `cargo build --release` would build nothing installable. The bin must be
 # named explicitly.
-cargo build --jobs %{?_smp_build_ncpus:%{_smp_build_ncpus}}%{!?_smp_build_ncpus:1} \
+# Under scratchbox2, PARALLEL cargo deadlocks: at the default -j it
+# reproducibly futex-waits forever on an unreaped child while qmetaobject's
+# C++ glue compiles. sb2 rust builds are effectively single-threaded anyway,
+# so force -j1 there and let cargo choose for itself on a native OBS worker.
+# (Decided in shell, not with an rpm macro: there is no macro that says
+# "inside sb2", and emitting both forms gives cargo two --jobs and it refuses.)
+jobs_opt="--jobs %{?_smp_build_ncpus:%{_smp_build_ncpus}}%{!?_smp_build_ncpus:1}"
+if [ -n "${SBOX_SESSION_DIR:-}" ]; then
+    jobs_opt="-j1"
+fi
+
+# `--package`, not only `--bin`: `--features` resolves against the SELECTED
+# packages, and the workspace's default-members is just vuo-core, which has no
+# `sailfishapp` feature. Without this the device build dies with "none of the
+# selected packages contains these features: sailfishapp" -- so the spec as
+# written could never have produced the device binary. Found by the first real
+# mb2 build; no host check could have caught it, because no host check builds
+# this package at all.
+cargo build $jobs_opt \
     --release \
+    --package harbour-vuo \
     --bin harbour-vuo \
     --features sailfishapp \
     $OFFLINE

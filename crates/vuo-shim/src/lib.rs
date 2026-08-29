@@ -124,7 +124,11 @@ mod tests {
         let mut model = article::ArticleModel::default();
         let instance = url::Url::parse("https://miniflux.example/").unwrap();
         let ctx = TransformContext {
-            media: MediaPolicy::strict_for(instance.clone()),
+            media: MediaPolicy::ProxyThroughInstance {
+                instance: instance.clone(),
+                extra_trusted: Vec::new(),
+                fallback: vuo_core::content::UnproxiedMedia::Strict,
+            },
             ..TransformContext::new(instance)
         };
 
@@ -178,8 +182,10 @@ mod tests {
     fn un_proxied_images_are_flagged_rather_than_silently_dropped() {
         let mut model = article::ArticleModel::default();
         let instance = url::Url::parse("https://miniflux.example/").unwrap();
-        let ctx = TransformContext::new(instance)
-            .with_base_url(url::Url::parse("https://blog.example/post/").ok());
+        let ctx = TransformContext {
+            base_url: url::Url::parse("https://blog.example/post/").ok(),
+            ..TransformContext::new(instance)
+        };
         model.set_html(
             "<p><img src=\"https://tracker.example/p.gif\" alt=\"x\"></p>",
             &ctx,
@@ -194,7 +200,7 @@ mod tests {
             image.needs_consent,
             "the UI must ask before leaking the device IP"
         );
-        assert_eq!(model.blocked_image_count(), 1);
+        assert_eq!(model.blockedImages, 1);
     }
 
     #[test]
@@ -205,7 +211,7 @@ mod tests {
         ctx.limits.max_blocks = 5;
         model.set_html(&"<p>x</p>".repeat(50), &ctx);
         assert!(
-            model.is_truncated(),
+            model.truncated,
             "a silent truncation reads as 'this is the whole article'"
         );
     }

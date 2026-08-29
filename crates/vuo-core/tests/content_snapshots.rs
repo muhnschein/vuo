@@ -28,10 +28,14 @@ fn context() -> TransformContext {
     let instance = url::Url::parse("https://miniflux.example/").expect("instance url");
     TransformContext {
         // Strict, so the snapshots also record which media is refused.
-        media: MediaPolicy::strict_for(instance.clone()),
+        media: MediaPolicy::ProxyThroughInstance {
+            instance: instance.clone(),
+            extra_trusted: Vec::new(),
+            fallback: vuo_core::content::UnproxiedMedia::Strict,
+        },
+        base_url: url::Url::parse("https://blog.example/posts/1/").ok(),
         ..TransformContext::new(instance)
     }
-    .with_base_url(url::Url::parse("https://blog.example/posts/1/").ok())
 }
 
 /// Render a document as compact text, so a snapshot diff is readable rather
