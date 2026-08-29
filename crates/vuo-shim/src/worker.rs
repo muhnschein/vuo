@@ -13,10 +13,16 @@
 //! registration. There is no reactor to register with.
 //!
 //! So the network and database work runs on a dedicated thread with its own
-//! current-thread Tokio runtime, and results come back to the Qt thread through
-//! `queued_callback`, which is `qmetaobject`'s cross-thread delivery primitive.
-//! That keeps every `QObject` touch on the Qt thread, which is the rule that
-//! actually matters for correctness.
+//! current-thread Tokio runtime, and nothing it produces touches a `QObject`
+//! directly. That is the rule that actually matters for correctness, and it is
+//! kept structurally rather than by marshalling: results reach the UI through
+//! [`crate::context::SyncSignal`], which the Qt thread polls, so every
+//! `QObject` touch already happens on the thread that owns it.
+//!
+//! `on_event` is therefore a log sink and nothing more. It is deliberately not
+//! wrapped in `queued_callback` — that would tie building a worker to a live Qt
+//! event loop, which start-up has and the settings screen, rebuilding one after
+//! an account is saved, cannot promise.
 //!
 //! The division of labour follows §5's "models observe SQLite": the worker
 //! writes to the mirror, then signals; the models re-read the mirror on the Qt
@@ -111,8 +117,12 @@ impl std::fmt::Debug for Worker {
 impl Worker {
     /// Spawn the worker.
     ///
-    /// `on_event` is invoked **on the worker thread**; callers must wrap it
-    /// with `qmetaobject::queued_callback` before touching any `QObject`.
+    /// `on_event` is invoked **on the worker thread**. It must not touch a
+    /// `QObject`: results the UI has to see travel by
+    /// [`crate::context::SyncSignal`] instead, which the Qt thread polls. A
+    /// caller that genuinely needs to reach a `QObject` from here has to wrap
+    /// it with `qmetaobject::queued_callback` first, and then owes the event
+    /// loop that primitive requires.
     pub fn spawn(
         db_path: PathBuf,
         server: url::Url,
@@ -343,6 +353,22 @@ impl Worker {
     #[must_use]
     pub fn sender(&self) -> mpsc::Sender<Command> {
         self.tx.clone()
+    }
+
+    /// Tell the worker to stop, without waiting for it to finish.
+    ///
+    /// [`Drop`] joins, which is what process shutdown wants: the thread must
+    /// not outlive the process's use of the mirror. Replacing a live context
+    /// is the other case, and there a join is a hazard — it runs on the Qt
+    /// thread, and a worker in the middle of a request holds its thread until
+    /// the network times out, so the UI would freeze for exactly that long.
+    /// Dropping the join handle detaches instead: the thread still receives
+    /// `Shutdown` and still winds down, it is simply not waited for.
+    pub fn retire(&mut self) {
+        let _ = self.tx.send(Command::Shutdown);
+        // Dropping a `JoinHandle` detaches the thread; it does not stop it.
+        // The `Shutdown` above is what stops it.
+        let _ = self.handle.take();
     }
 }
 

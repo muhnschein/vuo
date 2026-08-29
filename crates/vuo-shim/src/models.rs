@@ -234,11 +234,23 @@ impl EntryModel {
     }
 
     fn requestSync(&mut self) {
-        if let Some(ctx) = self.context() {
-            ctx.signal().set_running(true);
-            self.syncingChanged();
-            ctx.send(Command::Sync);
+        // `or_else`, not a bare `context()`: the context is built at start-up
+        // from the stored account, and on a first run there is none to build
+        // from. Without this second chance the pulley menu's Refresh did
+        // nothing at all -- no spinner, no error -- for the whole of the
+        // session in which the account was first configured.
+        let Some(ctx) = self.context().or_else(crate::context::refresh_current) else {
+            return;
+        };
+        // Set before sending, not after: the worker clears this flag when the
+        // command finishes, and a fast failure can beat us to it. Setting it
+        // afterwards would leave the spinner running forever.
+        ctx.signal().set_running(true);
+        if !ctx.send(Command::Sync) {
+            // The worker is gone, so nothing will ever clear the flag.
+            ctx.signal().set_running(false);
         }
+        self.syncingChanged();
     }
 
     fn is_syncing(&self) -> bool {
