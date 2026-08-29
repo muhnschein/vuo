@@ -24,12 +24,17 @@ QMETAOBJECT_VERSION=0.2.10
 QTTYPES_VERSION=0.2.12
 
 # Pristine sources come from wherever this machine already has them: the cargo
-# registry on a dev host, or the vendor directory inside the SDK chroot, where
-# there is no crates.io route at all.
+# registry on a dev host, or pristine/ inside the SDK chroot, where there is no
+# crates.io route at all.
+#
+# pristine/ is a SEPARATE directory, not vendor/. Vendored crates carry a
+# .cargo-checksum.json that cargo verifies, and registry copies have none --
+# dropping them into vendor/ makes cargo reject the whole directory with an
+# unrelated-looking "failed to get `base64` as a dependency".
 find_source() {
     local name=$1 version=$2 candidate
     for candidate in \
-        "$ROOT/vendor/$name" \
+        "$ROOT/pristine/$name-$version" \
         "${CARGO_HOME:-$HOME/.cargo}"/registry/src/*/"$name-$version" \
         /root/.cargo/registry/src/*/"$name-$version"
     do
