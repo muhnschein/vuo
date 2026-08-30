@@ -231,6 +231,17 @@ pub struct EntryModel {
     /// server's bulk endpoint, which applies a `published_at < now()` cut-off
     /// captured at request time and would mark entries the user never saw.
     markAllRead: qt_method!(fn(&mut self)),
+    /// Mark everything in an EXPLICIT scope as read.
+    ///
+    /// `markAllRead` reads the scope this model happens to be in when the
+    /// remorse countdown FIRES, which is a different moment from the one the
+    /// user was looking at when they tapped. That was survivable only because
+    /// re-scoping needed a page change and a page change flushed the popup
+    /// first; swiping between tabs re-scopes without one, so arming "Mark all
+    /// as read" on Unread and swiping to All within the countdown would have
+    /// run it over every article in the mirror. Passing the scope in binds the
+    /// action to the tab that was showing when it was armed.
+    markAllReadIn: qt_method!(fn(&mut self, kind: i32, id: i64)),
 
     rows: Vec<EntryRow>,
     scope: Option<Scope>,
@@ -389,8 +400,16 @@ impl EntryModel {
     }
 
     fn markAllRead(&mut self) {
-        let Some(ctx) = self.context() else { return };
         let Some(scope) = self.scope else { return };
+        self.mark_all_read_in(scope);
+    }
+
+    fn markAllReadIn(&mut self, kind: i32, id: i64) {
+        self.mark_all_read_in(Scope::from_qml(kind, id));
+    }
+
+    fn mark_all_read_in(&mut self, scope: Scope) {
+        let Some(ctx) = self.context() else { return };
         let done = match scope {
             Scope::Feed(feed_id) => ctx
                 .write(|db| worker::apply_local_mark_feed_read(db, feed_id))
