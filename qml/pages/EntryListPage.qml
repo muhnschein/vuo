@@ -79,6 +79,17 @@ Page {
         pager.moveTo(index)
     }
 
+    /// The gap above the strip that the pulley's resting indicator shows
+    /// through. Measured: the menu's HighlightBar pokes ~6px below the content
+    /// top, so anything smaller hides it.
+    readonly property real indicatorGap: Theme.paddingMedium
+
+    /// How far the CURRENT tab has been pulled past its top, and whether it is
+    /// still at the top at all. Read off `currentItem`, exactly as Silica's
+    /// TabView reads its own `yOffset` (private/TabView.qml:51).
+    property real pullDistance: pager.currentItem ? pager.currentItem.pullDistance : 0
+    property bool atTop: pager.currentItem ? pager.currentItem.atTop : true
+
     /// The model the page-level furniture (the notice banner) speaks for.
     property var currentModel: page.showScopeTabs
                                ? (page.scopeModels[pager.currentIndex] || null)
@@ -109,6 +120,12 @@ Page {
     PagedView {
         id: pager
 
+        // Full-page on purpose. The pulley menu lives at negative content
+        // coordinates, above `originY`, and its resting indicator is drawn
+        // into the top of the VIEWPORT -- so the viewport has to start at the
+        // top of the screen for that indicator to appear ABOVE the strip
+        // rather than under it. The strip is pinned on top of this, and each
+        // list reserves the space it occupies in its own header.
         anchors.fill: parent
 
         // One page per tab -- or exactly one, with no swiping, for a feed or
@@ -151,8 +168,66 @@ Page {
             scopeId: page.showScopeTabs ? 0 : page.scopeId
             showScopeTabs: page.showScopeTabs
             tabIndex: page.showScopeTabs ? index : -1
+            tabStripHeight: page.indicatorGap + scopeTabs.implicitHeight
             scopeLabel: page.scopeLabel
             title: page.title
+        }
+    }
+
+    /*
+     * The tab strip, pinned.
+     *
+     * Pinned by the PAGE rather than carried in each list's header, because a
+     * header copy travels sideways with a swipe and scrolls away under a
+     * scroll -- both reported from a device. Each list reserves its space
+     * instead.
+     *
+     * The z-flip is what lets it be pinned AND sit below the pulley. While the
+     * current list is at its top (which includes being pulled), the strip
+     * drops behind the pager: the list has nothing to paint up here except the
+     * pulley itself, so the indicator and the opened menu both show through.
+     * The moment anything is scrolled past the top the strip comes forward,
+     * opaque, and rows pass behind it instead of through it. Silica's own
+     * TabView makes the same move for the same reason
+     * (private/TabView.qml:69-71).
+     */
+    ScopeTabBar {
+        id: scopeTabs
+
+        anchors { left: parent.left; right: parent.right }
+        y: page.indicatorGap
+        visible: page.showScopeTabs
+        height: scopeTabs.visible ? scopeTabs.implicitHeight : 0
+        z: page.atTop ? -1 : 1
+
+        // Rides down with the pull so the opened menu has room above it.
+        // A transform, not a `y` binding: `y` is layout, and the lists are
+        // full-page siblings whose contentY feeds this -- a layout change
+        // would close that loop.
+        transform: Translate { y: page.pullDistance }
+
+        hostPage: page
+        titles: [qsTr("Unread"), qsTr("Favourites"), qsTr("All")]
+        currentIndex: pager.currentIndex
+        onTabClicked: page.selectTab(index)
+
+        // Opaque, so rows scrolling past cannot be read through the tabs.
+        // Silica fills its own with a colour that is not public API; this
+        // layers the public opaque colour under the ambience tint to get both
+        // opacity and the right hue.
+        Rectangle {
+            anchors.fill: parent
+            anchors.topMargin: -page.indicatorGap
+            z: -1
+            visible: !page.atTop
+            color: Theme.overlayBackgroundColor
+
+            Rectangle {
+                anchors.fill: parent
+                color: typeof __silica_applicationwindow_instance !== "undefined"
+                       ? __silica_applicationwindow_instance._backgroundColor
+                       : "transparent"
+            }
         }
     }
 

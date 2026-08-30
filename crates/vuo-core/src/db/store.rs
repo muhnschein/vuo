@@ -32,6 +32,41 @@ fn from_ts(secs: Option<i64>) -> Option<chrono::DateTime<chrono::Utc>> {
     secs.and_then(|s| chrono::DateTime::from_timestamp(s, 0))
 }
 
+/// A sort key for a user-visible name.
+///
+/// `ORDER BY title` in SQLite is a BYTE comparison, so it lists every
+/// upper-case name before every lower-case one -- "Zeit" before "heise" --
+/// which is what a device report called "sorting is broken". `COLLATE NOCASE`
+/// only folds ASCII, so it fixes the case half and still files "Ärzteblatt"
+/// after "Zeit".
+///
+/// This folds case and then the German umlauts the way DIN 5007-1 does, which
+/// is what a German-language reader expects and is no worse than byte order
+/// for anyone else. Deliberately not a full Unicode collation: that means a
+/// large table and a dependency, for a list of a few dozen feed names.
+#[must_use]
+pub fn name_sort_key(title: &str) -> String {
+    let mut key = String::with_capacity(title.len());
+    for c in title.to_lowercase().chars() {
+        match c {
+            'ä' => key.push('a'),
+            'ö' => key.push('o'),
+            'ü' => key.push('u'),
+            // `to_lowercase` already turns 'ß' into itself, not "ss".
+            'ß' => key.push_str("ss"),
+            'á' | 'à' | 'â' | 'å' | 'ã' => key.push('a'),
+            'é' | 'è' | 'ê' | 'ë' => key.push('e'),
+            'í' | 'ì' | 'î' | 'ï' => key.push('i'),
+            'ó' | 'ò' | 'ô' | 'õ' => key.push('o'),
+            'ú' | 'ù' | 'û' => key.push('u'),
+            'ç' => key.push('c'),
+            'ñ' => key.push('n'),
+            other => key.push(other),
+        }
+    }
+    key
+}
+
 // ------------------------------------------------------------- categories
 
 pub fn upsert_category(tx: &Transaction<'_>, c: &Category, generation: i64) -> Result<()> {
@@ -48,7 +83,7 @@ pub fn upsert_category(tx: &Transaction<'_>, c: &Category, generation: i64) -> R
 }
 
 pub fn categories(tx: &rusqlite::Connection) -> Result<Vec<Category>> {
-    let mut stmt = tx.prepare("SELECT id, title, hide_globally FROM categories ORDER BY title")?;
+    let mut stmt = tx.prepare("SELECT id, title, hide_globally FROM categories")?;
     let rows = stmt.query_map([], |r| {
         Ok(Category {
             id: CategoryId(r.get(0)?),
@@ -56,7 +91,9 @@ pub fn categories(tx: &rusqlite::Connection) -> Result<Vec<Category>> {
             hide_globally: r.get::<_, i64>(2)? != 0,
         })
     })?;
-    Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
+    let mut out = rows.collect::<std::result::Result<Vec<_>, _>>()?;
+    out.sort_by(|a, b| name_sort_key(&a.title).cmp(&name_sort_key(&b.title)));
+    Ok(out)
 }
 
 // ------------------------------------------------------------------ feeds
@@ -117,7 +154,7 @@ pub fn feeds(conn: &rusqlite::Connection) -> Result<Vec<Feed>> {
         "SELECT id, category_id, title, site_url, feed_url, icon_id, checked_at,
                 parsing_error_message, parsing_error_count, disabled, hide_globally,
                 crawler
-         FROM feeds ORDER BY title",
+         FROM feeds",
     )?;
     let rows = stmt.query_map([], |r| {
         Ok(Feed {
@@ -139,7 +176,10 @@ pub fn feeds(conn: &rusqlite::Connection) -> Result<Vec<Feed>> {
             crawler: r.get::<_, i64>(11)? != 0,
         })
     })?;
-    Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
+    let mut out = rows.collect::<std::result::Result<Vec<_>, _>>()?;
+    // Sorted here rather than in SQL; see `name_sort_key`.
+    out.sort_by(|a, b| name_sort_key(&a.title).cmp(&name_sort_key(&b.title)));
+    Ok(out)
 }
 
 /// Remove a feed, its entries, and any intents queued against them.
@@ -905,5 +945,47 @@ mod tests {
             1,
             "the previous set must be replaced, not added to"
         );
+    }
+}
+
+#[cfg(test)]
+mod name_sort_tests {
+    use super::*;
+
+    /// §the feed list is sorted the way a reader expects.
+    ///
+    /// Reported from a device: "Sorting is broken. Sorts alphabetically, but
+    /// first uppercase entries, then lower case." That is `ORDER BY title`
+    /// doing a byte comparison.
+    #[test]
+    fn names_sort_by_letter_not_by_byte() {
+        let mut names = vec![
+            "heise online",
+            "Zeit Online",
+            "Ärzteblatt",
+            "tagesschau",
+            "Der Standard",
+            "ÖRF",
+        ];
+        names.sort_by_key(|n| name_sort_key(n));
+        assert_eq!(
+            names,
+            vec![
+                "Ärzteblatt",
+                "Der Standard",
+                "heise online",
+                "ÖRF",
+                "tagesschau",
+                "Zeit Online",
+            ],
+            "case must not decide the order, and an umlaut sorts with its base \
+             letter rather than after Z"
+        );
+    }
+
+    #[test]
+    fn eszett_sorts_as_ss() {
+        assert_eq!(name_sort_key("Straße"), "strasse");
+        assert_eq!(name_sort_key("STRASSE"), "strasse");
     }
 }

@@ -360,6 +360,18 @@ impl EntryModel {
             // The worker is gone, so nothing will ever clear the flag.
             ctx.signal().set_running(false);
         }
+        // Record what we just told QML, or the spinner never stops.
+        //
+        // `pollSync` reports a change by comparing the flag against
+        // `seen_running`. Raising the flag here and emitting the signal
+        // WITHOUT recording it left `seen_running` false, so when the worker
+        // lowered the flag the poll compared false against false, saw no
+        // transition, and never emitted again -- `syncing` is READ + NOTIFY,
+        // so QML kept the last value it was told. The spinner only ever
+        // stopped when a poll happened to land inside the window while the
+        // sync was still running, which on a fast local server it usually
+        // does not.
+        self.seen_running = ctx.signal().is_running();
         self.syncingChanged();
     }
 
@@ -940,123 +952,6 @@ impl QAbstractListModel for FeedModel {
     }
 }
 
-// ------------------------------------------------------------------ categories
-
-pub const ROLE_CATEGORY_TITLE: i32 = USER_ROLE + 1;
-
-/// A category as the feed editor's picker needs it.
-#[derive(Debug, Clone, Default)]
-pub struct CategoryRow {
-    pub id: i64,
-    /// Foreign text: the user names these, but so can an import. PlainText.
-    pub title: String,
-}
-
-/// The category list, for assigning a feed to one.
-///
-/// Read-only and deliberately minimal: Vuo does not create, rename or delete
-/// categories -- §3 leaves taxonomy management to the web UI -- it only needs
-/// to offer the existing ones so a feed can be filed.
-#[derive(QObject, Default)]
-pub struct CategoryModel {
-    base: qt_base_class!(trait QAbstractListModel),
-    count: qt_property!(i32; READ row_count NOTIFY countChanged),
-    countChanged: qt_signal!(),
-    refresh: qt_method!(fn(&mut self)),
-    /// The row holding `category_id`, or -1. The picker needs this to show
-    /// what the feed is filed under now.
-    rowForId: qt_method!(fn(&self, category_id: i64) -> i32),
-    /// The id at `row`, or 0.
-    idAt: qt_method!(fn(&self, row: i32) -> i64),
-
-    rows: Vec<CategoryRow>,
-    ctx: Option<std::rc::Rc<AppContext>>,
-}
-
-impl CategoryModel {
-    pub fn attach(&mut self, ctx: std::rc::Rc<AppContext>) {
-        self.ctx = Some(ctx);
-        self.reload();
-    }
-
-    fn context(&self) -> Option<std::rc::Rc<AppContext>> {
-        self.ctx.clone().or_else(crate::context::current)
-    }
-
-    fn refresh(&mut self) {
-        self.reload();
-    }
-
-    fn rowForId(&self, category_id: i64) -> i32 {
-        self.rows
-            .iter()
-            .position(|r| r.id == category_id)
-            .and_then(|i| i32::try_from(i).ok())
-            .unwrap_or(-1)
-    }
-
-    fn idAt(&self, row: i32) -> i64 {
-        usize::try_from(row)
-            .ok()
-            .and_then(|i| self.rows.get(i))
-            .map(|r| r.id)
-            .unwrap_or(0)
-    }
-
-    pub fn reload(&mut self) {
-        let Some(ctx) = self.context() else { return };
-        let rows: Vec<CategoryRow> = ctx
-            .read(|db| {
-                store::categories(db.conn())
-                    .unwrap_or_default()
-                    .iter()
-                    .map(|c| CategoryRow {
-                        id: c.id.get(),
-                        title: c.title.clone(),
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
-
-        (self as &mut dyn QAbstractListModel).begin_reset_model();
-        self.rows = rows;
-        (self as &mut dyn QAbstractListModel).end_reset_model();
-        self.countChanged();
-    }
-
-    #[must_use]
-    pub fn rows(&self) -> &[CategoryRow] {
-        &self.rows
-    }
-}
-
-impl QAbstractListModel for CategoryModel {
-    fn row_count(&self) -> i32 {
-        i32::try_from(self.rows.len()).unwrap_or(i32::MAX)
-    }
-
-    fn data(&self, index: QModelIndex, role: i32) -> QVariant {
-        let Ok(i) = usize::try_from(index.row()) else {
-            return QVariant::default();
-        };
-        let Some(row) = self.rows.get(i) else {
-            return QVariant::default();
-        };
-        match role {
-            ROLE_ID => row.id.into(),
-            ROLE_CATEGORY_TITLE => QString::from(row.title.clone()).into(),
-            _ => QVariant::default(),
-        }
-    }
-
-    fn role_names(&self) -> HashMap<i32, QByteArray> {
-        let mut names = HashMap::new();
-        names.insert(ROLE_ID, "categoryId".into());
-        names.insert(ROLE_CATEGORY_TITLE, "title".into());
-        names
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1102,6 +997,35 @@ mod tests {
         model.drain_notice(&signal);
         assert!(model.syncErrorIsAuth);
         assert_eq!(model.syncError.to_string(), "");
+    }
+
+    /// §the spinner stops after the refresh that started it.
+    ///
+    /// Reported from a device: "Refresh works, but the spinner doesn't go
+    /// away". `requestSync` raised the running flag and told QML about it, but
+    /// did not record that it had -- so the later true-to-false transition
+    /// compared false against false and was never reported. The spinner
+    /// stopped only when a poll happened to land while the sync was still in
+    /// flight.
+    #[test]
+    fn the_spinner_stops_even_when_no_poll_lands_mid_sync() {
+        let signal = SyncSignal::default();
+        let mut model = EntryModel::default();
+
+        // What `requestSync` does, minus the worker it has no context for.
+        signal.set_running(true);
+        model.seen_running = signal.is_running();
+
+        // The worker finishes before any poll runs -- the case that used to
+        // leave the spinner up for the life of the process.
+        signal.set_running(false);
+
+        let running = signal.is_running();
+        assert_ne!(
+            running, model.seen_running,
+            "the poll must see a transition it can report, or `syncing` keeps \
+             the last value QML was told"
+        );
     }
 
     /// A notice this model does not own is left for the page that does.

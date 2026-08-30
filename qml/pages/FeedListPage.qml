@@ -8,6 +8,18 @@ Page {
     /// constructing a second one.
     property var entryModel
 
+    // Re-read on the way in.
+    //
+    // `FeedModel.pollSync` is driven from the app-wide timer and only fires
+    // when the ENTRY models saw a change, so a feed whose settings were
+    // changed elsewhere -- in the web UI, or by the migration that added the
+    // crawler column with a default -- could sit stale in this list until
+    // something unrelated moved. The editor is seeded from these rows, so
+    // stale here means stale there.
+    onStatusChanged: if (status === PageStatus.Activating && page.model) {
+        page.model.refresh()
+    }
+
     allowedOrientations: Orientation.All
 
     SilicaListView {

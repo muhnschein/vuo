@@ -8,6 +8,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
+ROOTFS="${1:-/home/user/sdk/rootfs}"
 TRIPLE=aarch64-unknown-linux-gnu
 BIN="target/$TRIPLE/release/harbour-vuo"
 
@@ -29,8 +30,27 @@ TOP="$(mktemp -d)"
 trap 'rm -rf "$TOP"' EXIT
 mkdir -p "$TOP"/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
 
+# Compile the translations with the SDK's OWN lrelease, under qemu.
+#
+# The host's /usr/bin/lrelease is a qtchooser symlink resolving to a Qt that is
+# not installed here, and a .qm built by a newer Qt is not guaranteed readable
+# by the device's Qt 5.6 anyway. The SDK ships the matching one.
+SR_TR="$ROOTFS/srv/mer/targets/SailfishOS-5.0.0.43-aarch64"
+if [ -x "$SR_TR/usr/lib64/qt5/bin/lrelease" ] && ls translations/*.ts >/dev/null 2>&1; then
+    echo "== compiling translations =="
+    qemu-aarch64-static -L "$SR_TR" \
+        -E LD_LIBRARY_PATH="$SR_TR/usr/lib64:$SR_TR/lib64" \
+        "$SR_TR/usr/lib64/qt5/bin/lrelease" translations/*.ts
+else
+    echo "warning: no lrelease or no .ts files; the package will be English only" >&2
+fi
+
 cp "$BIN" harbour-vuo.desktop LICENSE "$TOP/SOURCES/"
 cp -r icons qml systemd "$TOP/SOURCES/"
+if ls translations/*.qm >/dev/null 2>&1; then
+    mkdir -p "$TOP/SOURCES/translations"
+    cp translations/*.qm "$TOP/SOURCES/translations/"
+fi
 cp rpm/harbour-vuo-cross.spec "$TOP/SPECS/"
 
 # This box is x86_64 and the package is aarch64; without the compat entry

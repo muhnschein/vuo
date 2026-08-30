@@ -26,7 +26,6 @@ Page {
 
     /// Seeded from the row; these are what the form edits.
     property string feedTitle: ""
-    property int categoryId: 0
     property bool crawler: false
     property bool feedDisabled: false
     property bool hideGlobally: false
@@ -40,11 +39,37 @@ Page {
 
     allowedOrientations: Orientation.All
 
-    CategoryModel { id: categories }
+    Component.onCompleted: page.ready = true
 
-    Component.onCompleted: {
-        categories.refresh()
-        page.ready = true
+    /// Send whatever has changed.
+    ///
+    /// `updateFeed` diffs against what the mirror holds and returns false when
+    /// nothing moved, so calling this more often than necessary is free.
+    function save() {
+        if (!page.ready || !page.model) {
+            return
+        }
+        page.sentSerial = page.model.updateSerial
+        if (page.model.updateFeed(page.row, titleField.text, 0,
+                                  page.crawler, page.feedDisabled,
+                                  page.hideGlobally)) {
+            page.saving = true
+        }
+    }
+
+    // Typing sends on a pause, not per keystroke: a rename is a network round
+    // trip, and one per character would be a request storm on a phone radio.
+    Timer {
+        id: typingSettled
+        interval: 900
+        onTriggered: page.save()
+    }
+
+    // Leaving flushes whatever the pause has not sent yet, so backing out of
+    // the page cannot lose the last edit.
+    onStatusChanged: if (status === PageStatus.Deactivating) {
+        typingSettled.stop()
+        page.save()
     }
 
     // The worker answers on the model's notice slot, which only a poll picks
@@ -67,7 +92,9 @@ Page {
         }
         page.saving = false
         if (page.model.updateOk) {
-            pageStack.pop()
+            // Nothing to announce: the change is already on screen, and the
+            // page stays open because the user did not ask to leave it.
+            return
         } else {
             // The server's own words. NoticeBanner renders PlainText.
             notice.post(qsTr("Could not save: %1").arg(page.model.updateError), true, "")
@@ -98,38 +125,12 @@ Page {
                 // stub, so using it would take this whole file out of
                 // `make qml-load`'s reach. Same call as AddFeedPage.qml:28.
                 Keys.onReturnPressed: titleField.focus = false
-            }
-
-            ComboBox {
-                id: categoryCombo
-                width: parent.width
-                label: qsTr("Category")
-                // A feed with no category is possible in the mirror (the id is
-                // 0 when the server sent none), and there is nothing sensible
-                // to preselect for it.
-                currentIndex: categories.rowForId(page.categoryId)
-                menu: ContextMenu {
-                    Repeater {
-                        model: categories
-                        MenuItem {
-                            // A category name is foreign text. MenuItem gives
-                            // no way to force its internal label's textFormat,
-                            // so the name is shown by a Label this file owns
-                            // and the item's own text is left empty.
-                            Label {
-                                anchors.centerIn: parent
-                                width: parent.width - Theme.horizontalPageMargin * 2
-                                horizontalAlignment: Text.AlignHCenter
-                                textFormat: Text.PlainText
-                                text: title
-                                truncationMode: TruncationMode.Fade
-                                color: Theme.primaryColor
-                            }
-                        }
-                    }
-                }
-                onCurrentIndexChanged: if (page.ready) {
-                    page.categoryId = categories.idAt(categoryCombo.currentIndex)
+                // An empty name is a rejection, not an instruction: Miniflux
+                // would accept it and leave a nameless row the user then
+                // cannot identify in order to fix it. `updateFeed` drops it
+                // too; this just stops the pointless round trip.
+                onTextChanged: if (page.ready && text.trim().length > 0) {
+                    typingSettled.restart()
                 }
             }
 
@@ -138,7 +139,10 @@ Page {
                 description: qsTr("The server scrapes each article's own page "
                                   + "instead of using what the feed provides.")
                 checked: page.crawler
-                onCheckedChanged: if (page.ready) page.crawler = checked
+                onCheckedChanged: if (page.ready && page.crawler !== checked) {
+                    page.crawler = checked
+                    page.save()
+                }
             }
 
             TextSwitch {
@@ -147,39 +151,32 @@ Page {
                                   + "Unread and All lists. The feed itself "
                                   + "still shows them.")
                 checked: page.hideGlobally
-                onCheckedChanged: if (page.ready) page.hideGlobally = checked
+                onCheckedChanged: if (page.ready && page.hideGlobally !== checked) {
+                    page.hideGlobally = checked
+                    page.save()
+                }
             }
 
             TextSwitch {
                 text: qsTr("Pause updates")
                 description: qsTr("The server stops refreshing this feed.")
                 checked: page.feedDisabled
-                onCheckedChanged: if (page.ready) page.feedDisabled = checked
+                onCheckedChanged: if (page.ready && page.feedDisabled !== checked) {
+                    page.feedDisabled = checked
+                    page.save()
+                }
             }
 
             Item { width: 1; height: Theme.paddingLarge }
 
-            Button {
-                anchors.horizontalCenter: parent.horizontalCenter
-                text: page.saving ? qsTr("Saving…") : qsTr("Save")
-                enabled: !page.saving && titleField.text.trim().length > 0
-                onClicked: {
-                    page.feedTitle = titleField.text
-                    page.sentSerial = page.model ? page.model.updateSerial : 0
-                    var sent = page.model
-                               ? page.model.updateFeed(page.row, page.feedTitle,
-                                                       page.categoryId, page.crawler,
-                                                       page.feedDisabled, page.hideGlobally)
-                               : false
-                    if (sent) {
-                        page.saving = true
-                    } else {
-                        // `updateFeed` returns false when nothing actually
-                        // changed, which is not an error -- it is a Save the
-                        // user did not need to press.
-                        pageStack.pop()
-                    }
-                }
+            Label {
+                x: Theme.horizontalPageMargin
+                width: parent.width - Theme.horizontalPageMargin * 2
+                wrapMode: Text.Wrap
+                textFormat: Text.PlainText
+                font.pixelSize: Theme.fontSizeExtraSmall
+                color: Theme.secondaryColor
+                text: page.saving ? qsTr("Saving\u2026") : qsTr("Changes are saved automatically.")
             }
         }
 

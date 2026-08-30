@@ -25,9 +25,10 @@ SilicaListView {
     /// True for the tab PagedView is settled on.
     property bool current: true
     property bool showScopeTabs: false
-    /// Which tab this list is, for the strip's highlight. -1 when there is no
-    /// strip (a feed or category view).
+    /// Which tab this list is. -1 when there is no strip.
     property int tabIndex: -1
+    /// How much vertical room the page's pinned strip needs, gap included.
+    property real tabStripHeight: 0
 
     // Scope this tab's own model, once. A feed or category view is scoped by
     // the page instead, because its scope is a parameter of the push.
@@ -81,34 +82,43 @@ SilicaListView {
     // which is what made this worth writing down. Explicit `y` bindings
     // re-evaluate whenever what they depend on changes, so the late height is
     // not a problem.
+    /// How far this list has been pulled past its top, as a positive number.
+    ///
+    /// `contentY - originY` is the expression Silica's own TabItem uses
+    /// (private/TabItem.qml:47-49). The page reads it off whichever list is in
+    /// front, exactly as Silica reads `yOffset` off `currentItem`
+    /// (private/TabView.qml:51).
+    readonly property real pullDistance: listView.contentY < listView.originY
+                                         ? listView.originY - listView.contentY
+                                         : 0
+    /// True while nothing has been scrolled past the top.
+    readonly property bool atTop: listView.contentY <= listView.originY
+
+    // An Item with explicit `y` bindings, NOT a Column.
+    //
+    // A Column here silently mislaid its children: measured on the device's
+    // own Qt 5.6, a header Column reported height 12 while an item inside it
+    // was 110 tall and still sitting at y 0. A child's height can arrive a
+    // beat after the header is built, and a Qt 5.6 positioner inside a
+    // ListView header does not re-position when that happens. The same Column
+    // outside a header lays out correctly, which is what made this worth
+    // writing down. Explicit `y` bindings re-evaluate.
     header: Item {
         id: head
 
         width: listView.width
         height: nameLabel.y + (nameLabel.visible ? nameLabel.height : 0)
 
-        // The pulley's resting indicator is drawn 6px into the top of the
-        // VIEWPORT (measured: its HighlightBar sits at y 180 within a 244-tall
-        // menu whose own y is -244). Anything that must appear BELOW that line
-        // has to be inside the scrolled content rather than pinned outside it
-        // -- which is why the strip is here and not a page-level sibling.
-        // Pinning it outside put the indicator under the tabs and let an
-        // opened pulley paint straight over them. This gap is what the
-        // indicator shows through.
-        property real indicatorGap: listView.showScopeTabs ? Theme.paddingMedium : 0
+        // Room for the tab strip, which is pinned by the PAGE rather than
+        // scrolled with this list -- it must not slide away under a scroll,
+        // and it must not travel sideways with a swipe. This reserves the
+        // space it occupies, including the gap above it that the pulley's
+        // resting indicator shows through.
+        Item {
+            id: stripSpace
 
-        ScopeTabBar {
-            id: strip
-
-            y: head.indicatorGap
-            width: parent.width
-            visible: listView.showScopeTabs
-            height: visible ? implicitHeight : 0
-
-            hostPage: listView.hostPage
-            titles: [qsTr("Unread"), qsTr("Favourites"), qsTr("All")]
-            currentIndex: listView.tabIndex
-            onTabClicked: if (listView.hostPage) listView.hostPage.selectTab(index)
+            width: 1
+            height: listView.showScopeTabs ? listView.tabStripHeight : 0
         }
 
         // Only for the scopes the strip does not cover.
@@ -120,7 +130,7 @@ SilicaListView {
         PageHeader {
             id: pageTitle
 
-            y: strip.y + strip.height
+            y: stripSpace.height
             width: parent.width
             visible: !listView.showScopeTabs
             height: visible ? implicitHeight : 0
@@ -225,32 +235,44 @@ SilicaListView {
                   : qsTr("Pull down to refresh")
     }
 
+    /// Measures the detail line, so it can be shortened before it overflows.
+    FontMetrics {
+        id: detailMetrics
+        font.pixelSize: Theme.fontSizeExtraSmall
+    }
+
     delegate: ListItem {
         id: item
         contentHeight: column.height + Theme.paddingMedium * 2
 
-        Column {
+        /// The icon column's width, whether or not there IS an icon.
+        ///
+        /// A fixed gutter, so every row's text starts on the same vertical
+        /// line: sizing it to the icon meant rows with an icon were indented
+        /// and rows without were not, and a list mixing the two looked ragged.
+        readonly property real gutter: Theme.fontSizeMedium + Theme.paddingSmall
+
+        Row {
             id: column
+
             x: Theme.horizontalPageMargin
             y: Theme.paddingMedium
             width: parent.width - Theme.horizontalPageMargin * 2
-            spacing: Theme.paddingSmall
+            spacing: 0
 
-            // Line 1: the feed's icon, then the headline.
-            Row {
-                width: parent.width
-                spacing: Theme.paddingSmall
+            Item {
+                id: iconGutter
+
+                width: item.gutter
+                height: 1
 
                 Image {
-                    id: favicon
-                    // Sized to the headline and aligned to its FIRST line, so
-                    // a title that wraps to three lines does not leave the
-                    // icon stranded in the middle of the block.
-                    // Zero-width when there is nothing to show, so the title
-                    // reclaims the space instead of being indented past a gap.
-                    width: favicon.visible ? Theme.fontSizeMedium : 0
-                    height: Theme.fontSizeMedium
+                    // Aligned to the title's FIRST line, so a headline that
+                    // wraps to three lines does not strand the icon in the
+                    // middle of the block.
                     y: Math.round((titleLabel.font.pixelSize - height) / 2)
+                    width: Theme.fontSizeMedium
+                    height: Theme.fontSizeMedium
                     sourceSize.width: Theme.fontSizeMedium
                     sourceSize.height: Theme.fontSizeMedium
                     fillMode: Image.PreserveAspectFit
@@ -265,12 +287,16 @@ SilicaListView {
                     // missing icon rather than a broken-image glyph.
                     visible: feedIcon.length > 0 && status === Image.Ready
                 }
+            }
+
+            Column {
+                width: parent.width - item.gutter
+                spacing: Theme.paddingSmall
 
                 Label {
                     id: titleLabel
-                    width: parent.width - (favicon.visible
-                                           ? favicon.width + Theme.paddingSmall
-                                           : 0)
+
+                    width: parent.width
                     // §9.3: a feed-supplied title is foreign data. PlainText,
                     // always, explicitly.
                     textFormat: Text.PlainText
@@ -281,40 +307,101 @@ SilicaListView {
                     font.pixelSize: Theme.fontSizeMedium
                     color: unread ? Theme.primaryColor : Theme.secondaryColor
                 }
-            }
 
-            // Line 2: feed | age | reading time | star, one size down.
-            Label {
-                width: parent.width
-                // Every part of this is either foreign (the feed's name) or
-                // generated locally, and it is assembled in JavaScript rather
-                // than as a Row of Labels so the separators collapse cleanly
-                // when a part is missing. PlainText, explicitly, because the
-                // feed name is in it.
-                textFormat: Text.PlainText
-                font.pixelSize: Theme.fontSizeExtraSmall
-                color: item.highlighted ? Theme.secondaryHighlightColor
-                                        : Theme.secondaryColor
-                truncationMode: TruncationMode.Fade
-                text: {
-                    var parts = []
-                    if (feedName.length > 0) {
-                        parts.push(feedName)
+                Label {
+                    id: detailLabel
+
+                    width: parent.width
+                    // Assembled in JavaScript rather than as a Row of Labels
+                    // so the separators collapse cleanly when a part is
+                    // missing, and so the whole line can be shortened as one
+                    // thing when it will not fit. PlainText, explicitly: the
+                    // feed's name is in it and that is foreign text.
+                    textFormat: Text.PlainText
+                    font.pixelSize: Theme.fontSizeExtraSmall
+                    color: item.highlighted ? Theme.secondaryHighlightColor
+                                            : Theme.secondaryColor
+                    truncationMode: TruncationMode.Fade
+
+                    /// Build the line, shortening it a step at a time until
+                    /// it fits.
+                    ///
+                    /// A long feed name or a long elapsed phrase -- both vary
+                    /// by language -- used to run straight off the right edge.
+                    ///
+                    /// The order is the one asked for on the device: trim the
+                    /// FEED NAME first, down to a length it is still
+                    /// recognisable at, and only when that is not enough start
+                    /// abbreviating the other fields. The name is what says
+                    /// where an article came from, so losing its tail costs
+                    /// less than losing a whole field.
+                    function build() {
+                        var date = published > 0 ? new Date(published * 1000) : null
+                        var age = date ? Format.formatDate(date, Formatter.DurationElapsed) : ""
+                        var shortAge = date ? Format.formatDate(date, Formatter.DurationElapsedShort)
+                                            : ""
+                        var readLong = readingTime > 0 ? qsTr("%n min read", "", readingTime) : ""
+                        var readShort = readingTime > 0 ? qsTr("%n min", "", readingTime) : ""
+
+                        // Each rung keeps the fields fuller than the one below
+                        // it. Within a rung the name is trimmed as far as it
+                        // will go before dropping to the next.
+                        var rungs = [
+                            [age, readLong],
+                            [age, readShort],
+                            [shortAge, readShort],
+                            [shortAge, ""]
+                        ]
+
+                        // Short enough that a name is still identifiable, long
+                        // enough that most feed names survive whole.
+                        var minimumName = 14
+
+                        for (var i = 0; i < rungs.length; ++i) {
+                            var fitted = detailLabel.fitName(feedName, rungs[i], minimumName)
+                            if (fitted !== null) {
+                                return fitted
+                            }
+                        }
+                        // Nothing fits even at the bottom rung with the
+                        // shortest name; `truncationMode` fades what is left.
+                        return detailLabel.join([feedName.substring(0, minimumName),
+                                                 shortAge, ""])
                     }
-                    if (published > 0) {
-                        // Silica's own elapsed formatter, so "vor 6 Stunden" is
-                        // worded and localised exactly as the rest of the
-                        // system words it. `published` is epoch SECONDS.
-                        parts.push(Format.formatDate(new Date(published * 1000),
-                                                     Formatter.DurationElapsed))
+
+                    /// The widest version of this rung whose name still fits,
+                    /// or null when even the shortest name overflows it.
+                    function fitName(name, rung, minimum) {
+                        var candidate = detailLabel.join([name, rung[0], rung[1]])
+                        if (detailMetrics.advanceWidth(candidate) <= detailLabel.width) {
+                            return candidate
+                        }
+                        var trimmed = name
+                        while (trimmed.length > minimum) {
+                            trimmed = trimmed.substring(0, trimmed.length - 1)
+                            candidate = detailLabel.join(
+                                [trimmed + "\u2026", rung[0], rung[1]])
+                            if (detailMetrics.advanceWidth(candidate) <= detailLabel.width) {
+                                return candidate
+                            }
+                        }
+                        return null
                     }
-                    if (readingTime > 0) {
-                        parts.push(qsTr("%n min read", "", readingTime))
+
+                    function join(parts) {
+                        var kept = []
+                        for (var i = 0; i < parts.length; ++i) {
+                            if (parts[i] && parts[i].length > 0) {
+                                kept.push(parts[i])
+                            }
+                        }
+                        if (starred) {
+                            kept.push("\u2605")
+                        }
+                        return kept.join("  \u00b7  ")
                     }
-                    if (starred) {
-                        parts.push("\u2605")
-                    }
-                    return parts.join("  |  ")
+
+                    text: detailLabel.width > 0 ? detailLabel.build() : ""
                 }
             }
         }

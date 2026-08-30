@@ -107,14 +107,15 @@ fn every_scope_tab_has_a_scope_kind() {
         .ancestors()
         .nth(2)
         .expect("the workspace root");
-    // The kinds live with the page that owns the pager; the titles live with
-    // the strip, which is inside the list's header (it has to be below the
-    // pulley's indicator line). Both halves of the invariant are still one
-    // array each -- they are just in two files now.
+    // The kinds live with the page that owns the pager. The strip has moved
+    // between that page and the list's header more than once while its
+    // relationship to the pulley was worked out, so the titles are looked for
+    // in both rather than pinned to whichever file holds them today.
     let page = std::fs::read_to_string(root.join("qml/pages/EntryListPage.qml"))
         .expect("EntryListPage.qml");
     let view = std::fs::read_to_string(root.join("qml/components/EntryListView.qml"))
         .expect("EntryListView.qml");
+    let both = format!("{page}\n{view}");
 
     let array_len = |source: &str, needle: &str| -> usize {
         let line = source
@@ -132,7 +133,7 @@ fn every_scope_tab_has_a_scope_kind() {
     };
 
     let kinds = array_len(&page, "property var scopeTabKinds:");
-    let titles = array_len(&view, "titles:");
+    let titles = array_len(&both, "titles:");
     assert_eq!(
         kinds, titles,
         "the strip shows {titles} tabs but the page maps {kinds} scope kinds; \
@@ -420,6 +421,24 @@ fn qml_declared_identifiers(files: &[PathBuf]) -> BTreeSet<String> {
                 if word == "id:" {
                     if let Some(name) = scan.peek() {
                         names.insert((*name).trim_end_matches('}').trim().to_owned());
+                    }
+                }
+            }
+
+            // JavaScript locals inside a handler or a function. `var shortAge
+            // = ...` is not a model role, and reporting it as an undefined one
+            // is noise that trains the reader to ignore this test.
+            let mut decl = code.split_whitespace().peekable();
+            while let Some(word) = decl.next() {
+                if matches!(word, "var" | "let" | "const") {
+                    if let Some(name) = decl.peek() {
+                        let name: String = name
+                            .chars()
+                            .take_while(|c| c.is_alphanumeric() || *c == '_')
+                            .collect();
+                        if !name.is_empty() {
+                            names.insert(name);
+                        }
                     }
                 }
             }
