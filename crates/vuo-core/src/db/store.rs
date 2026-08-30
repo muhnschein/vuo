@@ -92,7 +92,9 @@ pub fn categories(tx: &rusqlite::Connection) -> Result<Vec<Category>> {
         })
     })?;
     let mut out = rows.collect::<std::result::Result<Vec<_>, _>>()?;
-    out.sort_by(|a, b| name_sort_key(&a.title).cmp(&name_sort_key(&b.title)));
+    // `sort_by_cached_key`, not `sort_by`: the key is a fresh String, so
+    // comparing with it would rebuild both sides on every comparison.
+    out.sort_by_cached_key(|c| name_sort_key(&c.title));
     Ok(out)
 }
 
@@ -177,8 +179,10 @@ pub fn feeds(conn: &rusqlite::Connection) -> Result<Vec<Feed>> {
         })
     })?;
     let mut out = rows.collect::<std::result::Result<Vec<_>, _>>()?;
-    // Sorted here rather than in SQL; see `name_sort_key`.
-    out.sort_by(|a, b| name_sort_key(&a.title).cmp(&name_sort_key(&b.title)));
+    // Sorted here rather than in SQL; see `name_sort_key`. Cached, because the
+    // key is a fresh String and a plain `sort_by` would rebuild both sides on
+    // every comparison.
+    out.sort_by_cached_key(|f| name_sort_key(&f.title));
     Ok(out)
 }
 
