@@ -26,6 +26,10 @@ Page {
     /// case, so one expression drives both the strip and its visibility.
     property bool showScopeTabs: page.scopeTabKinds.indexOf(page.scopeKind) >= 0
 
+    /// One EntryModel per tab, in `scopeTabKinds` order. Empty for a feed or
+    /// category view, which uses `model` instead.
+    property var scopeModels: []
+
     Component.onCompleted: page.applyScope()
 
     // Re-assert this page's scope whenever it becomes the visible one.
@@ -49,76 +53,38 @@ Page {
     // unread until the next sync.
     onStatusChanged: if (status === PageStatus.Activating) page.applyScope()
 
+    /// Scope the single model a feed or category view uses.
+    ///
+    /// The tab scopes are NOT set here: each tab's model is scoped once, by
+    /// the list that owns it, and never re-scoped. Re-scoping a shared model
+    /// was what made a neighbouring tab impossible to keep populated.
     function applyScope() {
-        if (page.model) {
+        if (page.model && !page.showScopeTabs) {
             page.model.setScope(page.scopeKind, page.scopeId)
         }
     }
 
-    /// Switch scope in place, with no page transition.
+    /// Move to the tab at `index`, from a tap on the strip.
     ///
-    /// Called by the tab strip on a tap and by the PagedView when a swipe
-    /// settles, so both routes go through exactly one place.
-    function selectScope(kind) {
-        if (kind === page.scopeKind) {
+    /// The strip lives inside each list's header now, so this is how a tap in
+    /// one tab reaches the pager that owns them all.
+    function selectTab(index) {
+        if (index === pager.currentIndex) {
             // Tapping the tab you are already on goes back to the top.
             if (pager.currentItem) {
                 pager.currentItem.scrollToTop()
             }
             return
         }
-        page.scopeKind = kind
-        // Clear the feed id AND the feed name together, or "Favourites" would
-        // keep a feed title sitting under it.
-        page.scopeId = 0
-        page.title = ""
-        page.applyScope()
-        // Keep the pager in step when the change came from the strip.
-        var index = page.scopeTabKinds.indexOf(kind)
-        if (page.showScopeTabs && index >= 0 && pager.currentIndex !== index) {
-            pager.moveTo(index)
-        }
+        pager.moveTo(index)
     }
+
+    /// The model the page-level furniture (the notice banner) speaks for.
+    property var currentModel: page.showScopeTabs
+                               ? (page.scopeModels[pager.currentIndex] || null)
+                               : page.model
 
     allowedOrientations: Orientation.All
-
-    /// How far the CURRENT tab has been pulled past its top.
-    ///
-    /// Read off `currentItem`, exactly as Silica's TabView reads its own
-    /// `yOffset` (private/TabView.qml:51): the strip has to follow whichever
-    /// list is in front, and after a swipe that is a different object.
-    property real _pullDistance: pager.currentItem ? pager.currentItem.pullDistance : 0
-
-    // The strip stands where the PageHeader would, pinned, as the clock and
-    // Settings apps wear it -- Silica's own TabView pins its TabBar outside
-    // the paged content and sizes the content to what is left.
-    ScopeTabBar {
-        id: scopeTabs
-
-        anchors { top: parent.top; left: parent.left; right: parent.right }
-        visible: page.showScopeTabs
-        height: scopeTabs.visible ? scopeTabs.implicitHeight : 0
-
-        // Ride down with the pulley and get out of its way, exactly as
-        // Silica's TabView moves its own TabBar (private/TabView.qml:69-71:
-        // `y: Math.max(0, -root.yOffset)` and `z: yOffset < 0 ? -1 : 1`).
-        // Without this the strip stayed pinned over the top of the menu, so
-        // the pulley opened UNDERNEATH the tabs.
-        //
-        // A `transform`, not a `y` binding: the pager is anchored to this
-        // item's bottom, and moving its geometry would move the lists, which
-        // changes `contentY`, which moves this item again -- a binding loop.
-        // A transform paints somewhere else without touching layout.
-        transform: Translate { y: page._pullDistance }
-        // Behind the lists while the menu is out, in front of them otherwise,
-        // so rows scrolled past the top still cannot paint over the tabs.
-        z: page._pullDistance > 0 ? -1 : 1
-
-        hostPage: page
-        titles: [qsTr("Unread"), qsTr("Favourites"), qsTr("All")]
-        currentIndex: page.scopeTabKinds.indexOf(page.scopeKind)
-        onTabClicked: page.selectScope(page.scopeTabKinds[index])
-    }
 
     /*
      * The tabs, side by side, swipeable.
@@ -127,6 +93,12 @@ Page {
      * plugins.qmltypes -- and is the same class Silica's own TabView is built
      * on, so a swipe here has the system's own feel rather than a hand-rolled
      * drag threshold.
+     *
+     * Full-page on purpose. The pulley menu lives at negative content
+     * coordinates, above `originY`, and its resting indicator is drawn into
+     * the top of the VIEWPORT -- so the viewport has to start at the top of
+     * the screen for that indicator to appear above the tab strip rather than
+     * under it. The strip is part of each list's header for the same reason.
      *
      * The delegate deliberately does NOT touch `PagedView.isCurrentItem`.
      * That is an ATTACHED property, attached types cannot be written in a QML
@@ -137,26 +109,16 @@ Page {
     PagedView {
         id: pager
 
-        anchors {
-            top: scopeTabs.bottom
-            left: parent.left
-            right: parent.right
-            bottom: parent.bottom
-        }
+        anchors.fill: parent
 
         // One page per tab -- or exactly one, with no swiping, for a feed or
         // category view, which is reached by pushing a page and left by going
         // back rather than by swiping sideways.
         model: page.showScopeTabs ? page.scopeTabKinds.length : 1
         interactive: page.showScopeTabs
-        // `currentIndex` is driven imperatively, NOT bound.
-        //
-        // A swipe writes this property from C++, and a QML binding that is
-        // written to is gone for good -- so binding it to the scope would work
-        // exactly until the first swipe, after which tapping a tab would stop
-        // moving the pager. `moveTo` in `selectScope` and the handler below
-        // keep the two in step in both directions instead.
-        cacheSize: 1
+        // Every tab stays alive and populated, so swiping towards one shows
+        // its rows rather than an empty page that fills a moment later.
+        cacheSize: page.showScopeTabs ? page.scopeTabKinds.length : 1
 
         Component.onCompleted: {
             var index = page.scopeTabKinds.indexOf(page.scopeKind)
@@ -165,16 +127,15 @@ Page {
             }
         }
 
+        // `currentIndex` is driven imperatively, NOT bound.
+        //
+        // A swipe writes this property from C++, and a QML binding that is
+        // written to is gone for good -- so binding it to the scope would work
+        // exactly until the first swipe, after which tapping a tab would stop
+        // moving the pager.
         onCurrentIndexChanged: {
-            if (!page.showScopeTabs) {
-                return
-            }
-            // A settled swipe is a scope change like any other. The guard is
-            // what stops this and `selectScope`'s `moveTo` calling each other:
-            // by the time either fires again, the two already agree.
-            var kind = page.scopeTabKinds[pager.currentIndex]
-            if (kind !== undefined && kind !== page.scopeKind) {
-                page.selectScope(kind)
+            if (page.showScopeTabs) {
+                page.scopeKind = page.scopeTabKinds[pager.currentIndex]
             }
         }
 
@@ -183,13 +144,13 @@ Page {
             height: pager.height
 
             hostPage: page
-            entryModel: page.model
+            // Each tab has its own model, scoped once and never re-scoped.
+            entryModel: page.showScopeTabs ? page.scopeModels[index] : page.model
             current: pager.currentIndex === index
-            // Each tab knows its OWN scope, not the page's: that is what lets
-            // "Mark all as read" bind to the tab it was armed on.
             scopeKind: page.showScopeTabs ? page.scopeTabKinds[index] : page.scopeKind
             scopeId: page.showScopeTabs ? 0 : page.scopeId
             showScopeTabs: page.showScopeTabs
+            tabIndex: page.showScopeTabs ? index : -1
             scopeLabel: page.scopeLabel
             title: page.title
         }
@@ -213,18 +174,20 @@ Page {
     /// it. `requestSync` clears both fields, so a retry produces an empty
     /// token first and the next failure is a genuine change even when the
     /// server says the same thing twice.
-    property string _failureToken: page.model
-                                  ? (page.model.syncErrorIsAuth ? "auth" : page.model.syncError)
+    property string _failureToken: page.currentModel
+                                  ? (page.currentModel.syncErrorIsAuth
+                                     ? "auth" : page.currentModel.syncError)
                                   : ""
 
     on_FailureTokenChanged: {
         if (page._failureToken.length === 0) {
             notice.dismiss()
-        } else if (page.model.syncErrorIsAuth) {
+        } else if (page.currentModel.syncErrorIsAuth) {
             notice.post(qsTr("The server rejected the API key."), true,
                         qsTr("Open settings"))
         } else {
-            notice.post(qsTr("Refresh failed: %1").arg(page.model.syncError), true, "")
+            notice.post(qsTr("Refresh failed: %1").arg(page.currentModel.syncError),
+                        true, "")
         }
     }
 }

@@ -296,6 +296,7 @@ impl EntryModel {
             .is_some();
         if applied {
             self.mark_row(id, Some(!read), None);
+            self.announce_local_change(&ctx);
             // Send opportunistically: if there is no signal the intent stays
             // in the outbox and the next sync carries it.
             ctx.send(Command::FlushOutbox);
@@ -313,8 +314,27 @@ impl EntryModel {
             .is_some();
         if applied {
             self.mark_row(id, None, Some(starred));
+            self.announce_local_change(&ctx);
             ctx.send(Command::FlushOutbox);
         }
+    }
+
+    /// Tell the OTHER models that this one changed the mirror.
+    ///
+    /// There is one model per scope tab now, and they all read the same
+    /// entries. Marking an article read on Unread has to reach the copy of
+    /// that row held by All, or swiping across shows it still unread until the
+    /// next network sync.
+    ///
+    /// The generation is bumped, and then this model's own cursor is moved
+    /// PAST that bump. Without the second half the mutating model would
+    /// reload itself on its next poll -- a full reset, which scrolls the list
+    /// back to the top under the finger that just tapped. `mark_row` has
+    /// already patched this model's own row in place; the bump is for everyone
+    /// else.
+    fn announce_local_change(&mut self, ctx: &AppContext) {
+        ctx.signal().bump();
+        self.seen_generation = ctx.signal().generation();
     }
 
     fn requestSync(&mut self) {
@@ -447,6 +467,7 @@ impl EntryModel {
         };
         if done {
             self.reload();
+            self.announce_local_change(&ctx);
             ctx.send(Command::FlushOutbox);
         }
     }
@@ -1103,5 +1124,156 @@ mod tests {
             signal.take_notice().is_some(),
             "and it must still be there for the page that owns it"
         );
+    }
+}
+
+#[cfg(test)]
+mod row_decoration_tests {
+    use super::*;
+    use vuo_core::model::{Entry, EntryStatus, Feed, FeedId, Icon, IconId, ImageFormat};
+
+    /// A mirror with one feed, one icon and one entry, and a context on it.
+    fn seeded() -> (tempfile::TempDir, std::rc::Rc<AppContext>) {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("m.sqlite");
+        let mut db = vuo_core::db::Database::open(&path).expect("mirror");
+
+        // A one-pixel PNG, so the format sniffing in the mirror is exercised
+        // rather than bypassed.
+        let png: Vec<u8> = vec![
+            0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48,
+            0x44, 0x52,
+        ];
+
+        db.with_tx(|tx| {
+            store::upsert_icon(
+                tx,
+                &Icon {
+                    id: IconId(5),
+                    format: ImageFormat::Png,
+                    bytes: png.clone(),
+                    dimensions: Some((1, 1)),
+                },
+            )?;
+            store::upsert_feed(
+                tx,
+                &Feed {
+                    id: FeedId(1),
+                    category_id: None,
+                    title: "Tagesschau".to_owned(),
+                    site_url: None,
+                    feed_url: None,
+                    icon_id: Some(IconId(5)),
+                    checked_at: None,
+                    parsing_error_message: String::new(),
+                    parsing_error_count: 0,
+                    disabled: false,
+                    hide_globally: false,
+                    crawler: true,
+                },
+                1,
+            )?;
+            store::upsert_entry(
+                tx,
+                &Entry {
+                    id: EntryId(7),
+                    feed_id: FeedId(1),
+                    status: EntryStatus::Unread,
+                    starred: false,
+                    title: "Island".to_owned(),
+                    url: None,
+                    comments_url: None,
+                    author: String::new(),
+                    content: String::new(),
+                    published_at: None,
+                    created_at: None,
+                    changed_at: None,
+                    reading_time: 2,
+                    tags: Vec::new(),
+                    enclosures: Vec::new(),
+                },
+                1,
+            )
+        })
+        .expect("seed");
+
+        let signal = std::sync::Arc::new(crate::context::SyncSignal::default());
+        let instance = url::Url::parse("https://miniflux.example/").expect("url");
+        let worker = crate::worker::Worker::spawn(
+            path.clone(),
+            instance.clone(),
+            vuo_core::redact::ApiToken::new("t"),
+            vuo_core::api::TransportConfig::default(),
+            std::sync::Arc::clone(&signal),
+            |_| {},
+        );
+        let ctx = AppContext::new(db, worker, instance, signal, 0);
+        (dir, ctx)
+    }
+
+    /// §an entry row carries the feed it came from.
+    ///
+    /// Reported from a device: the list showed the age but neither the feed's
+    /// name nor its icon, so every row looked like it came from nowhere.
+    #[test]
+    fn an_entry_row_carries_its_feed_name_and_icon() {
+        let (_dir, ctx) = seeded();
+        let mut model = EntryModel::default();
+        model.attach(std::rc::Rc::clone(&ctx));
+        model.setScope(0, 0);
+
+        assert_eq!(model.row_count(), 1, "the seeded entry is unread");
+        let row = model.rows().first().expect("one row");
+        assert_eq!(
+            row.feed_name, "Tagesschau",
+            "the row must name the feed it came from"
+        );
+        assert!(
+            row.feed_icon.starts_with("data:image/png;base64,"),
+            "and carry its icon as a data URI, got {:?}",
+            row.feed_icon
+        );
+
+        // The names are half the contract: the delegate reaches these by the
+        // bare word, and a role that is present in Rust but unnamed here is
+        // simply `undefined` in QML.
+        let names = <EntryModel as QAbstractListModel>::role_names(&model);
+        for (role, name) in [(ROLE_FEED_NAME, "feedName"), (ROLE_FEED_ICON, "feedIcon")] {
+            assert_eq!(
+                names.get(&role).map(std::string::ToString::to_string),
+                Some(name.to_owned()),
+                "QML reaches this role by name"
+            );
+        }
+    }
+
+    /// §the feed list exposes the settings the editor writes.
+    ///
+    /// Reported from a device: "Feed settings" did nothing at all. The menu
+    /// item passes these three roles straight into the pushed page, so a role
+    /// that does not resolve makes the whole push throw.
+    #[test]
+    fn a_feed_row_carries_the_settings_the_editor_edits() {
+        let (_dir, ctx) = seeded();
+        let mut model = FeedModel::default();
+        model.attach(std::rc::Rc::clone(&ctx));
+
+        assert_eq!(model.row_count(), 1);
+        let row = model.rows().first().expect("one row");
+        assert!(row.crawler, "the seeded feed has the crawler on");
+        assert!(!row.disabled);
+        assert!(!row.hide_globally);
+        let names = <FeedModel as QAbstractListModel>::role_names(&model);
+        for (role, name) in [
+            (ROLE_FEED_CRAWLER, "crawler"),
+            (ROLE_FEED_DISABLED, "feedDisabled"),
+            (ROLE_FEED_HIDDEN, "hideGlobally"),
+        ] {
+            assert_eq!(
+                names.get(&role).map(|n| n.to_string()),
+                Some(name.to_owned()),
+                "QML reaches this role by name, and the editor's push needs it"
+            );
+        }
     }
 }

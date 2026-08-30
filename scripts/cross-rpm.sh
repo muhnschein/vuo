@@ -10,7 +10,18 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 TRIPLE=aarch64-unknown-linux-gnu
 BIN="target/$TRIPLE/release/harbour-vuo"
-[ -f "$BIN" ] || { echo "no $BIN -- run scripts/cross-build.sh first" >&2; exit 1; }
+
+# Build, every time, rather than packaging whatever happens to be on disk.
+#
+# This used to be a bare `[ -f "$BIN" ]` guard with "run scripts/cross-build.sh
+# first" in the message. That only catches a MISSING binary, never a stale one
+# -- so an RPM was once shipped to a device with thirteen hours of Rust changes
+# absent and only the QML fresh. Every new model role read as empty and every
+# new method was undefined, which on the device looked like five unrelated
+# feature bugs. Cargo makes the no-op case cheap; the guard did not make the
+# wrong case detectable.
+"$ROOT/scripts/cross-build.sh" "$@"
+[ -f "$BIN" ] || { echo "cross-build.sh produced no $BIN" >&2; exit 1; }
 
 command -v rpmbuild >/dev/null || { echo "rpmbuild not found" >&2; exit 127; }
 

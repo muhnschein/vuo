@@ -107,14 +107,20 @@ fn every_scope_tab_has_a_scope_kind() {
         .ancestors()
         .nth(2)
         .expect("the workspace root");
-    let source = std::fs::read_to_string(root.join("qml/pages/EntryListPage.qml"))
+    // The kinds live with the page that owns the pager; the titles live with
+    // the strip, which is inside the list's header (it has to be below the
+    // pulley's indicator line). Both halves of the invariant are still one
+    // array each -- they are just in two files now.
+    let page = std::fs::read_to_string(root.join("qml/pages/EntryListPage.qml"))
         .expect("EntryListPage.qml");
+    let view = std::fs::read_to_string(root.join("qml/components/EntryListView.qml"))
+        .expect("EntryListView.qml");
 
-    let array_len = |needle: &str| -> usize {
+    let array_len = |source: &str, needle: &str| -> usize {
         let line = source
             .lines()
             .find(|l| l.trim_start().starts_with(needle))
-            .unwrap_or_else(|| panic!("no line starting `{needle}` in EntryListPage.qml"));
+            .unwrap_or_else(|| panic!("no line starting `{needle}`"));
         let open = line.find('[').expect("an array literal");
         let close = line[open..].find(']').expect("a closed array literal") + open;
         let inner = line[open + 1..close].trim();
@@ -125,8 +131,8 @@ fn every_scope_tab_has_a_scope_kind() {
         }
     };
 
-    let kinds = array_len("property var scopeTabKinds:");
-    let titles = array_len("titles:");
+    let kinds = array_len(&page, "property var scopeTabKinds:");
+    let titles = array_len(&view, "titles:");
     assert_eq!(
         kinds, titles,
         "the strip shows {titles} tabs but the page maps {kinds} scope kinds; \
@@ -276,13 +282,12 @@ const ROLES_QML_DOES_NOT_USE: &[&str] = &[
     "codeLanguage",
     // List numbering comes from the pre-rendered `marker`.
     "ordered",
-    // Feed browsing is by feed; categories are stored but not yet a UI axis.
-    "categoryId",
-    // The list shows `readingTime` and `unread`, not a timestamp; and the
-    // article URL reaches the browser through `article.openInBrowser()`,
-    // which returns it, rather than through the role.
-    "published",
-    "url",
+    // The entry list's detail line is feed | age | reading time | star. An
+    // author was there once and was removed on request: it duplicated the
+    // feed name for most feeds and pushed the line that actually identifies
+    // the article off the row. The role stays because the mirror has it and a
+    // future article header is the obvious place for it.
+    "author",
 ];
 
 /// QML and Silica names that legitimately appear as bare camelCase words in a
@@ -320,6 +325,34 @@ fn looks_like_a_role(word: &str) -> bool {
 /// and a property being set (`textFormat:`) are both excluded. Member accesses
 /// are the other test's job, and a name on the left of a colon is a property
 /// this QML declares rather than a value it reads.
+/// Blank out `/* ... */` comments, keeping every newline so line numbers hold.
+fn strip_block_comments(source: &str) -> String {
+    let mut out = String::with_capacity(source.len());
+    let mut chars = source.chars().peekable();
+    let mut depth = 0usize;
+    while let Some(c) = chars.next() {
+        if depth == 0 && c == '/' && chars.peek() == Some(&'*') {
+            chars.next();
+            depth += 1;
+            continue;
+        }
+        if depth > 0 && c == '*' && chars.peek() == Some(&'/') {
+            chars.next();
+            depth -= 1;
+            continue;
+        }
+        if depth > 0 {
+            // Keep the newlines, drop the prose.
+            if c == '\n' {
+                out.push('\n');
+            }
+            continue;
+        }
+        out.push(c);
+    }
+    out
+}
+
 fn bare_identifiers(line: &str) -> Vec<String> {
     let code = line.split("//").next().unwrap_or("");
 
@@ -377,6 +410,20 @@ fn qml_declared_identifiers(files: &[PathBuf]) -> BTreeSet<String> {
         let source = std::fs::read_to_string(file).expect("read qml");
         for line in source.lines() {
             let code = line.split("//").next().unwrap_or("").trim();
+
+            // `id:` anywhere on the line, not just at its start. The usual
+            // form is `EntryModel { id: entries }`, which this used to miss
+            // entirely -- so every id that happened to look like a role name
+            // was reported as an undefined role.
+            let mut scan = code.split_whitespace().peekable();
+            while let Some(word) = scan.next() {
+                if word == "id:" {
+                    if let Some(name) = scan.peek() {
+                        names.insert((*name).trim_end_matches('}').trim().to_owned());
+                    }
+                }
+            }
+
             let mut words = code.split_whitespace();
             match words.next() {
                 Some("property") => {
@@ -448,6 +495,11 @@ fn every_role_the_delegates_use_is_exposed_by_a_model() {
 
     for file in &files {
         let source = std::fs::read_to_string(file).expect("read qml");
+        // `/* ... */` blocks are prose, like `//` lines. Naming a role while
+        // explaining why the code does what it does is not a reference to it.
+        // Blanked rather than removed so the reported line numbers still point
+        // at the real line.
+        let source = strip_block_comments(&source);
         for (lineno, line) in source.lines().enumerate() {
             for word in bare_identifiers(line) {
                 if roles.contains(&word) {

@@ -34,7 +34,18 @@ ApplicationWindow {
     // The models are Rust QObjects. They read the local SQLite mirror, which
     // is the single source of truth for the UI; nothing here waits on the
     // network.
+    // One model per scope tab, each fixed to its own scope for the life of
+    // the app.
+    //
+    // There used to be a single EntryModel that every list re-scoped. That
+    // made a neighbouring tab impossible to keep populated -- it could only
+    // show rows once the swipe had settled and the scope had been applied, so
+    // every swipe arrived on a blank page that filled a moment later. Three
+    // models cost three queries against an already-open SQLite connection and
+    // let all three tabs stay laid out at all times.
     EntryModel { id: entries }
+    EntryModel { id: starredEntries }
+    EntryModel { id: allEntries }
     FeedModel { id: feeds }
 
     // Models observe SQLite, and the worker writes to SQLite from another
@@ -47,20 +58,35 @@ ApplicationWindow {
         repeat: true
         running: true
         onTriggered: {
-            if (entries.pollSync()) {
+            // Every model is polled, not just the first: a local mutation on
+            // one tab bumps the generation so the others pick the change up,
+            // and `pollSync` is the only thing that looks.
+            var changed = entries.pollSync()
+            changed = starredEntries.pollSync() || changed
+            changed = allEntries.pollSync() || changed
+            if (changed) {
                 feeds.pollSync()
             }
         }
     }
 
     Component.onCompleted: {
-        // 0 = unread. The models are empty until a scope is set.
+        // The models are empty until a scope is set. 0 unread, 1 starred,
+        // 2 all -- see models::Scope.
         entries.setScope(0, 0)
+        starredEntries.setScope(1, 0)
+        allEntries.setScope(2, 0)
         feeds.refresh()
     }
 
     initialPage: Component {
-        EntryListPage { model: entries; feedModel: feeds; scopeKind: 0 }
+        EntryListPage {
+            // In `scopeTabKinds` order: unread, starred, all.
+            scopeModels: [entries, starredEntries, allEntries]
+            model: entries
+            feedModel: feeds
+            scopeKind: 0
+        }
     }
 
     // The cover is a separate Component so its bindings can reach `entries`

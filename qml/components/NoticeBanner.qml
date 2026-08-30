@@ -44,6 +44,27 @@ DockedPanel {
     width: parent ? parent.width : 0
     height: content.height + Theme.paddingLarge
 
+    // An OPAQUE background, replacing DockedPanel's default PanelBackground.
+    //
+    // That default is a gradient that fades to transparent, which is right for
+    // a panel the user has deliberately pulled open and wrong for a banner
+    // that appears on its own: reported from a device as "barely readable --
+    // the content under it shines through". `Theme.overlayBackgroundColor` is
+    // the public, fully opaque colour Silica uses for exactly this, and it
+    // follows the ambience rather than pinning a shade.
+    background: Rectangle {
+        color: Theme.overlayBackgroundColor
+
+        // A hairline so the banner reads as a surface sitting ON the page
+        // rather than as a hole punched in it.
+        Rectangle {
+            anchors { top: parent.top; left: parent.left; right: parent.right }
+            height: Theme._lineWidth
+            color: banner.isError ? Theme.errorColor
+                                  : Theme.rgba(Theme.highlightColor, 0.4)
+        }
+    }
+
     /// Show `text`. `error` colours it; `action` (a translated constant, or
     /// empty) adds a button.
     ///

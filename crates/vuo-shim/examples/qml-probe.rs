@@ -16,6 +16,19 @@ fn main() {
         eprintln!("usage: qml-probe <file.qml>");
         std::process::exit(2);
     };
+    // Build the app context from $HOME before loading, so the models can
+    // actually read a mirror.
+    //
+    // Without this a probe sees three empty lists and cannot tell "the roles
+    // are wrong" from "there is no data" -- which is exactly the confusion
+    // that let an entry row ship with no feed name on it. Opt-in, because a
+    // probe of a page's first-appearance geometry wants no worker thread.
+    if std::env::var_os("VUO_PROBE_CONTEXT").is_some() {
+        match vuo_shim::context::refresh_current() {
+            Some(_) => eprintln!("qml-probe: context built from $HOME"),
+            None => eprintln!("qml-probe: NO context -- is there an account.json?"),
+        }
+    }
     vuo_shim::register_qml_types();
     let mut engine = qmetaobject::QmlEngine::new();
     engine.load_file(qmetaobject::QString::from(path));

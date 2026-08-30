@@ -86,7 +86,7 @@ Page {
             // come with it: pushing `feedId` set a property that does not
             // exist and omitted `model` entirely, so the page opened empty.
             onClicked: pageStack.push(Qt.resolvedUrl("EntryListPage.qml"), {
-                model: page.model ? page.entryModel : null,
+                model: page.entryModel,
                 feedModel: page.model,
                 scopeLabel: qsTr("Feed"),
                 title: title,
