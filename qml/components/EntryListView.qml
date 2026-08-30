@@ -27,8 +27,10 @@ SilicaListView {
     property bool showScopeTabs: false
     /// Which tab this list is. -1 when there is no strip.
     property int tabIndex: -1
-    /// How much vertical room the page's pinned strip needs, gap included.
-    property real tabStripHeight: 0
+    /// Breathing room above the first row, for the tabbed scopes that have no
+    /// PageHeader of their own. NOT room for the strip: the strip sits above
+    /// this list rather than over it, and the page insets the pager instead.
+    property real topPadding: 0
 
     // Scope this tab's own model, once. A feed or category view is scoped by
     // the page instead, because its scope is a parameter of the push.
@@ -38,21 +40,13 @@ SilicaListView {
     property string scopeLabel: ""
     property string title: ""
 
-    // Clipped while scrolling, un-clipped while the pulley is out.
-    //
-    // Clipping is what keeps rows scrolled past the top from painting over
-    // the strip -- Silica buys the same thing with an opaque background
-    // filled from a colour that is not public API. But the pulley menu
-    // lives in the flickable's content ABOVE the viewport, so clipping
-    // also trims the menu at the strip's bottom edge, which is the other
-    // half of the menu opening "underneath" the tabs. Silica's TabItem
-    // makes exactly this trade the other way round and for the same
-    // reason: `clip: !flickable.pullDownMenu` (private/TabItem.qml:63).
-    // Gating on the pull means neither case is ever wrong: nothing is
-    // scrolled past the top at the moment the menu is being pulled out.
-    // Unconditional now. The list spans the whole page, so the pulley menu --
-    // which lives at negative content coordinates, above `originY` -- is
-    // revealed INSIDE these bounds rather than needing to paint outside them.
+    // This list keeps everything it draws inside its own bounds, and the page
+    // starts those bounds below the tab strip -- so a row scrolled past the
+    // top stops at the strip's lower edge instead of passing behind it, with
+    // no opaque backdrop needed to hide it (see the note in EntryListPage).
+    // The pulley menu lives at negative content coordinates, above `originY`,
+    // and is revealed INSIDE these bounds too, which is why it now opens
+    // under the strip rather than over it.
     clip: true
     // Always bound, never re-bound on a swipe.
     //
@@ -62,37 +56,6 @@ SilicaListView {
     // and only filled once the swipe settled. Its rows are already loaded and
     // laid out before the finger moves now.
     model: listView.entryModel
-
-    // PageHeader's own title label offers no supported way to force its
-    // textFormat, and `listView.title` can be a FEED NAME -- foreign text
-    // chosen by the feed operator. §9.3: a crafted title in a rich-text
-    // context is markup injection, and can pull a remote image that leaks
-    // the device's IP on a list scroll. So the header carries a fixed
-    // string and the name is rendered by a Label this file controls.
-    // An Item with explicit `y` bindings, NOT a Column.
-    //
-    // A Column here silently mislaid the tab strip: measured on the device's
-    // own Qt 5.6, the header Column reported height 12 while the strip inside
-    // it was 110 tall and still sitting at y 0. The strip's height arrives a
-    // beat after the header is built (it depends on `showScopeTabs`, which is
-    // a binding, and on font metrics), and a Qt 5.6 positioner inside a
-    // ListView header does not re-position its children when that happens --
-    // so the strip drew on top of the first row and the list's `originY` was
-    // 12 instead of 122. The same Column outside a header lays out correctly,
-    // which is what made this worth writing down. Explicit `y` bindings
-    // re-evaluate whenever what they depend on changes, so the late height is
-    // not a problem.
-    /// How far this list has been pulled past its top, as a positive number.
-    ///
-    /// `contentY - originY` is the expression Silica's own TabItem uses
-    /// (private/TabItem.qml:47-49). The page reads it off whichever list is in
-    /// front, exactly as Silica reads `yOffset` off `currentItem`
-    /// (private/TabView.qml:51).
-    readonly property real pullDistance: listView.contentY < listView.originY
-                                         ? listView.originY - listView.contentY
-                                         : 0
-    /// True while nothing has been scrolled past the top.
-    readonly property bool atTop: listView.contentY <= listView.originY
 
     // An Item with explicit `y` bindings, NOT a Column.
     //
@@ -109,16 +72,13 @@ SilicaListView {
         width: listView.width
         height: nameLabel.y + (nameLabel.visible ? nameLabel.height : 0)
 
-        // Room for the tab strip, which is pinned by the PAGE rather than
-        // scrolled with this list -- it must not slide away under a scroll,
-        // and it must not travel sideways with a swipe. This reserves the
-        // space it occupies, including the gap above it that the pulley's
-        // resting indicator shows through.
+        // A tabbed scope has no PageHeader, so without this the first row
+        // would butt straight up against the strip above it.
         Item {
             id: stripSpace
 
             width: 1
-            height: listView.showScopeTabs ? listView.tabStripHeight : 0
+            height: listView.topPadding
         }
 
         // Only for the scopes the strip does not cover.
@@ -241,6 +201,12 @@ SilicaListView {
         font.pixelSize: Theme.fontSizeExtraSmall
     }
 
+    /// The title's line box, which is what the favicon is centred on.
+    FontMetrics {
+        id: titleMetrics
+        font.pixelSize: Theme.fontSizeMedium
+    }
+
     delegate: ListItem {
         id: item
         contentHeight: column.height + Theme.paddingMedium * 2
@@ -250,7 +216,11 @@ SilicaListView {
         /// A fixed gutter, so every row's text starts on the same vertical
         /// line: sizing it to the icon meant rows with an icon were indented
         /// and rows without were not, and a list mixing the two looked ragged.
-        readonly property real gutter: Theme.fontSizeMedium + Theme.paddingSmall
+        ///
+        /// `paddingMedium` after the icon, not `paddingSmall`: at 6px against a
+        /// 32px icon the gap read as the icon touching the headline. 12px is
+        /// the next step Silica offers.
+        readonly property real gutter: Theme.fontSizeMedium + Theme.paddingMedium
 
         Row {
             id: column
@@ -267,10 +237,24 @@ SilicaListView {
                 height: 1
 
                 Image {
-                    // Aligned to the title's FIRST line, so a headline that
-                    // wraps to three lines does not strand the icon in the
-                    // middle of the block.
-                    y: Math.round((titleLabel.font.pixelSize - height) / 2)
+                    // Centred on the title's FIRST LINE BOX, so a headline
+                    // that wraps to three lines does not strand the icon in
+                    // the middle of the block.
+                    //
+                    // Measured against `font.pixelSize` this was always y 0 --
+                    // the icon is itself `fontSizeMedium` tall, so the
+                    // expression could only ever yield zero -- and zero is too
+                    // high, which is what the device reported. A line box is
+                    // taller than the pixel size, and the glyphs sit low in it.
+                    //
+                    // From SailSansPro-Light.ttf itself, at fontSizeMedium (32)
+                    // and pixelRatio 1: ascent 31.49, descent 8.74, so the line
+                    // box is 40.22 and the capital ink runs 10.40..31.49 with
+                    // its centre at 20.94. The old y put the icon's centre at
+                    // 16.0 -- 4.9px high, and more on a device whose pixel
+                    // ratio is above 1. Centring on the line box puts it at
+                    // 20.0, within a pixel of the ink.
+                    y: Math.round((titleMetrics.height - height) / 2)
                     width: Theme.fontSizeMedium
                     height: Theme.fontSizeMedium
                     sourceSize.width: Theme.fontSizeMedium

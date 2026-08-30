@@ -167,17 +167,9 @@ Page {
                 }
             }
 
+            // Bottom padding, so the last switch is not flush against the
+            // edge of the flickable.
             Item { width: 1; height: Theme.paddingLarge }
-
-            Label {
-                x: Theme.horizontalPageMargin
-                width: parent.width - Theme.horizontalPageMargin * 2
-                wrapMode: Text.Wrap
-                textFormat: Text.PlainText
-                font.pixelSize: Theme.fontSizeExtraSmall
-                color: Theme.secondaryColor
-                text: page.saving ? qsTr("Saving\u2026") : qsTr("Changes are saved automatically.")
-            }
         }
 
         VerticalScrollDecorator {}
