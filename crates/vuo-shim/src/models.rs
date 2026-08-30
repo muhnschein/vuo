@@ -159,6 +159,22 @@ pub struct EntryModel {
     /// than set locally, so it clears when the worker actually finishes.
     syncing: qt_property!(bool; READ is_syncing NOTIFY syncingChanged),
     syncingChanged: qt_signal!(),
+
+    /// Why the last refresh failed, or empty when the last one was fine.
+    ///
+    /// State on the model rather than a one-shot signal: the failure has to
+    /// survive being produced while the app is on its cover (the cover has a
+    /// Refresh of its own and no page to receive a signal), and it has to
+    /// survive a page that is not currently the visible one. FOREIGN TEXT --
+    /// the server's own words -- so the page renders it as PlainText.
+    pub syncError: qt_property!(QString; NOTIFY syncStateChanged),
+    /// True when the failure was the server rejecting the API key.
+    ///
+    /// The page shows a fixed translated line for this and offers Settings;
+    /// `syncError` is empty in that case, because a server's phrasing for a
+    /// bad key tells the user nothing they can act on.
+    pub syncErrorIsAuth: qt_property!(bool; NOTIFY syncStateChanged),
+    syncStateChanged: qt_signal!(),
     /// Poll for worker activity. Called from a QML Timer.
     ///
     /// A poll rather than a push: QML owns these objects, so Rust has no list
@@ -177,6 +193,15 @@ pub struct EntryModel {
     scope: Option<Scope>,
     /// The worker generation this model last reloaded at.
     seen_generation: u64,
+    /// The spinner state this model last told QML about.
+    ///
+    /// `syncing` is READ + NOTIFY, so QML re-evaluates it only when
+    /// `syncingChanged` fires -- and the only emitter was below the generation
+    /// early-return. A failure that cleared the flag without changing the
+    /// mirror therefore never reached the binding, and the spinner kept
+    /// spinning on a flag that was already false. Tracking it here means the
+    /// signal fires on the transition itself, whatever the generation did.
+    seen_running: bool,
     /// `None` until [`EntryModel::attach`] is called from Rust — QML never
     /// constructs this.
     ctx: Option<std::rc::Rc<AppContext>>,
@@ -242,6 +267,12 @@ impl EntryModel {
         let Some(ctx) = self.context().or_else(crate::context::refresh_current) else {
             return;
         };
+        // A new attempt supersedes whatever the last one said.
+        if !self.syncError.to_string().is_empty() || self.syncErrorIsAuth {
+            self.syncError = QString::from(String::new());
+            self.syncErrorIsAuth = false;
+            self.syncStateChanged();
+        }
         // Set before sending, not after: the worker clears this flag when the
         // command finishes, and a fast failure can beat us to it. Setting it
         // afterwards would leave the spinner running forever.
@@ -261,14 +292,45 @@ impl EntryModel {
         let Some(ctx) = self.context() else {
             return false;
         };
+
+        // The spinner first, and BEFORE the generation guard. A refresh that
+        // fails changes the running flag without necessarily changing the
+        // mirror, and that is exactly the case the old order could not report.
+        let running = ctx.signal().is_running();
+        if running != self.seen_running {
+            self.seen_running = running;
+            self.syncingChanged();
+        }
+
+        // Then anything the worker left for the user to read. Drained here, in
+        // the one app-wide poll, rather than by a Timer on each page: several
+        // EntryListPages are alive at once (the feed views), and per-page
+        // timers would race for a slot that holds exactly one notice.
+        self.drain_notice(ctx.signal());
+
         let generation = ctx.signal().generation();
         if generation == self.seen_generation {
             return false;
         }
         self.seen_generation = generation;
         self.reload();
-        self.syncingChanged();
         true
+    }
+
+    /// Take a sync failure off the signal, if one is waiting.
+    ///
+    /// Anything this model does not own is put back for the page that does --
+    /// the same discipline `Settings::poll_notice_from` follows.
+    pub fn drain_notice(&mut self, signal: &crate::context::SyncSignal) {
+        match signal.take_notice() {
+            Some(crate::context::Notice::SyncFailed { auth, message }) => {
+                self.syncErrorIsAuth = auth;
+                self.syncError = QString::from(message);
+                self.syncStateChanged();
+            }
+            Some(other) => signal.post(other),
+            None => {}
+        }
     }
 
     fn unread_total(&self) -> i32 {
@@ -385,6 +447,15 @@ impl EntryModel {
         let Ok(i) = i32::try_from(index) else { return };
         let model_index = (self as &mut dyn QAbstractListModel).row_index(i);
         (self as &mut dyn QAbstractListModel).data_changed(model_index, model_index);
+        // A read/unread change moves `unreadTotal`, and that is what the app
+        // cover shows. `countChanged` is its only NOTIFY and used to fire from
+        // `reload()` alone, so marking an entry read left the cover's badge
+        // stale until the next sync happened to reload the model. Harmless
+        // when it took a deliberate context-menu tap; glaring once opening an
+        // article marks it read on its own.
+        if unread.is_some() {
+            self.countChanged();
+        }
     }
 
     #[must_use]
@@ -618,5 +689,75 @@ impl QAbstractListModel for FeedModel {
         names.insert(ROLE_FEED_ERROR, "errorMessage".into());
         names.insert(ROLE_FEED_CATEGORY, "categoryId".into());
         names
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::context::{Notice, SyncSignal};
+
+    /// §a failed refresh reaches the screen, and stops the spinner.
+    ///
+    /// Reported from a device twice over: a refresh that timed out span
+    /// forever AND said nothing. The spinner half is the read side of it --
+    /// `syncing` is READ + NOTIFY, and the only emitter of `syncingChanged`
+    /// sat BELOW the generation early-return, so a failure that cleared the
+    /// running flag without changing the mirror never reached the binding.
+    #[test]
+    fn a_failure_that_changed_nothing_still_repaints_and_still_speaks() {
+        let signal = SyncSignal::default();
+        let mut model = EntryModel::default();
+
+        // As the Qt thread does when the user pulls to refresh.
+        signal.set_running(true);
+        model.seen_running = true;
+
+        // As the worker's guard does on a failed refresh: the mirror did not
+        // change, so the generation stays exactly where it was.
+        let before = signal.generation();
+        signal.set_running(false);
+        signal.post(Notice::SyncFailed {
+            auth: false,
+            message: "could not reach the server".to_owned(),
+        });
+        assert_eq!(signal.generation(), before, "nothing changed the mirror");
+
+        // The poll must notice the transition anyway.
+        model.drain_notice(&signal);
+        assert_eq!(model.syncError.to_string(), "could not reach the server");
+        assert!(!model.syncErrorIsAuth);
+
+        // A rejected key is reported as such, with no server text: the page
+        // supplies its own translated line for that case.
+        signal.post(Notice::SyncFailed {
+            auth: true,
+            message: String::new(),
+        });
+        model.drain_notice(&signal);
+        assert!(model.syncErrorIsAuth);
+        assert_eq!(model.syncError.to_string(), "");
+    }
+
+    /// A notice this model does not own is left for the page that does.
+    #[test]
+    fn a_notice_for_another_page_is_put_back() {
+        let signal = SyncSignal::default();
+        let mut model = EntryModel::default();
+
+        signal.post(Notice::ConnectionTested {
+            ok: true,
+            message: "alice".to_owned(),
+        });
+        model.drain_notice(&signal);
+        assert_eq!(
+            model.syncError.to_string(),
+            "",
+            "the settings screen's answer is not this page's to consume"
+        );
+        assert!(
+            signal.take_notice().is_some(),
+            "and it must still be there for the page that owns it"
+        );
     }
 }

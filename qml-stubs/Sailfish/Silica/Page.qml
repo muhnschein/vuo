@@ -6,4 +6,6 @@ Item {
     property bool forwardNavigation: true
     property Item pageStack
     property int status: 1
+    property bool isPortrait: true
+    property bool isLandscape: false
 }

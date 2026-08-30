@@ -30,6 +30,11 @@ pub struct AppContext {
     /// Images control was wired to nothing and a user who chose Strict still
     /// got Ask (§9.3).
     media_policy: std::cell::Cell<i32>,
+    /// The user's "mark read when opened" setting (`settings::MARK_READ_*`).
+    ///
+    /// Here for the same reason `media_policy` is: `Settings` and
+    /// `ArticleModel` are both constructed by QML and cannot reach each other.
+    mark_read_delay_index: std::cell::Cell<i32>,
     /// Bumped by the worker when the mirror changes; polled by the models.
     signal: std::sync::Arc<SyncSignal>,
     /// Which stored account this context was built for; see [`fingerprint`].
@@ -70,6 +75,7 @@ impl AppContext {
             commands,
             instance,
             media_policy: std::cell::Cell::new(crate::settings::MEDIA_ASK),
+            mark_read_delay_index: std::cell::Cell::new(crate::settings::MARK_READ_DEFAULT_INDEX),
             signal,
             fingerprint,
             worker: RefCell::new(Some(worker)),
@@ -125,6 +131,17 @@ impl AppContext {
     /// Record the Images setting. Called on start-up and whenever it is saved.
     pub fn set_media_policy(&self, policy: i32) {
         self.media_policy.set(policy);
+    }
+
+    /// The user's "mark read when opened" setting.
+    #[must_use]
+    pub fn mark_read_delay_index(&self) -> i32 {
+        self.mark_read_delay_index.get()
+    }
+
+    /// Record it. Called on start-up and whenever Settings is saved.
+    pub fn set_mark_read_delay_index(&self, index: i32) {
+        self.mark_read_delay_index.set(index);
     }
 
     /// Borrow the mirror for a read.
@@ -275,6 +292,7 @@ fn build_from(
     // Seed the Images setting from the stored account, so the first article
     // opened after this honours it rather than falling back to Ask.
     ctx.set_media_policy(account.media_policy);
+    ctx.set_mark_read_delay_index(account.mark_read_delay_index);
     Ok(ctx)
 }
 
@@ -532,6 +550,18 @@ pub enum Notice {
     /// A subscribe or unsubscribe finished. `message` is the server's error
     /// text when it failed -- foreign text, so it renders as plain text.
     SubscriptionChanged { ok: bool, message: String },
+    /// A refresh failed. `message` is foreign text; render it as plain text.
+    ///
+    /// `auth` distinguishes "the server rejected the key" from everything
+    /// else, because the two ask different things of the user -- go and fix
+    /// the key, versus try again later. A bool rather than a second variant:
+    /// a variant would duplicate the take-and-re-post plumbing on every page
+    /// that drains this slot, for one bit.
+    ///
+    /// On `auth` the message is deliberately EMPTY. The server's own text for
+    /// a rejected key says nothing a user can act on, and the page supplies a
+    /// fixed translated line instead.
+    SyncFailed { auth: bool, message: String },
 }
 
 impl SyncSignal {

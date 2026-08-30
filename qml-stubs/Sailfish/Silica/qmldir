@@ -14,6 +14,7 @@ singleton Theme 1.0 Theme.qml
 Orientation 1.0 Orientation.qml
 TruncationMode 1.0 TruncationMode.qml
 BusyIndicatorSize 1.0 BusyIndicatorSize.qml
+PageStatus 1.0 PageStatus.qml
 
 ApplicationWindow 1.0 ApplicationWindow.qml
 Page 1.0 Page.qml
@@ -48,3 +49,4 @@ CoverBackground 1.0 CoverBackground.qml
 CoverActionList 1.0 CoverActionList.qml
 CoverAction 1.0 CoverAction.qml
 Notification 1.0 Notification.qml
+singleton Screen 1.0 Screen.qml

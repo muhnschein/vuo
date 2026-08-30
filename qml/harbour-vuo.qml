@@ -25,7 +25,11 @@ import "cover"
 ApplicationWindow {
     id: app
 
-    property alias unreadCount: entries.count
+    // `unreadCount: entries.count` used to live here. `entries` is now
+    // re-scoped in place by the tab strip, so an app-level property of that
+    // name would report the starred or all-entries row count. It was already
+    // dead -- the cover binds entries.unreadTotal -- and leaving it would be a
+    // trap for whoever bound to it next.
 
     // The models are Rust QObjects. They read the local SQLite mirror, which
     // is the single source of truth for the UI; nothing here waits on the
