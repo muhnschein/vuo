@@ -204,6 +204,28 @@ pub struct ArticleModel {
     /// Consent to loading images from the origin of the block at `row`, for
     /// this article. Re-transforms so the placeholders become images.
     allowImagesFrom: qt_method!(fn(&mut self, row: i32)),
+    /// Re-read the open article when the worker has changed the mirror.
+    ///
+    /// This model had no poll at all, which is why "Fetch original content"
+    /// looked like a menu item wired to nothing: the scrape really did run and
+    /// the scraped body really was written to SQLite, but nothing told the
+    /// OPEN page to read it again, so it appeared only if you left the article
+    /// and came back. See `EntryModel::pollSync`, the same pattern.
+    pollSync: qt_method!(fn(&mut self) -> bool),
+    /// True while a scrape is in flight, so the page can say something.
+    pub fetching: qt_property!(bool; NOTIFY fetchingChanged),
+    fetchingChanged: qt_signal!(),
+    /// How long the open article must stay on screen before it counts as
+    /// read: -1 never, 0 immediately, otherwise milliseconds.
+    ///
+    /// Milliseconds because the page drives a QML `Timer` with it directly.
+    pub markReadDelayMs: qt_property!(i32; READ mark_read_delay_ms NOTIFY entryStateChanged),
+    /// Mark the open article read. Idempotent, and never a toggle.
+    ///
+    /// Deliberately not `toggleRead`: this fires against whatever happens to
+    /// be open, and a toggle would mark an already-read article UNREAD --
+    /// re-opening something you had read would quietly resurrect it.
+    markRead: qt_method!(fn(&mut self)),
     /// Flip read/unread, and flip starred, for the open article.
     ///
     /// Local first and enqueued, exactly as the entry list's own toggles are:
@@ -213,6 +235,8 @@ pub struct ArticleModel {
     toggleStarred: qt_method!(fn(&mut self)),
 
     rows: Vec<BlockRow>,
+    /// The worker generation this model last re-read at.
+    seen_generation: u64,
     entry_id: i64,
     article_url: String,
     /// Origins the user has agreed to for this article view.
@@ -290,11 +314,42 @@ impl ArticleModel {
 
     fn fetchOriginal(&mut self) {
         let Some(ctx) = self.context() else { return };
-        if self.entry_id != 0 {
-            ctx.send(Command::FetchOriginal {
-                entry_id: self.entry_id,
-            });
+        if self.entry_id == 0 {
+            return;
         }
+        if ctx.send(Command::FetchOriginal {
+            entry_id: self.entry_id,
+        }) {
+            self.fetching = true;
+            self.fetchingChanged();
+        }
+    }
+
+    fn pollSync(&mut self) -> bool {
+        let Some(ctx) = self.context() else {
+            return false;
+        };
+        let generation = ctx.signal().generation();
+        if generation == self.seen_generation {
+            return false;
+        }
+        self.seen_generation = generation;
+
+        // Re-read ONLY for a scrape we asked for. Any bump would otherwise
+        // re-`load()` the open article, and `load` resets the block list --
+        // so marking the article read after five seconds would yank the reader
+        // back to the top mid-paragraph. A scrape is the one thing that
+        // legitimately replaces the body under them, and they asked for it.
+        if !self.fetching {
+            return false;
+        }
+        self.fetching = false;
+        self.fetchingChanged();
+        let open = self.entry_id;
+        if open != 0 {
+            self.load(open);
+        }
+        true
     }
 
     /// Grant consent for the ORIGIN of the image at `row`.
@@ -346,6 +401,28 @@ impl ArticleModel {
         self.blockedImagesChanged();
     }
 
+    fn mark_read_delay_ms(&self) -> i32 {
+        let index = self
+            .context()
+            .map_or(crate::settings::MARK_READ_NEVER, |ctx| {
+                ctx.mark_read_delay_index()
+            });
+        match crate::settings::mark_read_delay_seconds(index) {
+            None => -1,
+            Some(seconds) => seconds.saturating_mul(1000),
+        }
+    }
+
+    fn markRead(&mut self) {
+        if self.isRead {
+            return;
+        }
+        if self.apply_local(|db, id| crate::worker::apply_local_status(db, id, EntryStatus::Read)) {
+            self.isRead = true;
+            self.entryStateChanged();
+        }
+    }
+
     fn toggleRead(&mut self) {
         let want_read = !self.isRead;
         let status = if want_read {
@@ -389,6 +466,15 @@ impl ArticleModel {
             .flatten()
             .is_some();
         if applied {
+            // The mirror changed, so say so: the entry list's row and the
+            // cover's unread badge both read from it. Without this, marking an
+            // article read from here left the list showing it as unread and
+            // the cover's count stale until something else reloaded them.
+            //
+            // Safe against the scroll-reset above: this model re-reads only
+            // for a scrape it asked for, so its own bump does not move the
+            // reader.
+            ctx.signal().bump();
             // Opportunistic: with no network the intent waits in the outbox
             // and the next sync carries it.
             ctx.send(Command::FlushOutbox);
@@ -407,6 +493,10 @@ impl ArticleModel {
         self.isRead = false;
         self.isStarred = false;
         self.entryStateChanged();
+        if self.fetching {
+            self.fetching = false;
+            self.fetchingChanged();
+        }
     }
 
     #[must_use]

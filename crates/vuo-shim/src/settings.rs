@@ -31,6 +31,39 @@ pub const MEDIA_ALLOW: i32 = 2;
 /// Background refresh intervals, in minutes. Index 0 is "manual only".
 pub const SYNC_INTERVALS_MINUTES: [i64; 5] = [0, 15, 30, 60, 360];
 
+/// When an opened article is marked read. Index 0 is "never".
+///
+/// "Never" sits at index 0 on purpose: `i32::default()` is 0, so any future
+/// wiring mistake degrades to the feature doing nothing, rather than to every
+/// article the user glances at being marked read and pushed to the server.
+/// That is the safe polarity for a destructive default.
+pub const MARK_READ_NEVER: i32 = 0;
+pub const MARK_READ_IMMEDIATELY: i32 = 1;
+/// Seconds for the delayed choices, from index 2 onward.
+pub const MARK_READ_DELAYS_SECONDS: [i32; 3] = [5, 15, 30];
+/// A new install marks read after 5 seconds: long enough to absorb a mis-tap
+/// and a glance at the headline, short enough that a read article does not
+/// stay in the unread list.
+pub const MARK_READ_DEFAULT_INDEX: i32 = 2;
+
+/// How long an article must be open before it counts as read.
+///
+/// `None` never, `Some(0)` immediately, `Some(n)` after n seconds. An index a
+/// hand-edited account file made up falls back to `None` -- the same
+/// conservative direction as the constant above.
+#[must_use]
+pub fn mark_read_delay_seconds(index: i32) -> Option<i32> {
+    match index {
+        MARK_READ_NEVER => None,
+        MARK_READ_IMMEDIATELY => Some(0),
+        other => usize::try_from(other)
+            .ok()
+            .and_then(|i| i.checked_sub(2))
+            .and_then(|i| MARK_READ_DELAYS_SECONDS.get(i))
+            .copied(),
+    }
+}
+
 #[derive(QObject, Default)]
 pub struct Settings {
     base: qt_base_class!(trait QObject),
@@ -40,11 +73,19 @@ pub struct Settings {
     /// 0 strict, 1 ask (default), 2 allow. See [`MEDIA_ASK`].
     mediaPolicy: qt_property!(i32; NOTIFY changed),
     syncIntervalIndex: qt_property!(i32; NOTIFY changed),
+    /// When an opened article is marked read. See [`MARK_READ_NEVER`].
+    markReadDelayIndex: qt_property!(i32; NOTIFY changed),
     wifiOnly: qt_property!(bool; NOTIFY changed),
     useCustomCa: qt_property!(bool; NOTIFY changed),
     /// How many local changes are still waiting to reach the server. Shown so
     /// the user can tell "nothing happened" from "not sent yet".
     pendingActions: qt_property!(i32; READ pendingActionsCount NOTIFY changed),
+    /// Whether the `harbour-vuo-sync` package is installed.
+    ///
+    /// The Settings page hides the whole Synchronisation section when it is
+    /// not: the interval drives a systemd timer that ships in that package, so
+    /// without it the control is a choice with no effect.
+    backgroundSyncAvailable: qt_property!(bool; READ backgroundSyncAvailable NOTIFY changed),
 
     changed: qt_signal!(),
     /// Result of a connection test. `ok` false means the message is an error.
@@ -120,11 +161,17 @@ impl Settings {
             self.mediaPolicy = account.media_policy;
             self.syncIntervalIndex = account.sync_interval_index;
             self.wifiOnly = account.wifi_only;
+            self.markReadDelayIndex = account.mark_read_delay_index;
             return;
         }
         // First run: default to Ask rather than Strict, because on a stock
         // Miniflux most images are un-proxied and Strict would blank them.
         self.mediaPolicy = MEDIA_ASK;
+        self.markReadDelayIndex = MARK_READ_DEFAULT_INDEX;
+    }
+
+    fn backgroundSyncAvailable(&self) -> bool {
+        AppPaths::resolve().is_some_and(|paths| paths.background_sync_installed())
     }
 
     fn pendingActionsCount(&self) -> i32 {
@@ -165,6 +212,7 @@ impl Settings {
             media_policy: self.mediaPolicy,
             sync_interval_index: self.syncIntervalIndex,
             wifi_only: self.wifiOnly,
+            mark_read_delay_index: self.markReadDelayIndex,
         };
         if account.server_url.is_empty() || account.token.is_empty() {
             return;
@@ -206,12 +254,19 @@ impl Settings {
         // launch, but never reached the transform.
         if let Some(ctx) = self.ctx.clone().or_else(crate::context::current) {
             ctx.set_media_policy(self.mediaPolicy);
+            ctx.set_mark_read_delay_index(self.markReadDelayIndex);
         }
         // And make the Sync interval choice take effect. Until this call the
         // setting was rendered, persisted and read back and reached NOTHING:
         // the timer unit's hardcoded OnUnitActiveSec=30min governed every
         // device regardless of what the user picked.
-        self.apply_sync_interval(paths);
+        //
+        // Only where there is a timer to govern. Writing a drop-in for a unit
+        // that is not installed leaves a file systemd will never read, and
+        // then runs systemctl twice for it.
+        if paths.background_sync_installed() {
+            self.apply_sync_interval(paths);
+        }
         self.changed();
     }
 
@@ -726,6 +781,65 @@ mod tests {
             !reopened.useCustomCa,
             "and nothing turns the CA switch on by itself"
         );
+    }
+
+    #[test]
+    fn every_mark_read_choice_maps_to_a_delay_and_nonsense_never_marks() {
+        // "Never" is index 0 on purpose: `i32::default()` is 0, so a wiring
+        // mistake has to degrade to the feature doing nothing rather than to
+        // every glanced-at article being marked read and pushed to the server.
+        assert_eq!(mark_read_delay_seconds(MARK_READ_NEVER), None);
+        assert_eq!(mark_read_delay_seconds(MARK_READ_IMMEDIATELY), Some(0));
+        assert_eq!(mark_read_delay_seconds(2), Some(5));
+        assert_eq!(mark_read_delay_seconds(3), Some(15));
+        assert_eq!(mark_read_delay_seconds(4), Some(30));
+
+        // QML can put any integer in an int property, and an account file can
+        // be hand-edited. Every unrecognised value falls the safe way.
+        for index in [-1, 5, 99, i32::MAX, i32::MIN] {
+            assert_eq!(mark_read_delay_seconds(index), None, "index {index}");
+        }
+
+        // And the shipped default is one of the delayed choices, not "never"
+        // and not "immediately" -- a mis-tap must be recoverable.
+        assert_eq!(mark_read_delay_seconds(MARK_READ_DEFAULT_INDEX), Some(5));
+    }
+
+    #[test]
+    fn the_synchronisation_section_is_hidden_without_the_sync_package() {
+        // The interval drives a systemd timer that ships in harbour-vuo-sync.
+        // With that package tabled, the control governs nothing, and writing a
+        // drop-in for a unit that is not installed leaves a file systemd never
+        // reads.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let paths = temp_paths(&dir);
+        assert!(
+            !paths.background_sync_installed(),
+            "nothing is installed in a temp dir"
+        );
+
+        let mut s = Settings {
+            serverUrl: QString::from("http://10.77.0.1:8083/"),
+            apiKey: QString::from("k"),
+            syncIntervalIndex: 3,
+            ..Settings::default()
+        };
+        s.save_to(&paths);
+        assert!(
+            !paths.timer_dropin_dir.join("50-vuo-interval.conf").exists(),
+            "no drop-in may be written for a timer that is not installed"
+        );
+
+        // Stage the unit as the package would, and the plumbing comes back.
+        std::fs::create_dir_all(paths.timer_unit.parent().expect("a parent")).expect("mkdir");
+        std::fs::write(&paths.timer_unit, "[Timer]\n").expect("stage the unit");
+        assert!(paths.background_sync_installed());
+
+        s.syncIntervalIndex = 4;
+        s.save_to(&paths);
+        let dropin = std::fs::read_to_string(paths.timer_dropin_dir.join("50-vuo-interval.conf"))
+            .expect("a drop-in once the timer exists");
+        assert!(dropin.contains("OnUnitActiveSec=360min"), "{dropin}");
     }
 
     #[test]

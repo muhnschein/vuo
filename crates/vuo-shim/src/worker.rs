@@ -102,6 +102,49 @@ pub enum Event {
     },
 }
 
+/// Clears the sync spinner when a command's iteration ends, however it ends.
+///
+/// Deliberately a `Drop` impl and not a call. Clearing used to be one more
+/// thing each arm had to remember, and two arms did not: a refresh that failed
+/// -- the timeout on a dropped VPN, say -- left `running` true for the life of
+/// the process, so the entry list and the cover both span forever and the
+/// "Nothing to read" placeholder stayed suppressed behind them. An arm added
+/// later would have had to remember too. This way the flag is cleared because
+/// the iteration ended, which is not something a future edit can forget.
+struct CommandGuard<'a> {
+    signal: &'a crate::context::SyncSignal,
+    /// Set by an arm that actually wrote to the mirror.
+    ///
+    /// A bump makes every model `reload()`, which is a full reset on a plain
+    /// `ListView` and therefore scrolls the list back to the top. Bumping for
+    /// a command that changed nothing would move the page under the reader for
+    /// no reason, so this stays opt-in.
+    changed: bool,
+    /// Whether this command owns the spinner.
+    ///
+    /// Only a user-initiated `Sync` raises it (`EntryModel::requestSync`), so
+    /// only that command may lower it. Decided from the command itself at
+    /// construction, so an opportunistic `FlushOutbox` fired by a star tap
+    /// physically cannot switch off the spinner of a refresh already running.
+    clears_spinner: bool,
+}
+
+impl Drop for CommandGuard<'_> {
+    fn drop(&mut self) {
+        // Clear BEFORE bumping, and the order is load-bearing. `pollSync`
+        // spends a generation the first time it sees it, so a poll landing
+        // between a bump and a clear would read `running` as still true and
+        // could never revisit that generation -- the spinner would survive its
+        // own clear.
+        if self.clears_spinner {
+            self.signal.set_running(false);
+        }
+        if self.changed {
+            self.signal.bump();
+        }
+    }
+}
+
 /// A handle to the worker thread.
 pub struct Worker {
     tx: mpsc::Sender<Command>,
@@ -170,24 +213,38 @@ impl Worker {
                 };
 
                 while let Ok(command) = rx.recv() {
-                    // Every command that can change the mirror bumps the
-                    // signal when it finishes, and clears the running flag.
-                    // The models poll it; see context::SyncSignal for why this
-                    // is a poll rather than a callback.
-                    let finish = |changed: bool| {
-                        if changed {
-                            signal.bump();
-                        }
+                    // Shutdown is handled above the guard: there is no spinner
+                    // to clear for it, and draining whatever is queued behind
+                    // it matters more. A `Sync` sitting in the queue when the
+                    // context is retired would otherwise leave `running` set
+                    // with nothing left alive to clear it.
+                    if matches!(command, Command::Shutdown) {
+                        while rx.try_recv().is_ok() {}
                         signal.set_running(false);
+                        break;
+                    }
+
+                    // See CommandGuard: clearing the spinner is structural, so
+                    // an arm that returns early -- or one added later -- cannot
+                    // leave it spinning. Arms opt into the bump.
+                    let mut guard = CommandGuard {
+                        signal: &signal,
+                        changed: false,
+                        clears_spinner: matches!(command, Command::Sync),
                     };
                     match command {
+                        // Handled above, before the guard.
                         Command::Shutdown => break,
                         Command::Sync => {
                             on_event(Event::SyncStarted);
                             let options = SyncOptions::default();
                             match runtime.block_on(sync::sync(&mut db, &client, options)) {
                                 Ok(report) if report.replay.auth_failed => {
-                                    finish(false);
+                                    guard.changed = true;
+                                    signal.post(Notice::SyncFailed {
+                                        auth: true,
+                                        message: String::new(),
+                                    });
                                     on_event(Event::AuthFailed);
                                 }
                                 Ok(report) => {
@@ -197,19 +254,32 @@ impl Worker {
                                         || report.entries_deleted > 0
                                         || report.replay.confirmed > 0
                                         || report.icons_fetched > 0;
-                                    // Bump unconditionally: "nothing changed"
-                                    // still has to clear the spinner, and a
-                                    // reload of an unchanged mirror is cheap.
-                                    finish(true);
-                                    let _ = changed;
+                                    guard.changed = changed;
                                     on_event(Event::SyncFinished { unread, changed });
                                 }
-                                Err(e) if e.is_auth_failure() => on_event(Event::AuthFailed),
-                                // The message is already redacted: Error's
-                                // Display never carries a token or userinfo.
-                                Err(e) => on_event(Event::SyncFailed {
-                                    message: e.to_string(),
-                                }),
+                                Err(e) if e.is_auth_failure() => {
+                                    // `sync` commits incrementally, so a run
+                                    // that failed late may still have written.
+                                    guard.changed = true;
+                                    signal.post(Notice::SyncFailed {
+                                        auth: true,
+                                        message: String::new(),
+                                    });
+                                    on_event(Event::AuthFailed);
+                                }
+                                Err(e) => {
+                                    guard.changed = true;
+                                    // Already redacted: Error's Display never
+                                    // carries a token or userinfo. Still
+                                    // foreign text, so the page renders it as
+                                    // plain text.
+                                    let message = e.to_string();
+                                    signal.post(Notice::SyncFailed {
+                                        auth: false,
+                                        message: message.clone(),
+                                    });
+                                    on_event(Event::SyncFailed { message });
+                                }
                             }
                         }
                         Command::Subscribe { feed_url } => {
@@ -223,7 +293,7 @@ impl Worker {
                                         &client,
                                         SyncOptions::default(),
                                     ));
-                                    finish(true);
+                                    guard.changed = true;
                                     on_event(Event::SubscriptionChanged {
                                         ok: true,
                                         message: String::new(),
@@ -246,7 +316,7 @@ impl Worker {
                                     // `FeedModel::pollSync` reported nothing
                                     // and the deleted feed's row stayed in the
                                     // list until some later sync.
-                                    finish(removed.is_ok());
+                                    guard.changed = removed.is_ok();
                                     signal.post(Notice::SubscriptionChanged {
                                         ok: removed.is_ok(),
                                         message: String::new(),
@@ -285,16 +355,30 @@ impl Worker {
                                     // Same as Unsubscribe: the scraped body is
                                     // in SQLite, so the open article is stale
                                     // until something reloads it.
-                                    finish(stored.is_ok());
+                                    guard.changed = stored.is_ok();
                                     on_event(Event::OriginalContentFetched {
                                         entry_id,
                                         ok: stored.is_ok(),
                                     });
                                 }
-                                Err(_) => on_event(Event::OriginalContentFetched {
-                                    entry_id,
-                                    ok: false,
-                                }),
+                                Err(e) => {
+                                    // Reported nothing at all before, so the
+                                    // menu item looked identical whether the
+                                    // scrape worked, failed, or was never
+                                    // reachable.
+                                    signal.post(Notice::SyncFailed {
+                                        auth: e.is_auth_failure(),
+                                        message: if e.is_auth_failure() {
+                                            String::new()
+                                        } else {
+                                            e.to_string()
+                                        },
+                                    });
+                                    on_event(Event::OriginalContentFetched {
+                                        entry_id,
+                                        ok: false,
+                                    });
+                                }
                             }
                         }
                         Command::TestConnection => match runtime.block_on(client.me()) {
@@ -323,17 +407,45 @@ impl Worker {
                         },
                         Command::FlushOutbox => {
                             match runtime.block_on(sync::replay::flush(&mut db, &client)) {
-                                Ok(outcome) if outcome.auth_failed => on_event(Event::AuthFailed),
-                                Ok(_) => {
+                                Ok(outcome) if outcome.auth_failed => {
+                                    signal.post(Notice::SyncFailed {
+                                        auth: true,
+                                        message: String::new(),
+                                    });
+                                    on_event(Event::AuthFailed);
+                                }
+                                Ok(outcome) => {
+                                    // A flush that confirmed or dropped rows
+                                    // changed the mirror -- `flush` deletes
+                                    // confirmed outbox rows and discards ones
+                                    // the server refused for good. Neither was
+                                    // ever reported, so `pendingActions` went
+                                    // stale and a dropped intent vanished in
+                                    // silence.
+                                    guard.changed = outcome.confirmed > 0 || outcome.dropped > 0;
                                     let unread = store::unread_count(db.conn()).unwrap_or(0);
                                     on_event(Event::SyncFinished {
                                         unread,
-                                        changed: true,
+                                        changed: guard.changed,
                                     });
                                 }
-                                Err(e) => on_event(Event::SyncFailed {
-                                    message: e.to_string(),
-                                }),
+                                Err(e) => {
+                                    // Only a PERMANENT failure is worth a
+                                    // notice. This command is fired from every
+                                    // star and every mark-read, so reporting a
+                                    // routine offline flush would put an error
+                                    // on screen for each tap -- while the
+                                    // outbox is doing exactly what it exists
+                                    // for and will replay on the next sync.
+                                    let message = e.to_string();
+                                    if !e.is_transient() {
+                                        signal.post(Notice::SyncFailed {
+                                            auth: false,
+                                            message: message.clone(),
+                                        });
+                                    }
+                                    on_event(Event::SyncFailed { message });
+                                }
                             }
                         }
                     }
@@ -458,6 +570,14 @@ pub struct AppPaths {
     /// rather than a file picker: it is a rare, deliberate act, and a path the
     /// user chose would be one more thing to validate.
     pub ca_certificate: PathBuf,
+    /// The sync timer unit itself, which ships in the separate
+    /// `harbour-vuo-sync` package.
+    ///
+    /// Its presence is how the app knows whether background refresh exists on
+    /// this device at all. A bare `stat`, deliberately: asking systemd
+    /// (`systemctl --user show`) forks, blocks, and answers "not-found" for a
+    /// unit it merely has not reloaded yet.
+    pub timer_unit: PathBuf,
     /// Where the systemd user drop-in for the sync timer is written.
     ///
     /// Under `XDG_CONFIG_HOME`, not the data dir the rest of these live in:
@@ -482,6 +602,9 @@ impl AppPaths {
             database: base.join("vuo.sqlite"),
             account: base.join("account.json"),
             ca_certificate: base.join("ca.pem"),
+            // Under the same base so a test can stage one; `resolve` below
+            // points at the real packaged location.
+            timer_unit: base.join("systemd/user/harbour-vuo-sync.timer"),
             timer_dropin_dir,
         }
     }
@@ -494,6 +617,9 @@ impl AppPaths {
             .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local/share")))?
             .join("harbour-vuo");
         let mut paths = Self::under(base);
+        // Where the harbour-vuo-sync package installs the unit; see the spec's
+        // %{_userunitdir}.
+        paths.timer_unit = PathBuf::from("/usr/lib/systemd/user/harbour-vuo-sync.timer");
         // The real location, which is NOT under the data dir: systemd only
         // reads unit drop-ins out of the config hierarchy.
         paths.timer_dropin_dir = std::env::var_os("XDG_CONFIG_HOME")
@@ -511,6 +637,17 @@ impl AppPaths {
     #[must_use]
     pub fn configured(self) -> Option<Self> {
         self.account.exists().then_some(self)
+    }
+
+    /// Whether the background-sync package is installed on this device.
+    ///
+    /// The interval setting drives a systemd timer that ships in
+    /// `harbour-vuo-sync`. With that package absent the control governs
+    /// nothing, so the Settings page hides the whole section rather than
+    /// offering a choice with no effect.
+    #[must_use]
+    pub fn background_sync_installed(&self) -> bool {
+        self.timer_unit.exists()
     }
 
     /// Resolve paths and confirm an account has been configured.
@@ -541,12 +678,21 @@ pub struct Account {
     pub sync_interval_index: i32,
     #[serde(default)]
     pub wifi_only: bool,
+    /// When an opened article is marked read. See `settings::MARK_READ_*`.
+    #[serde(default = "default_mark_read_delay_index")]
+    pub mark_read_delay_index: i32,
 }
 
 /// Ask, not Strict. On a stock Miniflux `MEDIA_PROXY_MODE` is `http-only`, so
 /// most images arrive un-proxied and Strict would blank them.
 fn default_media_policy() -> i32 {
     1
+}
+
+/// After 5 seconds. An account file written before this setting existed gets
+/// the same default a new install would, rather than silently "never".
+fn default_mark_read_delay_index() -> i32 {
+    crate::settings::MARK_READ_DEFAULT_INDEX
 }
 
 impl Default for Account {
@@ -558,6 +704,7 @@ impl Default for Account {
             media_policy: default_media_policy(),
             sync_interval_index: 0,
             wifi_only: false,
+            mark_read_delay_index: default_mark_read_delay_index(),
         }
     }
 }
@@ -685,6 +832,7 @@ mod tests {
             database: dir.path().join("db.sqlite"),
             account: dir.path().join("account.json"),
             ca_certificate: dir.path().join("absent.pem"),
+            timer_unit: dir.path().join("harbour-vuo-sync.timer"),
             timer_dropin_dir: dir.path().join("tdd"),
         };
         let account = Account {
@@ -723,6 +871,72 @@ B/ICqFxm4tqVyVqqaxdhkS/DJcUPIyEhhwLStjHyLGh364xT06vcDdcRmGyuCSlb\n\
 EQBBQIobIy41+aQiMsM0XBYH3Q==\n\
 -----END CERTIFICATE-----\n";
 
+    /// §the spinner cannot outlive the command that raised it.
+    ///
+    /// Reported from a device: a refresh that timed out on a dropped VPN left
+    /// the entry list and the cover spinning forever. Two arms of the Sync
+    /// match simply did not call the old `finish` closure, and nothing made
+    /// that a compile error. The guard exists so that clearing happens because
+    /// the iteration ended.
+    #[test]
+    fn the_command_guard_clears_the_spinner_however_the_arm_ends() {
+        use crate::context::SyncSignal;
+
+        let signal = SyncSignal::default();
+
+        // A user-initiated Sync raises the flag from the Qt thread first.
+        signal.set_running(true);
+        {
+            let _guard = CommandGuard {
+                signal: &signal,
+                changed: false,
+                clears_spinner: true,
+            };
+            // An arm that reports a failure and sets nothing at all.
+        }
+        assert!(
+            !signal.is_running(),
+            "an arm that did nothing must still leave the spinner cleared"
+        );
+        assert_eq!(
+            signal.generation(),
+            0,
+            "and must not move the mirror generation it did not change"
+        );
+
+        // A command that does not own the spinner must not lower one that a
+        // refresh already running raised -- an opportunistic FlushOutbox is
+        // fired by every star tap.
+        signal.set_running(true);
+        {
+            let mut guard = CommandGuard {
+                signal: &signal,
+                changed: true,
+                clears_spinner: false,
+            };
+            guard.changed = true;
+        }
+        assert!(
+            signal.is_running(),
+            "a flush must not switch off a refresh's spinner"
+        );
+        assert_eq!(signal.generation(), 1, "but it did change the mirror");
+
+        // And an early `?`-style exit still clears, because Drop runs.
+        signal.set_running(true);
+        fn arm_that_returns_early(signal: &SyncSignal) {
+            let _guard = CommandGuard {
+                signal,
+                changed: false,
+                clears_spinner: true,
+            };
+            #[allow(clippy::needless_return)]
+            return;
+        }
+        arm_that_returns_early(&signal);
+        assert!(!signal.is_running(), "an early return must still clear");
+    }
+
     #[test]
     fn a_plain_http_server_never_needs_a_ca_certificate() {
         // Found on a device. With the switch on and no ca.pem present, a
@@ -736,6 +950,7 @@ EQBBQIobIy41+aQiMsM0XBYH3Q==\n\
             database: dir.path().join("db.sqlite"),
             account: dir.path().join("account.json"),
             ca_certificate: dir.path().join("absent.pem"),
+            timer_unit: dir.path().join("harbour-vuo-sync.timer"),
             timer_dropin_dir: dir.path().join("tdd"),
         };
         let account = Account {
@@ -766,6 +981,7 @@ EQBBQIobIy41+aQiMsM0XBYH3Q==\n\
             database: dir.path().join("db.sqlite"),
             account: dir.path().join("account.json"),
             ca_certificate: ca,
+            timer_unit: dir.path().join("harbour-vuo-sync.timer"),
             timer_dropin_dir: dir.path().join("tdd"),
         };
         let account = Account {

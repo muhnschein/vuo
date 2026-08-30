@@ -50,7 +50,7 @@ Page {
         keyField.text = settings.apiKey
         imagesCombo.currentIndex = settings.mediaPolicy
         refreshCombo.currentIndex = settings.syncIntervalIndex
-        wifiSwitch.checked = settings.wifiOnly
+        markReadCombo.currentIndex = settings.markReadDelayIndex
         caSwitch.checked = settings.useCustomCa
         page.ready = true
     }
@@ -130,6 +130,32 @@ Page {
                          : qsTr("Test failed: %1").arg(detail)
             }
 
+            SectionHeader { text: qsTr("Reading") }
+
+            ComboBox {
+                id: markReadCombo
+                width: parent.width
+                label: qsTr("Mark as read when opened")
+                menu: ContextMenu {
+                    MenuItem { text: qsTr("Never") }
+                    MenuItem { text: qsTr("Immediately") }
+                    MenuItem { text: qsTr("After 5 seconds") }
+                    MenuItem { text: qsTr("After 15 seconds") }
+                    MenuItem { text: qsTr("After 30 seconds") }
+                }
+                onCurrentIndexChanged: if (page.ready) settings.markReadDelayIndex = currentIndex
+            }
+
+            Label {
+                x: Theme.horizontalPageMargin
+                width: parent.width - Theme.horizontalPageMargin * 2
+                wrapMode: Text.Wrap
+                textFormat: Text.PlainText
+                font.pixelSize: Theme.fontSizeExtraSmall
+                color: Theme.secondaryColor
+                text: qsTr("The delay counts only while the article is on screen. Marking an article read or unread yourself always wins.")
+            }
+
             SectionHeader { text: qsTr("Images") }
 
             ComboBox {
@@ -156,10 +182,17 @@ Page {
                 text: qsTr("Miniflux proxies plain-http images only by default, so most images arrive unproxied. Loading them directly tells those sites your IP address and when you read. Ask your server administrator to set MEDIA_PROXY_MODE=all for full protection.")
             }
 
-            SectionHeader { text: qsTr("Synchronisation") }
+            // Hidden unless harbour-vuo-sync is installed: the interval drives
+            // a systemd timer that ships in that package, so without it this
+            // is a choice that governs nothing.
+            SectionHeader {
+                text: qsTr("Synchronisation")
+                visible: settings.backgroundSyncAvailable
+            }
 
             ComboBox {
                 id: refreshCombo
+                visible: settings.backgroundSyncAvailable
                 width: parent.width
                 label: qsTr("Background refresh")
                 menu: ContextMenu {
@@ -172,13 +205,13 @@ Page {
                 onCurrentIndexChanged: if (page.ready) settings.syncIntervalIndex = currentIndex
             }
 
-            TextSwitch {
-                id: wifiSwitch
-                text: qsTr("Only on Wi-Fi")
-                // `onClicked`, not `onCheckedChanged`: Silica toggles `checked`
-                // itself and then emits this, so only a real tap writes back.
-                onClicked: settings.wifiOnly = checked
-            }
+            // "Only on Wi-Fi" used to sit here. It is gone rather than hidden:
+            // it was not a control for an absent package, it was a control for
+            // absent CODE -- nothing in the sync or transport path has ever
+            // read `wifi_only`. Hiding it would still have shipped a switch
+            // that does nothing on a device that HAS the sync package. The
+            // stored field is kept so the value survives for whenever the
+            // behaviour is actually implemented.
 
             SectionHeader { text: qsTr("Advanced") }
 

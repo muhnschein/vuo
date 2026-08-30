@@ -24,8 +24,54 @@ Page {
 
     ArticleModel { id: article }
 
-    Component.onCompleted: article.load(page.entryId)
+    /// Cleared when the reader takes charge of the read state themselves.
+    ///
+    /// Without this, marking an article unread and then re-opening it later
+    /// would silently mark it read again — so "leave this for later" would
+    /// survive exactly until the next tap on the row.
+    property bool autoMarkArmed: false
+
+    Component.onCompleted: {
+        article.load(page.entryId)
+        // Arm only for something that is actually unread. `markRead` is
+        // idempotent anyway, but not arming keeps the intent honest.
+        page.autoMarkArmed = article.markReadDelayMs >= 0 && !article.isRead
+    }
     Component.onDestruction: article.clear()
+
+    // Mark the article read once it has been open long enough.
+    //
+    // `running` is gated on the page being the visible one AND the app being
+    // active, so the countdown measures the article being on screen rather
+    // than the phone being in a pocket. It does not survive the screen
+    // blanking while the app stays foregrounded — Silica gives QML no signal
+    // for that, and the article is still "open" by any definition the app has.
+    Timer {
+        id: autoMarkRead
+        interval: Math.max(1, article.markReadDelayMs)
+        repeat: false
+        running: page.autoMarkArmed
+                 && article.markReadDelayMs >= 0
+                 && page.status === PageStatus.Active
+                 && Qt.application.active
+        onTriggered: {
+            if (page.autoMarkArmed) {
+                article.markRead()
+                page.autoMarkArmed = false
+            }
+        }
+    }
+
+    // The worker writes a scraped body into the mirror and bumps the signal;
+    // without this the OPEN article never re-read it, which is why "Fetch
+    // original content" looked like it did nothing. Only runs while the page
+    // is showing.
+    Timer {
+        interval: 1000
+        repeat: true
+        running: page.status === PageStatus.Active
+        onTriggered: article.pollSync()
+    }
 
     SilicaListView {
         id: blocks
@@ -85,6 +131,17 @@ Page {
             }
 
             Label {
+                visible: article.fetching
+                x: Theme.horizontalPageMargin
+                width: parent.width - Theme.horizontalPageMargin * 2
+                wrapMode: Text.Wrap
+                textFormat: Text.PlainText
+                font.pixelSize: Theme.fontSizeExtraSmall
+                color: Theme.secondaryHighlightColor
+                text: qsTr("Asking the server for the original article…")
+            }
+
+            Label {
                 visible: article.blockedImages > 0
                 x: Theme.horizontalPageMargin
                 width: parent.width - Theme.horizontalPageMargin * 2
@@ -113,7 +170,12 @@ Page {
         PullDownMenu {
             MenuItem {
                 text: article.isRead ? qsTr("Mark as unread") : qsTr("Mark as read")
-                onClicked: article.toggleRead()
+                // Disarm: once the reader has said what they want, a timer
+                // must not overrule them a few seconds later.
+                onClicked: {
+                    page.autoMarkArmed = false
+                    article.toggleRead()
+                }
             }
             MenuItem {
                 text: article.isStarred ? qsTr("Remove favourite")

@@ -93,6 +93,51 @@ fn declared_members(root: &Path) -> BTreeSet<String> {
     names
 }
 
+/// The tab strip's titles and its scope kinds must stay the same length.
+///
+/// They are two parallel arrays in EntryListPage.qml -- `titles` on the strip
+/// and `scopeTabKinds` on the page -- and the strip maps one to the other by
+/// index. Adding a fourth title without a fourth kind gives a tab whose tap
+/// resolves `scopeTabKinds[3]` to `undefined`, which `setScope` would then
+/// receive as 0: the tab would silently show Unread. Nothing else in the build
+/// would notice, because it is a runtime array lookup.
+#[test]
+fn every_scope_tab_has_a_scope_kind() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(2)
+        .expect("the workspace root");
+    let source = std::fs::read_to_string(root.join("qml/pages/EntryListPage.qml"))
+        .expect("EntryListPage.qml");
+
+    let array_len = |needle: &str| -> usize {
+        let line = source
+            .lines()
+            .find(|l| l.trim_start().starts_with(needle))
+            .unwrap_or_else(|| panic!("no line starting `{needle}` in EntryListPage.qml"));
+        let open = line.find('[').expect("an array literal");
+        let close = line[open..].find(']').expect("a closed array literal") + open;
+        let inner = line[open + 1..close].trim();
+        if inner.is_empty() {
+            0
+        } else {
+            inner.split(',').count()
+        }
+    };
+
+    let kinds = array_len("property var scopeTabKinds:");
+    let titles = array_len("titles:");
+    assert_eq!(
+        kinds, titles,
+        "the strip shows {titles} tabs but the page maps {kinds} scope kinds; \
+         a tab with no kind resolves to undefined and silently shows Unread"
+    );
+    assert!(
+        kinds >= 3,
+        "Unread, Starred and All are all meant to be reachable"
+    );
+}
+
 /// Role names exposed through `role_names()`, which delegates see as
 /// context properties rather than as members of the model.
 fn declared_roles(root: &Path) -> BTreeSet<String> {

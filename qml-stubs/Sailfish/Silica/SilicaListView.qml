@@ -3,4 +3,5 @@ ListView {
     property bool quickScroll: true
     property Item pullDownMenu
     property Item pushUpMenu
+    function scrollToTop() {}
 }

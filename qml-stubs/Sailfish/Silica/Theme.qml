@@ -26,5 +26,11 @@ QtObject {
     property color highlightBackgroundColor: "#4080c0"
     property color errorColor: "#ff4040"
     property color overlayBackgroundColor: "#000000"
+    // The underline rule's thickness. A MISSING stub property here is
+    // silent: the binding would resolve to undefined, the Rectangle's
+    // height would become 0, and the strip would render with an
+    // invisible underline while the load test still passed.
+    property real _lineWidth: 1
+
     function rgba(colour, alpha) { return colour }
 }
