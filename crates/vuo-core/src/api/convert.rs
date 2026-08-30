@@ -112,6 +112,7 @@ pub fn feed(w: wire::Feed) -> Result<Feed> {
         parsing_error_count: w.parsing_error_count.max(0),
         disabled: w.disabled,
         hide_globally: w.hide_globally,
+        crawler: w.crawler,
     })
 }
 

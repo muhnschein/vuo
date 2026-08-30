@@ -78,8 +78,8 @@ pub fn upsert_feed(tx: &Transaction<'_>, f: &Feed, generation: i64) -> Result<()
     tx.execute(
         "INSERT INTO feeds (id, category_id, title, site_url, feed_url, icon_id, checked_at,
                             parsing_error_message, parsing_error_count, disabled, hide_globally,
-                            last_seen_sync)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+                            crawler, last_seen_sync)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
          ON CONFLICT(id) DO UPDATE SET
              category_id = excluded.category_id,
              title = excluded.title,
@@ -91,6 +91,7 @@ pub fn upsert_feed(tx: &Transaction<'_>, f: &Feed, generation: i64) -> Result<()
              parsing_error_count = excluded.parsing_error_count,
              disabled = excluded.disabled,
              hide_globally = excluded.hide_globally,
+             crawler = excluded.crawler,
              last_seen_sync = excluded.last_seen_sync",
         rusqlite::params![
             f.id.get(),
@@ -104,6 +105,7 @@ pub fn upsert_feed(tx: &Transaction<'_>, f: &Feed, generation: i64) -> Result<()
             i64::from(f.parsing_error_count),
             i64::from(f.disabled),
             i64::from(f.hide_globally),
+            i64::from(f.crawler),
             generation,
         ],
     )?;
@@ -113,7 +115,8 @@ pub fn upsert_feed(tx: &Transaction<'_>, f: &Feed, generation: i64) -> Result<()
 pub fn feeds(conn: &rusqlite::Connection) -> Result<Vec<Feed>> {
     let mut stmt = conn.prepare(
         "SELECT id, category_id, title, site_url, feed_url, icon_id, checked_at,
-                parsing_error_message, parsing_error_count, disabled, hide_globally
+                parsing_error_message, parsing_error_count, disabled, hide_globally,
+                crawler
          FROM feeds ORDER BY title",
     )?;
     let rows = stmt.query_map([], |r| {
@@ -133,6 +136,7 @@ pub fn feeds(conn: &rusqlite::Connection) -> Result<Vec<Feed>> {
             parsing_error_count: r.get::<_, i64>(8)? as i32,
             disabled: r.get::<_, i64>(9)? != 0,
             hide_globally: r.get::<_, i64>(10)? != 0,
+            crawler: r.get::<_, i64>(11)? != 0,
         })
     })?;
     Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
@@ -191,7 +195,13 @@ pub fn upsert_entry(tx: &Transaction<'_>, e: &Entry, generation: i64) -> Result<
              url = excluded.url,
              comments_url = excluded.comments_url,
              author = excluded.author,
-             content = excluded.content,
+             -- Never clobber a body the user asked the server to scrape.
+             -- fetch-content is not persisted server-side, so the feed own
+             -- (usually truncated) content is what a sync brings back; taking
+             -- it would silently undo fetch-original on the next refresh.
+             content = CASE WHEN entries.content_scraped = 1
+                            THEN entries.content
+                            ELSE excluded.content END,
              published_at = excluded.published_at,
              created_at = excluded.created_at,
              changed_at = excluded.changed_at,
@@ -438,6 +448,47 @@ pub fn clear_icon_failures(tx: &Transaction<'_>, feed_id: FeedId) -> Result<()> 
     Ok(())
 }
 
+/// What a list row needs to show about the feed an entry came from.
+///
+/// One query for every feed rather than a join onto the entry list: an entry
+/// list is capped at 500 rows but a mirror has tens of feeds, so joining would
+/// carry the same icon blob back hundreds of times.
+#[derive(Debug, Clone)]
+pub struct FeedChrome {
+    pub feed_id: i64,
+    /// The feed name as the user (or the feed) set it. FOREIGN TEXT.
+    pub title: String,
+    /// The icon's MIME type and bytes, when the mirror has fetched one.
+    pub icon: Option<(String, Vec<u8>)>,
+}
+
+/// Feed names and icons, for decorating an entry list.
+pub fn feed_chrome(conn: &rusqlite::Connection) -> Result<Vec<FeedChrome>> {
+    let mut stmt = conn.prepare(
+        "SELECT f.id, f.title, i.format, i.bytes
+           FROM feeds f
+           LEFT JOIN icons i ON i.id = f.icon_id
+          ORDER BY f.id",
+    )?;
+    let rows = stmt.query_map([], |r| {
+        let mime: Option<String> = r.get(2)?;
+        let bytes: Option<Vec<u8>> = r.get(3)?;
+        Ok(FeedChrome {
+            feed_id: r.get(0)?,
+            title: r.get(1)?,
+            icon: match (mime, bytes) {
+                (Some(m), Some(b)) if !b.is_empty() => Some((m, b)),
+                _ => None,
+            },
+        })
+    })?;
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(row?);
+    }
+    Ok(out)
+}
+
 pub fn icon(conn: &rusqlite::Connection, id: IconId) -> Result<Option<Icon>> {
     let row = conn
         .query_row(
@@ -615,6 +666,7 @@ mod tests {
             parsing_error_count: 0,
             disabled: false,
             hide_globally: false,
+            crawler: false,
         }
     }
 

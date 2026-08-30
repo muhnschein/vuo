@@ -540,6 +540,30 @@ pub struct SyncSignal {
     /// connection" appeared to do nothing whether the credentials were right
     /// or wrong.
     notice: std::sync::Mutex<Option<Notice>>,
+    /// The result of the most recent "fetch original content", addressed to
+    /// the entry it was asked for.
+    ///
+    /// Deliberately NOT carried on `generation`. The article model used to
+    /// treat "the generation moved while I am fetching" as "my scrape
+    /// landed", which is only true when nothing else bumps in between --
+    /// and with mark-read-after-N-seconds enabled, something else almost
+    /// always does. The mark-read bump would clear `fetching` and re-read the
+    /// mirror before the scrape had written to it, so the reader saw the old
+    /// body and the menu item looked dead. An addressed slot cannot be stolen
+    /// by an unrelated bump, and cannot be consumed by an article that did not
+    /// ask for it.
+    fetch_outcome: std::sync::Mutex<Option<FetchOutcome>>,
+}
+
+/// How a server-side scrape ended, and for which entry.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FetchOutcome {
+    pub entry_id: i64,
+    /// One of the `FETCH_*` constants in `crate::article`.
+    pub status: i32,
+    /// Foreign text when the server explained a failure; empty otherwise.
+    /// Renders as plain text (§9.3).
+    pub message: String,
 }
 
 /// Something the worker produced that a page must display.
@@ -550,6 +574,9 @@ pub enum Notice {
     /// A subscribe or unsubscribe finished. `message` is the server's error
     /// text when it failed -- foreign text, so it renders as plain text.
     SubscriptionChanged { ok: bool, message: String },
+    /// A feed's settings were saved, or were not. `message` is the server's
+    /// error text -- foreign, so plain text.
+    FeedUpdated { ok: bool, message: String },
     /// A refresh failed. `message` is foreign text; render it as plain text.
     ///
     /// `auth` distinguishes "the server rejected the key" from everything
@@ -579,6 +606,28 @@ impl SyncSignal {
     pub fn post(&self, notice: Notice) {
         if let Ok(mut slot) = self.notice.lock() {
             *slot = Some(notice);
+        }
+    }
+
+    /// Leave a scrape result for the open article. Called from the worker.
+    pub fn post_fetch_outcome(&self, outcome: FetchOutcome) {
+        if let Ok(mut slot) = self.fetch_outcome.lock() {
+            *slot = Some(outcome);
+        }
+    }
+
+    /// Take the scrape result IF it is addressed to `entry_id`.
+    ///
+    /// A result for a different entry is left in place rather than dropped:
+    /// the user may have opened a second article while the first was
+    /// scraping, and going back should still show what happened.
+    #[must_use]
+    pub fn take_fetch_outcome(&self, entry_id: i64) -> Option<FetchOutcome> {
+        let mut slot = self.fetch_outcome.lock().ok()?;
+        if slot.as_ref().is_some_and(|o| o.entry_id == entry_id) {
+            slot.take()
+        } else {
+            None
         }
     }
 

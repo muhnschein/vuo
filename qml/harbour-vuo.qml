@@ -69,6 +69,10 @@ ApplicationWindow {
         CoverPage {
             unreadCount: entries.unreadTotal
             syncing: entries.syncing
+            // So a refresh that fails while the app is on the cover says so
+            // there, rather than spinning until the user reopens the app.
+            syncError: entries.syncError
+            syncErrorIsAuth: entries.syncErrorIsAuth
             onRefresh: entries.requestSync()
         }
     }

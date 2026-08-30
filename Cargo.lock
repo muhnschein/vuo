@@ -2136,6 +2136,7 @@ dependencies = [
 name = "vuo-shim"
 version = "0.1.0"
 dependencies = [
+ "base64",
  "cstr",
  "qmetaobject",
  "qttypes",

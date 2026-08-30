@@ -53,6 +53,10 @@ pub const ROLE_FEED_ID: i32 = USER_ROLE + 5;
 pub const ROLE_PUBLISHED: i32 = USER_ROLE + 6;
 pub const ROLE_READING_TIME: i32 = USER_ROLE + 7;
 pub const ROLE_URL: i32 = USER_ROLE + 8;
+/// The name of the feed the entry came from. FOREIGN TEXT: `Text.PlainText`.
+pub const ROLE_FEED_NAME: i32 = USER_ROLE + 9;
+/// A `data:` URI for the feed's icon, or empty when the mirror has none.
+pub const ROLE_FEED_ICON: i32 = USER_ROLE + 10;
 
 /// A row as the UI needs it. Deliberately not [`Entry`]: the model holds only
 /// what the list draws, so scrolling a long list does not keep every article
@@ -68,6 +72,10 @@ pub struct EntryRow {
     pub published: i64,
     pub reading_time: i32,
     pub url: String,
+    /// The feed's name, filled in after the query from the chrome cache.
+    pub feed_name: String,
+    /// The feed's icon as a `data:` URI, or empty.
+    pub feed_icon: String,
 }
 
 impl From<&Entry> for EntryRow {
@@ -86,8 +94,43 @@ impl From<&Entry> for EntryRow {
                 .as_ref()
                 .map(|u| u.as_str().to_owned())
                 .unwrap_or_default(),
+            // Filled in by `reload` from the per-feed cache: the entry query
+            // knows nothing about feeds.
+            feed_name: String::new(),
+            feed_icon: String::new(),
         }
     }
+}
+
+/// A feed's name and icon URI, as an entry row needs them.
+#[derive(Debug, Clone, Default)]
+struct FeedChrome {
+    name: String,
+    icon_uri: String,
+}
+
+/// Wrap image bytes as a `data:` URI QML's `Image.source` can take.
+///
+/// The MIME type comes from the mirror, which stores the format DETERMINED
+/// FROM THE BYTES rather than the one the server claimed -- so a server that
+/// labels a script `image/png` cannot get that label back out of here.
+fn data_uri(mime: &str, bytes: &[u8]) -> String {
+    use base64::Engine as _;
+    // SVG is excluded on purpose: it is a document, not a bitmap, and Qt's
+    // renderer will follow external references in one -- which would leak the
+    // device's IP to whatever host a feed operator names, on a list scroll.
+    // The raster formats are passed through even where the device may lack a
+    // handler (it ships only libqjpeg.so as a plugin, so ICO and GIF are a
+    // gamble); the delegate hides an Image that fails to load, so the cost of
+    // guessing wrong is a missing favicon rather than a broken-image glyph.
+    if mime == "image/svg+xml" {
+        return String::new();
+    }
+    format!(
+        "data:{};base64,{}",
+        mime,
+        base64::engine::general_purpose::STANDARD.encode(bytes)
+    )
 }
 
 /// Which slice of the mirror a model shows.
@@ -193,6 +236,11 @@ pub struct EntryModel {
     scope: Option<Scope>,
     /// The worker generation this model last reloaded at.
     seen_generation: u64,
+    /// Feed name and icon URI per feed id, built once and reused.
+    ///
+    /// Re-encoding every icon on every reload would base64 the same few
+    /// kilobytes on each poll of a list that is polled twice a second.
+    feed_chrome: std::collections::HashMap<i64, FeedChrome>,
     /// The spinner state this model last told QML about.
     ///
     /// `syncing` is READ + NOTIFY, so QML re-evaluates it only when
@@ -423,12 +471,48 @@ impl EntryModel {
                 store::list_entries(db.conn(), scope.to_filter(), 500, 0).unwrap_or_default()
             })
             .unwrap_or_default();
-        let rows: Vec<EntryRow> = entries.iter().map(EntryRow::from).collect();
+        let mut rows: Vec<EntryRow> = entries.iter().map(EntryRow::from).collect();
+        self.refresh_feed_chrome();
+        for row in &mut rows {
+            if let Some(chrome) = self.feed_chrome.get(&row.feed_id) {
+                row.feed_name = chrome.name.clone();
+                row.feed_icon = chrome.icon_uri.clone();
+            }
+        }
 
         (self as &mut dyn QAbstractListModel).begin_reset_model();
         self.rows = rows;
         (self as &mut dyn QAbstractListModel).end_reset_model();
         self.countChanged();
+    }
+
+    /// Rebuild the feed name/icon cache from the mirror.
+    ///
+    /// Called from `reload`, which runs on a scope change or a generation
+    /// bump -- not on every poll. A mirror has tens of feeds and a favicon is
+    /// a couple of kilobytes, so re-encoding the set outright is cheaper than
+    /// the invalidation logic that avoiding it would need.
+    fn refresh_feed_chrome(&mut self) {
+        let Some(ctx) = self.context() else { return };
+        let Some(feeds) = ctx.read(|db| store::feed_chrome(db.conn()).unwrap_or_default()) else {
+            return;
+        };
+        self.feed_chrome = feeds
+            .into_iter()
+            .map(|feed| {
+                let icon_uri = feed
+                    .icon
+                    .map(|(mime, bytes)| data_uri(&mime, &bytes))
+                    .unwrap_or_default();
+                (
+                    feed.feed_id,
+                    FeedChrome {
+                        name: feed.title,
+                        icon_uri,
+                    },
+                )
+            })
+            .collect();
     }
 
     /// Update one row in place after a local mutation, without a full reload.
@@ -490,6 +574,8 @@ impl QAbstractListModel for EntryModel {
             ROLE_PUBLISHED => row.published.into(),
             ROLE_READING_TIME => row.reading_time.into(),
             ROLE_URL => QString::from(row.url.clone()).into(),
+            ROLE_FEED_NAME => QString::from(row.feed_name.clone()).into(),
+            ROLE_FEED_ICON => QString::from(row.feed_icon.clone()).into(),
             _ => QVariant::default(),
         }
     }
@@ -505,6 +591,8 @@ impl QAbstractListModel for EntryModel {
         names.insert(ROLE_PUBLISHED, "published".into());
         names.insert(ROLE_READING_TIME, "readingTime".into());
         names.insert(ROLE_URL, "url".into());
+        names.insert(ROLE_FEED_NAME, "feedName".into());
+        names.insert(ROLE_FEED_ICON, "feedIcon".into());
         names
     }
 }
@@ -515,6 +603,12 @@ pub const ROLE_FEED_TITLE: i32 = USER_ROLE + 1;
 pub const ROLE_FEED_UNREAD: i32 = USER_ROLE + 2;
 pub const ROLE_FEED_ERROR: i32 = USER_ROLE + 3;
 pub const ROLE_FEED_CATEGORY: i32 = USER_ROLE + 4;
+/// "Fetch original content" for every entry of this feed, server-side.
+pub const ROLE_FEED_CRAWLER: i32 = USER_ROLE + 5;
+/// The server has stopped refreshing this feed.
+pub const ROLE_FEED_DISABLED: i32 = USER_ROLE + 6;
+/// Keep this feed out of the global unread list.
+pub const ROLE_FEED_HIDDEN: i32 = USER_ROLE + 7;
 
 #[derive(Debug, Clone, Default)]
 pub struct FeedRow {
@@ -525,6 +619,9 @@ pub struct FeedRow {
     /// text: plain text only.
     pub error: String,
     pub category_id: i64,
+    pub crawler: bool,
+    pub disabled: bool,
+    pub hide_globally: bool,
 }
 
 #[derive(QObject, Default)]
@@ -542,6 +639,35 @@ pub struct FeedModel {
     /// downloads one itself (§3).
     subscribe: qt_method!(fn(&mut self, feed_url: QString)),
     unsubscribe: qt_method!(fn(&mut self, row: i32)),
+    /// Save a feed's settings to the server, then to the mirror.
+    ///
+    /// A flat argument list rather than a JS object, because a `QVariantMap`
+    /// crossing this boundary in qmetaobject 0.2.10 loses type information for
+    /// bools and the page would have to re-encode them as ints anyway. Passing
+    /// `title` unchanged is how "do not rename" is expressed -- the shim
+    /// diffs against what the mirror holds and sends only what moved, so an
+    /// untouched field is never transmitted (see `FeedPatch`).
+    updateFeed: qt_method!(
+        fn(
+            &mut self,
+            row: i32,
+            title: QString,
+            category_id: i64,
+            crawler: bool,
+            disabled: bool,
+            hide_globally: bool,
+        ) -> bool
+    ),
+    /// The pending result of the last `updateFeed`, drained by the edit page.
+    ///
+    /// See `EntryModel::syncError`: the worker cannot call into a QML-owned
+    /// object, so a one-shot slot plus a poll is how an answer gets back.
+    pub updateError: qt_property!(QString; NOTIFY updateStateChanged),
+    pub updateOk: qt_property!(bool; NOTIFY updateStateChanged),
+    /// Bumped for every finished save, so a page can tell a repeat answer from
+    /// a stale one.
+    pub updateSerial: qt_property!(i32; NOTIFY updateStateChanged),
+    updateStateChanged: qt_signal!(),
 
     rows: Vec<FeedRow>,
     seen_generation: u64,
@@ -565,6 +691,11 @@ impl FeedModel {
         let Some(ctx) = self.context() else {
             return false;
         };
+        // BEFORE the generation early-return. A rejected save changes nothing
+        // in the mirror, so the generation does not move -- and a drain that
+        // happened after the early-return could therefore never report a
+        // failure, which is the one answer the edit page most needs.
+        self.drain_update_notice(ctx.signal());
         let generation = ctx.signal().generation();
         if generation == self.seen_generation {
             return false;
@@ -615,6 +746,74 @@ impl FeedModel {
             .map(|r| r.id)
     }
 
+    #[allow(clippy::fn_params_excessive_bools)]
+    fn updateFeed(
+        &mut self,
+        row: i32,
+        title: QString,
+        category_id: i64,
+        crawler: bool,
+        disabled: bool,
+        hide_globally: bool,
+    ) -> bool {
+        let Some(ctx) = self.context() else {
+            return false;
+        };
+        let Some(current) = usize::try_from(row)
+            .ok()
+            .and_then(|i| self.rows.get(i))
+            .cloned()
+        else {
+            return false;
+        };
+
+        let title = title.to_string();
+        let trimmed = title.trim();
+        let mut update = vuo_core::api::client::FeedPatch::default();
+        // An empty title is a rejection, not an instruction: Miniflux would
+        // accept it and leave the user with a nameless row they then cannot
+        // identify in order to fix it.
+        if !trimmed.is_empty() && trimmed != current.title {
+            update.title = Some(trimmed.to_owned());
+        }
+        if category_id > 0 && category_id != current.category_id {
+            update.category_id = Some(category_id);
+        }
+        if crawler != current.crawler {
+            update.crawler = Some(crawler);
+        }
+        if disabled != current.disabled {
+            update.disabled = Some(disabled);
+        }
+        if hide_globally != current.hide_globally {
+            update.hide_globally = Some(hide_globally);
+        }
+        if update.is_empty() {
+            return false;
+        }
+        ctx.send(Command::UpdateFeed {
+            feed_id: current.id,
+            update,
+        })
+    }
+
+    /// Pick up the worker's answer to the last `updateFeed`.
+    fn drain_update_notice(&mut self, signal: &crate::context::SyncSignal) {
+        match signal.take_notice() {
+            Some(crate::context::Notice::FeedUpdated { ok, message }) => {
+                self.updateOk = ok;
+                self.updateError = QString::from(message);
+                self.updateSerial = self.updateSerial.wrapping_add(1);
+                self.updateStateChanged();
+            }
+            // Not ours. Put it back for the page that is waiting on it --
+            // dropping it is how "Test connection" used to look like it did
+            // nothing.
+            Some(other) => signal.post(other),
+            None => {}
+        }
+    }
+
     fn refresh(&mut self) {
         self.reload();
     }
@@ -642,6 +841,9 @@ impl FeedModel {
                             .unwrap_or(i32::MAX),
                         error: f.parsing_error_message.clone(),
                         category_id: f.category_id.map(|c| c.get()).unwrap_or(0),
+                        crawler: f.crawler,
+                        disabled: f.disabled,
+                        hide_globally: f.hide_globally,
                     })
                     .collect()
             })
@@ -677,6 +879,9 @@ impl QAbstractListModel for FeedModel {
             ROLE_FEED_UNREAD => row.unread.into(),
             ROLE_FEED_ERROR => QString::from(row.error.clone()).into(),
             ROLE_FEED_CATEGORY => row.category_id.into(),
+            ROLE_FEED_CRAWLER => row.crawler.into(),
+            ROLE_FEED_DISABLED => row.disabled.into(),
+            ROLE_FEED_HIDDEN => row.hide_globally.into(),
             _ => QVariant::default(),
         }
     }
@@ -688,6 +893,126 @@ impl QAbstractListModel for FeedModel {
         names.insert(ROLE_FEED_UNREAD, "unreadCount".into());
         names.insert(ROLE_FEED_ERROR, "errorMessage".into());
         names.insert(ROLE_FEED_CATEGORY, "categoryId".into());
+        names.insert(ROLE_FEED_CRAWLER, "crawler".into());
+        names.insert(ROLE_FEED_DISABLED, "feedDisabled".into());
+        names.insert(ROLE_FEED_HIDDEN, "hideGlobally".into());
+        names
+    }
+}
+
+// ------------------------------------------------------------------ categories
+
+pub const ROLE_CATEGORY_TITLE: i32 = USER_ROLE + 1;
+
+/// A category as the feed editor's picker needs it.
+#[derive(Debug, Clone, Default)]
+pub struct CategoryRow {
+    pub id: i64,
+    /// Foreign text: the user names these, but so can an import. PlainText.
+    pub title: String,
+}
+
+/// The category list, for assigning a feed to one.
+///
+/// Read-only and deliberately minimal: Vuo does not create, rename or delete
+/// categories -- §3 leaves taxonomy management to the web UI -- it only needs
+/// to offer the existing ones so a feed can be filed.
+#[derive(QObject, Default)]
+pub struct CategoryModel {
+    base: qt_base_class!(trait QAbstractListModel),
+    count: qt_property!(i32; READ row_count NOTIFY countChanged),
+    countChanged: qt_signal!(),
+    refresh: qt_method!(fn(&mut self)),
+    /// The row holding `category_id`, or -1. The picker needs this to show
+    /// what the feed is filed under now.
+    rowForId: qt_method!(fn(&self, category_id: i64) -> i32),
+    /// The id at `row`, or 0.
+    idAt: qt_method!(fn(&self, row: i32) -> i64),
+
+    rows: Vec<CategoryRow>,
+    ctx: Option<std::rc::Rc<AppContext>>,
+}
+
+impl CategoryModel {
+    pub fn attach(&mut self, ctx: std::rc::Rc<AppContext>) {
+        self.ctx = Some(ctx);
+        self.reload();
+    }
+
+    fn context(&self) -> Option<std::rc::Rc<AppContext>> {
+        self.ctx.clone().or_else(crate::context::current)
+    }
+
+    fn refresh(&mut self) {
+        self.reload();
+    }
+
+    fn rowForId(&self, category_id: i64) -> i32 {
+        self.rows
+            .iter()
+            .position(|r| r.id == category_id)
+            .and_then(|i| i32::try_from(i).ok())
+            .unwrap_or(-1)
+    }
+
+    fn idAt(&self, row: i32) -> i64 {
+        usize::try_from(row)
+            .ok()
+            .and_then(|i| self.rows.get(i))
+            .map(|r| r.id)
+            .unwrap_or(0)
+    }
+
+    pub fn reload(&mut self) {
+        let Some(ctx) = self.context() else { return };
+        let rows: Vec<CategoryRow> = ctx
+            .read(|db| {
+                store::categories(db.conn())
+                    .unwrap_or_default()
+                    .iter()
+                    .map(|c| CategoryRow {
+                        id: c.id.get(),
+                        title: c.title.clone(),
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        (self as &mut dyn QAbstractListModel).begin_reset_model();
+        self.rows = rows;
+        (self as &mut dyn QAbstractListModel).end_reset_model();
+        self.countChanged();
+    }
+
+    #[must_use]
+    pub fn rows(&self) -> &[CategoryRow] {
+        &self.rows
+    }
+}
+
+impl QAbstractListModel for CategoryModel {
+    fn row_count(&self) -> i32 {
+        i32::try_from(self.rows.len()).unwrap_or(i32::MAX)
+    }
+
+    fn data(&self, index: QModelIndex, role: i32) -> QVariant {
+        let Ok(i) = usize::try_from(index.row()) else {
+            return QVariant::default();
+        };
+        let Some(row) = self.rows.get(i) else {
+            return QVariant::default();
+        };
+        match role {
+            ROLE_ID => row.id.into(),
+            ROLE_CATEGORY_TITLE => QString::from(row.title.clone()).into(),
+            _ => QVariant::default(),
+        }
+    }
+
+    fn role_names(&self) -> HashMap<i32, QByteArray> {
+        let mut names = HashMap::new();
+        names.insert(ROLE_ID, "categoryId".into());
+        names.insert(ROLE_CATEGORY_TITLE, "title".into());
         names
     }
 }

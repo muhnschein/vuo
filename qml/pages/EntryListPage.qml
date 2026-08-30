@@ -86,6 +86,15 @@ Page {
 
     allowedOrientations: Orientation.All
 
+    /// How far the list has been pulled past its top, as a positive number.
+    ///
+    /// `contentY - originY` is the expression Silica's own TabItem uses
+    /// (private/TabItem.qml:47-49) -- `originY` rather than 0 because a list
+    /// with a header starts at a non-zero content origin.
+    property real _pullDistance: page.model && listView.contentY < listView.originY
+                                 ? listView.originY - listView.contentY
+                                 : 0
+
     // The strip stands where the PageHeader would, pinned, as the clock and
     // Settings apps wear it -- Silica's own TabView pins its TabBar outside
     // the paged content and sizes the content to what is left.
@@ -95,6 +104,21 @@ Page {
         anchors { top: parent.top; left: parent.left; right: parent.right }
         visible: page.showScopeTabs
         height: scopeTabs.visible ? scopeTabs.implicitHeight : 0
+
+        // Ride down with the pulley and get out of its way, exactly as
+        // Silica's TabView moves its own TabBar (private/TabView.qml:69-71:
+        // `y: Math.max(0, -root.yOffset)` and `z: yOffset < 0 ? -1 : 1`).
+        // Without this the strip stayed pinned over the top of the menu, so
+        // the pulley opened UNDERNEATH the tabs.
+        //
+        // A `transform`, not a `y` binding: the list is anchored to this
+        // item's bottom, and moving its geometry would move the list, which
+        // changes `contentY`, which moves this item again -- a binding loop.
+        // A transform paints somewhere else without touching layout.
+        transform: Translate { y: page._pullDistance }
+        // Behind the list while the menu is out, in front of it otherwise, so
+        // rows scrolled past the top still cannot paint over the tabs.
+        z: page._pullDistance > 0 ? -1 : 1
 
         hostPage: page
         titles: [qsTr("Unread"), qsTr("Favourites"), qsTr("All")]
@@ -110,12 +134,19 @@ Page {
             right: parent.right
             bottom: parent.bottom
         }
-        // A SilicaListView does not clip, and the pulley menu parents itself
-        // into the flickable's content ABOVE the viewport. Without this it and
-        // any rows scrolled past the top would paint over the pinned strip.
-        // Silica's TabView solves the same problem with an opaque background
-        // filled from a colour that is not public API.
-        clip: true
+        // Clipped while scrolling, un-clipped while the pulley is out.
+        //
+        // Clipping is what keeps rows scrolled past the top from painting over
+        // the strip -- Silica buys the same thing with an opaque background
+        // filled from a colour that is not public API. But the pulley menu
+        // lives in the flickable's content ABOVE the viewport, so clipping
+        // also trims the menu at the strip's bottom edge, which is the other
+        // half of the menu opening "underneath" the tabs. Silica's TabItem
+        // makes exactly this trade the other way round and for the same
+        // reason: `clip: !flickable.pullDownMenu` (private/TabItem.qml:63).
+        // Gating on the pull means neither case is ever wrong: nothing is
+        // scrolled past the top at the moment the menu is being pulled out.
+        clip: page._pullDistance === 0
         model: page.model
 
         // PageHeader's own title label offers no supported way to force its
@@ -140,48 +171,6 @@ Page {
                 description: page.model && page.model.count > 0
                              ? qsTr("%n article(s)", "", page.model.count)
                              : ""
-            }
-
-            // Why the last refresh failed. Before this, a refresh that could
-            // not reach the server said nothing at all and span forever.
-            Item {
-                width: parent.width
-                height: failure.visible ? failure.height + Theme.paddingLarge : 0
-
-                Column {
-                    id: failure
-                    // A ternary, not `page.model && ...`: with no model that
-                    // conjunction is `null`, and Qt refuses to assign it to a
-                    // bool ("Unable to assign [undefined] to bool").
-                    visible: page.model
-                             ? (page.model.syncError.length > 0 || page.model.syncErrorIsAuth)
-                             : false
-                    x: Theme.horizontalPageMargin
-                    width: parent.width - Theme.horizontalPageMargin * 2
-                    spacing: Theme.paddingSmall
-
-                    Label {
-                        width: parent.width
-                        wrapMode: Text.Wrap
-                        // The server's own words on a general failure. Plain
-                        // text, always: Silica's own Notices banner would
-                        // render this as AutoText, which turns a crafted error
-                        // into markup injection and a remote-image IP leak.
-                        textFormat: Text.PlainText
-                        font.pixelSize: Theme.fontSizeExtraSmall
-                        color: Theme.errorColor
-                        text: (page.model ? page.model.syncErrorIsAuth : false)
-                              ? qsTr("The server rejected the API key.")
-                              : qsTr("Refresh failed: %1").arg(
-                                    page.model ? page.model.syncError : "")
-                    }
-
-                    Button {
-                        visible: page.model ? page.model.syncErrorIsAuth : false
-                        text: qsTr("Open settings")
-                        onClicked: pageStack.push(Qt.resolvedUrl("SettingsPage.qml"))
-                    }
-                }
             }
 
             Label {
@@ -270,6 +259,73 @@ Page {
                 width: parent.width - Theme.horizontalPageMargin * 2
                 spacing: Theme.paddingSmall
 
+                // The feed's own line: icon, name, age -- the three things
+                // that say "where is this from, and is it fresh" before the
+                // headline is even read. Miniflux's own list leads with the
+                // same three, which is the shape a user coming from the web
+                // UI is already reading for.
+                Row {
+                    width: parent.width
+                    spacing: Theme.paddingSmall
+
+                    Image {
+                        id: favicon
+                        // Square, and tied to the line's own text size so it
+                        // tracks the user's font scaling instead of pinning a
+                        // pixel count that is wrong on half the devices.
+                        width: Theme.fontSizeExtraSmall
+                        height: width
+                        sourceSize.width: width
+                        sourceSize.height: width
+                        fillMode: Image.PreserveAspectFit
+                        anchors.verticalCenter: parent.verticalCenter
+                        // A `data:` URI built in Rust from bytes already in
+                        // the mirror -- no network fetch happens here, so a
+                        // list scroll cannot leak the device's IP (§9.3).
+                        source: feedIcon
+                        asynchronous: true
+                        // The mirror stores whatever format the icon arrived
+                        // in, and the device ships handlers for only some of
+                        // them. Collapsing on failure keeps a missing handler
+                        // to a missing icon rather than a broken-image glyph.
+                        visible: feedIcon.length > 0 && status === Image.Ready
+                    }
+
+                    Label {
+                        // The feed's name, which the user may have renamed.
+                        // Foreign text either way: PlainText, explicitly.
+                        textFormat: Text.PlainText
+                        text: feedName
+                        visible: feedName.length > 0
+                        // Never let a long feed name push the age off the row.
+                        width: Math.min(implicitWidth,
+                                        parent.width - favicon.width - age.width
+                                        - Theme.paddingSmall * 3)
+                        truncationMode: TruncationMode.Fade
+                        font.pixelSize: Theme.fontSizeExtraSmall
+                        color: item.highlighted ? Theme.secondaryHighlightColor
+                                                : Theme.secondaryColor
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+
+                    Label {
+                        id: age
+                        textFormat: Text.PlainText
+                        // Silica's own elapsed formatter, so "2 h ago" is
+                        // worded and localised exactly as the rest of the
+                        // system words it. `published` is epoch SECONDS.
+                        text: published > 0
+                              ? Format.formatDate(new Date(published * 1000),
+                                                  Formatter.DurationElapsed)
+                              : ""
+                        visible: published > 0
+                        font.pixelSize: Theme.fontSizeExtraSmall
+                        color: item.highlighted ? Theme.secondaryHighlightColor
+                                                : Theme.secondaryColor
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                }
+
                 Label {
                     width: parent.width
                     // §9.3: a feed-supplied title is foreign data. PlainText,
@@ -305,7 +361,7 @@ Page {
                     }
                     Label {
                         textFormat: Text.PlainText
-                        text: "★"
+                        text: "\u2605"
                         color: Theme.highlightColor
                         font.pixelSize: Theme.fontSizeExtraSmall
                         visible: starred
@@ -327,9 +383,50 @@ Page {
                     text: starred ? qsTr("Remove favourite") : qsTr("Add favourite")
                     onClicked: page.model.setStarred(index, !starred)
                 }
+                MenuItem {
+                    text: qsTr("Open in browser")
+                    // Hidden rather than disabled: an entry with no link is
+                    // rare enough that a permanently dead row would read as a
+                    // bug in the app rather than a gap in the feed.
+                    visible: url.length > 0
+                    onClicked: Qt.openUrlExternally(url)
+                }
             }
         }
 
         VerticalScrollDecorator {}
+    }
+
+    // Docked, not in the list's header: a notice must not move the rows the
+    // user is reading, and it has to be visible wherever they have scrolled
+    // to. See components/NoticeBanner.qml.
+    NoticeBanner {
+        id: notice
+
+        anchors.bottom: parent.bottom
+        onActionTriggered: pageStack.push(Qt.resolvedUrl("SettingsPage.qml"))
+    }
+
+    /// One string that changes exactly once per distinct failure.
+    ///
+    /// The banner is posted from a change handler rather than bound to
+    /// `syncError`, because a notice is an event: a binding would re-post the
+    /// same failure on every re-evaluation, and re-arm its dismiss timer with
+    /// it. `requestSync` clears both fields, so a retry produces an empty
+    /// token first and the next failure is a genuine change even when the
+    /// server says the same thing twice.
+    property string _failureToken: page.model
+                                  ? (page.model.syncErrorIsAuth ? "auth" : page.model.syncError)
+                                  : ""
+
+    on_FailureTokenChanged: {
+        if (page._failureToken.length === 0) {
+            notice.dismiss()
+        } else if (page.model.syncErrorIsAuth) {
+            notice.post(qsTr("The server rejected the API key."), true,
+                        qsTr("Open settings"))
+        } else {
+            notice.post(qsTr("Refresh failed: %1").arg(page.model.syncError), true, "")
+        }
     }
 }

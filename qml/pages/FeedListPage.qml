@@ -96,6 +96,21 @@ Page {
 
             menu: ContextMenu {
                 MenuItem {
+                    text: qsTr("Feed settings")
+                    // Seeded from the row rather than re-read on the other
+                    // page: the delegate has the current values in scope, and
+                    // a second query would be a second chance to disagree.
+                    onClicked: pageStack.push(Qt.resolvedUrl("EditFeedPage.qml"), {
+                        model: page.model,
+                        row: index,
+                        feedTitle: title,
+                        categoryId: categoryId,
+                        crawler: crawler,
+                        feedDisabled: feedDisabled,
+                        hideGlobally: hideGlobally
+                    })
+                }
+                MenuItem {
                     text: qsTr("Mark feed as read")
                     onClicked: page.model.markFeedRead(index)
                 }

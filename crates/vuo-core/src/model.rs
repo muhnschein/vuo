@@ -153,6 +153,9 @@ pub struct Feed {
     pub parsing_error_count: i32,
     pub disabled: bool,
     pub hide_globally: bool,
+    /// The server scrapes each entry's own page instead of trusting the feed's
+    /// summary ("Fetch original content" in the web UI).
+    pub crawler: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

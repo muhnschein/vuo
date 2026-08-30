@@ -38,6 +38,10 @@ qttypes = "=0.2.12"
 # `qml_register_type` wants a &'static CStr. Sailfish's Rust floor predates
 # C-string literals (`c"..."`), so the macro earns its place.
 cstr = "0.2"
+# Favicons reach QML as `data:` URIs. Qt's own network stack decodes those, so
+# a few lines of base64 replace a QQuickImageProvider -- which would mean C++
+# glue, a second thread-affinity story, and a cache to invalidate.
+base64 = "0.22"
 
 tokio = { version = "1", features = ["rt", "sync", "time"] }
 tracing = "0.1"

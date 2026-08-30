@@ -68,6 +68,7 @@ use qmetaobject::*;
 pub fn register_qml_types() {
     qml_register_type::<models::EntryModel>(cstr!("Vuo"), 1, 0, cstr!("EntryModel"));
     qml_register_type::<models::FeedModel>(cstr!("Vuo"), 1, 0, cstr!("FeedModel"));
+    qml_register_type::<models::CategoryModel>(cstr!("Vuo"), 1, 0, cstr!("CategoryModel"));
     qml_register_type::<article::ArticleModel>(cstr!("Vuo"), 1, 0, cstr!("ArticleModel"));
     qml_register_type::<settings::Settings>(cstr!("Vuo"), 1, 0, cstr!("Settings"));
 }
