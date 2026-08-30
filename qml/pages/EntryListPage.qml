@@ -1,5 +1,6 @@
 import QtQuick 2.6
 import Sailfish.Silica 1.0
+import Sailfish.Silica.Background 1.0 as Background
 import "../components"
 
 Page {
@@ -79,6 +80,14 @@ Page {
         pager.moveTo(index)
     }
 
+    /// How far the CURRENT tab is scrolled past its own top: positive when
+    /// scrolled down, NEGATIVE while the pulley is being pulled out.
+    ///
+    /// `contentY - originY` read off `currentItem` is exactly what Silica's
+    /// TabView does (private/TabView.qml:51, private/TabItem.qml:47-49), and
+    /// all three of the strip's behaviours below are its three uses of it.
+    property real yOffset: pager.currentItem ? pager.currentItem.yOffset : 0
+
     /// The model the page-level furniture (the notice banner) speaks for.
     property var currentModel: page.showScopeTabs
                                ? (page.scopeModels[pager.currentIndex] || null)
@@ -87,42 +96,85 @@ Page {
     allowedOrientations: Orientation.All
 
     /*
-     * The tab strip, above the tabs rather than on top of them.
+     * The tab strip, pinned -- and the pulley menu still owns the top edge.
      *
-     * The strip owns the top of the page and the pager starts underneath it,
-     * so nothing the lists draw ever reaches this band: no scrolled row, and
-     * no swiped-in neighbour. That is the whole reason for the inset, and it
-     * replaces an earlier arrangement where the pager was full-page and the
-     * strip floated over it.
+     * Three bindings, all of them Silica's own, and each one answering a
+     * defect reported from the device.
      *
-     * That arrangement had to hide the rows passing behind the strip, and the
-     * only way to do that is to paint the strip opaque -- which Silica does
-     * with `BackgroundRectangle` (private/TabView.qml:74-81), a
-     * Sailfish.Silica.private item that redraws the window background. There
-     * is no public equivalent: `_backgroundColor` is
-     * `Qt.tint(_pageDimmerColor, _pageColor)` and BOTH are
-     * `Theme.rgba(overlayBackgroundColor, 0)` for a page in a stack
-     * (ApplicationWindow.qml:84-100), so a rectangle filled from it is
-     * transparent and only the fallback colour under it showed -- a black
-     * band across the top of the screen, reported from the device.
+     * `y` rides down with the pull, `z` drops the strip behind the pager while
+     * the pull is happening, and the backdrop opens a gap at its top edge
+     * until the list is properly scrolled. Together they mean the pulley's
+     * resting indicator shows above the tabs, and the opened menu comes down
+     * over them from the top of the screen, as it does in every stock app.
+     * TabView spells the same three out at private/TabView.qml:71-78.
      *
-     * Insetting the pager needs no colour at all: the ambience shows through
-     * the strip at every scroll position, which is exactly what it did at the
-     * top before. The cost is that the pulley menu now opens BELOW the strip
-     * instead of over it, which is also what the device asked for -- the strip
-     * can no longer obscure the menu because it is no longer in front of it.
+     * The z-flip is gated on `yOffset < 0` -- ACTIVELY BEING PULLED -- not on
+     * merely sitting at the top. Gating it on "at the top" is what made every
+     * tab untappable: at rest the strip was behind a full-page Flickable,
+     * input is delivered in reverse paint order, and the Flickable took every
+     * press.
+     *
+     * THE BACKDROP is why this arrangement is possible at all. A strip pinned
+     * over a scrolling list has to be opaque or the rows read straight through
+     * it, and it has to be opaque in the ambience's own background or it reads
+     * as a slab -- the previous attempt filled it with
+     * `Theme.overlayBackgroundColor` layered under
+     * `__silica_applicationwindow_instance._backgroundColor`, which measures
+     * on-device as #000000 under #00000000: a black band across the top of the
+     * screen. The window colour is transparent because the wallpaper is not in
+     * this window at all; ApplicationWindow puts it in a separate
+     * `WallpaperWindow` behind (ApplicationWindow.qml:524) and the app window
+     * is see-through to it.
+     *
+     * `Sailfish.Silica.Background.ThemeBackground` is the item that paints
+     * that same ambience background, aligned to the screen rather than to
+     * itself -- it takes `transformItem` from the window's own rotating item.
+     * It is the public face of what Silica's `BackgroundRectangle` does for
+     * TabView (private/TabView.qml:74-81), which is in Sailfish.Silica.private
+     * and therefore not available here.
+     *
+     * On importing a module outside Sailfish.Silica: `Sailfish.Silica.Background`
+     * is a normal module with its own qmldir, and ThemeBackground is a public
+     * entry in it, not one of its `internal` lines. It is not on Harbour's
+     * allowed-imports list, which is a cost this app can pay -- docs/scope.md
+     * targets Chum and OpenRepos, and docs/packaging.md calls Harbour "a
+     * stretch goal at best". `Sailfish.Silica.private` would NOT be acceptable
+     * on the same terms: it is explicitly private, unversioned, and the
+     * reasons in ScopeTabBar.qml's header still stand.
      */
     ScopeTabBar {
         id: scopeTabs
 
-        anchors { top: parent.top; left: parent.left; right: parent.right }
+        anchors { left: parent.left; right: parent.right }
+        // Rides down with the pull, so the menu coming down has room above it.
+        // TabView.qml:72, which writes the same thing as `Math.max(0, -yOffset)`.
+        y: Math.max(0, -page.yOffset)
         visible: page.showScopeTabs
         height: scopeTabs.visible ? scopeTabs.implicitHeight : 0
+        // Behind the pager ONLY while the pull is actually happening, so the
+        // menu paints over the tabs. TabView.qml:71. At every other moment the
+        // strip is in front, which is what makes a tap reach it.
+        z: page.yOffset < 0 ? -1 : 1
 
         hostPage: page
         titles: [qsTr("Unread"), qsTr("Favourites"), qsTr("All")]
         currentIndex: pager.currentIndex
         onTabClicked: page.selectTab(index)
+
+        // The ambience's own background, so rows scrolling past cannot be read
+        // through the tabs and the strip still looks like the wallpaper.
+        //
+        // The top edge stays open until the list is scrolled clear of it: the
+        // pulley's resting indicator is drawn into the very top of the
+        // viewport, and covering it would hide the one hint that there is a
+        // menu. Silica opens exactly the same gap, of exactly this size, for
+        // exactly this reason (TabView.qml:78).
+        Background.ThemeBackground {
+            anchors.fill: parent
+            anchors.topMargin: page.yOffset > Theme.paddingSmall
+                               ? 0 : Theme.paddingSmall
+            z: -1
+        }
     }
 
     /*
@@ -142,15 +194,13 @@ Page {
     PagedView {
         id: pager
 
-        // Below the strip, not underneath it. Every list is clipped to these
-        // bounds, so the band the strip occupies is the ambience and nothing
-        // else -- see the note on the strip below.
-        anchors {
-            top: scopeTabs.bottom
-            left: parent.left
-            right: parent.right
-            bottom: parent.bottom
-        }
+        // Full-page on purpose. The pulley menu lives at negative content
+        // coordinates, above `originY`, and is revealed at the top of the
+        // VIEWPORT -- so the viewport has to begin at the top of the SCREEN
+        // for the menu to come down from the top edge, which is where
+        // SailfishOS puts it. The strip is pinned over this and each list
+        // reserves the space it occupies in its own header.
+        anchors.fill: parent
 
         // One page per tab -- or exactly one, with no swiping, for a feed or
         // category view, which is reached by pushing a page and left by going
@@ -192,7 +242,7 @@ Page {
             scopeId: page.showScopeTabs ? 0 : page.scopeId
             showScopeTabs: page.showScopeTabs
             tabIndex: page.showScopeTabs ? index : -1
-            topPadding: page.showScopeTabs ? Theme.paddingLarge : 0
+            tabStripHeight: page.showScopeTabs ? scopeTabs.implicitHeight : 0
             scopeLabel: page.scopeLabel
             title: page.title
         }

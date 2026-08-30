@@ -27,10 +27,19 @@ SilicaListView {
     property bool showScopeTabs: false
     /// Which tab this list is. -1 when there is no strip.
     property int tabIndex: -1
-    /// Breathing room above the first row, for the tabbed scopes that have no
-    /// PageHeader of their own. NOT room for the strip: the strip sits above
-    /// this list rather than over it, and the page insets the pager instead.
-    property real topPadding: 0
+    /// How much vertical room the page's pinned strip needs. This list is
+    /// full-page -- so that the pulley menu comes down from the top of the
+    /// SCREEN -- and reserves the strip's band in its own header instead.
+    property real tabStripHeight: 0
+
+    /// How far this list is scrolled past its own top: positive scrolled down,
+    /// NEGATIVE while the pulley is being pulled out.
+    ///
+    /// `contentY - originY` is the expression Silica's own TabItem uses
+    /// (private/TabItem.qml:47-49). The page reads it off whichever list is in
+    /// front, exactly as TabView reads `yOffset` off `currentItem`
+    /// (private/TabView.qml:51), and drives the whole strip from it.
+    readonly property real yOffset: listView.contentY - listView.originY
 
     // Scope this tab's own model, once. A feed or category view is scoped by
     // the page instead, because its scope is a parameter of the push.
@@ -40,13 +49,12 @@ SilicaListView {
     property string scopeLabel: ""
     property string title: ""
 
-    // This list keeps everything it draws inside its own bounds, and the page
-    // starts those bounds below the tab strip -- so a row scrolled past the
-    // top stops at the strip's lower edge instead of passing behind it, with
-    // no opaque backdrop needed to hide it (see the note in EntryListPage).
-    // The pulley menu lives at negative content coordinates, above `originY`,
-    // and is revealed INSIDE these bounds too, which is why it now opens
-    // under the strip rather than over it.
+    // Everything this list draws stays inside its own bounds, which are the
+    // whole page. The pulley menu lives at negative content coordinates,
+    // above `originY`, so being full-page is what lets it be revealed from
+    // the top of the SCREEN rather than from under the tab strip. Rows
+    // scrolled past the top pass behind the strip, which is opaque over the
+    // ambience -- see the note on the backdrop in EntryListPage.
     clip: true
     // Always bound, never re-bound on a swipe.
     //
@@ -72,13 +80,15 @@ SilicaListView {
         width: listView.width
         height: nameLabel.y + (nameLabel.visible ? nameLabel.height : 0)
 
-        // A tabbed scope has no PageHeader, so without this the first row
-        // would butt straight up against the strip above it.
+        // Room for the tab strip, which is pinned by the PAGE rather than
+        // scrolled with this list -- it must not slide away under a scroll,
+        // and it must not travel sideways with a swipe. This reserves the
+        // band it occupies so the first row starts below it.
         Item {
             id: stripSpace
 
             width: 1
-            height: listView.topPadding
+            height: listView.tabStripHeight
         }
 
         // Only for the scopes the strip does not cover.
