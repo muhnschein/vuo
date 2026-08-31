@@ -26,6 +26,10 @@ Page {
     /// case, so one expression drives both the strip and its visibility.
     property bool showScopeTabs: page.scopeTabKinds.indexOf(page.scopeKind) >= 0
 
+    /// One EntryModel per tab, in `scopeTabKinds` order. Empty for a feed or
+    /// category view, which uses `model` instead.
+    property var scopeModels: []
+
     Component.onCompleted: page.applyScope()
 
     // Re-assert this page's scope whenever it becomes the visible one.
@@ -49,287 +53,242 @@ Page {
     // unread until the next sync.
     onStatusChanged: if (status === PageStatus.Activating) page.applyScope()
 
+    /// Scope the single model a feed or category view uses.
+    ///
+    /// The tab scopes are NOT set here: each tab's model is scoped once, by
+    /// the list that owns it, and never re-scoped. Re-scoping a shared model
+    /// was what made a neighbouring tab impossible to keep populated.
     function applyScope() {
-        if (page.model) {
+        if (page.model && !page.showScopeTabs) {
             page.model.setScope(page.scopeKind, page.scopeId)
         }
     }
 
-    /// Switch scope in place, with no page transition.
-    function selectScope(kind) {
-        if (kind === page.scopeKind) {
+    /// Move to the tab at `index`, from a tap on the strip.
+    ///
+    /// The strip is a sibling of the pager, not a child of any one list, so
+    /// this is how a tap on it reaches the pager that owns them all.
+    function selectTab(index) {
+        if (index === pager.currentIndex) {
             // Tapping the tab you are already on goes back to the top.
-            listView.scrollToTop()
+            if (pager.currentItem) {
+                pager.currentItem.scrollToTop()
+            }
             return
         }
-        // NOT optional. `markAllRead` reads the model's scope when the remorse
-        // countdown FIRES, not when the item was tapped, and RemorsePopup
-        // flushes itself only on PageStatus.Deactivating. A page change was
-        // therefore the only way the shared model could be re-scoped, so a
-        // pending action always resolved first. Switching tabs is not a page
-        // change, so that safety net is gone: without this, arming "Mark all
-        // as read" on Unread and tapping "All" within the countdown would run
-        // it against every article in the mirror. `trigger()` runs it NOW,
-        // against the scope the user meant; `cancel()` would silently discard
-        // what they asked for.
-        if (remorse.active) {
-            remorse.trigger()
-        }
-        page.scopeKind = kind
-        // Clear the feed id AND the feed name together, or "Favourites" would
-        // keep a feed title sitting under it.
-        page.scopeId = 0
-        page.title = ""
-        page.applyScope()
-        listView.positionViewAtBeginning()
+        pager.moveTo(index)
     }
+
+    /// How far the CURRENT tab is scrolled past its own top: positive when
+    /// scrolled down, NEGATIVE while the pulley is being pulled out.
+    ///
+    /// `contentY - originY` read off `currentItem` is exactly what Silica's
+    /// TabView does (private/TabView.qml:51, private/TabItem.qml:47-49), and
+    /// all three of the strip's behaviours below are its three uses of it.
+    property real yOffset: pager.currentItem ? pager.currentItem.yOffset : 0
+
+    /// The model the page-level furniture (the notice banner) speaks for.
+    property var currentModel: page.showScopeTabs
+                               ? (page.scopeModels[pager.currentIndex] || null)
+                               : page.model
 
     allowedOrientations: Orientation.All
 
-    // The strip stands where the PageHeader would, pinned, as the clock and
-    // Settings apps wear it -- Silica's own TabView pins its TabBar outside
-    // the paged content and sizes the content to what is left.
+    /// The band across the top of the page that the strip occupies.
+    readonly property real stripBand: page.showScopeTabs ? scopeTabs.height : 0
+
+    /*
+     * The tab strip, pinned -- and the pulley menu still owns the top edge.
+     *
+     * The strip paints NOTHING behind its labels, and that is the whole point.
+     * This window is transparent: the ambience is drawn in a separate
+     * `WallpaperWindow` BEHIND the app (ApplicationWindow.qml:524), which is
+     * why `_backgroundColor` is `#00000000` and why every attempt to give the
+     * strip a matching fill produced a dark slab instead -- first
+     * `Theme.overlayBackgroundColor` (`#000000`), then
+     * `Sailfish.Silica.Background.ThemeBackground`, whose glass material has
+     * no wallpaper to sample inside an app window and so rendered its
+     * `_wallpaperOverlayColor` (`#99000000`) as a scrim. Both were reported
+     * from the device as a black bar. A band that paints nothing at all is
+     * the ambience, exactly, at zero cost.
+     *
+     * Which leaves only one thing to arrange: no ROW may be in the band
+     * either. `viewport` below does that by clipping, and the two of them
+     * together are what let the strip stay pinned without an opaque backing.
+     *
+     * `y` and `z` are Silica's, off `yOffset`: the strip rides down with the
+     * pull (TabView.qml:72) and drops behind the pager while the pull is
+     * happening (TabView.qml:71) so the opened menu paints over the tabs.
+     *
+     * The z gate is on `yOffset < 0` -- ACTIVELY BEING PULLED -- not on merely
+     * sitting at the top. Gating it on "at the top" is what made every tab
+     * untappable: at rest the strip was behind a full-page Flickable, input is
+     * delivered in reverse paint order, and the Flickable took every press.
+     */
     ScopeTabBar {
         id: scopeTabs
 
-        anchors { top: parent.top; left: parent.left; right: parent.right }
+        anchors { left: parent.left; right: parent.right }
+        y: Math.max(0, -page.yOffset)
         visible: page.showScopeTabs
         height: scopeTabs.visible ? scopeTabs.implicitHeight : 0
+        z: page.yOffset < 0 ? -1 : 1
 
         hostPage: page
         titles: [qsTr("Unread"), qsTr("Favourites"), qsTr("All")]
-        currentIndex: page.scopeTabKinds.indexOf(page.scopeKind)
-        onTabClicked: page.selectScope(page.scopeTabKinds[index])
+        currentIndex: pager.currentIndex
+        onTabClicked: page.selectTab(index)
     }
 
-    SilicaListView {
-        id: listView
-        anchors {
-            top: scopeTabs.bottom
-            left: parent.left
-            right: parent.right
-            bottom: parent.bottom
-        }
-        // A SilicaListView does not clip, and the pulley menu parents itself
-        // into the flickable's content ABOVE the viewport. Without this it and
-        // any rows scrolled past the top would paint over the pinned strip.
-        // Silica's TabView solves the same problem with an opaque background
-        // filled from a colour that is not public API.
-        clip: true
-        model: page.model
+    /*
+     * The tabs, side by side, swipeable.
+     *
+     * `PagedView` is public -- "Sailfish.Silica/PagedView 1.0" in
+     * plugins.qmltypes -- and is the same class Silica's own TabView is built
+     * on, so a swipe here has the system's own feel rather than a hand-rolled
+     * drag threshold.
+     *
+     * The delegate deliberately does NOT touch `PagedView.isCurrentItem`.
+     * That is an ATTACHED property, attached types cannot be written in a QML
+     * stub, and using one would take this file and the whole entry list out of
+     * `make qml-load`'s reach. `pager.currentIndex === index` says the same
+     * thing with a plain binding.
+     */
+    /*
+     * The window the tabs are seen through.
+     *
+     * Its rect is the page MINUS the strip's band, and it clips -- so a row
+     * scrolled up into that band is cut at the strip's lower edge instead of
+     * passing behind it. That is what lets the strip be transparent, and it
+     * costs nothing at the top, where the list's own header already reserves
+     * the band.
+     *
+     * The pager inside it is shifted back up by the same amount, so the
+     * VIEWPORT still begins at the top of the SCREEN even though this item
+     * does not. That matters: the pulley menu lives at negative content
+     * coordinates, above `originY`, and both it and its resting indicator are
+     * drawn relative to the top of the viewport. Anchoring the pager below the
+     * strip instead -- which is what shipped last round -- is exactly what put
+     * the menu under the tabs.
+     *
+     * Clipping is therefore switched OFF unless something is actually scrolled
+     * past the top:
+     *
+     *   scrolled (yOffset > 0)  clip -- rows would otherwise enter the band
+     *   at rest  (yOffset == 0) no clip -- the band holds the list's header
+     *                           and nothing else, and the pulley's resting
+     *                           indicator is drawn into the top 6px of the
+     *                           viewport, which clipping would swallow
+     *   pulling  (yOffset < 0)  no clip -- the menu comes down through the
+     *                           band from the top edge of the screen
+     *
+     * Nothing is ever scrolled past the top at the moment the menu is being
+     * pulled out, so no state needs both. Silica's TabItem makes the same
+     * trade with the same reasoning, though it settles it once at construction
+     * rather than per frame (private/TabItem.qml:63).
+     *
+     * Clipping also decides input, not just paint: Qt tests a clipping item's
+     * own shape before descending into its children, so a tap in the band
+     * cannot reach a row that has been clipped out of it.
+     */
+    Item {
+        id: viewport
 
-        // PageHeader's own title label offers no supported way to force its
-        // textFormat, and `page.title` can be a FEED NAME -- foreign text
-        // chosen by the feed operator. §9.3: a crafted title in a rich-text
-        // context is markup injection, and can pull a remote image that leaks
-        // the device's IP on a list scroll. So the header carries a fixed
-        // string and the name is rendered by a Label this file controls.
-        header: Column {
-            width: listView.width
+        x: 0
+        width: page.width
+        y: page.stripBand
+        height: page.height - page.stripBand
+        clip: page.yOffset > 0
 
-            // Only for the scopes the strip does not cover. A Column skips
-            // invisible children, so this costs no space on a tab scope.
-            //
-            // Retiring it there also drops a binding that was about to start
-            // lying: `count` is rows HELD, and reload caps the query at 500,
-            // so an "All" scope on any real mirror would have read
-            // "500 articles" for ever.
-            PageHeader {
-                visible: !page.showScopeTabs
-                title: page.scopeLabel
-                description: page.model && page.model.count > 0
-                             ? qsTr("%n article(s)", "", page.model.count)
-                             : ""
-            }
+        PagedView {
+            id: pager
 
-            // Why the last refresh failed. Before this, a refresh that could
-            // not reach the server said nothing at all and span forever.
-            Item {
-                width: parent.width
-                height: failure.visible ? failure.height + Theme.paddingLarge : 0
+            // Shifted back up by the band, so the viewport starts at the top
+            // of the screen even though `viewport` starts below the strip.
+            x: 0
+            y: -page.stripBand
+            width: viewport.width
+            height: page.height
 
-                Column {
-                    id: failure
-                    // A ternary, not `page.model && ...`: with no model that
-                    // conjunction is `null`, and Qt refuses to assign it to a
-                    // bool ("Unable to assign [undefined] to bool").
-                    visible: page.model
-                             ? (page.model.syncError.length > 0 || page.model.syncErrorIsAuth)
-                             : false
-                    x: Theme.horizontalPageMargin
-                    width: parent.width - Theme.horizontalPageMargin * 2
-                    spacing: Theme.paddingSmall
+        // One page per tab -- or exactly one, with no swiping, for a feed or
+        // category view, which is reached by pushing a page and left by going
+        // back rather than by swiping sideways.
+        model: page.showScopeTabs ? page.scopeTabKinds.length : 1
+        interactive: page.showScopeTabs
+        // Every tab stays alive and populated, so swiping towards one shows
+        // its rows rather than an empty page that fills a moment later.
+        cacheSize: page.showScopeTabs ? page.scopeTabKinds.length : 1
 
-                    Label {
-                        width: parent.width
-                        wrapMode: Text.Wrap
-                        // The server's own words on a general failure. Plain
-                        // text, always: Silica's own Notices banner would
-                        // render this as AutoText, which turns a crafted error
-                        // into markup injection and a remote-image IP leak.
-                        textFormat: Text.PlainText
-                        font.pixelSize: Theme.fontSizeExtraSmall
-                        color: Theme.errorColor
-                        text: (page.model ? page.model.syncErrorIsAuth : false)
-                              ? qsTr("The server rejected the API key.")
-                              : qsTr("Refresh failed: %1").arg(
-                                    page.model ? page.model.syncError : "")
-                    }
-
-                    Button {
-                        visible: page.model ? page.model.syncErrorIsAuth : false
-                        text: qsTr("Open settings")
-                        onClicked: pageStack.push(Qt.resolvedUrl("SettingsPage.qml"))
-                    }
-                }
-            }
-
-            Label {
-                visible: page.title.length > 0
-                x: Theme.horizontalPageMargin
-                width: parent.width - Theme.horizontalPageMargin * 2
-                textFormat: Text.PlainText
-                text: page.title
-                wrapMode: Text.Wrap
-                maximumLineCount: 2
-                elide: Text.ElideRight
-                font.pixelSize: Theme.fontSizeLarge
-                color: Theme.highlightColor
+        Component.onCompleted: {
+            var index = page.scopeTabKinds.indexOf(page.scopeKind)
+            if (page.showScopeTabs && index > 0) {
+                pager.currentIndex = index
             }
         }
 
-        PullDownMenu {
-            MenuItem {
-                text: qsTr("Settings")
-                onClicked: pageStack.push(Qt.resolvedUrl("SettingsPage.qml"))
-            }
-            MenuItem {
-                text: qsTr("Feeds")
-                onClicked: pageStack.push(Qt.resolvedUrl("FeedListPage.qml"),
-                                          { model: page.feedModel,
-                                            entryModel: page.model })
-            }
-            MenuItem {
-                text: qsTr("Mark all as read")
-                // Hidden on All. markAllRead's non-feed branch expands the
-                // scope with i64::MAX as the limit over a SELECT that pulls
-                // the full `content` column, then queues one outbox row per
-                // entry with no already-read filter. On Unread that set is
-                // bounded by the unread count; on All it is every article ever
-                // synced. A mitigation, not a fix -- the Rust wants an id-only
-                // projection and an already-read filter before All gets it.
-                visible: page.scopeKind !== 2
-                onClicked: remorse.execute(qsTr("Marking all as read"), function() {
-                    page.model.markAllRead()
-                })
-            }
-            MenuItem {
-                text: qsTr("Refresh")
-                // Asks the worker for a network sync. `refresh()` alone only
-                // re-reads the local mirror, so on its own the pulley menu
-                // never actually talked to the server.
-                onClicked: page.model.requestSync()
+        // `currentIndex` is driven imperatively, NOT bound.
+        //
+        // A swipe writes this property from C++, and a QML binding that is
+        // written to is gone for good -- so binding it to the scope would work
+        // exactly until the first swipe, after which tapping a tab would stop
+        // moving the pager.
+        onCurrentIndexChanged: {
+            if (page.showScopeTabs) {
+                page.scopeKind = page.scopeTabKinds[pager.currentIndex]
             }
         }
 
-        RemorsePopup { id: remorse }
+        delegate: EntryListView {
+            width: pager.width
+            height: pager.height
 
-        // A refresh that reached the network has to look different from one
-        // that did not. `syncing` had exactly one consumer -- the cover -- so
-        // on the page itself a working Refresh and a Refresh that did nothing
-        // were pixel-identical, which is how the latter went unnoticed.
-        BusyIndicator {
-            anchors.centerIn: parent
-            size: BusyIndicatorSize.Large
-            running: page.model ? page.model.syncing : false
-        }
-
-        ViewPlaceholder {
-            // Not while syncing: "Nothing to read / Pull down to refresh"
-            // under a running spinner reads as a refusal.
-            enabled: listView.count === 0
-                     && !(page.model && page.model.syncing)
-            // "Nothing to read / Pull down to refresh" is an Unread string.
-            // Under a Favourites tab it reads as a refusal, and refreshing
-            // does not create favourites.
-            text: page.scopeKind === 1 ? qsTr("No favourites")
-                                       : qsTr("Nothing to read")
-            hintText: page.scopeKind === 1
-                      ? qsTr("Star an article to keep it here")
-                      : qsTr("Pull down to refresh")
-        }
-
-        delegate: ListItem {
-            id: item
-            contentHeight: column.height + Theme.paddingMedium * 2
-
-            Column {
-                id: column
-                x: Theme.horizontalPageMargin
-                y: Theme.paddingMedium
-                width: parent.width - Theme.horizontalPageMargin * 2
-                spacing: Theme.paddingSmall
-
-                Label {
-                    width: parent.width
-                    // §9.3: a feed-supplied title is foreign data. PlainText,
-                    // always, explicitly.
-                    textFormat: Text.PlainText
-                    text: title
-                    wrapMode: Text.Wrap
-                    maximumLineCount: 3
-                    elide: Text.ElideRight
-                    font.pixelSize: Theme.fontSizeMedium
-                    color: unread ? Theme.primaryColor : Theme.secondaryColor
-                }
-
-                Row {
-                    spacing: Theme.paddingMedium
-
-                    Label {
-                        // Author names are foreign too.
-                        textFormat: Text.PlainText
-                        text: author
-                        font.pixelSize: Theme.fontSizeExtraSmall
-                        color: Theme.secondaryColor
-                        visible: author.length > 0
-                    }
-                    Label {
-                        // Generated locally from an integer, so no foreign
-                        // data reaches this one -- but it is still explicit,
-                        // because a rule with exceptions is not checkable.
-                        textFormat: Text.PlainText
-                        text: readingTime > 0 ? qsTr("%n min", "", readingTime) : ""
-                        font.pixelSize: Theme.fontSizeExtraSmall
-                        color: Theme.secondaryColor
-                    }
-                    Label {
-                        textFormat: Text.PlainText
-                        text: "★"
-                        color: Theme.highlightColor
-                        font.pixelSize: Theme.fontSizeExtraSmall
-                        visible: starred
-                    }
-                }
-            }
-
-            onClicked: pageStack.push(Qt.resolvedUrl("ArticlePage.qml"), {
-                entryId: entryId,
-                entryTitle: title
-            })
-
-            menu: ContextMenu {
-                MenuItem {
-                    text: unread ? qsTr("Mark as read") : qsTr("Mark as unread")
-                    onClicked: page.model.setRead(index, unread)
-                }
-                MenuItem {
-                    text: starred ? qsTr("Remove favourite") : qsTr("Add favourite")
-                    onClicked: page.model.setStarred(index, !starred)
-                }
+            hostPage: page
+            // Each tab has its own model, scoped once and never re-scoped.
+            entryModel: page.showScopeTabs ? page.scopeModels[index] : page.model
+            current: pager.currentIndex === index
+            scopeKind: page.showScopeTabs ? page.scopeTabKinds[index] : page.scopeKind
+            scopeId: page.showScopeTabs ? 0 : page.scopeId
+            showScopeTabs: page.showScopeTabs
+            tabIndex: page.showScopeTabs ? index : -1
+            tabStripHeight: page.stripBand
+            scopeLabel: page.scopeLabel
+            title: page.title
             }
         }
+    }
 
-        VerticalScrollDecorator {}
+    // Docked, not in a list's header: a notice must not move the rows the
+    // user is reading, and it has to be visible wherever they have scrolled
+    // to. See components/NoticeBanner.qml.
+    NoticeBanner {
+        id: notice
+
+        anchors.bottom: parent.bottom
+        onActionTriggered: pageStack.push(Qt.resolvedUrl("SettingsPage.qml"))
+    }
+
+    /// One string that changes exactly once per distinct failure.
+    ///
+    /// The banner is posted from a change handler rather than bound to
+    /// `syncError`, because a notice is an event: a binding would re-post the
+    /// same failure on every re-evaluation, and re-arm its dismiss timer with
+    /// it. `requestSync` clears both fields, so a retry produces an empty
+    /// token first and the next failure is a genuine change even when the
+    /// server says the same thing twice.
+    property string _failureToken: page.currentModel
+                                  ? (page.currentModel.syncErrorIsAuth
+                                     ? "auth" : page.currentModel.syncError)
+                                  : ""
+
+    on_FailureTokenChanged: {
+        if (page._failureToken.length === 0) {
+            notice.dismiss()
+        } else if (page.currentModel.syncErrorIsAuth) {
+            notice.post(qsTr("The server rejected the API key."), true,
+                        qsTr("Open settings"))
+        } else {
+            notice.post(qsTr("Refresh failed: %1").arg(page.currentModel.syncError),
+                        true, "")
+        }
     }
 }

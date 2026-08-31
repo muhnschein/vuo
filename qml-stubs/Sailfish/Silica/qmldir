@@ -50,3 +50,8 @@ CoverActionList 1.0 CoverActionList.qml
 CoverAction 1.0 CoverAction.qml
 Notification 1.0 Notification.qml
 singleton Screen 1.0 Screen.qml
+singleton Format 1.0 Format.qml
+Formatter 1.0 Formatter.qml
+DockedPanel 1.0 DockedPanel.qml
+Dock 1.0 Dock.qml
+PagedView 1.0 PagedView.qml

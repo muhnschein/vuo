@@ -28,7 +28,7 @@
 //! writes to the mirror, then signals; the models re-read the mirror on the Qt
 //! thread. Sync results are never passed through the channel as data.
 
-use crate::context::Notice;
+use crate::context::{FetchOutcome, Notice};
 use std::path::PathBuf;
 use std::sync::mpsc;
 use std::thread;
@@ -61,6 +61,11 @@ pub enum Command {
     Unsubscribe {
         feed_id: i64,
     },
+    /// Change a feed's settings on the server, then mirror the result.
+    UpdateFeed {
+        feed_id: i64,
+        update: vuo_core::api::client::FeedPatch,
+    },
     /// Ask the server to scrape the original article (§3: use the server's
     /// endpoint, never a local Readability port).
     FetchOriginal {
@@ -87,6 +92,12 @@ pub enum Event {
     AuthFailed,
     /// A subscribe or unsubscribe finished. `message` is empty on success.
     SubscriptionChanged {
+        ok: bool,
+        message: String,
+    },
+    /// A feed's settings were changed. `message` is empty on success.
+    FeedUpdated {
+        feed_id: i64,
         ok: bool,
         message: String,
     },
@@ -146,6 +157,88 @@ impl Drop for CommandGuard<'_> {
 }
 
 /// A handle to the worker thread.
+/// Write an accepted feed update into the mirror.
+///
+/// Only the fields the update actually carried: a `None` here means the user
+/// did not touch that setting, and writing a default over it would revert a
+/// value set from the web UI.
+pub fn apply_feed_patch(
+    tx: &rusqlite::Transaction<'_>,
+    feed_id: i64,
+    update: &vuo_core::api::client::FeedPatch,
+) -> vuo_core::Result<()> {
+    if let Some(title) = &update.title {
+        tx.execute(
+            "UPDATE feeds SET title = ?2 WHERE id = ?1",
+            rusqlite::params![feed_id, title],
+        )?;
+    }
+    if let Some(category_id) = update.category_id {
+        // The same placeholder trick `upsert_feed` uses: the categories
+        // listing is fetched separately, so a category chosen here may not be
+        // in the mirror yet and the foreign key would reject the update.
+        tx.execute(
+            "INSERT INTO categories (id, title) VALUES (?1, \'\') \
+             ON CONFLICT(id) DO NOTHING",
+            [category_id],
+        )?;
+        tx.execute(
+            "UPDATE feeds SET category_id = ?2 WHERE id = ?1",
+            rusqlite::params![feed_id, category_id],
+        )?;
+    }
+    if let Some(crawler) = update.crawler {
+        tx.execute(
+            "UPDATE feeds SET crawler = ?2 WHERE id = ?1",
+            rusqlite::params![feed_id, i64::from(crawler)],
+        )?;
+    }
+    if let Some(disabled) = update.disabled {
+        tx.execute(
+            "UPDATE feeds SET disabled = ?2 WHERE id = ?1",
+            rusqlite::params![feed_id, i64::from(disabled)],
+        )?;
+    }
+    if let Some(hide_globally) = update.hide_globally {
+        tx.execute(
+            "UPDATE feeds SET hide_globally = ?2 WHERE id = ?1",
+            rusqlite::params![feed_id, i64::from(hide_globally)],
+        )?;
+    }
+    Ok(())
+}
+
+/// What to do with a body the server scraped.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ScrapeVerdict {
+    /// Worth storing over what the feed gave us.
+    Store,
+    /// The server answered, but with nothing. Miniflux returns 200 with an
+    /// empty `content` when its scraper rules match nothing on the page --
+    /// paywalls and JS-rendered articles do this routinely.
+    Empty,
+    /// Byte-for-byte what is already stored, so there is nothing to show for
+    /// the tap. Distinguished from `Empty` because it is not a failure: the
+    /// feed already carried the full article.
+    Unchanged,
+}
+
+/// Decide whether a scraped body should replace the stored one.
+///
+/// Pure, and separated from the command handler, because the interesting cases
+/// are all about *what the server returned* and none of them need a database,
+/// a runtime or a network to exercise.
+#[must_use]
+pub fn classify_scrape(previous: &str, scraped: &str) -> ScrapeVerdict {
+    if scraped.trim().is_empty() {
+        ScrapeVerdict::Empty
+    } else if scraped == previous {
+        ScrapeVerdict::Unchanged
+    } else {
+        ScrapeVerdict::Store
+    }
+}
+
 pub struct Worker {
     tx: mpsc::Sender<Command>,
     handle: Option<thread::JoinHandle<()>>,
@@ -338,36 +431,139 @@ impl Worker {
                                 }
                             }
                         }
+                        Command::UpdateFeed { feed_id, update } => {
+                            // Server first, mirror second.
+                            //
+                            // The opposite order would show the new name at
+                            // once and then have to take it back when the PUT
+                            // failed -- and a feed that silently reverted its
+                            // own name a second after being renamed is worse
+                            // than one that took a moment to change it. There
+                            // is no outbox row for this: unlike a read mark,
+                            // a rename is not something the user does dozens
+                            // of times offline, and replaying one has no
+                            // conflict story worth the machinery.
+                            match runtime.block_on(client.update_feed(feed_id, &update)) {
+                                Ok(()) => {
+                                    // Patch the mirror rather than re-fetching
+                                    // the feed list: the fields are exactly
+                                    // the ones just accepted, and a full pull
+                                    // for one rename is a second round trip
+                                    // the user is waiting on.
+                                    let patched =
+                                        db.with_tx(|tx| apply_feed_patch(tx, feed_id, &update));
+                                    guard.changed = patched.is_ok();
+                                    signal.post(Notice::FeedUpdated {
+                                        ok: patched.is_ok(),
+                                        message: String::new(),
+                                    });
+                                    on_event(Event::FeedUpdated {
+                                        feed_id,
+                                        ok: patched.is_ok(),
+                                        message: String::new(),
+                                    });
+                                }
+                                Err(e) => {
+                                    signal.post(Notice::FeedUpdated {
+                                        ok: false,
+                                        message: e.to_string(),
+                                    });
+                                    on_event(Event::FeedUpdated {
+                                        feed_id,
+                                        ok: false,
+                                        message: e.to_string(),
+                                    });
+                                }
+                            }
+                        }
                         Command::FetchOriginal { entry_id } => {
                             let id = EntryId(entry_id);
                             match runtime.block_on(client.fetch_original_content(id)) {
                                 Ok(content) => {
-                                    // Store the scraped body against the entry so
-                                    // it survives a restart and stays readable
-                                    // offline.
-                                    let stored = db.with_tx(|tx| {
-                                        tx.execute(
-                                            "UPDATE entries SET content = ?2 WHERE id = ?1",
-                                            rusqlite::params![id.get(), content.content],
-                                        )
-                                        .map_err(vuo_core::Error::from)
-                                    });
-                                    // Same as Unsubscribe: the scraped body is
-                                    // in SQLite, so the open article is stale
-                                    // until something reloads it.
-                                    guard.changed = stored.is_ok();
-                                    on_event(Event::OriginalContentFetched {
-                                        entry_id,
-                                        ok: stored.is_ok(),
-                                    });
+                                    let previous = db
+                                        .with_tx(|tx| {
+                                            tx.query_row(
+                                                "SELECT content FROM entries WHERE id = ?1",
+                                                rusqlite::params![id.get()],
+                                                |row| row.get::<_, String>(0),
+                                            )
+                                            .map_err(vuo_core::Error::from)
+                                        })
+                                        .unwrap_or_default();
+                                    match classify_scrape(&previous, &content.content) {
+                                        ScrapeVerdict::Store => {
+                                            // Store the scraped body against the
+                                            // entry so it survives a restart and
+                                            // stays readable offline.
+                                            let stored = db.with_tx(|tx| {
+                                                tx.execute(
+                                                    "UPDATE entries \
+                                                     SET content = ?2, \
+                                                         content_scraped = 1 \
+                                                     WHERE id = ?1",
+                                                    rusqlite::params![id.get(), content.content],
+                                                )
+                                                .map_err(vuo_core::Error::from)
+                                            });
+                                            // Same as Unsubscribe: the scraped
+                                            // body is in SQLite, so the open
+                                            // article is stale until something
+                                            // reloads it.
+                                            guard.changed = stored.is_ok();
+                                            signal.post_fetch_outcome(FetchOutcome {
+                                                entry_id,
+                                                status: if stored.is_ok() {
+                                                    crate::article::FETCH_OK
+                                                } else {
+                                                    crate::article::FETCH_FAILED
+                                                },
+                                                message: String::new(),
+                                            });
+                                            on_event(Event::OriginalContentFetched {
+                                                entry_id,
+                                                ok: stored.is_ok(),
+                                            });
+                                        }
+                                        verdict => {
+                                            // Nothing worth storing. Writing it
+                                            // anyway is how "fetch original"
+                                            // used to ERASE a perfectly good
+                                            // article: a server that scrapes a
+                                            // paywall or a JS-only page answers
+                                            // 200 with an empty body, and that
+                                            // empty body went straight over the
+                                            // feed's own content.
+                                            signal.post_fetch_outcome(FetchOutcome {
+                                                entry_id,
+                                                status: match verdict {
+                                                    ScrapeVerdict::Empty => {
+                                                        crate::article::FETCH_EMPTY
+                                                    }
+                                                    _ => crate::article::FETCH_UNCHANGED,
+                                                },
+                                                message: String::new(),
+                                            });
+                                            on_event(Event::OriginalContentFetched {
+                                                entry_id,
+                                                ok: false,
+                                            });
+                                        }
+                                    }
                                 }
                                 Err(e) => {
-                                    // Reported nothing at all before, so the
-                                    // menu item looked identical whether the
-                                    // scrape worked, failed, or was never
-                                    // reachable.
-                                    signal.post(Notice::SyncFailed {
-                                        auth: e.is_auth_failure(),
+                                    // Addressed to the article that asked, NOT
+                                    // posted as a `SyncFailed` notice: that put
+                                    // "Refresh failed" across the top of the
+                                    // ENTRY LIST for a scrape the user started
+                                    // from inside an article, blaming a refresh
+                                    // that never ran.
+                                    signal.post_fetch_outcome(FetchOutcome {
+                                        entry_id,
+                                        status: if e.is_auth_failure() {
+                                            crate::article::FETCH_AUTH
+                                        } else {
+                                            crate::article::FETCH_FAILED
+                                        },
                                         message: if e.is_auth_failure() {
                                             String::new()
                                         } else {

@@ -115,6 +115,8 @@ fn run() {
         #include <QtQuick>
         #include <QGuiApplication>
         #include <QQuickView>
+        #include <QLocale>
+        #include <QTranslator>
     }}
 
     // SailfishApp::main() does the whole dance -- application object, view,
@@ -126,6 +128,27 @@ fn run() {
             char name[] = "harbour-vuo";
             char *argv[] = { name, nullptr };
             QGuiApplication *app = SailfishApp::application(argc, argv);
+
+            // Load the UI translation for the device's locale.
+            //
+            // Without this, `qsTr` returns its source string -- English --
+            // while Silica's own Format/Formatter follow the system locale.
+            // Reported from a German device as a metadata line reading
+            // "Tagesschau | vor 6 Stunden | 2 min read": half translated by
+            // Silica, half not translated at all, in one sentence.
+            //
+            // Leaked on purpose: it must outlive `run()`, which never returns
+            // until the app is quitting, and a QTranslator removed while the
+            // UI is live would blank every translated string. `-` is the
+            // separator in `harbour-vuo-de.qm`.
+            QTranslator *translator = new QTranslator(app);
+            if (translator->load(QLocale(), QStringLiteral("harbour-vuo"),
+                                 QStringLiteral("-"),
+                                 SailfishApp::pathTo(QStringLiteral("translations"))
+                                     .toLocalFile())) {
+                app->installTranslator(translator);
+            }
+
             QQuickView *view = SailfishApp::createView();
             view->setSource(SailfishApp::pathTo("qml/harbour-vuo.qml"));
             view->show();

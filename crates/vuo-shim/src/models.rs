@@ -53,6 +53,10 @@ pub const ROLE_FEED_ID: i32 = USER_ROLE + 5;
 pub const ROLE_PUBLISHED: i32 = USER_ROLE + 6;
 pub const ROLE_READING_TIME: i32 = USER_ROLE + 7;
 pub const ROLE_URL: i32 = USER_ROLE + 8;
+/// The name of the feed the entry came from. FOREIGN TEXT: `Text.PlainText`.
+pub const ROLE_FEED_NAME: i32 = USER_ROLE + 9;
+/// A `data:` URI for the feed's icon, or empty when the mirror has none.
+pub const ROLE_FEED_ICON: i32 = USER_ROLE + 10;
 
 /// A row as the UI needs it. Deliberately not [`Entry`]: the model holds only
 /// what the list draws, so scrolling a long list does not keep every article
@@ -68,6 +72,10 @@ pub struct EntryRow {
     pub published: i64,
     pub reading_time: i32,
     pub url: String,
+    /// The feed's name, filled in after the query from the chrome cache.
+    pub feed_name: String,
+    /// The feed's icon as a `data:` URI, or empty.
+    pub feed_icon: String,
 }
 
 impl From<&Entry> for EntryRow {
@@ -86,8 +94,43 @@ impl From<&Entry> for EntryRow {
                 .as_ref()
                 .map(|u| u.as_str().to_owned())
                 .unwrap_or_default(),
+            // Filled in by `reload` from the per-feed cache: the entry query
+            // knows nothing about feeds.
+            feed_name: String::new(),
+            feed_icon: String::new(),
         }
     }
+}
+
+/// A feed's name and icon URI, as an entry row needs them.
+#[derive(Debug, Clone, Default)]
+struct FeedChrome {
+    name: String,
+    icon_uri: String,
+}
+
+/// Wrap image bytes as a `data:` URI QML's `Image.source` can take.
+///
+/// The MIME type comes from the mirror, which stores the format DETERMINED
+/// FROM THE BYTES rather than the one the server claimed -- so a server that
+/// labels a script `image/png` cannot get that label back out of here.
+fn data_uri(mime: &str, bytes: &[u8]) -> String {
+    use base64::Engine as _;
+    // SVG is excluded on purpose: it is a document, not a bitmap, and Qt's
+    // renderer will follow external references in one -- which would leak the
+    // device's IP to whatever host a feed operator names, on a list scroll.
+    // The raster formats are passed through even where the device may lack a
+    // handler (it ships only libqjpeg.so as a plugin, so ICO and GIF are a
+    // gamble); the delegate hides an Image that fails to load, so the cost of
+    // guessing wrong is a missing favicon rather than a broken-image glyph.
+    if mime == "image/svg+xml" {
+        return String::new();
+    }
+    format!(
+        "data:{};base64,{}",
+        mime,
+        base64::engine::general_purpose::STANDARD.encode(bytes)
+    )
 }
 
 /// Which slice of the mirror a model shows.
@@ -188,11 +231,27 @@ pub struct EntryModel {
     /// server's bulk endpoint, which applies a `published_at < now()` cut-off
     /// captured at request time and would mark entries the user never saw.
     markAllRead: qt_method!(fn(&mut self)),
+    /// Mark everything in an EXPLICIT scope as read.
+    ///
+    /// `markAllRead` reads the scope this model happens to be in when the
+    /// remorse countdown FIRES, which is a different moment from the one the
+    /// user was looking at when they tapped. That was survivable only because
+    /// re-scoping needed a page change and a page change flushed the popup
+    /// first; swiping between tabs re-scopes without one, so arming "Mark all
+    /// as read" on Unread and swiping to All within the countdown would have
+    /// run it over every article in the mirror. Passing the scope in binds the
+    /// action to the tab that was showing when it was armed.
+    markAllReadIn: qt_method!(fn(&mut self, kind: i32, id: i64)),
 
     rows: Vec<EntryRow>,
     scope: Option<Scope>,
     /// The worker generation this model last reloaded at.
     seen_generation: u64,
+    /// Feed name and icon URI per feed id, built once and reused.
+    ///
+    /// Re-encoding every icon on every reload would base64 the same few
+    /// kilobytes on each poll of a list that is polled twice a second.
+    feed_chrome: std::collections::HashMap<i64, FeedChrome>,
     /// The spinner state this model last told QML about.
     ///
     /// `syncing` is READ + NOTIFY, so QML re-evaluates it only when
@@ -237,6 +296,7 @@ impl EntryModel {
             .is_some();
         if applied {
             self.mark_row(id, Some(!read), None);
+            self.announce_local_change(&ctx);
             // Send opportunistically: if there is no signal the intent stays
             // in the outbox and the next sync carries it.
             ctx.send(Command::FlushOutbox);
@@ -254,8 +314,27 @@ impl EntryModel {
             .is_some();
         if applied {
             self.mark_row(id, None, Some(starred));
+            self.announce_local_change(&ctx);
             ctx.send(Command::FlushOutbox);
         }
+    }
+
+    /// Tell the OTHER models that this one changed the mirror.
+    ///
+    /// There is one model per scope tab now, and they all read the same
+    /// entries. Marking an article read on Unread has to reach the copy of
+    /// that row held by All, or swiping across shows it still unread until the
+    /// next network sync.
+    ///
+    /// The generation is bumped, and then this model's own cursor is moved
+    /// PAST that bump. Without the second half the mutating model would
+    /// reload itself on its next poll -- a full reset, which scrolls the list
+    /// back to the top under the finger that just tapped. `mark_row` has
+    /// already patched this model's own row in place; the bump is for everyone
+    /// else.
+    fn announce_local_change(&mut self, ctx: &AppContext) {
+        ctx.signal().bump();
+        self.seen_generation = ctx.signal().generation();
     }
 
     fn requestSync(&mut self) {
@@ -281,6 +360,18 @@ impl EntryModel {
             // The worker is gone, so nothing will ever clear the flag.
             ctx.signal().set_running(false);
         }
+        // Record what we just told QML, or the spinner never stops.
+        //
+        // `pollSync` reports a change by comparing the flag against
+        // `seen_running`. Raising the flag here and emitting the signal
+        // WITHOUT recording it left `seen_running` false, so when the worker
+        // lowered the flag the poll compared false against false, saw no
+        // transition, and never emitted again -- `syncing` is READ + NOTIFY,
+        // so QML kept the last value it was told. The spinner only ever
+        // stopped when a poll happened to land inside the window while the
+        // sync was still running, which on a fast local server it usually
+        // does not.
+        self.seen_running = ctx.signal().is_running();
         self.syncingChanged();
     }
 
@@ -341,8 +432,16 @@ impl EntryModel {
     }
 
     fn markAllRead(&mut self) {
-        let Some(ctx) = self.context() else { return };
         let Some(scope) = self.scope else { return };
+        self.mark_all_read_in(scope);
+    }
+
+    fn markAllReadIn(&mut self, kind: i32, id: i64) {
+        self.mark_all_read_in(Scope::from_qml(kind, id));
+    }
+
+    fn mark_all_read_in(&mut self, scope: Scope) {
+        let Some(ctx) = self.context() else { return };
         let done = match scope {
             Scope::Feed(feed_id) => ctx
                 .write(|db| worker::apply_local_mark_feed_read(db, feed_id))
@@ -380,6 +479,7 @@ impl EntryModel {
         };
         if done {
             self.reload();
+            self.announce_local_change(&ctx);
             ctx.send(Command::FlushOutbox);
         }
     }
@@ -423,12 +523,48 @@ impl EntryModel {
                 store::list_entries(db.conn(), scope.to_filter(), 500, 0).unwrap_or_default()
             })
             .unwrap_or_default();
-        let rows: Vec<EntryRow> = entries.iter().map(EntryRow::from).collect();
+        let mut rows: Vec<EntryRow> = entries.iter().map(EntryRow::from).collect();
+        self.refresh_feed_chrome();
+        for row in &mut rows {
+            if let Some(chrome) = self.feed_chrome.get(&row.feed_id) {
+                row.feed_name = chrome.name.clone();
+                row.feed_icon = chrome.icon_uri.clone();
+            }
+        }
 
         (self as &mut dyn QAbstractListModel).begin_reset_model();
         self.rows = rows;
         (self as &mut dyn QAbstractListModel).end_reset_model();
         self.countChanged();
+    }
+
+    /// Rebuild the feed name/icon cache from the mirror.
+    ///
+    /// Called from `reload`, which runs on a scope change or a generation
+    /// bump -- not on every poll. A mirror has tens of feeds and a favicon is
+    /// a couple of kilobytes, so re-encoding the set outright is cheaper than
+    /// the invalidation logic that avoiding it would need.
+    fn refresh_feed_chrome(&mut self) {
+        let Some(ctx) = self.context() else { return };
+        let Some(feeds) = ctx.read(|db| store::feed_chrome(db.conn()).unwrap_or_default()) else {
+            return;
+        };
+        self.feed_chrome = feeds
+            .into_iter()
+            .map(|feed| {
+                let icon_uri = feed
+                    .icon
+                    .map(|(mime, bytes)| data_uri(&mime, &bytes))
+                    .unwrap_or_default();
+                (
+                    feed.feed_id,
+                    FeedChrome {
+                        name: feed.title,
+                        icon_uri,
+                    },
+                )
+            })
+            .collect();
     }
 
     /// Update one row in place after a local mutation, without a full reload.
@@ -490,6 +626,8 @@ impl QAbstractListModel for EntryModel {
             ROLE_PUBLISHED => row.published.into(),
             ROLE_READING_TIME => row.reading_time.into(),
             ROLE_URL => QString::from(row.url.clone()).into(),
+            ROLE_FEED_NAME => QString::from(row.feed_name.clone()).into(),
+            ROLE_FEED_ICON => QString::from(row.feed_icon.clone()).into(),
             _ => QVariant::default(),
         }
     }
@@ -505,6 +643,8 @@ impl QAbstractListModel for EntryModel {
         names.insert(ROLE_PUBLISHED, "published".into());
         names.insert(ROLE_READING_TIME, "readingTime".into());
         names.insert(ROLE_URL, "url".into());
+        names.insert(ROLE_FEED_NAME, "feedName".into());
+        names.insert(ROLE_FEED_ICON, "feedIcon".into());
         names
     }
 }
@@ -515,6 +655,12 @@ pub const ROLE_FEED_TITLE: i32 = USER_ROLE + 1;
 pub const ROLE_FEED_UNREAD: i32 = USER_ROLE + 2;
 pub const ROLE_FEED_ERROR: i32 = USER_ROLE + 3;
 pub const ROLE_FEED_CATEGORY: i32 = USER_ROLE + 4;
+/// "Fetch original content" for every entry of this feed, server-side.
+pub const ROLE_FEED_CRAWLER: i32 = USER_ROLE + 5;
+/// The server has stopped refreshing this feed.
+pub const ROLE_FEED_DISABLED: i32 = USER_ROLE + 6;
+/// Keep this feed out of the global unread list.
+pub const ROLE_FEED_HIDDEN: i32 = USER_ROLE + 7;
 
 #[derive(Debug, Clone, Default)]
 pub struct FeedRow {
@@ -525,6 +671,9 @@ pub struct FeedRow {
     /// text: plain text only.
     pub error: String,
     pub category_id: i64,
+    pub crawler: bool,
+    pub disabled: bool,
+    pub hide_globally: bool,
 }
 
 #[derive(QObject, Default)]
@@ -542,6 +691,35 @@ pub struct FeedModel {
     /// downloads one itself (§3).
     subscribe: qt_method!(fn(&mut self, feed_url: QString)),
     unsubscribe: qt_method!(fn(&mut self, row: i32)),
+    /// Save a feed's settings to the server, then to the mirror.
+    ///
+    /// A flat argument list rather than a JS object, because a `QVariantMap`
+    /// crossing this boundary in qmetaobject 0.2.10 loses type information for
+    /// bools and the page would have to re-encode them as ints anyway. Passing
+    /// `title` unchanged is how "do not rename" is expressed -- the shim
+    /// diffs against what the mirror holds and sends only what moved, so an
+    /// untouched field is never transmitted (see `FeedPatch`).
+    updateFeed: qt_method!(
+        fn(
+            &mut self,
+            row: i32,
+            title: QString,
+            category_id: i64,
+            crawler: bool,
+            disabled: bool,
+            hide_globally: bool,
+        ) -> bool
+    ),
+    /// The pending result of the last `updateFeed`, drained by the edit page.
+    ///
+    /// See `EntryModel::syncError`: the worker cannot call into a QML-owned
+    /// object, so a one-shot slot plus a poll is how an answer gets back.
+    pub updateError: qt_property!(QString; NOTIFY updateStateChanged),
+    pub updateOk: qt_property!(bool; NOTIFY updateStateChanged),
+    /// Bumped for every finished save, so a page can tell a repeat answer from
+    /// a stale one.
+    pub updateSerial: qt_property!(i32; NOTIFY updateStateChanged),
+    updateStateChanged: qt_signal!(),
 
     rows: Vec<FeedRow>,
     seen_generation: u64,
@@ -565,6 +743,11 @@ impl FeedModel {
         let Some(ctx) = self.context() else {
             return false;
         };
+        // BEFORE the generation early-return. A rejected save changes nothing
+        // in the mirror, so the generation does not move -- and a drain that
+        // happened after the early-return could therefore never report a
+        // failure, which is the one answer the edit page most needs.
+        self.drain_update_notice(ctx.signal());
         let generation = ctx.signal().generation();
         if generation == self.seen_generation {
             return false;
@@ -615,6 +798,74 @@ impl FeedModel {
             .map(|r| r.id)
     }
 
+    #[allow(clippy::fn_params_excessive_bools)]
+    fn updateFeed(
+        &mut self,
+        row: i32,
+        title: QString,
+        category_id: i64,
+        crawler: bool,
+        disabled: bool,
+        hide_globally: bool,
+    ) -> bool {
+        let Some(ctx) = self.context() else {
+            return false;
+        };
+        let Some(current) = usize::try_from(row)
+            .ok()
+            .and_then(|i| self.rows.get(i))
+            .cloned()
+        else {
+            return false;
+        };
+
+        let title = title.to_string();
+        let trimmed = title.trim();
+        let mut update = vuo_core::api::client::FeedPatch::default();
+        // An empty title is a rejection, not an instruction: Miniflux would
+        // accept it and leave the user with a nameless row they then cannot
+        // identify in order to fix it.
+        if !trimmed.is_empty() && trimmed != current.title {
+            update.title = Some(trimmed.to_owned());
+        }
+        if category_id > 0 && category_id != current.category_id {
+            update.category_id = Some(category_id);
+        }
+        if crawler != current.crawler {
+            update.crawler = Some(crawler);
+        }
+        if disabled != current.disabled {
+            update.disabled = Some(disabled);
+        }
+        if hide_globally != current.hide_globally {
+            update.hide_globally = Some(hide_globally);
+        }
+        if update.is_empty() {
+            return false;
+        }
+        ctx.send(Command::UpdateFeed {
+            feed_id: current.id,
+            update,
+        })
+    }
+
+    /// Pick up the worker's answer to the last `updateFeed`.
+    fn drain_update_notice(&mut self, signal: &crate::context::SyncSignal) {
+        match signal.take_notice() {
+            Some(crate::context::Notice::FeedUpdated { ok, message }) => {
+                self.updateOk = ok;
+                self.updateError = QString::from(message);
+                self.updateSerial = self.updateSerial.wrapping_add(1);
+                self.updateStateChanged();
+            }
+            // Not ours. Put it back for the page that is waiting on it --
+            // dropping it is how "Test connection" used to look like it did
+            // nothing.
+            Some(other) => signal.post(other),
+            None => {}
+        }
+    }
+
     fn refresh(&mut self) {
         self.reload();
     }
@@ -642,6 +893,9 @@ impl FeedModel {
                             .unwrap_or(i32::MAX),
                         error: f.parsing_error_message.clone(),
                         category_id: f.category_id.map(|c| c.get()).unwrap_or(0),
+                        crawler: f.crawler,
+                        disabled: f.disabled,
+                        hide_globally: f.hide_globally,
                     })
                     .collect()
             })
@@ -677,6 +931,9 @@ impl QAbstractListModel for FeedModel {
             ROLE_FEED_UNREAD => row.unread.into(),
             ROLE_FEED_ERROR => QString::from(row.error.clone()).into(),
             ROLE_FEED_CATEGORY => row.category_id.into(),
+            ROLE_FEED_CRAWLER => row.crawler.into(),
+            ROLE_FEED_DISABLED => row.disabled.into(),
+            ROLE_FEED_HIDDEN => row.hide_globally.into(),
             _ => QVariant::default(),
         }
     }
@@ -688,6 +945,9 @@ impl QAbstractListModel for FeedModel {
         names.insert(ROLE_FEED_UNREAD, "unreadCount".into());
         names.insert(ROLE_FEED_ERROR, "errorMessage".into());
         names.insert(ROLE_FEED_CATEGORY, "categoryId".into());
+        names.insert(ROLE_FEED_CRAWLER, "crawler".into());
+        names.insert(ROLE_FEED_DISABLED, "feedDisabled".into());
+        names.insert(ROLE_FEED_HIDDEN, "hideGlobally".into());
         names
     }
 }
@@ -739,6 +999,35 @@ mod tests {
         assert_eq!(model.syncError.to_string(), "");
     }
 
+    /// §the spinner stops after the refresh that started it.
+    ///
+    /// Reported from a device: "Refresh works, but the spinner doesn't go
+    /// away". `requestSync` raised the running flag and told QML about it, but
+    /// did not record that it had -- so the later true-to-false transition
+    /// compared false against false and was never reported. The spinner
+    /// stopped only when a poll happened to land while the sync was still in
+    /// flight.
+    #[test]
+    fn the_spinner_stops_even_when_no_poll_lands_mid_sync() {
+        let signal = SyncSignal::default();
+        let mut model = EntryModel::default();
+
+        // What `requestSync` does, minus the worker it has no context for.
+        signal.set_running(true);
+        model.seen_running = signal.is_running();
+
+        // The worker finishes before any poll runs -- the case that used to
+        // leave the spinner up for the life of the process.
+        signal.set_running(false);
+
+        let running = signal.is_running();
+        assert_ne!(
+            running, model.seen_running,
+            "the poll must see a transition it can report, or `syncing` keeps \
+             the last value QML was told"
+        );
+    }
+
     /// A notice this model does not own is left for the page that does.
     #[test]
     fn a_notice_for_another_page_is_put_back() {
@@ -759,5 +1048,156 @@ mod tests {
             signal.take_notice().is_some(),
             "and it must still be there for the page that owns it"
         );
+    }
+}
+
+#[cfg(test)]
+mod row_decoration_tests {
+    use super::*;
+    use vuo_core::model::{Entry, EntryStatus, Feed, FeedId, Icon, IconId, ImageFormat};
+
+    /// A mirror with one feed, one icon and one entry, and a context on it.
+    fn seeded() -> (tempfile::TempDir, std::rc::Rc<AppContext>) {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("m.sqlite");
+        let mut db = vuo_core::db::Database::open(&path).expect("mirror");
+
+        // A one-pixel PNG, so the format sniffing in the mirror is exercised
+        // rather than bypassed.
+        let png: Vec<u8> = vec![
+            0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48,
+            0x44, 0x52,
+        ];
+
+        db.with_tx(|tx| {
+            store::upsert_icon(
+                tx,
+                &Icon {
+                    id: IconId(5),
+                    format: ImageFormat::Png,
+                    bytes: png.clone(),
+                    dimensions: Some((1, 1)),
+                },
+            )?;
+            store::upsert_feed(
+                tx,
+                &Feed {
+                    id: FeedId(1),
+                    category_id: None,
+                    title: "Tagesschau".to_owned(),
+                    site_url: None,
+                    feed_url: None,
+                    icon_id: Some(IconId(5)),
+                    checked_at: None,
+                    parsing_error_message: String::new(),
+                    parsing_error_count: 0,
+                    disabled: false,
+                    hide_globally: false,
+                    crawler: true,
+                },
+                1,
+            )?;
+            store::upsert_entry(
+                tx,
+                &Entry {
+                    id: EntryId(7),
+                    feed_id: FeedId(1),
+                    status: EntryStatus::Unread,
+                    starred: false,
+                    title: "Island".to_owned(),
+                    url: None,
+                    comments_url: None,
+                    author: String::new(),
+                    content: String::new(),
+                    published_at: None,
+                    created_at: None,
+                    changed_at: None,
+                    reading_time: 2,
+                    tags: Vec::new(),
+                    enclosures: Vec::new(),
+                },
+                1,
+            )
+        })
+        .expect("seed");
+
+        let signal = std::sync::Arc::new(crate::context::SyncSignal::default());
+        let instance = url::Url::parse("https://miniflux.example/").expect("url");
+        let worker = crate::worker::Worker::spawn(
+            path.clone(),
+            instance.clone(),
+            vuo_core::redact::ApiToken::new("t"),
+            vuo_core::api::TransportConfig::default(),
+            std::sync::Arc::clone(&signal),
+            |_| {},
+        );
+        let ctx = AppContext::new(db, worker, instance, signal, 0);
+        (dir, ctx)
+    }
+
+    /// §an entry row carries the feed it came from.
+    ///
+    /// Reported from a device: the list showed the age but neither the feed's
+    /// name nor its icon, so every row looked like it came from nowhere.
+    #[test]
+    fn an_entry_row_carries_its_feed_name_and_icon() {
+        let (_dir, ctx) = seeded();
+        let mut model = EntryModel::default();
+        model.attach(std::rc::Rc::clone(&ctx));
+        model.setScope(0, 0);
+
+        assert_eq!(model.row_count(), 1, "the seeded entry is unread");
+        let row = model.rows().first().expect("one row");
+        assert_eq!(
+            row.feed_name, "Tagesschau",
+            "the row must name the feed it came from"
+        );
+        assert!(
+            row.feed_icon.starts_with("data:image/png;base64,"),
+            "and carry its icon as a data URI, got {:?}",
+            row.feed_icon
+        );
+
+        // The names are half the contract: the delegate reaches these by the
+        // bare word, and a role that is present in Rust but unnamed here is
+        // simply `undefined` in QML.
+        let names = <EntryModel as QAbstractListModel>::role_names(&model);
+        for (role, name) in [(ROLE_FEED_NAME, "feedName"), (ROLE_FEED_ICON, "feedIcon")] {
+            assert_eq!(
+                names.get(&role).map(std::string::ToString::to_string),
+                Some(name.to_owned()),
+                "QML reaches this role by name"
+            );
+        }
+    }
+
+    /// §the feed list exposes the settings the editor writes.
+    ///
+    /// Reported from a device: "Feed settings" did nothing at all. The menu
+    /// item passes these three roles straight into the pushed page, so a role
+    /// that does not resolve makes the whole push throw.
+    #[test]
+    fn a_feed_row_carries_the_settings_the_editor_edits() {
+        let (_dir, ctx) = seeded();
+        let mut model = FeedModel::default();
+        model.attach(std::rc::Rc::clone(&ctx));
+
+        assert_eq!(model.row_count(), 1);
+        let row = model.rows().first().expect("one row");
+        assert!(row.crawler, "the seeded feed has the crawler on");
+        assert!(!row.disabled);
+        assert!(!row.hide_globally);
+        let names = <FeedModel as QAbstractListModel>::role_names(&model);
+        for (role, name) in [
+            (ROLE_FEED_CRAWLER, "crawler"),
+            (ROLE_FEED_DISABLED, "feedDisabled"),
+            (ROLE_FEED_HIDDEN, "hideGlobally"),
+        ] {
+            assert_eq!(
+                names.get(&role).map(|n| n.to_string()),
+                Some(name.to_owned()),
+                "QML reaches this role by name, and the editor's push needs it"
+            );
+        }
     }
 }

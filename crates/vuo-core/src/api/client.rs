@@ -439,6 +439,25 @@ impl MinifluxClient {
         Ok(resp.feed_id)
     }
 
+    /// `PUT /v1/feeds/{id}` — change a feed's settings.
+    ///
+    /// Every field is optional and omitted fields are left alone: Miniflux's
+    /// `FeedModificationRequest` is a struct of POINTERS, and `Patch` applies
+    /// only the ones that are present. Sending a full feed object back would
+    /// mean re-transmitting values the mirror may be stale about and quietly
+    /// reverting a change made in the web UI in between.
+    pub async fn update_feed(&self, feed_id: i64, update: &FeedPatch) -> Result<()> {
+        let payload = serde_json::to_vec(update)
+            .map_err(|_| Error::Protocol("could not encode the feed update".to_owned()))?;
+        let url = self.url(&format!("/v1/feeds/{feed_id}"))?;
+        let safe = SafeUrl::from(&url);
+        let response = self
+            .transport
+            .send(reqwest::Method::PUT, url, Some(payload))
+            .await?;
+        Self::check_status(&response, &safe)
+    }
+
     /// `DELETE /v1/feeds/{id}` — unsubscribe.
     pub async fn delete_feed(&self, feed_id: i64) -> Result<()> {
         let url = self.url(&format!("/v1/feeds/{feed_id}"))?;
@@ -448,6 +467,44 @@ impl MinifluxClient {
             .send(reqwest::Method::DELETE, url, None)
             .await?;
         Self::check_status(&response, &safe)
+    }
+}
+
+/// The subset of Miniflux's feed settings Vuo lets a user change.
+///
+/// A subset on purpose. §3 leaves rewrite rules, scraper rules and blocklists
+/// to the web UI, and the credential fields (`username`, `password`, `cookie`,
+/// `user_agent`, `proxy_url`) are deliberately absent: a phone form that
+/// collects a site password to store it server-side is not something this app
+/// should be offering.
+///
+/// `None` means "do not touch". Serialising skips them, which is what makes a
+/// rename a rename rather than a full overwrite of everything else.
+#[derive(Debug, Clone, Default, serde::Serialize, PartialEq, Eq)]
+pub struct FeedPatch {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub category_id: Option<i64>,
+    /// "Fetch original content" -- the server scrapes each entry's own page.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub crawler: Option<bool>,
+    /// Stop refreshing this feed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub disabled: Option<bool>,
+    /// Keep the feed out of the global unread list.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hide_globally: Option<bool>,
+}
+
+impl FeedPatch {
+    /// True when there is nothing to send.
+    ///
+    /// Worth checking before the request: an empty PUT is a round trip that
+    /// changes nothing, and on a phone that is a wasted radio wake-up.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self == &FeedPatch::default()
     }
 }
 

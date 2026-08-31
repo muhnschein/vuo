@@ -44,6 +44,20 @@ pub const ROLE_PLAIN_TEXT: i32 = USER_ROLE + 11;
 pub const ROLE_IMAGE_HOST: i32 = USER_ROLE + 12;
 pub const ROLE_IMAGE_RATIO: i32 = USER_ROLE + 13;
 
+/// No scrape has finished (or the last one was acknowledged).
+pub const FETCH_IDLE: i32 = 0;
+/// The scrape landed and the article now shows the scraped body.
+pub const FETCH_OK: i32 = 1;
+/// The server answered with an empty body. The stored article is untouched.
+pub const FETCH_EMPTY: i32 = 2;
+/// The scrape returned exactly what was already stored.
+pub const FETCH_UNCHANGED: i32 = 3;
+/// The scrape failed. `fetchMessage` carries the server's text (plain text).
+pub const FETCH_FAILED: i32 = 4;
+/// The server rejected the API key. `fetchMessage` is empty by design; the
+/// page supplies its own translated line (see `Notice::SyncFailed`).
+pub const FETCH_AUTH: i32 = 5;
+
 /// A flattened block, ready for a delegate.
 #[derive(Debug, Clone, Default)]
 pub struct BlockRow {
@@ -215,6 +229,14 @@ pub struct ArticleModel {
     /// True while a scrape is in flight, so the page can say something.
     pub fetching: qt_property!(bool; NOTIFY fetchingChanged),
     fetchingChanged: qt_signal!(),
+    /// How the last scrape ended: one of the `FETCH_*` constants.
+    pub fetchStatus: qt_property!(i32; NOTIFY fetchStatusChanged),
+    /// Foreign text explaining a failure; empty otherwise. Render as
+    /// `Text.PlainText` (§9.3).
+    pub fetchMessage: qt_property!(QString; NOTIFY fetchStatusChanged),
+    fetchStatusChanged: qt_signal!(),
+    /// Acknowledge the last scrape result, so its banner can be dismissed.
+    clearFetchStatus: qt_method!(fn(&mut self)),
     /// How long the open article must stay on screen before it counts as
     /// read: -1 never, 0 immediately, otherwise milliseconds.
     ///
@@ -322,6 +344,9 @@ impl ArticleModel {
         }) {
             self.fetching = true;
             self.fetchingChanged();
+            self.fetchStatus = FETCH_IDLE;
+            self.fetchMessage = QString::from("");
+            self.fetchStatusChanged();
         }
     }
 
@@ -329,27 +354,48 @@ impl ArticleModel {
         let Some(ctx) = self.context() else {
             return false;
         };
-        let generation = ctx.signal().generation();
-        if generation == self.seen_generation {
-            return false;
-        }
-        self.seen_generation = generation;
+        // Keep the generation cursor moving even when we do nothing with it,
+        // so a later poll cannot mistake a backlog of unrelated bumps for
+        // something addressed to this article.
+        self.seen_generation = ctx.signal().generation();
 
-        // Re-read ONLY for a scrape we asked for. Any bump would otherwise
-        // re-`load()` the open article, and `load` resets the block list --
-        // so marking the article read after five seconds would yank the reader
-        // back to the top mid-paragraph. A scrape is the one thing that
-        // legitimately replaces the body under them, and they asked for it.
-        if !self.fetching {
+        let open = self.entry_id;
+        if open == 0 {
             return false;
         }
-        self.fetching = false;
-        self.fetchingChanged();
-        let open = self.entry_id;
-        if open != 0 {
+        let Some(outcome) = ctx.signal().take_fetch_outcome(open) else {
+            // A scrape can only be resolved by its own outcome. Reacting to
+            // the generation counter instead is what made this menu item look
+            // dead: mark-read-after-N-seconds bumps too, and whichever bump
+            // arrived first cleared `fetching` and re-read a mirror the scrape
+            // had not written to yet.
+            return false;
+        };
+
+        if self.fetching {
+            self.fetching = false;
+            self.fetchingChanged();
+        }
+        self.fetchStatus = outcome.status;
+        self.fetchMessage = QString::from(outcome.message);
+        self.fetchStatusChanged();
+
+        // Only a stored body changes what is on screen. Re-loading for an
+        // empty or unchanged scrape would reset the block list -- and so the
+        // scroll position -- to show the reader exactly what they were already
+        // reading.
+        if outcome.status == FETCH_OK {
             self.load(open);
         }
         true
+    }
+
+    fn clearFetchStatus(&mut self) {
+        if self.fetchStatus != FETCH_IDLE {
+            self.fetchStatus = FETCH_IDLE;
+            self.fetchMessage = QString::from("");
+            self.fetchStatusChanged();
+        }
     }
 
     /// Grant consent for the ORIGIN of the image at `row`.
@@ -497,6 +543,7 @@ impl ArticleModel {
             self.fetching = false;
             self.fetchingChanged();
         }
+        self.clearFetchStatus();
     }
 
     #[must_use]
@@ -662,6 +709,7 @@ mod tests {
                     parsing_error_count: 0,
                     disabled: false,
                     hide_globally: false,
+                    crawler: false,
                 },
                 1,
             )?;

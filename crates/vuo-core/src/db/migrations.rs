@@ -152,6 +152,29 @@ CREATE TABLE media_consent (
 ALTER TABLE feeds ADD COLUMN icon_failures INTEGER NOT NULL DEFAULT 0;
 "#,
     },
+    Migration {
+        version: 3,
+        name: "remember server-scraped article bodies",
+        sql: r#"
+-- "Fetch original content" asks the server to scrape the article's own page
+-- and stores what comes back over the feed's summary. The next sync used to
+-- undo that silently: the entry upsert overwrites `content` unconditionally,
+-- and Miniflux's fetch-content endpoint deliberately does NOT persist the
+-- scrape server-side, so the feed's short version came straight back. This
+-- flag lets the upsert keep a body the user explicitly asked for.
+ALTER TABLE entries ADD COLUMN content_scraped INTEGER NOT NULL DEFAULT 0;
+"#,
+    },
+    Migration {
+        version: 4,
+        name: "mirror the per-feed crawler flag",
+        sql: r#"
+-- The server-side "fetch original content" switch. Mirrored so the feed
+-- editor can show what it is currently set to rather than guessing, and so a
+-- change made from the app survives until the next sync confirms it.
+ALTER TABLE feeds ADD COLUMN crawler INTEGER NOT NULL DEFAULT 0;
+"#,
+    },
 ];
 
 /// The schema version this build expects.

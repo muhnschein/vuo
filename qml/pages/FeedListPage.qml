@@ -8,6 +8,18 @@ Page {
     /// constructing a second one.
     property var entryModel
 
+    // Re-read on the way in.
+    //
+    // `FeedModel.pollSync` is driven from the app-wide timer and only fires
+    // when the ENTRY models saw a change, so a feed whose settings were
+    // changed elsewhere -- in the web UI, or by the migration that added the
+    // crawler column with a default -- could sit stale in this list until
+    // something unrelated moved. The editor is seeded from these rows, so
+    // stale here means stale there.
+    onStatusChanged: if (status === PageStatus.Activating && page.model) {
+        page.model.refresh()
+    }
+
     allowedOrientations: Orientation.All
 
     SilicaListView {
@@ -86,7 +98,7 @@ Page {
             // come with it: pushing `feedId` set a property that does not
             // exist and omitted `model` entirely, so the page opened empty.
             onClicked: pageStack.push(Qt.resolvedUrl("EntryListPage.qml"), {
-                model: page.model ? page.entryModel : null,
+                model: page.entryModel,
                 feedModel: page.model,
                 scopeLabel: qsTr("Feed"),
                 title: title,
@@ -95,6 +107,21 @@ Page {
             })
 
             menu: ContextMenu {
+                MenuItem {
+                    text: qsTr("Feed settings")
+                    // Seeded from the row rather than re-read on the other
+                    // page: the delegate has the current values in scope, and
+                    // a second query would be a second chance to disagree.
+                    onClicked: pageStack.push(Qt.resolvedUrl("EditFeedPage.qml"), {
+                        model: page.model,
+                        row: index,
+                        feedTitle: title,
+                        categoryId: categoryId,
+                        crawler: crawler,
+                        feedDisabled: feedDisabled,
+                        hideGlobally: hideGlobally
+                    })
+                }
                 MenuItem {
                     text: qsTr("Mark feed as read")
                     onClicked: page.model.markFeedRead(index)

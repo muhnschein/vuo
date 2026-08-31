@@ -1,6 +1,7 @@
 import QtQuick 2.6
 import Sailfish.Silica 1.0
 import Vuo 1.0
+import "../components"
 
 /*
  * The article view.
@@ -131,17 +132,6 @@ Page {
             }
 
             Label {
-                visible: article.fetching
-                x: Theme.horizontalPageMargin
-                width: parent.width - Theme.horizontalPageMargin * 2
-                wrapMode: Text.Wrap
-                textFormat: Text.PlainText
-                font.pixelSize: Theme.fontSizeExtraSmall
-                color: Theme.secondaryHighlightColor
-                text: qsTr("Asking the server for the original article…")
-            }
-
-            Label {
                 visible: article.blockedImages > 0
                 x: Theme.horizontalPageMargin
                 width: parent.width - Theme.horizontalPageMargin * 2
@@ -196,7 +186,17 @@ Page {
             }
             MenuItem {
                 text: qsTr("Fetch original content")
-                onClicked: article.fetchOriginal()
+                onClicked: {
+                    article.fetchOriginal()
+                    // Say something the moment it is asked for. The scrape is
+                    // a round trip to a server that then fetches a third-party
+                    // page, which can take seconds; with no acknowledgement at
+                    // all the menu item read as broken.
+                    if (article.fetching) {
+                        notice.post(qsTr("Asking the server for the original article…"),
+                                    false, "")
+                    }
+                }
             }
         }
 
@@ -392,5 +392,56 @@ Page {
         }
 
         VerticalScrollDecorator {}
+    }
+
+    NoticeBanner {
+        id: notice
+        anchors.bottom: parent.bottom
+    }
+
+    /// The `FETCH_*` constants from crates/vuo-shim/src/article.rs.
+    ///
+    /// Repeated here rather than imported: qmetaobject 0.2.10 on Qt 5.6 has no
+    /// `qml_register_enum` (see lib.rs:28), so an integer is the only thing
+    /// that crosses. Naming them here keeps the branch below readable and puts
+    /// the one place they could drift out of step in plain sight.
+    readonly property int fetchIdle: 0
+    readonly property int fetchOk: 1
+    readonly property int fetchEmpty: 2
+    readonly property int fetchUnchanged: 3
+    readonly property int fetchFailed: 4
+    readonly property int fetchAuth: 5
+
+    /// Mirrors the model's property, because a Page cannot declare a change
+    /// handler for a property that lives on `article`.
+    property int fetchStatus: article.fetchStatus
+
+    /// Report a finished scrape, then acknowledge it.
+    ///
+    /// A change handler, not a binding: the scrape's result is an EVENT the
+    /// user started, and clearing it here is what stops the same result being
+    /// reported again the next time the property happens to be re-read.
+    onFetchStatusChanged: {
+        if (page.fetchStatus === page.fetchIdle) {
+            return
+        }
+        if (page.fetchStatus === page.fetchOk) {
+            notice.post(qsTr("Loaded the original article."), false, "")
+        } else if (page.fetchStatus === page.fetchEmpty) {
+            // The stored article is deliberately left alone in this case, so
+            // say why nothing changed rather than letting it read as a no-op.
+            notice.post(qsTr("The server could not extract the original article."),
+                        true, "")
+        } else if (page.fetchStatus === page.fetchUnchanged) {
+            notice.post(qsTr("This feed already carries the full article."), false, "")
+        } else if (page.fetchStatus === page.fetchAuth) {
+            notice.post(qsTr("The server rejected the API key."), true, "")
+        } else {
+            // The server's own words, so PlainText -- which is what
+            // NoticeBanner guarantees.
+            notice.post(qsTr("Could not fetch the original article: %1")
+                            .arg(article.fetchMessage), true, "")
+        }
+        article.clearFetchStatus()
     }
 }

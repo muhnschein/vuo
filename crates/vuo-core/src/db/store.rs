@@ -32,6 +32,41 @@ fn from_ts(secs: Option<i64>) -> Option<chrono::DateTime<chrono::Utc>> {
     secs.and_then(|s| chrono::DateTime::from_timestamp(s, 0))
 }
 
+/// A sort key for a user-visible name.
+///
+/// `ORDER BY title` in SQLite is a BYTE comparison, so it lists every
+/// upper-case name before every lower-case one -- "Zeit" before "heise" --
+/// which is what a device report called "sorting is broken". `COLLATE NOCASE`
+/// only folds ASCII, so it fixes the case half and still files "Ärzteblatt"
+/// after "Zeit".
+///
+/// This folds case and then the German umlauts the way DIN 5007-1 does, which
+/// is what a German-language reader expects and is no worse than byte order
+/// for anyone else. Deliberately not a full Unicode collation: that means a
+/// large table and a dependency, for a list of a few dozen feed names.
+#[must_use]
+pub fn name_sort_key(title: &str) -> String {
+    let mut key = String::with_capacity(title.len());
+    for c in title.to_lowercase().chars() {
+        match c {
+            'ä' => key.push('a'),
+            'ö' => key.push('o'),
+            'ü' => key.push('u'),
+            // `to_lowercase` already turns 'ß' into itself, not "ss".
+            'ß' => key.push_str("ss"),
+            'á' | 'à' | 'â' | 'å' | 'ã' => key.push('a'),
+            'é' | 'è' | 'ê' | 'ë' => key.push('e'),
+            'í' | 'ì' | 'î' | 'ï' => key.push('i'),
+            'ó' | 'ò' | 'ô' | 'õ' => key.push('o'),
+            'ú' | 'ù' | 'û' => key.push('u'),
+            'ç' => key.push('c'),
+            'ñ' => key.push('n'),
+            other => key.push(other),
+        }
+    }
+    key
+}
+
 // ------------------------------------------------------------- categories
 
 pub fn upsert_category(tx: &Transaction<'_>, c: &Category, generation: i64) -> Result<()> {
@@ -48,7 +83,7 @@ pub fn upsert_category(tx: &Transaction<'_>, c: &Category, generation: i64) -> R
 }
 
 pub fn categories(tx: &rusqlite::Connection) -> Result<Vec<Category>> {
-    let mut stmt = tx.prepare("SELECT id, title, hide_globally FROM categories ORDER BY title")?;
+    let mut stmt = tx.prepare("SELECT id, title, hide_globally FROM categories")?;
     let rows = stmt.query_map([], |r| {
         Ok(Category {
             id: CategoryId(r.get(0)?),
@@ -56,7 +91,11 @@ pub fn categories(tx: &rusqlite::Connection) -> Result<Vec<Category>> {
             hide_globally: r.get::<_, i64>(2)? != 0,
         })
     })?;
-    Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
+    let mut out = rows.collect::<std::result::Result<Vec<_>, _>>()?;
+    // `sort_by_cached_key`, not `sort_by`: the key is a fresh String, so
+    // comparing with it would rebuild both sides on every comparison.
+    out.sort_by_cached_key(|c| name_sort_key(&c.title));
+    Ok(out)
 }
 
 // ------------------------------------------------------------------ feeds
@@ -78,8 +117,8 @@ pub fn upsert_feed(tx: &Transaction<'_>, f: &Feed, generation: i64) -> Result<()
     tx.execute(
         "INSERT INTO feeds (id, category_id, title, site_url, feed_url, icon_id, checked_at,
                             parsing_error_message, parsing_error_count, disabled, hide_globally,
-                            last_seen_sync)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+                            crawler, last_seen_sync)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
          ON CONFLICT(id) DO UPDATE SET
              category_id = excluded.category_id,
              title = excluded.title,
@@ -91,6 +130,7 @@ pub fn upsert_feed(tx: &Transaction<'_>, f: &Feed, generation: i64) -> Result<()
              parsing_error_count = excluded.parsing_error_count,
              disabled = excluded.disabled,
              hide_globally = excluded.hide_globally,
+             crawler = excluded.crawler,
              last_seen_sync = excluded.last_seen_sync",
         rusqlite::params![
             f.id.get(),
@@ -104,6 +144,7 @@ pub fn upsert_feed(tx: &Transaction<'_>, f: &Feed, generation: i64) -> Result<()
             i64::from(f.parsing_error_count),
             i64::from(f.disabled),
             i64::from(f.hide_globally),
+            i64::from(f.crawler),
             generation,
         ],
     )?;
@@ -113,8 +154,9 @@ pub fn upsert_feed(tx: &Transaction<'_>, f: &Feed, generation: i64) -> Result<()
 pub fn feeds(conn: &rusqlite::Connection) -> Result<Vec<Feed>> {
     let mut stmt = conn.prepare(
         "SELECT id, category_id, title, site_url, feed_url, icon_id, checked_at,
-                parsing_error_message, parsing_error_count, disabled, hide_globally
-         FROM feeds ORDER BY title",
+                parsing_error_message, parsing_error_count, disabled, hide_globally,
+                crawler
+         FROM feeds",
     )?;
     let rows = stmt.query_map([], |r| {
         Ok(Feed {
@@ -133,9 +175,15 @@ pub fn feeds(conn: &rusqlite::Connection) -> Result<Vec<Feed>> {
             parsing_error_count: r.get::<_, i64>(8)? as i32,
             disabled: r.get::<_, i64>(9)? != 0,
             hide_globally: r.get::<_, i64>(10)? != 0,
+            crawler: r.get::<_, i64>(11)? != 0,
         })
     })?;
-    Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
+    let mut out = rows.collect::<std::result::Result<Vec<_>, _>>()?;
+    // Sorted here rather than in SQL; see `name_sort_key`. Cached, because the
+    // key is a fresh String and a plain `sort_by` would rebuild both sides on
+    // every comparison.
+    out.sort_by_cached_key(|f| name_sort_key(&f.title));
+    Ok(out)
 }
 
 /// Remove a feed, its entries, and any intents queued against them.
@@ -191,7 +239,13 @@ pub fn upsert_entry(tx: &Transaction<'_>, e: &Entry, generation: i64) -> Result<
              url = excluded.url,
              comments_url = excluded.comments_url,
              author = excluded.author,
-             content = excluded.content,
+             -- Never clobber a body the user asked the server to scrape.
+             -- fetch-content is not persisted server-side, so the feed own
+             -- (usually truncated) content is what a sync brings back; taking
+             -- it would silently undo fetch-original on the next refresh.
+             content = CASE WHEN entries.content_scraped = 1
+                            THEN entries.content
+                            ELSE excluded.content END,
              published_at = excluded.published_at,
              created_at = excluded.created_at,
              changed_at = excluded.changed_at,
@@ -438,6 +492,47 @@ pub fn clear_icon_failures(tx: &Transaction<'_>, feed_id: FeedId) -> Result<()> 
     Ok(())
 }
 
+/// What a list row needs to show about the feed an entry came from.
+///
+/// One query for every feed rather than a join onto the entry list: an entry
+/// list is capped at 500 rows but a mirror has tens of feeds, so joining would
+/// carry the same icon blob back hundreds of times.
+#[derive(Debug, Clone)]
+pub struct FeedChrome {
+    pub feed_id: i64,
+    /// The feed name as the user (or the feed) set it. FOREIGN TEXT.
+    pub title: String,
+    /// The icon's MIME type and bytes, when the mirror has fetched one.
+    pub icon: Option<(String, Vec<u8>)>,
+}
+
+/// Feed names and icons, for decorating an entry list.
+pub fn feed_chrome(conn: &rusqlite::Connection) -> Result<Vec<FeedChrome>> {
+    let mut stmt = conn.prepare(
+        "SELECT f.id, f.title, i.format, i.bytes
+           FROM feeds f
+           LEFT JOIN icons i ON i.id = f.icon_id
+          ORDER BY f.id",
+    )?;
+    let rows = stmt.query_map([], |r| {
+        let mime: Option<String> = r.get(2)?;
+        let bytes: Option<Vec<u8>> = r.get(3)?;
+        Ok(FeedChrome {
+            feed_id: r.get(0)?,
+            title: r.get(1)?,
+            icon: match (mime, bytes) {
+                (Some(m), Some(b)) if !b.is_empty() => Some((m, b)),
+                _ => None,
+            },
+        })
+    })?;
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(row?);
+    }
+    Ok(out)
+}
+
 pub fn icon(conn: &rusqlite::Connection, id: IconId) -> Result<Option<Icon>> {
     let row = conn
         .query_row(
@@ -615,6 +710,7 @@ mod tests {
             parsing_error_count: 0,
             disabled: false,
             hide_globally: false,
+            crawler: false,
         }
     }
 
@@ -853,5 +949,47 @@ mod tests {
             1,
             "the previous set must be replaced, not added to"
         );
+    }
+}
+
+#[cfg(test)]
+mod name_sort_tests {
+    use super::*;
+
+    /// §the feed list is sorted the way a reader expects.
+    ///
+    /// Reported from a device: "Sorting is broken. Sorts alphabetically, but
+    /// first uppercase entries, then lower case." That is `ORDER BY title`
+    /// doing a byte comparison.
+    #[test]
+    fn names_sort_by_letter_not_by_byte() {
+        let mut names = vec![
+            "heise online",
+            "Zeit Online",
+            "Ärzteblatt",
+            "tagesschau",
+            "Der Standard",
+            "ÖRF",
+        ];
+        names.sort_by_key(|n| name_sort_key(n));
+        assert_eq!(
+            names,
+            vec![
+                "Ärzteblatt",
+                "Der Standard",
+                "heise online",
+                "ÖRF",
+                "tagesschau",
+                "Zeit Online",
+            ],
+            "case must not decide the order, and an umlaut sorts with its base \
+             letter rather than after Z"
+        );
+    }
+
+    #[test]
+    fn eszett_sorts_as_ss() {
+        assert_eq!(name_sort_key("Straße"), "strasse");
+        assert_eq!(name_sort_key("STRASSE"), "strasse");
     }
 }

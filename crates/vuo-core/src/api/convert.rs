@@ -112,6 +112,7 @@ pub fn feed(w: wire::Feed) -> Result<Feed> {
         parsing_error_count: w.parsing_error_count.max(0),
         disabled: w.disabled,
         hide_globally: w.hide_globally,
+        crawler: w.crawler,
     })
 }
 
@@ -144,14 +145,33 @@ pub struct Page {
 /// Convert a page of entries, separating the usable, the deleted and the bad.
 #[must_use]
 pub fn entries(page: Vec<wire::Entry>) -> Page {
+    // Removals are collected FIRST, and then win.
+    //
+    // A page can carry the same id twice -- once with content and once as
+    // `removed`. A single pass put such an id in BOTH `valid` and `removed`,
+    // which leaves what happens to it decided by the order the caller applies
+    // the two lists: apply removals first and the entry is deleted and then
+    // re-inserted, so a deleted article silently comes back; apply them last
+    // and it does not. Neither order is written down anywhere, which is the
+    // real defect.
+    //
+    // "This entry should not exist" is the stronger claim of the two, and it
+    // is the safe direction to resolve towards: the worst case is an entry
+    // that the next sync brings back, rather than one the user deleted
+    // reappearing. Found by `entry_deserialise` fuzzing, not by a device.
+    let removed: std::collections::BTreeSet<i64> = page
+        .iter()
+        .filter(|w| w.status == "removed")
+        .map(|w| w.id)
+        .collect();
+
     let mut out = Page {
         valid: Vec::with_capacity(page.len()),
+        removed: removed.iter().copied().map(EntryId).collect(),
         ..Page::default()
     };
     for w in page {
-        let id = EntryId(w.id);
-        if w.status == "removed" {
-            out.removed.push(id);
+        if removed.contains(&w.id) {
             continue;
         }
         match entry(w) {
@@ -168,6 +188,60 @@ mod tests {
 
     fn wire_entry(json: &str) -> wire::Entry {
         serde_json::from_str(json).expect("wire types must accept any object")
+    }
+
+    /// §a page that both describes and deletes an entry deletes it.
+    ///
+    /// The exact input `entry_deserialise` fuzzing crashed on: id 41 appears
+    /// as a normal unread entry AND, later in the same page, as `removed`.
+    /// One pass put it in both lists, and the fuzz target's "nothing may
+    /// appear as both usable and deleted" assertion is the property that
+    /// matters -- what the mirror does with such a page was otherwise decided
+    /// by the order the caller happened to apply them in.
+    #[test]
+    fn an_id_that_is_also_removed_never_arrives_as_valid() {
+        let page: wire::EntriesResponse = serde_json::from_str(
+            r#"{"total": 2, "entries": [
+                 {"id": 41, "feed_id": 7, "status": "unread", "title": "t",
+                  "url": "https://blog.example/post"},
+                 {"id": 42, "feed_id": 7, "status": "removed", "title": "t"},
+                 {"id": 41, "feed_id": 7, "status": "removed", "title": "t"}
+               ]}"#,
+        )
+        .expect("the wire types accept any object");
+
+        let out = entries(page.entries);
+        assert!(
+            out.removed.contains(&EntryId(41)) && out.removed.contains(&EntryId(42)),
+            "both removals must be reported"
+        );
+        assert!(
+            !out.valid.iter().any(|e| e.id == EntryId(41)),
+            "an entry the same page deletes must not also arrive as usable"
+        );
+    }
+
+    /// Order must not matter: the removal wins whether it comes first or last.
+    #[test]
+    fn a_removal_wins_from_either_end_of_the_page() {
+        let parse = |json: &str| -> wire::EntriesResponse {
+            serde_json::from_str(json).expect("the wire types accept any object")
+        };
+        let removal_last = parse(
+            r#"{"entries": [
+                 {"id": 9, "feed_id": 1, "status": "unread", "title": "t"},
+                 {"id": 9, "feed_id": 1, "status": "removed", "title": "t"}]}"#,
+        );
+        let removal_first = parse(
+            r#"{"entries": [
+                 {"id": 9, "feed_id": 1, "status": "removed", "title": "t"},
+                 {"id": 9, "feed_id": 1, "status": "unread", "title": "t"}]}"#,
+        );
+        for page in [removal_last, removal_first] {
+            let out = entries(page.entries);
+            assert_eq!(out.removed, vec![EntryId(9)]);
+            assert!(out.valid.is_empty(), "the removal wins from either end");
+        }
     }
 
     #[test]

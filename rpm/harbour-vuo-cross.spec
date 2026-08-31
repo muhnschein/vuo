@@ -70,6 +70,16 @@ find ./qml -type f -exec \
     install -D -m 644 "{}" "%{buildroot}%{_datadir}/harbour-vuo/{}" \;
 cd -
 
+# The compiled translations. `%{_datadir}/harbour-vuo` is already claimed
+# wholesale by %files, so these need no entry of their own -- but they DO need
+# to land beside qml/, because the app resolves them with
+# SailfishApp::pathTo("translations").
+if ls %{_sourcedir}/translations/*.qm >/dev/null 2>&1; then
+    install -d %{buildroot}%{_datadir}/harbour-vuo/translations
+    install -D -m 644 %{_sourcedir}/translations/*.qm \
+        %{buildroot}%{_datadir}/harbour-vuo/translations/
+fi
+
 install -D -m 644 %{_sourcedir}/systemd/harbour-vuo-sync.service \
     %{buildroot}%{_userunitdir}/harbour-vuo-sync.service
 install -D -m 644 %{_sourcedir}/systemd/harbour-vuo-sync.timer \
