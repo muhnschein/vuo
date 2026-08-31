@@ -29,7 +29,8 @@ SilicaListView {
     property int tabIndex: -1
     /// How much vertical room the page's pinned strip needs. This list is
     /// full-page -- so that the pulley menu comes down from the top of the
-    /// SCREEN -- and reserves the strip's band in its own header instead.
+    /// SCREEN -- and reserves the strip's band in its own header instead, so
+    /// that at rest the band holds this spacer rather than a row.
     property real tabStripHeight: 0
 
     /// How far this list is scrolled past its own top: positive scrolled down,
@@ -46,15 +47,37 @@ SilicaListView {
     Component.onCompleted: if (listView.showScopeTabs && listView.entryModel) {
         listView.entryModel.setScope(listView.scopeKind, listView.scopeId)
     }
+
+    /// True once the user has moved this list themselves.
+    property bool _moved: false
+    onMovementStarted: listView._moved = true
+
+    // Keep the list at its own top until the user first moves it.
+    //
+    // The header reserves the strip's band, and a header's height is not known
+    // at the first layout -- it comes from the strip, whose height comes from
+    // font metrics. A ListView does NOT shift `contentY` when its header grows
+    // afterwards, so the list came up scrolled past its own top by exactly the
+    // band: measured on real Silica, `contentY` 0 against `originY` -110, with
+    // the first article hidden behind the strip and the pulley a scroll away.
+    //
+    // Gated on `_moved` rather than on `moving`, so this can only ever fix the
+    // starting position. A later `originY` change -- an orientation flip, say
+    // -- must not throw away where the user had scrolled to.
+    onOriginYChanged: if (!listView._moved) {
+        listView.contentY = listView.originY
+    }
     property string scopeLabel: ""
     property string title: ""
 
     // Everything this list draws stays inside its own bounds, which are the
     // whole page. The pulley menu lives at negative content coordinates,
     // above `originY`, so being full-page is what lets it be revealed from
-    // the top of the SCREEN rather than from under the tab strip. Rows
-    // scrolled past the top pass behind the strip, which is opaque over the
-    // ambience -- see the note on the backdrop in EntryListPage.
+    // the top of the SCREEN rather than from under the tab strip.
+    //
+    // Keeping rows OUT of the strip's band is a separate job, and not this
+    // item's: the page clips them there, only while something is scrolled
+    // past the top. See `viewport` in EntryListPage.
     clip: true
     // Always bound, never re-bound on a swipe.
     //

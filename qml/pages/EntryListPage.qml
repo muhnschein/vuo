@@ -1,6 +1,5 @@
 import QtQuick 2.6
 import Sailfish.Silica 1.0
-import Sailfish.Silica.Background 1.0 as Background
 import "../components"
 
 Page {
@@ -95,86 +94,50 @@ Page {
 
     allowedOrientations: Orientation.All
 
+    /// The band across the top of the page that the strip occupies.
+    readonly property real stripBand: page.showScopeTabs ? scopeTabs.height : 0
+
     /*
      * The tab strip, pinned -- and the pulley menu still owns the top edge.
      *
-     * Three bindings, all of them Silica's own, and each one answering a
-     * defect reported from the device.
+     * The strip paints NOTHING behind its labels, and that is the whole point.
+     * This window is transparent: the ambience is drawn in a separate
+     * `WallpaperWindow` BEHIND the app (ApplicationWindow.qml:524), which is
+     * why `_backgroundColor` is `#00000000` and why every attempt to give the
+     * strip a matching fill produced a dark slab instead -- first
+     * `Theme.overlayBackgroundColor` (`#000000`), then
+     * `Sailfish.Silica.Background.ThemeBackground`, whose glass material has
+     * no wallpaper to sample inside an app window and so rendered its
+     * `_wallpaperOverlayColor` (`#99000000`) as a scrim. Both were reported
+     * from the device as a black bar. A band that paints nothing at all is
+     * the ambience, exactly, at zero cost.
      *
-     * `y` rides down with the pull, `z` drops the strip behind the pager while
-     * the pull is happening, and the backdrop opens a gap at its top edge
-     * until the list is properly scrolled. Together they mean the pulley's
-     * resting indicator shows above the tabs, and the opened menu comes down
-     * over them from the top of the screen, as it does in every stock app.
-     * TabView spells the same three out at private/TabView.qml:71-78.
+     * Which leaves only one thing to arrange: no ROW may be in the band
+     * either. `viewport` below does that by clipping, and the two of them
+     * together are what let the strip stay pinned without an opaque backing.
      *
-     * The z-flip is gated on `yOffset < 0` -- ACTIVELY BEING PULLED -- not on
-     * merely sitting at the top. Gating it on "at the top" is what made every
-     * tab untappable: at rest the strip was behind a full-page Flickable,
-     * input is delivered in reverse paint order, and the Flickable took every
-     * press.
+     * `y` and `z` are Silica's, off `yOffset`: the strip rides down with the
+     * pull (TabView.qml:72) and drops behind the pager while the pull is
+     * happening (TabView.qml:71) so the opened menu paints over the tabs.
      *
-     * THE BACKDROP is why this arrangement is possible at all. A strip pinned
-     * over a scrolling list has to be opaque or the rows read straight through
-     * it, and it has to be opaque in the ambience's own background or it reads
-     * as a slab -- the previous attempt filled it with
-     * `Theme.overlayBackgroundColor` layered under
-     * `__silica_applicationwindow_instance._backgroundColor`, which measures
-     * on-device as #000000 under #00000000: a black band across the top of the
-     * screen. The window colour is transparent because the wallpaper is not in
-     * this window at all; ApplicationWindow puts it in a separate
-     * `WallpaperWindow` behind (ApplicationWindow.qml:524) and the app window
-     * is see-through to it.
-     *
-     * `Sailfish.Silica.Background.ThemeBackground` is the item that paints
-     * that same ambience background, aligned to the screen rather than to
-     * itself -- it takes `transformItem` from the window's own rotating item.
-     * It is the public face of what Silica's `BackgroundRectangle` does for
-     * TabView (private/TabView.qml:74-81), which is in Sailfish.Silica.private
-     * and therefore not available here.
-     *
-     * On importing a module outside Sailfish.Silica: `Sailfish.Silica.Background`
-     * is a normal module with its own qmldir, and ThemeBackground is a public
-     * entry in it, not one of its `internal` lines. It is not on Harbour's
-     * allowed-imports list, which is a cost this app can pay -- docs/scope.md
-     * targets Chum and OpenRepos, and docs/packaging.md calls Harbour "a
-     * stretch goal at best". `Sailfish.Silica.private` would NOT be acceptable
-     * on the same terms: it is explicitly private, unversioned, and the
-     * reasons in ScopeTabBar.qml's header still stand.
+     * The z gate is on `yOffset < 0` -- ACTIVELY BEING PULLED -- not on merely
+     * sitting at the top. Gating it on "at the top" is what made every tab
+     * untappable: at rest the strip was behind a full-page Flickable, input is
+     * delivered in reverse paint order, and the Flickable took every press.
      */
     ScopeTabBar {
         id: scopeTabs
 
         anchors { left: parent.left; right: parent.right }
-        // Rides down with the pull, so the menu coming down has room above it.
-        // TabView.qml:72, which writes the same thing as `Math.max(0, -yOffset)`.
         y: Math.max(0, -page.yOffset)
         visible: page.showScopeTabs
         height: scopeTabs.visible ? scopeTabs.implicitHeight : 0
-        // Behind the pager ONLY while the pull is actually happening, so the
-        // menu paints over the tabs. TabView.qml:71. At every other moment the
-        // strip is in front, which is what makes a tap reach it.
         z: page.yOffset < 0 ? -1 : 1
 
         hostPage: page
         titles: [qsTr("Unread"), qsTr("Favourites"), qsTr("All")]
         currentIndex: pager.currentIndex
         onTabClicked: page.selectTab(index)
-
-        // The ambience's own background, so rows scrolling past cannot be read
-        // through the tabs and the strip still looks like the wallpaper.
-        //
-        // The top edge stays open until the list is scrolled clear of it: the
-        // pulley's resting indicator is drawn into the very top of the
-        // viewport, and covering it would hide the one hint that there is a
-        // menu. Silica opens exactly the same gap, of exactly this size, for
-        // exactly this reason (TabView.qml:78).
-        Background.ThemeBackground {
-            anchors.fill: parent
-            anchors.topMargin: page.yOffset > Theme.paddingSmall
-                               ? 0 : Theme.paddingSmall
-            z: -1
-        }
     }
 
     /*
@@ -191,16 +154,61 @@ Page {
      * `make qml-load`'s reach. `pager.currentIndex === index` says the same
      * thing with a plain binding.
      */
-    PagedView {
-        id: pager
+    /*
+     * The window the tabs are seen through.
+     *
+     * Its rect is the page MINUS the strip's band, and it clips -- so a row
+     * scrolled up into that band is cut at the strip's lower edge instead of
+     * passing behind it. That is what lets the strip be transparent, and it
+     * costs nothing at the top, where the list's own header already reserves
+     * the band.
+     *
+     * The pager inside it is shifted back up by the same amount, so the
+     * VIEWPORT still begins at the top of the SCREEN even though this item
+     * does not. That matters: the pulley menu lives at negative content
+     * coordinates, above `originY`, and both it and its resting indicator are
+     * drawn relative to the top of the viewport. Anchoring the pager below the
+     * strip instead -- which is what shipped last round -- is exactly what put
+     * the menu under the tabs.
+     *
+     * Clipping is therefore switched OFF unless something is actually scrolled
+     * past the top:
+     *
+     *   scrolled (yOffset > 0)  clip -- rows would otherwise enter the band
+     *   at rest  (yOffset == 0) no clip -- the band holds the list's header
+     *                           and nothing else, and the pulley's resting
+     *                           indicator is drawn into the top 6px of the
+     *                           viewport, which clipping would swallow
+     *   pulling  (yOffset < 0)  no clip -- the menu comes down through the
+     *                           band from the top edge of the screen
+     *
+     * Nothing is ever scrolled past the top at the moment the menu is being
+     * pulled out, so no state needs both. Silica's TabItem makes the same
+     * trade with the same reasoning, though it settles it once at construction
+     * rather than per frame (private/TabItem.qml:63).
+     *
+     * Clipping also decides input, not just paint: Qt tests a clipping item's
+     * own shape before descending into its children, so a tap in the band
+     * cannot reach a row that has been clipped out of it.
+     */
+    Item {
+        id: viewport
 
-        // Full-page on purpose. The pulley menu lives at negative content
-        // coordinates, above `originY`, and is revealed at the top of the
-        // VIEWPORT -- so the viewport has to begin at the top of the SCREEN
-        // for the menu to come down from the top edge, which is where
-        // SailfishOS puts it. The strip is pinned over this and each list
-        // reserves the space it occupies in its own header.
-        anchors.fill: parent
+        x: 0
+        width: page.width
+        y: page.stripBand
+        height: page.height - page.stripBand
+        clip: page.yOffset > 0
+
+        PagedView {
+            id: pager
+
+            // Shifted back up by the band, so the viewport starts at the top
+            // of the screen even though `viewport` starts below the strip.
+            x: 0
+            y: -page.stripBand
+            width: viewport.width
+            height: page.height
 
         // One page per tab -- or exactly one, with no swiping, for a feed or
         // category view, which is reached by pushing a page and left by going
@@ -242,9 +250,10 @@ Page {
             scopeId: page.showScopeTabs ? 0 : page.scopeId
             showScopeTabs: page.showScopeTabs
             tabIndex: page.showScopeTabs ? index : -1
-            tabStripHeight: page.showScopeTabs ? scopeTabs.implicitHeight : 0
+            tabStripHeight: page.stripBand
             scopeLabel: page.scopeLabel
             title: page.title
+            }
         }
     }
 
