@@ -154,6 +154,10 @@ jobs:
       # Jolla repositories, so mb2 zypper-installs rust, cargo and
       # rust-std-static into the target the way it is meant to.
       #
+      # `-s`: rpm/ holds two specs (the real one and the packaging-only
+      # harbour-vuo-cross.spec for scripts/cross-rpm.sh), and mb2 refuses
+      # to guess between them.
+      #
       # The Rust floor is checked between build-requires and build. Vuo's
       # locked graph needs cargo 1.88 (edition2024 dependencies, see
       # docs/sdk-build.md); an SDK whose rust is older fails here with one
@@ -171,12 +175,14 @@ jobs:
             -v /tmp/rustlib/i686-unknown-linux-gnu:/usr/lib/rustlib/i686-unknown-linux-gnu \
             "$IMAGE" \
             /bin/bash -c 'set -e
-              mb2 -t "$TARGET" -X build-init
-              mb2 -t "$TARGET" -X build-requires ||
+              spec=rpm/harbour-vuo.spec
+              mb2 -t "$TARGET" -s "$spec" -X build-init
+              mb2 -t "$TARGET" -s "$spec" -X build-requires ||
                 echo "::warning::mb2 build-requires failed; the build may stop on a missing BuildRequires"
 
               echo "--- rust in the target ---"
-              sb2 -t "$TARGET" rustc --version || true
+              sb2 -t "$TARGET" rpm -q rust cargo rust-std-static 2>&1 || true
+              sb2 -t "$TARGET" sh -c "command -v rustc; rustc --version" || true
               cargo_v=$(sb2 -t "$TARGET" cargo --version 2>/dev/null | sed -n "s/^cargo \([0-9]*\.[0-9]*\).*/\1/p")
               echo "target cargo: ${cargo_v:-unknown}"
               floor=$(sed -n "s/^rust-version = \"\(.*\)\"/\1/p" Cargo.toml | head -1)
@@ -198,7 +204,7 @@ jobs:
               fi
               ls -d /usr/lib/rustlib/* /srv/mer/targets/*/usr/lib/rustlib/* 2>/dev/null || true
 
-              mb2 -t "$TARGET" -X build --no-check'
+              mb2 -t "$TARGET" -s "$spec" -X build --no-check'
 
       # `|| true` on both: the step runs under `bash -e`, and a missing
       # .mb2 would end it before the logs were shown.
