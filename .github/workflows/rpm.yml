@@ -59,16 +59,6 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      # The SDK image is ~13 GB unpacked, the pieces lifted out of it are a
-      # few more, and a hosted runner starts with about 20 GB free. The
-      # preinstalled toolchains nothing here uses are the cheapest space.
-      - name: Make room for the SDK
-        run: |
-          df -h / | tail -1
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
-                      /usr/local/share/boost /opt/hostedtoolcache/CodeQL
-          df -h / | tail -1
-
       # By digest, not tag. The SDK image is a third party's and a tag can
       # be repointed at any content by whoever owns it. To add an SDK
       # version: resolve the digest once with
@@ -91,8 +81,12 @@ jobs:
           echo "IMAGE=coderus/sailfishos-platform-sdk@$digest" >> "$GITHUB_ENV"
           echo "TARGET=SailfishOS-$SFOS-$ARCH" >> "$GITHUB_ENV"
 
+      # ~13 GB unpacked; a hosted runner has well over that free, and the
+      # image is removed again once its pieces are lifted out below.
       - name: Pull the Sailfish SDK
-        run: docker pull "$IMAGE"
+        run: |
+          df -h / | tail -1
+          docker pull "$IMAGE"
 
       # What scripts/cross-build.sh needs from the image, and nothing else:
       #
@@ -115,7 +109,10 @@ jobs:
           echo "$targets" | grep -qx -- "$TARGET" || {
             echo "::error::no $TARGET in the $SFOS SDK image; see the list above"; exit 1; }
 
-          c=$(docker create "$IMAGE")
+          # The image declares no default command, and `docker create`
+          # refuses without one; the container is never started, so any
+          # command will do.
+          c=$(docker create "$IMAGE" true)
           mkdir -p "$ROOTFS/opt" "$ROOTFS/srv/mer/targets" "$ROOTFS/usr"
           docker cp "$c:/opt/cross" "$ROOTFS/opt/cross"
           docker cp "$c:/srv/mer/targets/$TARGET" "$ROOTFS/srv/mer/targets/$TARGET"
