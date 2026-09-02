@@ -14,7 +14,8 @@ set -euo pipefail
 
 ROOTFS="${1:-/home/user/sdk/rootfs}"
 ARCH=aarch64
-SDK_VERSION=5.0.0.43
+# Overridable: the SDK target version the rootfs was unpacked from.
+SDK_VERSION="${SDK_VERSION:-5.0.0.43}"
 TRIPLE=aarch64-unknown-linux-gnu
 
 SR="$ROOTFS/srv/mer/targets/SailfishOS-${SDK_VERSION}-${ARCH}"

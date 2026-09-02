@@ -21,7 +21,9 @@
 Name:       harbour-vuo
 Summary:    Miniflux feed reader for SailfishOS
 Version:    0.1.0
-Release:    1
+# `--define "vuo_release N"` (scripts/cross-rpm.sh, from VUO_RELEASE) stamps a
+# CI build so each one installs as an upgrade of the last; the tree keeps 1.
+Release:    %{?vuo_release}%{!?vuo_release:1}
 License:    GPL-3.0-or-later
 Group:      Applications/Internet
 URL:        https://github.com/muhnschein/vuo
