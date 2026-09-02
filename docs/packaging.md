@@ -2,6 +2,21 @@
 
 ## Building a device RPM
 
+**Unattended, on GitHub:** `.github/workflows/rpm.yml` builds one against the
+Sailfish SDK image and uploads it as a workflow artifact. Dispatch it from the
+Actions tab (the SDK version is an input) or push a `v*` or `build-*` tag; it
+also runs on any pull request that changes the recipe. The skeleton follows
+muhnschein/postivene's `rpm.yml`, but not its `mb2` build: Jolla's
+repositories install `rust`/`cargo` 1.75.0+git2 into the target (measured
+against the 5.2.0.15 SDK), and this lockfile needs 1.88. So the job lifts the
+SDK's cross compiler and target sysroot out of the image and runs
+`scripts/cross-rpm.sh` with the host's cargo -- the route in
+[`sdk-build.md`](sdk-build.md). The output is a test package: the binary
+links against the chosen SDK version's glibc (2.39 for 5.2.0.15), so it runs
+on phones at that release or newer.
+
+**Locally, with the SDK installed:**
+
 ```sh
 scripts/build-rpm.sh aarch64     # or armv7hl, or i486 for the emulator
 ```

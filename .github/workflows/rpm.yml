@@ -1,0 +1,212 @@
+# Builds a device RPM against the Sailfish SDK.
+#
+# Not part of `ci.yml`: it pulls a multi-gigabyte SDK image and cross-compiles
+# the whole workspace, which is minutes of runner time nobody wants on every
+# push. Run it from the Actions tab when a package is wanted, or on a tag.
+#
+# The SDK is what makes the result runnable on a phone: the app links against
+# the target's Qt 5.6, libsailfishapp and glibc, and a host-built binary has
+# none of them. The skeleton follows muhnschein/postivene's rpm.yml, which
+# builds with `mb2` inside the same image. Vuo cannot: Jolla's repositories
+# install rust and cargo 1.75.0+git2 into the target (measured against the
+# 5.2.0.15 SDK on 2026-09-02), and this lockfile needs 1.88 -- see
+# docs/sdk-build.md, "The blocker". So the SDK's own cross compiler and
+# target sysroot are lifted out of the image and driven by the host's cargo,
+# which is the route that has already produced an aarch64 RPM:
+# scripts/cross-build.sh and scripts/cross-rpm.sh.
+name: rpm
+
+on:
+  workflow_dispatch:
+    inputs:
+      arch:
+        description: Device architecture (scripts/cross-build.sh knows aarch64 only)
+        type: choice
+        options: [aarch64]
+        default: aarch64
+      sfos_version:
+        description: >
+          Sailfish SDK version to build against. Only versions with a pinned
+          image digest below are accepted. The target's glibc is the floor
+          the package will run on, so pick the oldest release the phone runs.
+        type: string
+        default: "5.2.0.15"
+  push:
+    # `v*` for a release. `build-*` is a throwaway handle for running this
+    # before it reaches the default branch, since workflow_dispatch only
+    # becomes available once a workflow is on main.
+    tags: ["v*", "build-*"]
+  # A change to the recipe is proved by running it: the job builds from the
+  # pull request's head, so the recipe is tested before it lands on main.
+  pull_request:
+    paths:
+      - ".github/workflows/rpm.yml"
+      - "scripts/cross-build.sh"
+      - "scripts/cross-rpm.sh"
+      - "rpm/harbour-vuo-cross.spec"
+
+permissions:
+  contents: read
+
+jobs:
+  rpm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      ARCH: ${{ inputs.arch || 'aarch64' }}
+      SFOS: ${{ inputs.sfos_version || '5.2.0.15' }}
+      ROOTFS: /home/runner/sdk/rootfs
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      # By digest, not tag. The SDK image is a third party's and a tag can
+      # be repointed at any content by whoever owns it. To add an SDK
+      # version: resolve the digest once with
+      # `docker manifest inspect coderus/sailfishos-platform-sdk:<ver>` and
+      # add a line.
+      #
+      # The version is also checked for shape first: it is free text from
+      # the dispatch form and is spliced into paths and the artifact name.
+      - name: Resolve the SDK image
+        run: |
+          [[ $SFOS =~ ^[0-9]+(\.[0-9]+){3}$ ]] || {
+            echo "::error::sfos_version '$SFOS' is not a dotted version"; exit 1; }
+          case "$SFOS" in
+            5.2.0.15) digest=sha256:e7c4379393b17ee63d7f7443ce9930c315a61fdb2e732016346ccbe8c934435e ;;
+            5.1.0.11) digest=sha256:31ba115546972af3630f4690acc204a4e09701358ae39be1883ca70e0eadda86 ;;
+            5.0.0.43) digest=sha256:0eb5e0cbcdc7e5f12280d8d05c198f8497e7b39679fb6009f30b8a720b02a53a ;;
+            *) echo "::error::no pinned digest for coderus/sailfishos-platform-sdk:$SFOS; add one to rpm.yml"
+               exit 1 ;;
+          esac
+          echo "IMAGE=coderus/sailfishos-platform-sdk@$digest" >> "$GITHUB_ENV"
+          echo "TARGET=SailfishOS-$SFOS-$ARCH" >> "$GITHUB_ENV"
+
+      # ~13 GB unpacked; a hosted runner has well over that free, and the
+      # image is removed again once its pieces are lifted out below.
+      - name: Pull the Sailfish SDK
+        run: |
+          df -h / | tail -1
+          docker pull "$IMAGE"
+
+      # What scripts/cross-build.sh needs from the image, and nothing else:
+      #
+      #   /opt/cross                  the SDK's own aarch64-meego-linux-gnu
+      #                               GCC, which must match the device's
+      #                               glibc and libstdc++ (docs/sdk-build.md)
+      #   /srv/mer/targets/<target>   the target sysroot: Qt 5.6, sailfishapp,
+      #                               glibc, everything the link resolves
+      #   a few of /usr/lib's         the tooling's i486 libmpc/libmpfr/libgmp
+      #   libraries                   and friends, which cc1 links and the
+      #                               host lacks
+      #
+      # Copied out with `docker cp` rather than exporting the whole 13 GB,
+      # then the image is removed to get its space back. The target name is
+      # confirmed against the image's own list first so a version whose
+      # naming differs fails here rather than deep inside the build.
+      - name: Lift the cross toolchain and sysroot out of the image
+        run: |
+          targets=$(docker run --rm "$IMAGE" sb2-config -l 2>/dev/null || true)
+          echo "available targets:"; echo "$targets"
+          echo "$targets" | grep -qx -- "$TARGET" || {
+            echo "::error::no $TARGET in the $SFOS SDK image; see the list above"; exit 1; }
+
+          # The image declares no default command, and `docker create`
+          # refuses without one; the container is never started, so any
+          # command will do.
+          c=$(docker create "$IMAGE" true)
+          mkdir -p "$ROOTFS/opt" "$ROOTFS/srv/mer/targets" "$ROOTFS/usr"
+          # `docker cp` out of a container extracts in the CLIENT process,
+          # which as the runner user cannot restore root ownership and
+          # fails with "operation not permitted"; sudo, then chown back.
+          sudo docker cp "$c:/opt/cross" "$ROOTFS/opt/cross"
+          sudo docker cp "$c:/srv/mer/targets/$TARGET" "$ROOTFS/srv/mer/targets/$TARGET"
+          docker rm "$c" >/dev/null
+
+          # Not the whole of the tooling's /usr/lib: `docker cp` refuses a
+          # tree containing symlinks that point outside it, and that one
+          # does. Instead the image's own ldd says which libraries the
+          # cross compiler's programs load, and exactly those are copied
+          # (dereferenced, so a `libmpc.so.3` symlink becomes the file).
+          # glibc itself is skipped: the host's i386 libc serves, and a
+          # foreign libc under LD_LIBRARY_PATH would break every 32-bit
+          # program on the runner.
+          mkdir -p "$ROOTFS/usr/lib"
+          docker run --rm --user root -v "$ROOTFS/usr/lib:/out" "$IMAGE" sh -c '
+            set -e
+            libexec=/opt/cross/libexec/gcc/aarch64-meego-linux-gnu
+            for b in $libexec/*/cc1 $libexec/*/cc1plus $libexec/*/collect2 $libexec/*/lto1 \
+                     $libexec/*/lto-wrapper /opt/cross/bin/aarch64-meego-linux-gnu-*; do
+              [ -x "$b" ] || continue
+              ldd "$b" 2>/dev/null | awk "/=> \\//{print \$3}"
+            done | sort -u | while read -r lib; do
+              case "$lib" in
+                /usr/lib/*) cp -L "$lib" /out/ ;;
+              esac
+            done
+            ls -l /out
+            ls /out/libmpc.so* /out/libmpfr.so* /out/libgmp.so* >/dev/null'
+          docker rmi "$IMAGE" >/dev/null || true
+          sudo chown -R "$(id -u):$(id -g)" "$ROOTFS"
+          # GCC resolves cc1 and its specs against its absolute install
+          # prefix, so the toolchain has to be reachable at /opt/cross.
+          sudo ln -sfn "$ROOTFS/opt/cross" /opt/cross
+          du -sh "$ROOTFS"/opt/cross "$ROOTFS"/srv/mer/targets/* "$ROOTFS"/usr/lib
+          df -h / | tail -1
+          ls "$ROOTFS/opt/cross/bin" | grep -- "-gcc$"
+
+      # The cross compilers are i386 ELFs (docs/sdk-build.md). rpm packages
+      # the result on the host; qemu runs the target's own lrelease for the
+      # translations, since a .qm from a newer Qt is not guaranteed readable
+      # by the device's 5.6.
+      - name: Install host prerequisites
+        run: |
+          sudo dpkg --add-architecture i386
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libc6:i386 libstdc++6:i386 zlib1g:i386 \
+            rpm qemu-user-static file binutils
+
+      # The host's cargo, new enough for the lockfile, with a prebuilt
+      # aarch64 std. Only C/C++ compiles and the final link go through the
+      # SDK's compiler; rustc itself is the host's.
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-unknown-linux-gnu
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: cross-${{ env.TARGET }}
+
+      # Every build would otherwise produce harbour-vuo-0.1.0-1.aarch64.rpm,
+      # the same NEVRA every time, and `pkcon install-local` on a phone that
+      # already has one would do nothing at all while the file said it was
+      # new. The run number is monotonic, so each build is an upgrade of
+      # the last; the tree keeps Release: 1, which is what a tagged release
+      # should be. Digits and periods only: Harbour rejects anything else in
+      # Release, so the short SHA identifies the artifact instead.
+      - name: Stamp the build so each one is its own package
+        run: |
+          echo "SHORT_SHA=$(git rev-parse --short HEAD)" >> "$GITHUB_ENV"
+          echo "VUO_RELEASE=1.${GITHUB_RUN_NUMBER}" >> "$GITHUB_ENV"
+
+      # scripts/cross-rpm.sh runs scripts/cross-build.sh first, then the
+      # %install/%files half of the spec as rpm/harbour-vuo-cross.spec over
+      # the cross-built binary. Its output is a TEST package, and it says so
+      # in its own comments.
+      - name: Cross-build and package
+        env:
+          SDK_VERSION: ${{ env.SFOS }}
+        run: scripts/cross-rpm.sh "$ROOTFS"
+
+      - name: Show what was built
+        run: |
+          for f in dist/*.rpm; do
+            echo "== $f"; rpm -qip "$f"; rpm -qlp "$f"
+          done
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: harbour-vuo-${{ env.ARCH }}-sfos${{ env.SFOS }}-${{ env.SHORT_SHA }}
+          path: dist/*.rpm
+          if-no-files-found: error
+          retention-days: 30

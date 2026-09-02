@@ -35,7 +35,7 @@ mkdir -p "$TOP"/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
 # The host's /usr/bin/lrelease is a qtchooser symlink resolving to a Qt that is
 # not installed here, and a .qm built by a newer Qt is not guaranteed readable
 # by the device's Qt 5.6 anyway. The SDK ships the matching one.
-SR_TR="$ROOTFS/srv/mer/targets/SailfishOS-5.0.0.43-aarch64"
+SR_TR="$ROOTFS/srv/mer/targets/SailfishOS-${SDK_VERSION:-5.0.0.43}-aarch64"
 if [ -x "$SR_TR/usr/lib64/qt5/bin/lrelease" ] && ls translations/*.ts >/dev/null 2>&1; then
     echo "== compiling translations =="
     qemu-aarch64-static -L "$SR_TR" \
@@ -65,6 +65,7 @@ rpmbuild -bb "$TOP/SPECS/harbour-vuo-cross.spec" \
     --rcfile "/usr/lib/rpm/rpmrc:$TOP/rpmrc" \
     --define "_topdir $TOP" \
     --define "_userunitdir /usr/lib/systemd/user" \
+    --define "vuo_release ${VUO_RELEASE:-1}" \
     --target aarch64
 
 mkdir -p dist
