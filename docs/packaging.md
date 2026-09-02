@@ -2,6 +2,16 @@
 
 ## Building a device RPM
 
+**Unattended, on GitHub:** `.github/workflows/rpm.yml` builds one inside the
+Sailfish SDK image and uploads it as a workflow artifact. Dispatch it from the
+Actions tab (architecture and SDK version are inputs) or push a `v*` or
+`build-*` tag. The recipe follows muhnschein/postivene's `rpm.yml`; the runner
+reaches the Jolla repositories, so `mb2` installs the SDK's own `rust` and
+`cargo` into the target, and the job checks their version against
+`rust-version` before compiling anything.
+
+**Locally, with the SDK installed:**
+
 ```sh
 scripts/build-rpm.sh aarch64     # or armv7hl, or i486 for the emulator
 ```

@@ -1,0 +1,224 @@
+# Builds a device RPM inside the Sailfish SDK.
+#
+# Not part of `ci.yml`: it pulls a multi-gigabyte SDK image and cross-compiles
+# the whole workspace, which is minutes of runner time nobody wants on every
+# push. Run it from the Actions tab when a package is wanted, or on a tag.
+#
+# The SDK is what makes the result runnable on a phone: the app links against
+# the target's Qt 5.6, libsailfishapp and glibc, and a host-built binary has
+# none of them. The recipe follows muhnschein/postivene's rpm.yml, which
+# solved the same problem for the same SDK first; docs/sdk-build.md records
+# what each step is for.
+name: rpm
+
+on:
+  workflow_dispatch:
+    inputs:
+      arch:
+        description: Device architecture
+        type: choice
+        options: [aarch64, armv7hl]
+        default: aarch64
+      sfos_version:
+        description: >
+          Sailfish SDK version to build against. Only versions with a pinned
+          image digest below are accepted. The SDK's own Rust has to be able
+          to read this lockfile (docs/sdk-build.md: the graph needs 1.88);
+          the build checks that before it starts compiling.
+        type: string
+        default: "5.2.0.15"
+  push:
+    # `v*` for a release. `build-*` is a throwaway handle for running this
+    # before it reaches the default branch, since workflow_dispatch only
+    # becomes available once a workflow is on main.
+    tags: ["v*", "build-*"]
+
+permissions:
+  contents: read
+
+jobs:
+  rpm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      ARCH: ${{ inputs.arch || 'aarch64' }}
+      SFOS: ${{ inputs.sfos_version || '5.2.0.15' }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      # By digest, not tag. The SDK image is a third party's, it is run
+      # privileged below with the checkout mounted read-write, and a tag
+      # can be repointed at any content by whoever owns it. To add an SDK
+      # version: pull the tag once, read the digest with
+      # `docker inspect --format '{{index .RepoDigests 0}}'`, add a line.
+      #
+      # The version is also checked for shape first: it is free text from
+      # the dispatch form and is spliced into the artifact name below.
+      - name: Resolve the SDK image
+        run: |
+          [[ $SFOS =~ ^[0-9]+(\.[0-9]+){3}$ ]] || {
+            echo "::error::sfos_version '$SFOS' is not a dotted version"; exit 1; }
+          case "$SFOS" in
+            5.2.0.15) digest=sha256:e7c4379393b17ee63d7f7443ce9930c315a61fdb2e732016346ccbe8c934435e ;;
+            5.1.0.11) digest=sha256:31ba115546972af3630f4690acc204a4e09701358ae39be1883ca70e0eadda86 ;;
+            5.0.0.43) digest=sha256:0eb5e0cbcdc7e5f12280d8d05c198f8497e7b39679fb6009f30b8a720b02a53a ;;
+            *) echo "::error::no pinned digest for coderus/sailfishos-platform-sdk:$SFOS; add one to rpm.yml"
+               exit 1 ;;
+          esac
+          echo "IMAGE=coderus/sailfishos-platform-sdk@$digest" >> "$GITHUB_ENV"
+
+      - name: Pull the Sailfish SDK
+        run: docker pull "$IMAGE"
+
+      # The image ships one target per architecture, named by the SDK's own
+      # convention. Asked for rather than assumed, so a version whose naming
+      # differs fails here with the list rather than deep inside rpmbuild.
+      - name: Resolve the build target
+        run: |
+          targets=$(docker run --rm "$IMAGE" \
+              sb2-config -l 2>/dev/null || true)
+          echo "available targets:"; echo "$targets"
+          target=$(echo "$targets" | grep -- "-$ARCH\$" | tail -1)
+          if [ -z "$target" ]; then
+            echo "::error::no $ARCH target in the $SFOS SDK image; see the list above"
+            exit 1
+          fi
+          echo "Building against $target"
+          echo "TARGET=$target" >> "$GITHUB_ENV"
+
+      # The spec pins Version and Release, and mb2 runs with -X so nothing
+      # derives them from git -- so every build would otherwise produce
+      # harbour-vuo-0.1.0-1.aarch64.rpm, the same NEVRA every time, and
+      # `pkcon install-local` on a phone that already has one would do
+      # nothing at all while the file said it was new.
+      #
+      # The run number is monotonic, so each build is an upgrade of the
+      # last. The tree keeps Release: 1, which is what a tagged release
+      # should be. Digits and periods only: Harbour rejects anything else in
+      # Release, so the short SHA identifies the artifact instead.
+      - name: Stamp the build so each one is its own package
+        run: |
+          short=$(git rev-parse --short HEAD)
+          release="1.${GITHUB_RUN_NUMBER}"
+          sed -i "s/^Release:.*/Release:    ${release}/" rpm/harbour-vuo.spec
+          grep '^Version:\|^Release:' rpm/harbour-vuo.spec
+          echo "SHORT_SHA=$short" >> "$GITHUB_ENV"
+          echo "RPM_RELEASE=$release" >> "$GITHUB_ENV"
+
+      # Running as root is explicitly wrong -- sdk-manage refuses, saying
+      # it cannot determine the Mer SDK user -- so the build stays as the
+      # image's own mersdk, and the tree has to belong to it.
+      - name: Hand the checkout to the SDK's build user
+        run: |
+          uid=$(docker run --rm "$IMAGE" id -u)
+          gid=$(docker run --rm "$IMAGE" id -g)
+          home=$(docker run --rm "$IMAGE" sh -c 'echo $HOME')
+          echo "SDK builds as uid=$uid gid=$gid, HOME=$home"
+          echo "BUILDDIR=$home/harbour-vuo" >> "$GITHUB_ENV"
+          echo "SDK_UID=$uid" >> "$GITHUB_ENV"
+          echo "SDK_GID=$gid" >> "$GITHUB_ENV"
+          sudo chown -R "$uid:$gid" "$PWD"
+
+      # Build scripts and proc-macros are compiled for the SDK's own i686
+      # and linked in sb2's *host* mode, where /usr is the SDK filesystem
+      # rather than the target -- so ld looks for the i686 rustlib under
+      # /usr/lib/rustlib, and mb2 installs rust into the target under
+      # /srv/mer instead. docs/sdk-build.md names the failure it causes.
+      #
+      # An empty, mersdk-owned directory is bind-mounted at that path and
+      # filled from inside the build, AFTER `build-requires` has installed
+      # rust into the target: that way the rustlib matches the rustc that
+      # will use it, whatever version the SDK's repositories serve.
+      - name: Prepare the host rustlib mount
+        run: |
+          mkdir -p /tmp/rustlib/i686-unknown-linux-gnu
+          sudo chown -R "$SDK_UID:$SDK_GID" /tmp/rustlib
+
+      # Mounted inside the SDK user's home, and that placement is the
+      # whole fix: rpm runs under scratchbox2, which redirects absolute
+      # paths it does not recognise into the target rootfs, so with the
+      # tree anywhere else mb2 writes .mb2/spec outside and rpm reads
+      # inside. The directory keeps the package's name: mb2 derives the
+      # package from it, so rpm/harbour-vuo.spec is found.
+      #
+      # `build-init` first, `-X` (--no-fix-version) on both because
+      # build-init otherwise asks `git describe` for a version, finds no
+      # tags, and stops before writing the spec at all. `--no-check`: the
+      # spec has no %check; the tests are host-oriented.
+      #
+      # `-n` / `--nodeps` are deliberately NOT passed: a runner reaches the
+      # Jolla repositories, so mb2 zypper-installs rust, cargo and
+      # rust-std-static into the target the way it is meant to.
+      #
+      # The Rust floor is checked between build-requires and build. Vuo's
+      # locked graph needs cargo 1.88 (edition2024 dependencies, see
+      # docs/sdk-build.md); an SDK whose rust is older fails here with one
+      # clear line rather than forty minutes later in cargo.
+      #
+      # `--privileged` is what the SDK image's own instructions run it
+      # with. TARGET goes in as an environment variable and the script is
+      # single-quoted, so nothing the image printed above is spliced into
+      # shell text.
+      - name: Build the RPM
+        run: |
+          docker run --rm --privileged \
+            -e TARGET \
+            -v "$PWD:$BUILDDIR" -w "$BUILDDIR" \
+            -v /tmp/rustlib/i686-unknown-linux-gnu:/usr/lib/rustlib/i686-unknown-linux-gnu \
+            "$IMAGE" \
+            /bin/bash -c 'set -e
+              mb2 -t "$TARGET" -X build-init
+              mb2 -t "$TARGET" -X build-requires ||
+                echo "::warning::mb2 build-requires failed; the build may stop on a missing BuildRequires"
+
+              echo "--- rust in the target ---"
+              sb2 -t "$TARGET" rustc --version || true
+              cargo_v=$(sb2 -t "$TARGET" cargo --version 2>/dev/null | sed -n "s/^cargo \([0-9]*\.[0-9]*\).*/\1/p")
+              echo "target cargo: ${cargo_v:-unknown}"
+              floor=$(sed -n "s/^rust-version = \"\(.*\)\"/\1/p" Cargo.toml | head -1)
+              if [ -n "$cargo_v" ] && [ "$(printf "%s\n%s\n" "$floor" "$cargo_v" | sort -V | head -1)" != "$floor" ]; then
+                echo "::error::the $TARGET SDK ships cargo $cargo_v, but this lockfile needs $floor (docs/sdk-build.md). Pick a newer sfos_version, or see docs/sdk-build.md for the host-cargo route."
+                exit 1
+              fi
+
+              echo "--- host rustlib for build scripts ---"
+              src=$(ls -d /srv/mer/targets/"$TARGET"*/usr/lib/rustlib/i686-unknown-linux-gnu \
+                          /srv/mer/targets/*/usr/lib/rustlib/i686-unknown-linux-gnu \
+                          /srv/mer/toolings/*/usr/lib/rustlib/i686-unknown-linux-gnu \
+                          2>/dev/null | head -1)
+              if [ -n "$src" ]; then
+                echo "lifting $src"
+                cp -a "$src"/. /usr/lib/rustlib/i686-unknown-linux-gnu/
+              else
+                echo "::warning::no i686 rustlib found in the target or tooling; build-script links may fail"
+              fi
+              ls -d /usr/lib/rustlib/* /srv/mer/targets/*/usr/lib/rustlib/* 2>/dev/null || true
+
+              mb2 -t "$TARGET" -X build --no-check'
+
+      # `|| true` on both: the step runs under `bash -e`, and a missing
+      # .mb2 would end it before the logs were shown.
+      - name: Show mb2's state
+        if: failure()
+        run: ls -la .mb2 2>/dev/null || true; tail -80 .mb2/*.log 2>/dev/null || true
+
+      # Back to the runner, or the upload cannot read what was built.
+      - name: Take the tree back
+        if: always()
+        run: sudo chown -R "$(id -u):$(id -g)" "$PWD"
+
+      - name: Show what was built
+        run: |
+          sudo apt-get update >/dev/null
+          sudo apt-get install -y rpm >/dev/null
+          find RPMS -name '*.rpm' -print -exec rpm -qip {} \; 2>/dev/null || \
+            find . -name '*.rpm' -print
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: harbour-vuo-${{ env.ARCH }}-sfos${{ env.SFOS }}-${{ env.SHORT_SHA }}
+          path: |
+            RPMS/**/*.rpm
+            **/*.rpm
+          if-no-files-found: error
+          retention-days: 30
