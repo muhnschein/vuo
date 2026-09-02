@@ -95,8 +95,9 @@ jobs:
       #                               glibc and libstdc++ (docs/sdk-build.md)
       #   /srv/mer/targets/<target>   the target sysroot: Qt 5.6, sailfishapp,
       #                               glibc, everything the link resolves
-      #   /usr/lib                    the tooling's i486 libmpc/libmpfr/libgmp,
-      #                               which cc1 links and the host lacks
+      #   a few of /usr/lib's         the tooling's i486 libmpc/libmpfr/libgmp
+      #   libraries                   and friends, which cc1 links and the
+      #                               host lacks
       #
       # Copied out with `docker cp` rather than exporting the whole 13 GB,
       # then the image is removed to get its space back. The target name is
@@ -119,8 +120,31 @@ jobs:
           # fails with "operation not permitted"; sudo, then chown back.
           sudo docker cp "$c:/opt/cross" "$ROOTFS/opt/cross"
           sudo docker cp "$c:/srv/mer/targets/$TARGET" "$ROOTFS/srv/mer/targets/$TARGET"
-          sudo docker cp "$c:/usr/lib" "$ROOTFS/usr/lib"
           docker rm "$c" >/dev/null
+
+          # Not the whole of the tooling's /usr/lib: `docker cp` refuses a
+          # tree containing symlinks that point outside it, and that one
+          # does. Instead the image's own ldd says which libraries the
+          # cross compiler's programs load, and exactly those are copied
+          # (dereferenced, so a `libmpc.so.3` symlink becomes the file).
+          # glibc itself is skipped: the host's i386 libc serves, and a
+          # foreign libc under LD_LIBRARY_PATH would break every 32-bit
+          # program on the runner.
+          mkdir -p "$ROOTFS/usr/lib"
+          docker run --rm --user root -v "$ROOTFS/usr/lib:/out" "$IMAGE" sh -c '
+            set -e
+            libexec=/opt/cross/libexec/gcc/aarch64-meego-linux-gnu
+            for b in $libexec/*/cc1 $libexec/*/cc1plus $libexec/*/collect2 $libexec/*/lto1 \
+                     $libexec/*/lto-wrapper /opt/cross/bin/aarch64-meego-linux-gnu-*; do
+              [ -x "$b" ] || continue
+              ldd "$b" 2>/dev/null | awk "/=> \\//{print \$3}"
+            done | sort -u | while read -r lib; do
+              case "$lib" in
+                /usr/lib/*) cp -L "$lib" /out/ ;;
+              esac
+            done
+            ls -l /out
+            ls /out/libmpc.so* /out/libmpfr.so* /out/libgmp.so* >/dev/null'
           docker rmi "$IMAGE" >/dev/null || true
           sudo chown -R "$(id -u):$(id -g)" "$ROOTFS"
           # GCC resolves cc1 and its specs against its absolute install
