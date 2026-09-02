@@ -114,9 +114,12 @@ jobs:
           # command will do.
           c=$(docker create "$IMAGE" true)
           mkdir -p "$ROOTFS/opt" "$ROOTFS/srv/mer/targets" "$ROOTFS/usr"
-          docker cp "$c:/opt/cross" "$ROOTFS/opt/cross"
-          docker cp "$c:/srv/mer/targets/$TARGET" "$ROOTFS/srv/mer/targets/$TARGET"
-          docker cp "$c:/usr/lib" "$ROOTFS/usr/lib"
+          # `docker cp` out of a container extracts in the CLIENT process,
+          # which as the runner user cannot restore root ownership and
+          # fails with "operation not permitted"; sudo, then chown back.
+          sudo docker cp "$c:/opt/cross" "$ROOTFS/opt/cross"
+          sudo docker cp "$c:/srv/mer/targets/$TARGET" "$ROOTFS/srv/mer/targets/$TARGET"
+          sudo docker cp "$c:/usr/lib" "$ROOTFS/usr/lib"
           docker rm "$c" >/dev/null
           docker rmi "$IMAGE" >/dev/null || true
           sudo chown -R "$(id -u):$(id -g)" "$ROOTFS"
