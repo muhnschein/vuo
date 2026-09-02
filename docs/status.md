@@ -55,8 +55,10 @@ and its evidence are in [docs/sdk-build.md](sdk-build.md).
 
 **Still true: no part of this has run on a SailfishOS device.** Concretely:
 
-- **The RPM has never been produced**, for the reason above. Everything in the
-  spec up to the cargo invocation is now exercised.
+- **The RPM is produced by CI**, but not by the spec: `.github/workflows/rpm.yml`
+  drives `scripts/cross-rpm.sh` over the SDK image (see `docs/packaging.md`).
+  `rpm/harbour-vuo.spec` itself still stops at the cargo invocation, for the
+  reason above, and the Jolla repositories' rust is 1.75.0+git2 on 5.2.0.15 too.
 - **The cross-compile has run only for the standard library**, not for Vuo's
   own dependency set. `rusqlite`'s bundled SQLite and `rustls`'s crypto backend
   remain the two most likely to need attention, on `armv7hl` especially — which
