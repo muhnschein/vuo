@@ -32,6 +32,10 @@ on:
     # before it reaches the default branch, since workflow_dispatch only
     # becomes available once a workflow is on main.
     tags: ["v*", "build-*"]
+  # A change to this file is proved by running it: the job builds from the
+  # pull request's head, so the recipe is tested before it lands on main.
+  pull_request:
+    paths: [".github/workflows/rpm.yml"]
 
 permissions:
   contents: read
