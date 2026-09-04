@@ -682,6 +682,16 @@ const COVER_FEEDS: usize = 32;
 /// to fill its grid -- a view over rows draws each row once and cannot. QML
 /// reads it with `JSON.parse`, never `eval` (§9.3).
 ///
+/// **Feeds the mirror has a favicon for, and only those**, while there is at
+/// least one. The cover's grid draws icons and nothing else, and it repeats
+/// what it is given until it is full -- so a feed with no icon does not earn a
+/// cell, it takes one away from a feed that could have filled it.
+///
+/// The exception is a mirror with no icons at all, which is what a first sync
+/// looks like: icons are fetched lazily, a few at a time, and until some
+/// arrive the grid would be empty. Then every feed is sent and the cover falls
+/// back to drawing initials.
+///
 /// Feeds with unread entries come first, most first. That is not decoration:
 /// the grid draws only its first cells' worth, so a feed that fell past them
 /// would be lit where nobody could see it, and the number in the corner would
@@ -692,15 +702,21 @@ fn cover_feeds_json(rows: &[FeedRow], icons: &FeedIcons, limit: usize) -> String
     #[serde(rename_all = "camelCase")]
     struct CoverFeed<'a> {
         feed_id: i64,
-        /// FOREIGN TEXT -- the feed operator's words. The cover draws its
-        /// first letter, as `Text.PlainText`.
+        /// FOREIGN TEXT -- the feed operator's words. Drawn only as its first
+        /// letter, and only by the fallback above, as `Text.PlainText`.
         title: &'a str,
         unread: i32,
         /// The favicon as a `data:` URI, or empty when the mirror has none.
         icon: String,
     }
 
-    let mut ordered: Vec<&FeedRow> = rows.iter().collect();
+    let (illustrated, plain): (Vec<&FeedRow>, Vec<&FeedRow>) =
+        rows.iter().partition(|row| icons.contains_key(&row.id));
+    let mut ordered = if illustrated.is_empty() {
+        plain
+    } else {
+        illustrated
+    };
     // A stable sort, so feeds with the same count keep the mirror's order and
     // the grid does not reshuffle itself between two identical syncs.
     ordered.sort_by_key(|row| std::cmp::Reverse(row.unread));
@@ -1256,14 +1272,15 @@ mod row_decoration_tests {
     /// The cover repeats the feeds it is given to fill its grid, which a view
     /// over rows cannot do, so they cross into QML as JSON instead. What this
     /// pins is that the JSON is built FROM THE MIRROR -- names, counts and
-    /// icon bytes -- and not from whatever the feed list happened to hold.
+    /// icon bytes -- that a feed the mirror has no favicon for is left out of
+    /// a field made of favicons, and that whatever has the most unread leads.
     #[test]
-    fn the_cover_gets_every_feed_with_its_icon_and_its_unread_count() {
+    fn the_cover_gets_the_feeds_it_has_icons_for_unread_first() {
         let (_dir, ctx) = seeded();
 
-        // A second feed with no icon at all, and a third with more unread
-        // than the first. Ids ascending, so the mirror's own order is 1, 2, 3
-        // and the ordering below is the model's doing rather than SQLite's.
+        // A second feed with no icon at all, and a third with an icon and more
+        // unread than the first. Ids ascending, so the mirror's own order is
+        // 1, 2, 3 and the order below is the model's doing, not SQLite's.
         let quiet = Feed {
             id: FeedId(2),
             category_id: None,
@@ -1281,6 +1298,7 @@ mod row_decoration_tests {
         let loudest = Feed {
             id: FeedId(3),
             title: "LWN".to_owned(),
+            icon_id: Some(IconId(6)),
             ..quiet.clone()
         };
         let entry = |id: i64, feed: i64| Entry {
@@ -1302,6 +1320,18 @@ mod row_decoration_tests {
         };
         ctx.write(|db| {
             db.with_tx(|tx| {
+                store::upsert_icon(
+                    tx,
+                    &Icon {
+                        id: IconId(6),
+                        format: ImageFormat::Png,
+                        bytes: vec![
+                            0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D,
+                            0x49, 0x48, 0x44, 0x52,
+                        ],
+                        dimensions: Some((1, 1)),
+                    },
+                )?;
                 store::upsert_feed(tx, &quiet, 1)?;
                 store::upsert_feed(tx, &loudest, 1)?;
                 store::upsert_entry(tx, &entry(8, 3), 1)?;
@@ -1317,35 +1347,64 @@ mod row_decoration_tests {
         let json = model.coverFeeds.to_string();
         let feeds: Vec<serde_json::Value> =
             serde_json::from_str(&json).unwrap_or_else(|e| panic!("{json:?} is not JSON: {e}"));
-        assert_eq!(feeds.len(), 3, "every feed reaches the cover: {json}");
 
         let ids: Vec<i64> = feeds.iter().filter_map(|f| f["feedId"].as_i64()).collect();
         assert_eq!(
             ids,
-            vec![3, 1, 2],
-            "whatever has the most unread must come first -- the grid draws \
-             only its first cells' worth, so a feed past them would be lit \
-             where nobody could see it: {json}"
+            vec![3, 1],
+            "the cover draws favicons and nothing else, so only the feeds the \
+             mirror has one for belong in the grid -- and whatever has the \
+             most unread leads, since the grid draws only its first cells' \
+             worth and a feed past them would be lit where nobody could see \
+             it: {json}"
         );
         let counts: Vec<i64> = feeds.iter().filter_map(|f| f["unread"].as_i64()).collect();
-        assert_eq!(counts, vec![2, 1, 0], "the counts come from the mirror");
+        assert_eq!(counts, vec![2, 1], "the counts come from the mirror");
         assert_eq!(
             feeds[0]["title"].as_str(),
             Some("LWN"),
-            "the cover draws a letter from the title, so it has to be there"
+            "the title travels with the feed: the fallback draws a letter of it"
+        );
+        for feed in &feeds {
+            assert!(
+                feed["icon"]
+                    .as_str()
+                    .is_some_and(|icon| icon.starts_with("data:image/png;base64,")),
+                "every icon must arrive as the data: URI an Image can draw \
+                 without touching the network: {json}"
+            );
+        }
+    }
+
+    /// §a first sync has no icons yet, and an empty cover is worse than a
+    /// plain one.
+    ///
+    /// Icons are fetched lazily, a few feeds at a time, so between the first
+    /// sync and the first icon the mirror has feeds and no pictures of them.
+    /// Sending nothing would leave the grid blank under a real unread count.
+    #[test]
+    fn a_mirror_with_no_icons_yet_still_fills_the_cover() {
+        let rows: Vec<FeedRow> = (1..=3)
+            .map(|id| FeedRow {
+                id,
+                title: format!("Feed {id}"),
+                unread: 1,
+                ..FeedRow::default()
+            })
+            .collect();
+
+        let json = cover_feeds_json(&rows, &FeedIcons::new(), 32);
+        let feeds: Vec<serde_json::Value> =
+            serde_json::from_str(&json).unwrap_or_else(|e| panic!("{json:?} is not JSON: {e}"));
+        assert_eq!(
+            feeds.len(),
+            3,
+            "with no icons anywhere the feeds go over regardless, and the \
+             cover draws their initials: {json}"
         );
         assert!(
-            feeds[1]["icon"]
-                .as_str()
-                .is_some_and(|icon| icon.starts_with("data:image/png;base64,")),
-            "the icon must arrive as the data: URI an Image can draw \
-             without touching the network: {json}"
-        );
-        assert_eq!(
-            feeds[0]["icon"].as_str(),
-            Some(""),
-            "a feed the mirror has no icon for says so with an empty string, \
-             which is what makes the cover fall back to its initial"
+            feeds.iter().all(|f| f["icon"].as_str() == Some("")),
+            "and each says it has no icon: {json}"
         );
     }
 

@@ -93,16 +93,33 @@ const PROBE_QML: &str = r"
         }
         function planned() { return '' + loader.item.cells.length }
         function listed() { return '' + loader.item.feedList.length }
+        // Letters drawn into the field. The grid is favicons and nothing
+        // else, so this is zero unless the feeds arrived without icons.
+        function letters() {
+            var all = allIn(loader.item, 'cellInitial', [])
+            var shown = 0
+            for (var i = 0; i < all.length; i++) {
+                if (all[i].visible) { shown += 1 }
+            }
+            return '' + shown
+        }
     }
 ";
 
 /// Two feeds with something new and one quiet one, in the order the model
-/// sends them: whatever is unread first. The second has no icon, which is the
-/// case the initial is drawn for.
+/// sends them: whatever is unread first, and every one of them with an icon,
+/// since a feed the mirror has no favicon for does not reach the cover while
+/// any other one does.
 const FEEDS: &str = r#"[
     {"feedId":1,"title":"Tagesschau","unread":3,"icon":"data:image/png;base64,iVBORw0KGgo="},
-    {"feedId":2,"title":"lwn","unread":1,"icon":""},
+    {"feedId":2,"title":"lwn","unread":1,"icon":"data:image/png;base64,iVBORw0KGgo="},
     {"feedId":3,"title":"Zeit","unread":0,"icon":"data:image/png;base64,iVBORw0KGgo="}
+]"#;
+
+/// What a first sync looks like: feeds, and no icons fetched yet.
+const ICONLESS: &str = r#"[
+    {"feedId":1,"title":"Tagesschau","unread":3,"icon":""},
+    {"feedId":2,"title":"lwn","unread":1,"icon":""}
 ]"#;
 
 fn cover_url() -> String {
@@ -233,12 +250,33 @@ fn the_cover_draws_a_field_of_feeds_and_lights_whichever_has_something_new() {
         source.starts_with("data:image/png;base64,"),
         "the first cell must draw the first feed's icon, got {source:?}"
     );
-    // The second feed has no icon at all, so its cell falls back to a letter.
+    // The field is favicons and nothing else. A letter among them is the bug
+    // this asserts against: the model sends feeds without an icon only when NO
+    // feed has one.
+    assert_eq!(
+        call!("letters"),
+        "0",
+        "a letter was drawn into a field of favicons"
+    );
+
+    // ------------------------------------------------- before any icon lands
+    // Icons are fetched lazily, so a first sync has feeds and no pictures of
+    // them. The grid draws initials then rather than nothing at all.
+    assert_eq!(call!("feeds", QString::from(ICONLESS)), "ok");
+    let planned_plain: usize = call!("planned").parse().unwrap_or(0);
+    assert!(planned_plain > 0, "the grid emptied itself");
+    assert_eq!(
+        call!("letters"),
+        planned_plain.to_string(),
+        "with no icons anywhere every cell must fall back to a letter, or the \
+         cover is blank under a real unread count"
+    );
     assert_eq!(
         call!("at", QString::from("cellInitial"), 1, QString::from("text")),
         "L",
-        "a feed with no icon must be drawn as its initial"
+        "and the letter is the feed's own initial"
     );
+    assert_eq!(call!("feeds", QString::from(FEEDS)), "ok");
 
     // ------------------------------------------------------- what sync says
     assert_eq!(call!("syncing", true), "ok");

@@ -7,10 +7,10 @@ import Sailfish.Silica 1.0
  *
  * The heading is laid out as the platform's own covers lay theirs out: the
  * name top left with a line under it, and the number top right, large. Under
- * it, a staggered grid of feed favicons, dimmed, the few repeated to fill it;
- * whichever feed has something new is drawn bright where it stands in the
- * grid. No feeds yet -- a fresh install, or an account that has never synced
- * -- and the cover says so in a line instead.
+ * it, a staggered field of feed favicons and nothing else -- no plates behind
+ * them -- dimmed, the few repeated to fill it; whichever feed has something
+ * new is drawn bright where it stands. No feeds yet -- a fresh install, or an
+ * account that has never synced -- and the cover says so in a line instead.
  *
  * The grid is laid out in a pass over the feeds the model hands over as JSON,
  * which a view over its rows could not do: a view draws each row once, and the
@@ -271,56 +271,51 @@ CoverBackground {
                    - (modelData.row % 2 === 0 ? cover.cellSize / 2 : 0)
                 y: modelData.row * cover.rowStep
                 // A fraction of the cell rather than the cell less a padding:
-                // the rows are a nested 0.9 of a cell apart, so a tile the
-                // size of its cell overlaps the row above it and the field
-                // closes up into a wall. This leaves a gap between neighbours
-                // about as wide as the one between diagonal ones.
-                width: Math.round(cover.cellSize * 0.84)
+                // the rows are a nested 0.9 of a cell apart, so an icon the
+                // size of its cell would overlap the row above it and the
+                // field would close up into a wall. This leaves a gap between
+                // neighbours about as wide as the one between diagonal ones.
+                width: Math.round(cover.cellSize * 0.74)
                 height: width
-                // Postivene's cover desaturates the quiet half of its grid
-                // through QtGraphicalEffects. This does it with opacity alone:
-                // a shader module the app otherwise never imports, running per
-                // cell, is a steep price for a favicon -- and dimming reads the
-                // same at cover size.
-                opacity: loud ? 1.0 : 0.4
-
-                // A round plate, and the icon drawn INSIDE it rather than
-                // masked to it: a favicon is a square image, and a circular
-                // mask would cut off whatever the site drew in its corners.
-                Rectangle {
-                    anchors.fill: parent
-                    radius: width / 2
-                    color: parent.loud ? Theme.rgba(Theme.highlightColor, 0.35)
-                                       : Theme.rgba(Theme.primaryColor, 0.15)
-                }
+                // Nothing is drawn behind the icons -- no plate, no ring. The
+                // field IS the icons, and the only thing separating a feed
+                // with something new from the rest is that the rest are
+                // dimmed. (Postivene desaturates its quiet half through
+                // QtGraphicalEffects; a shader module the app otherwise never
+                // imports, running per cell, is a steep price for a favicon,
+                // and dimming reads the same at cover size.)
+                opacity: loud ? 1.0 : 0.35
 
                 Image {
                     id: favicon
                     objectName: "cellFavicon"
-                    anchors.centerIn: parent
-                    width: Math.round(parent.width * 0.62)
-                    height: width
+                    anchors.fill: parent
                     sourceSize.width: width
-                    sourceSize.height: width
+                    sourceSize.height: height
                     fillMode: Image.PreserveAspectFit
                     // A `data:` URI built in Rust from bytes already in the
                     // mirror -- no network fetch happens here, so drawing the
                     // cover cannot leak the device's IP (§9.3).
                     source: modelData.feed.icon
                     asynchronous: true
+                    // An icon whose format the device ships no handler for
+                    // leaves its cell empty rather than dropping a letter into
+                    // a field of pictures. The model sends feeds without an
+                    // icon only when NO feed has one, so that is the one case
+                    // the initial below is drawn for.
                     visible: status === Image.Ready
                 }
 
-                // The feed's initial, for a feed whose icon the mirror does
-                // not have -- and for one whose format the device ships no
-                // handler for, which is the same blank tile from here.
+                // A mirror whose icons have not been fetched yet -- a first
+                // sync -- would otherwise leave the grid blank. Then, and only
+                // then, the feeds arrive without icons and this draws them.
                 Label {
                     objectName: "cellInitial"
                     anchors.centerIn: parent
-                    visible: favicon.status !== Image.Ready
+                    visible: modelData.feed.icon.length === 0
                     textFormat: Text.PlainText
                     text: modelData.feed.title.substring(0, 1).toUpperCase()
-                    font.pixelSize: Math.round(parent.width * 0.45)
+                    font.pixelSize: Math.round(parent.width * 0.5)
                     color: Theme.primaryColor
                 }
             }
