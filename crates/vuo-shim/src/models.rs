@@ -662,6 +662,68 @@ pub const ROLE_FEED_DISABLED: i32 = USER_ROLE + 6;
 /// Keep this feed out of the global unread list.
 pub const ROLE_FEED_HIDDEN: i32 = USER_ROLE + 7;
 
+/// A feed's icon as the mirror stores it, per feed id: the MIME type sniffed
+/// from the bytes, and the bytes. Encoded into a `data:` URI only for the
+/// feeds that reach the cover.
+type FeedIcons = HashMap<i64, (String, Vec<u8>)>;
+
+/// How many feeds the cover is told about.
+///
+/// The cover draws a grid of roughly twenty cells and repeats the feeds it is
+/// given to fill it, so everything past this many would be encoded, carried
+/// across into QML and then never drawn. The feeds are ordered so the ones
+/// with something new come first (see [`cover_feeds_json`]), which is what
+/// makes the cap safe: the lit cells are always among the ones on screen.
+const COVER_FEEDS: usize = 32;
+
+/// What the cover's grid draws, as JSON.
+///
+/// A JSON string rather than the model itself, because the cover REPEATS feeds
+/// to fill its grid -- a view over rows draws each row once and cannot. QML
+/// reads it with `JSON.parse`, never `eval` (§9.3).
+///
+/// Feeds with unread entries come first, most first. That is not decoration:
+/// the grid draws only its first cells' worth, so a feed that fell past them
+/// would be lit where nobody could see it, and the number in the corner would
+/// be the only sign of it.
+fn cover_feeds_json(rows: &[FeedRow], icons: &FeedIcons, limit: usize) -> String {
+    /// One cell's feed. `camelCase` because QML reads these keys.
+    #[derive(serde::Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct CoverFeed<'a> {
+        feed_id: i64,
+        /// FOREIGN TEXT -- the feed operator's words. The cover draws its
+        /// first letter, as `Text.PlainText`.
+        title: &'a str,
+        unread: i32,
+        /// The favicon as a `data:` URI, or empty when the mirror has none.
+        icon: String,
+    }
+
+    let mut ordered: Vec<&FeedRow> = rows.iter().collect();
+    // A stable sort, so feeds with the same count keep the mirror's order and
+    // the grid does not reshuffle itself between two identical syncs.
+    ordered.sort_by(|a, b| b.unread.cmp(&a.unread));
+    let picked: Vec<CoverFeed<'_>> = ordered
+        .iter()
+        .take(limit)
+        .map(|row| CoverFeed {
+            feed_id: row.id,
+            title: row.title.as_str(),
+            unread: row.unread,
+            // Encoded here rather than for the whole mirror: past the cap
+            // it would be base64 nobody ever draws, on every reload.
+            icon: icons
+                .get(&row.id)
+                .map(|(mime, bytes)| data_uri(mime, bytes))
+                .unwrap_or_default(),
+        })
+        .collect();
+    // An empty list rather than nothing: the cover parses this, and "" would
+    // send it down the catch branch on every reload.
+    serde_json::to_string(&picked).unwrap_or_else(|_| "[]".to_owned())
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct FeedRow {
     pub id: i64,
@@ -720,6 +782,12 @@ pub struct FeedModel {
     /// a stale one.
     pub updateSerial: qt_property!(i32; NOTIFY updateStateChanged),
     updateStateChanged: qt_signal!(),
+
+    /// The feeds the cover draws, as JSON. See [`cover_feeds_json`].
+    ///
+    /// `countChanged` is its NOTIFY because this is rebuilt in `reload` and
+    /// nowhere else, which is exactly when that fires.
+    pub coverFeeds: qt_property!(QString; NOTIFY countChanged),
 
     rows: Vec<FeedRow>,
     seen_generation: u64,
@@ -880,10 +948,18 @@ impl FeedModel {
 
     pub fn reload(&mut self) {
         let Some(ctx) = self.context() else { return };
-        let rows: Vec<FeedRow> = ctx
+        // The icons come back beside the rows rather than in them: the feed
+        // list draws no favicons, and a couple of kilobytes per feed has no
+        // business sitting in a row the list re-reads on every poll.
+        let (rows, icons): (Vec<FeedRow>, FeedIcons) = ctx
             .read(|db| {
                 let counts = store::unread_counts_by_feed(db.conn()).unwrap_or_default();
-                store::feeds(db.conn())
+                let icons = store::feed_chrome(db.conn())
+                    .unwrap_or_default()
+                    .into_iter()
+                    .filter_map(|chrome| chrome.icon.map(|icon| (chrome.feed_id, icon)))
+                    .collect();
+                let rows = store::feeds(db.conn())
                     .unwrap_or_default()
                     .iter()
                     .map(|f| FeedRow {
@@ -897,13 +973,17 @@ impl FeedModel {
                         disabled: f.disabled,
                         hide_globally: f.hide_globally,
                     })
-                    .collect()
+                    .collect();
+                (rows, icons)
             })
             .unwrap_or_default();
+
+        self.coverFeeds = QString::from(cover_feeds_json(&rows, &icons, COVER_FEEDS));
 
         (self as &mut dyn QAbstractListModel).begin_reset_model();
         self.rows = rows;
         (self as &mut dyn QAbstractListModel).end_reset_model();
+        // Also the NOTIFY of `coverFeeds`, set just above.
         self.countChanged();
     }
 
@@ -1169,6 +1249,140 @@ mod row_decoration_tests {
                 "QML reaches this role by name"
             );
         }
+    }
+
+    /// §the cover draws the feeds, so the model has to hand them over.
+    ///
+    /// The cover repeats the feeds it is given to fill its grid, which a view
+    /// over rows cannot do, so they cross into QML as JSON instead. What this
+    /// pins is that the JSON is built FROM THE MIRROR -- names, counts and
+    /// icon bytes -- and not from whatever the feed list happened to hold.
+    #[test]
+    fn the_cover_gets_every_feed_with_its_icon_and_its_unread_count() {
+        let (_dir, ctx) = seeded();
+
+        // A second feed with no icon at all, and a third with more unread
+        // than the first. Ids ascending, so the mirror's own order is 1, 2, 3
+        // and the ordering below is the model's doing rather than SQLite's.
+        let quiet = Feed {
+            id: FeedId(2),
+            category_id: None,
+            title: "Aamulehti".to_owned(),
+            site_url: None,
+            feed_url: None,
+            icon_id: None,
+            checked_at: None,
+            parsing_error_message: String::new(),
+            parsing_error_count: 0,
+            disabled: false,
+            hide_globally: false,
+            crawler: false,
+        };
+        let loudest = Feed {
+            id: FeedId(3),
+            title: "LWN".to_owned(),
+            ..quiet.clone()
+        };
+        let entry = |id: i64, feed: i64| Entry {
+            id: EntryId(id),
+            feed_id: FeedId(feed),
+            status: EntryStatus::Unread,
+            starred: false,
+            title: "Something".to_owned(),
+            url: None,
+            comments_url: None,
+            author: String::new(),
+            content: String::new(),
+            published_at: None,
+            created_at: None,
+            changed_at: None,
+            reading_time: 1,
+            tags: Vec::new(),
+            enclosures: Vec::new(),
+        };
+        ctx.write(|db| {
+            db.with_tx(|tx| {
+                store::upsert_feed(tx, &quiet, 1)?;
+                store::upsert_feed(tx, &loudest, 1)?;
+                store::upsert_entry(tx, &entry(8, 3), 1)?;
+                store::upsert_entry(tx, &entry(9, 3), 1)
+            })
+        })
+        .expect("the mirror")
+        .expect("seed the other feeds");
+
+        let mut model = FeedModel::default();
+        model.attach(std::rc::Rc::clone(&ctx));
+
+        let json = model.coverFeeds.to_string();
+        let feeds: Vec<serde_json::Value> =
+            serde_json::from_str(&json).unwrap_or_else(|e| panic!("{json:?} is not JSON: {e}"));
+        assert_eq!(feeds.len(), 3, "every feed reaches the cover: {json}");
+
+        let ids: Vec<i64> = feeds.iter().filter_map(|f| f["feedId"].as_i64()).collect();
+        assert_eq!(
+            ids,
+            vec![3, 1, 2],
+            "whatever has the most unread must come first -- the grid draws \
+             only its first cells' worth, so a feed past them would be lit \
+             where nobody could see it: {json}"
+        );
+        let counts: Vec<i64> = feeds.iter().filter_map(|f| f["unread"].as_i64()).collect();
+        assert_eq!(counts, vec![2, 1, 0], "the counts come from the mirror");
+        assert_eq!(
+            feeds[0]["title"].as_str(),
+            Some("LWN"),
+            "the cover draws a letter from the title, so it has to be there"
+        );
+        assert!(
+            feeds[1]["icon"]
+                .as_str()
+                .is_some_and(|icon| icon.starts_with("data:image/png;base64,")),
+            "the icon must arrive as the data: URI an Image can draw \
+             without touching the network: {json}"
+        );
+        assert_eq!(
+            feeds[0]["icon"].as_str(),
+            Some(""),
+            "a feed the mirror has no icon for says so with an empty string, \
+             which is what makes the cover fall back to its initial"
+        );
+    }
+
+    /// The cap, which nothing else can see.
+    ///
+    /// `COVER_FEEDS` bounds what is encoded and carried across; the ordering
+    /// above is what makes it safe. Both are one function, so this drives it
+    /// directly rather than seeding thirty-three feeds into a mirror.
+    #[test]
+    fn the_cover_is_told_about_only_as_many_feeds_as_it_can_draw() {
+        let rows: Vec<FeedRow> = (1..=10)
+            .map(|id| FeedRow {
+                id,
+                title: format!("Feed {id}"),
+                unread: i32::try_from(id).unwrap_or(0),
+                ..FeedRow::default()
+            })
+            .collect();
+        let icons = HashMap::new();
+
+        let json = cover_feeds_json(&rows, &icons, 3);
+        let feeds: Vec<serde_json::Value> =
+            serde_json::from_str(&json).unwrap_or_else(|e| panic!("{json:?} is not JSON: {e}"));
+        let ids: Vec<i64> = feeds.iter().filter_map(|f| f["feedId"].as_i64()).collect();
+        assert_eq!(
+            ids,
+            vec![10, 9, 8],
+            "the cap must keep the feeds with something new, not the first \
+             three the mirror happened to return: {json}"
+        );
+
+        assert_eq!(
+            cover_feeds_json(&[], &icons, 3),
+            "[]",
+            "no feeds must still parse; the cover would otherwise take the \
+             catch branch on every reload"
+        );
     }
 
     /// §the feed list exposes the settings the editor writes.

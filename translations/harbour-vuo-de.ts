@@ -125,24 +125,29 @@
 <context>
     <name>CoverPage</name>
     <message>
-        <location filename="../qml/cover/CoverPage.qml" line="110"/>
+        <location filename="../qml/cover/CoverPage.qml" line="199"/>
         <source>Sign-in failed</source>
         <translation>Anmeldung fehlgeschlagen</translation>
     </message>
     <message>
-        <location filename="../qml/cover/CoverPage.qml" line="110"/>
+        <location filename="../qml/cover/CoverPage.qml" line="199"/>
         <source>Refresh failed</source>
         <translation>Aktualisierung fehlgeschlagen</translation>
     </message>
     <message>
-        <location filename="../qml/cover/CoverPage.qml" line="111"/>
+        <location filename="../qml/cover/CoverPage.qml" line="200"/>
         <source>Refreshing</source>
         <translation>Wird aktualisiert</translation>
     </message>
     <message>
-        <location filename="../qml/cover/CoverPage.qml" line="111"/>
-        <source>unread</source>
-        <translation>ungelesen</translation>
+        <location filename="../qml/cover/CoverPage.qml" line="200"/>
+        <source>Unread</source>
+        <translation>Ungelesen</translation>
+    </message>
+    <message>
+        <location filename="../qml/cover/CoverPage.qml" line="237"/>
+        <source>No feeds</source>
+        <translation>Keine Feeds</translation>
     </message>
 </context>
 <context>

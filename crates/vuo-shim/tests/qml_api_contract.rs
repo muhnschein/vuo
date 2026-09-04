@@ -311,6 +311,10 @@ const QML_VALUE_NAMES: &[&str] = &[
     "implicitWidth",
     "sourceSize",
     "textFormat",
+    // What a Repeater or a view calls the entry of a plain JS-array model.
+    // The cover lays its grid out over one, because it repeats the feeds it
+    // is given until the grid is full and a view over rows cannot.
+    "modelData",
 ];
 
 /// Does this word have the shape of one of our role names?
