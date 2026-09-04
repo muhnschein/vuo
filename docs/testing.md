@@ -36,6 +36,20 @@ passes happily and that would have failed at launch on a device.
 If a Silica property is missing from the stubs, **add it to the stubs**; do not
 work around it in the app.
 
+### The cover test
+
+The load test instantiates every file with its properties at their defaults,
+which for the app cover is the empty one. What that cannot see is the part
+that only exists once there are feeds: the staggered grid of favicons, laid
+out by a pass of JavaScript over a parsed JSON list rather than by a view over
+model rows, and the rule deciding which cells are drawn bright.
+
+`crates/vuo-shim/tests/qml_cover.rs` loads the cover in an engine of its own,
+hands it feeds directly -- no mirror, no worker -- and reads back what was
+drawn: how many cells, which of them are lit, that the rows stagger, that a
+feed with no icon falls back to its initial, and that a failed refresh puts
+Vuo's own translated line on the cover rather than the server's words.
+
 ### Outbox reconciliation
 
 These are the app's real invariants, so they are deterministic rather than

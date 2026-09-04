@@ -89,11 +89,16 @@ ApplicationWindow {
         }
     }
 
-    // The cover is a separate Component so its bindings can reach `entries`
-    // for the unread count, which a bare URL cover cannot.
+    // The cover is a separate Component so its bindings can reach the models
+    // -- the unread count and the feeds it draws -- which a bare URL cover
+    // cannot.
     cover: Component {
         CoverPage {
             unreadCount: entries.unreadTotal
+            // The grid of favicons. The feed model rebuilds this on every
+            // reload, and the poll above drives those, so the cover keeps up
+            // with a sync that lands while the app is minimised.
+            feedsJson: feeds.coverFeeds
             syncing: entries.syncing
             // So a refresh that fails while the app is on the cover says so
             // there, rather than spinning until the user reopens the app.
