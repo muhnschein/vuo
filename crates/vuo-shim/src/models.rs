@@ -703,7 +703,7 @@ fn cover_feeds_json(rows: &[FeedRow], icons: &FeedIcons, limit: usize) -> String
     let mut ordered: Vec<&FeedRow> = rows.iter().collect();
     // A stable sort, so feeds with the same count keep the mirror's order and
     // the grid does not reshuffle itself between two identical syncs.
-    ordered.sort_by(|a, b| b.unread.cmp(&a.unread));
+    ordered.sort_by_key(|row| std::cmp::Reverse(row.unread));
     let picked: Vec<CoverFeed<'_>> = ordered
         .iter()
         .take(limit)
