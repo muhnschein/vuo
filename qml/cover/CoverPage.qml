@@ -343,6 +343,9 @@ CoverBackground {
             margins: Theme.paddingLarge
             rightMargin: Theme.paddingMedium
         }
+        // Postivene's: the two lines set closer than their line boxes would
+        // put them, so they read as one heading.
+        spacing: -Theme.paddingSmall
 
         Label {
             objectName: "brand"
@@ -360,13 +363,17 @@ CoverBackground {
         Row {
             width: parent.width
             spacing: Theme.paddingSmall
+            // No taller than the line it holds: the icon's slot used to set
+            // the row's height, which pushed this line down from the name by
+            // more than postivene's sits from its own.
+            height: subtitleLabel.height
 
             // Exactly one of the two states occupies this, so the spinner
             // cannot be drawn across the warning.
             Item {
                 id: statusSlot
                 width: cover._showFailure || cover.syncing ? Theme.iconSizeSmall : 0
-                height: Theme.iconSizeSmall
+                height: subtitleLabel.height
                 anchors.verticalCenter: parent.verticalCenter
 
                 BusyIndicator {
@@ -391,6 +398,7 @@ CoverBackground {
             }
 
             Label {
+                id: subtitleLabel
                 objectName: "subtitle"
                 width: parent.width - statusSlot.width - Theme.paddingSmall
                 anchors.verticalCenter: parent.verticalCenter
