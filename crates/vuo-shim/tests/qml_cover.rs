@@ -2,10 +2,11 @@
 //!
 //! The QML load test compiles and instantiates this file with every property
 //! at its default, which is the empty cover and nothing else. What it cannot
-//! see is the part that only exists once there are feeds: the staggered grid,
-//! which is laid out by a pass of JavaScript over a parsed JSON list rather
-//! than by a view over model rows, and the rule that decides which cells are
-//! drawn bright. Both are runtime behaviour, so they need a running engine.
+//! see is the part that only exists once there are feeds: the rings of
+//! favicons around the centre, which are laid out by a pass of JavaScript over
+//! a parsed JSON list rather than by a view over model rows, and the rules
+//! that decide how bright each ring is drawn and when the count appears. All
+//! of that is runtime behaviour, so it needs a running engine.
 //!
 //! No mirror and no worker here on purpose. The cover takes its feeds as a
 //! string, so the interesting half can be driven directly -- including shapes
@@ -72,28 +73,80 @@ const PROBE_QML: &str = r"
             loader.item.syncError = text
             return 'ok'
         }
-        // The grid's cells, and how many of them are drawn bright.
-        function drawn() { return '' + allIn(loader.item, 'gridCell', []).length }
-        function lit() {
-            var cells = allIn(loader.item, 'gridCell', [])
-            var total = 0
+        // The field's cells, and the rings they are on.
+        function drawn() { return '' + allIn(loader.item, 'fieldCell', []).length }
+        function rings() {
+            var cells = allIn(loader.item, 'fieldCell', [])
+            var outermost = -1
             for (var i = 0; i < cells.length; i++) {
-                if (cells[i].loud) { total += 1 }
+                if (cells[i].ring > outermost) { outermost = cells[i].ring }
             }
-            return '' + total
+            return '' + (outermost + 1)
         }
-        // The leftmost cell: a shifted row starts half a cell off the edge.
-        function leftmost() {
-            var cells = allIn(loader.item, 'gridCell', [])
-            var least = 0
+        // How bright the cells on one ring are drawn: the least of them, so a
+        // single wrong cell shows.
+        function ringOpacity(ring) {
+            var cells = allIn(loader.item, 'fieldCell', [])
+            var least = 2
+            var any = false
             for (var i = 0; i < cells.length; i++) {
-                if (cells[i].x < least) { least = cells[i].x }
+                if (cells[i].ring !== ring) { continue }
+                any = true
+                if (cells[i].opacity < least) { least = cells[i].opacity }
             }
-            return '' + least
+            return any ? '' + least : 'missing:ring' + ring
+        }
+        // How far the nearest cell's centre is from the cover's centre, in
+        // icon widths: the hole the count sits in.
+        function hole() {
+            var cells = allIn(loader.item, 'fieldCell', [])
+            var item = loader.item
+            var nearest = 1e9
+            for (var i = 0; i < cells.length; i++) {
+                var dx = cells[i].x + cells[i].width / 2 - item.width / 2
+                var dy = cells[i].y + cells[i].height / 2 - item.height / 2
+                var d = Math.sqrt(dx * dx + dy * dy)
+                if (d < nearest) { nearest = d }
+            }
+            return '' + (nearest / item.iconSize)
+        }
+        // Whether any cell lies wholly outside the cover.
+        function stray() {
+            var cells = allIn(loader.item, 'fieldCell', [])
+            var item = loader.item
+            for (var i = 0; i < cells.length; i++) {
+                var c = cells[i]
+                if (c.x + c.width <= 0 || c.x >= item.width
+                        || c.y + c.height <= 0 || c.y >= item.height) {
+                    return 'yes'
+                }
+            }
+            return 'no'
+        }
+        // Which feed the first cells hold, in order: the innermost ring's.
+        function innermostFeeds() {
+            var cells = loader.item.cells
+            var ids = []
+            for (var i = 0; i < cells.length; i++) {
+                if (cells[i].ring === 0) { ids.push(cells[i].feed.feedId) }
+            }
+            return ids.join(',')
         }
         function planned() { return '' + loader.item.cells.length }
         function listed() { return '' + loader.item.feedList.length }
-        // Letters drawn into the field. The grid is favicons and nothing
+        function monochrome() {
+            var field = findIn(loader.item, 'faviconField')
+            return field ? '' + field.layer.enabled : 'missing:faviconField'
+        }
+        // Whether the count sits over the centre of the cover.
+        function countCentred() {
+            var label = findIn(loader.item, 'unreadTotal')
+            var item = loader.item
+            var dx = Math.abs(label.x + label.width / 2 - item.width / 2)
+            var dy = Math.abs(label.y + label.height / 2 - item.height / 2)
+            return dx <= 1 && dy <= 1 ? 'yes' : 'no:' + dx + ',' + dy
+        }
+        // Letters drawn into the field. The field is favicons and nothing
         // else, so this is zero unless the feeds arrived without icons.
         function letters() {
             var all = allIn(loader.item, 'cellInitial', [])
@@ -143,7 +196,7 @@ fn stubs_dir() -> std::path::PathBuf {
 /// be only one of those per process.
 #[test]
 #[allow(clippy::too_many_lines)]
-fn the_cover_draws_a_field_of_feeds_and_lights_whichever_has_something_new() {
+fn the_cover_draws_rings_of_feeds_around_the_count() {
     let mut engine = QmlEngine::new();
     engine.add_import_path(QString::from(stubs_dir().to_string_lossy().into_owned()));
     engine.load_data(QByteArray::from(PROBE_QML));
@@ -164,6 +217,13 @@ fn the_cover_draws_a_field_of_feeds_and_lights_whichever_has_something_new() {
             call!("get", QString::from($name), QString::from($property))
         };
     }
+    macro_rules! number {
+        ($text:expr) => {{
+            let text = $text;
+            text.parse::<f64>()
+                .unwrap_or_else(|_| panic!("not a number: {text:?}"))
+        }};
+    }
 
     assert_eq!(
         call!("load", QString::from(cover_url())),
@@ -171,7 +231,7 @@ fn the_cover_draws_a_field_of_feeds_and_lights_whichever_has_something_new() {
         "the cover did not load"
     );
 
-    // ---------------------------------------------------------- nothing yet
+    // ------------------------------------------------------ I. no feeds yet
     assert_eq!(
         get!("emptyLabel", "visible"),
         "true",
@@ -186,21 +246,20 @@ fn the_cover_draws_a_field_of_feeds_and_lights_whichever_has_something_new() {
     assert_eq!(
         call!("drawn"),
         "0",
-        "a grid is drawn from feeds that are not there"
+        "a field is drawn from feeds that are not there"
     );
     assert_eq!(
-        get!("unreadTotal", "text"),
-        "0",
-        "the count must be there from the start; a zero says as much as a count"
+        get!("unreadTotal", "visible"),
+        "false",
+        "a zero says nothing the empty centre does not"
     );
     assert_eq!(
-        get!("brand", "text"),
-        "Vuo",
-        "the cover does not name the app in its corner"
+        get!("status", "visible"),
+        "false",
+        "nothing is on the cover at rest but the feeds and the count"
     );
-    assert_eq!(get!("subtitle", "text"), "Unread");
 
-    // -------------------------------------------------------- with feeds in
+    // --------------------------------------------------- III. feeds and news
     assert_eq!(call!("feeds", QString::from(FEEDS)), "ok");
     assert_eq!(call!("count", 4), "ok");
 
@@ -210,32 +269,73 @@ fn the_cover_draws_a_field_of_feeds_and_lights_whichever_has_something_new() {
         "false",
         "the cover says there are no feeds while there are three"
     );
+    assert_eq!(get!("unreadTotal", "visible"), "true");
     assert_eq!(get!("unreadTotal", "text"), "4");
+    assert_eq!(
+        call!("countCentred"),
+        "yes",
+        "the count sits in the middle of the rings, not in a corner"
+    );
 
     let planned: usize = call!("planned").parse().unwrap_or(0);
-    assert!(
-        planned >= 8,
-        "the cover's shape gives the grid fewer than two rows: {planned} cells"
-    );
     assert_eq!(
         call!("drawn"),
         planned.to_string(),
-        "the grid is not filled from the feeds there are"
+        "the field is not filled from the feeds there are"
     );
     assert!(
         planned > 3,
-        "the grid must REPEAT the feeds to fill itself, not stop at three cells"
+        "the field must REPEAT the feeds to fill itself, not stop at three cells"
+    );
+    let rings: usize = call!("rings").parse().unwrap_or(0);
+    assert!(
+        rings >= 3,
+        "the cover's shape gives fewer than three rings: {rings}"
     );
     assert_eq!(
-        call!("lit"),
-        "2",
-        "the two feeds with something new are not the two cells drawn bright, \
-         once each"
+        call!("stray"),
+        "no",
+        "a cell wholly outside the cover is a feed drawn where nobody can see it"
     );
-    let leftmost: f64 = call!("leftmost").parse().unwrap_or(0.0);
+    let hole = number!(call!("hole"));
     assert!(
-        leftmost < 0.0,
-        "no row is shifted off the edge, so the rows do not stagger"
+        hole >= 1.5,
+        "the innermost ring must leave the centre clear for the count; the \
+         nearest cell is only {hole} icons from it"
+    );
+
+    // OPAQUE INSIDE, TRANSPARENT OUTSIDE.
+    let inner = number!(call!("ringOpacity", 0));
+    let next = number!(call!("ringOpacity", 1));
+    let outer = number!(call!("ringOpacity", rings as i32 - 1));
+    assert!(
+        (inner - 1.0).abs() < 1e-6,
+        "with news, the innermost ring is drawn solid, got {inner}"
+    );
+    assert!(
+        next < inner && outer < next,
+        "each ring out must be fainter than the one inside it: {inner}, {next}, \
+         ... {outer}"
+    );
+    assert!(
+        outer > 0.0,
+        "but never gone: the outermost ring is still the feeds"
+    );
+
+    // The feeds with something new come first from the model, so they take
+    // the innermost ring, repeated round it in order.
+    let innermost = call!("innermostFeeds");
+    assert!(
+        innermost.starts_with("1,2,3,1"),
+        "the innermost ring must hold the feeds in the model's order, \
+         repeated, got {innermost}"
+    );
+
+    // ALL MONOCHROME: the field is drawn through its layer's shader.
+    assert_eq!(
+        call!("monochrome"),
+        "true",
+        "the field must be rendered through the monochrome layer"
     );
 
     // The first cell is the first feed: its icon reaches the Image as the
@@ -259,12 +359,33 @@ fn the_cover_draws_a_field_of_feeds_and_lights_whichever_has_something_new() {
         "a letter was drawn into a field of favicons"
     );
 
+    // ---------------------------------------------- II. feeds, nothing new
+    assert_eq!(call!("count", 0), "ok");
+    assert_eq!(
+        get!("unreadTotal", "visible"),
+        "false",
+        "no news, no number: the empty centre says it"
+    );
+    assert_eq!(
+        call!("drawn"),
+        planned.to_string(),
+        "the feeds stay on the cover when there is nothing new"
+    );
+    let quiet_inner = number!(call!("ringOpacity", 0));
+    let quiet_outer = number!(call!("ringOpacity", rings as i32 - 1));
+    assert!(
+        quiet_inner < 0.5 && (quiet_inner - quiet_outer).abs() < 1e-6,
+        "with nothing new every ring is drawn faint, and equally so: \
+         {quiet_inner} inside, {quiet_outer} outside"
+    );
+    assert_eq!(call!("count", 4), "ok");
+
     // ------------------------------------------------- before any icon lands
     // Icons are fetched lazily, so a first sync has feeds and no pictures of
-    // them. The grid draws initials then rather than nothing at all.
+    // them. The field draws initials then rather than nothing at all.
     assert_eq!(call!("feeds", QString::from(ICONLESS)), "ok");
     let planned_plain: usize = call!("planned").parse().unwrap_or(0);
-    assert!(planned_plain > 0, "the grid emptied itself");
+    assert!(planned_plain > 0, "the field emptied itself");
     assert_eq!(
         call!("letters"),
         planned_plain.to_string(),
@@ -280,13 +401,20 @@ fn the_cover_draws_a_field_of_feeds_and_lights_whichever_has_something_new() {
 
     // ------------------------------------------------------- what sync says
     assert_eq!(call!("syncing", true), "ok");
+    assert_eq!(get!("status", "visible"), "true");
     assert_eq!(get!("subtitle", "text"), "Refreshing");
     assert_eq!(
         get!("unreadTotal", "text"),
         "4",
         "the count must survive a refresh; it is the one thing the cover is for"
     );
+    assert_eq!(get!("unreadTotal", "visible"), "true");
     assert_eq!(call!("syncing", false), "ok");
+    assert_eq!(
+        get!("status", "visible"),
+        "false",
+        "the line goes when the refresh has nothing more to say"
+    );
 
     // §9.3: the server's own words never reach the cover.
     assert_eq!(
@@ -297,6 +425,7 @@ fn the_cover_draws_a_field_of_feeds_and_lights_whichever_has_something_new() {
         ),
         "ok"
     );
+    assert_eq!(get!("status", "visible"), "true");
     assert_eq!(
         get!("subtitle", "text"),
         "Refresh failed",
@@ -309,8 +438,8 @@ fn the_cover_draws_a_field_of_feeds_and_lights_whichever_has_something_new() {
     );
     assert_eq!(get!("subtitle", "text"), "Sign-in failed");
 
-    // A number too wide for the corner is capped rather than pushed into the
-    // app's name.
+    // A number too wide for the hole is capped rather than pushed into the
+    // rings.
     assert_eq!(call!("count", 1234), "ok");
     assert_eq!(get!("unreadTotal", "text"), "999+");
 }
