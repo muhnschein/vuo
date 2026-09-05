@@ -13,3 +13,16 @@ Categories=Qt;Network;News;
 # shared link reuses the running app rather than starting a second copy.
 X-Nemo-Application-Type=silica-qt5
 X-Nemo-Single-Instance=yes
+
+# Sandboxed, with exactly what it uses. Everything the app writes lives under
+# the directory these two names give it (~/.local/share/harbour-vuo/harbour-vuo
+# -- see AppPaths::resolve in crates/vuo-shim/src/worker.rs, which moves an
+# older install's files there on first start). Internet for the Miniflux
+# server; WebView for the Gecko view on the site page. The background sync
+# runs from a systemd user timer OUTSIDE this sandbox, which is why the app
+# never needs AppLaunch: the timer fires on its own cadence and the sync
+# process reads the chosen interval from the account file.
+[X-Sailjail]
+Permissions=Internet;WebView
+OrganizationName=harbour-vuo
+ApplicationName=harbour-vuo

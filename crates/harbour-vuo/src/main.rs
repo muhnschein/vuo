@@ -67,8 +67,20 @@ fn install_context() -> vuo_core::Result<()> {
     let paths = vuo_shim::worker::AppPaths::resolve().ok_or_else(|| {
         vuo_core::Error::Config("could not resolve the data directory".to_owned())
     })?;
+    adopt_legacy_files(&paths);
     vuo_shim::context::refresh(&paths)?;
     Ok(())
+}
+
+/// Move an install from before the sandbox into the directory the sandbox
+/// allows. Once, and best-effort: a failure leaves the old files where they
+/// were and is logged, so the next start tries again.
+fn adopt_legacy_files(paths: &vuo_shim::worker::AppPaths) {
+    match paths.adopt_legacy_files() {
+        Ok(true) => tracing::info!("moved an older install's files into the sandbox directory"),
+        Ok(false) => {}
+        Err(e) => tracing::warn!(error = %e, "could not move the older install's files"),
+    }
 }
 
 /// Run one sync pass headlessly, then exit.
@@ -77,10 +89,31 @@ fn install_context() -> vuo_core::Result<()> {
 /// "the phone had no signal" as success rather than as a fault worth
 /// restarting and logging about.
 fn sync_once() -> i32 {
-    let Some(paths) = vuo_shim::worker::AppPaths::from_env() else {
+    let Some(paths) = vuo_shim::worker::AppPaths::resolve() else {
+        eprintln!("vuo: could not resolve the data directory");
+        return 1;
+    };
+    // This process runs outside the sandbox, so it can do the move too --
+    // and must, or a timer that fires before the app is next opened would
+    // find no account in the new place and do nothing for ever.
+    adopt_legacy_files(&paths);
+    let Some(paths) = paths.configured() else {
         eprintln!("vuo: not configured yet; nothing to sync");
         return 0;
     };
+    // The timer fires on its own cadence; the interval the user chose is
+    // applied here, from the account file (see worker::TIMER_CADENCE_MINUTES).
+    match vuo_shim::worker::background_sync_due(&paths) {
+        Ok(true) => {}
+        Ok(false) => {
+            tracing::info!("background sync not due yet");
+            return 0;
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "could not read the account");
+            return 1;
+        }
+    }
     match vuo_shim::worker::sync_once_blocking(&paths) {
         Ok(report) => {
             tracing::info!(

@@ -285,6 +285,9 @@ impl Worker {
                     }
                 };
 
+                // Beside the database, as `AppPaths::under` lays it out; the
+                // worker is handed only the database's path.
+                let last_sync = db_path.with_file_name("last-sync");
                 let mut db = match Database::open(&db_path) {
                     Ok(db) => db,
                     Err(e) => {
@@ -341,6 +344,9 @@ impl Worker {
                                     on_event(Event::AuthFailed);
                                 }
                                 Ok(report) => {
+                                    // So the timer's next run knows the app
+                                    // just did its work.
+                                    record_sync_time(&last_sync);
                                     let unread = store::unread_count(db.conn()).unwrap_or(0);
                                     let changed = report.pull.upserted > 0
                                         || report.pull.removed > 0
@@ -774,12 +780,17 @@ pub struct AppPaths {
     /// (`systemctl --user show`) forks, blocks, and answers "not-found" for a
     /// unit it merely has not reloaded yet.
     pub timer_unit: PathBuf,
-    /// Where the systemd user drop-in for the sync timer is written.
+    /// When the mirror was last synced, as Unix seconds in a file.
     ///
-    /// Under `XDG_CONFIG_HOME`, not the data dir the rest of these live in:
-    /// systemd reads unit configuration from the config hierarchy and would
-    /// never look at a file placed beside the database.
-    pub timer_dropin_dir: PathBuf,
+    /// Written after every successful sync, from the app and from the timer's
+    /// process alike, and read by the timer's process to decide whether the
+    /// chosen interval has passed. A file beside the database rather than a
+    /// row in it, so the decision costs one small read and never opens the
+    /// mirror on a run that then does nothing.
+    pub last_sync: PathBuf,
+    /// Where an install from before the sandbox kept its files, if this
+    /// layout has such a place: `adopt_legacy_files` moves them from there.
+    pub legacy_dir: Option<PathBuf>,
 }
 
 impl AppPaths {
@@ -791,9 +802,6 @@ impl AppPaths {
     #[must_use]
     pub fn under(base: impl Into<PathBuf>) -> Self {
         let base = base.into();
-        // Kept under the same base so a test can point everything at one
-        // tempdir; `resolve` below puts it in the real systemd location.
-        let timer_dropin_dir = base.join("systemd/user/harbour-vuo-sync.timer.d");
         AppPaths {
             database: base.join("vuo.sqlite"),
             account: base.join("account.json"),
@@ -801,28 +809,94 @@ impl AppPaths {
             // Under the same base so a test can stage one; `resolve` below
             // points at the real packaged location.
             timer_unit: base.join("systemd/user/harbour-vuo-sync.timer"),
-            timer_dropin_dir,
+            last_sync: base.join("last-sync"),
+            legacy_dir: None,
         }
     }
 
     /// Resolve the standard locations, honouring `XDG_DATA_HOME`.
+    ///
+    /// `<data>/harbour-vuo/harbour-vuo`, two levels, because that is the one
+    /// directory the sandbox lets the app write: Sailjail whitelists
+    /// `$HOME/.local/share/<OrganizationName>/<ApplicationName>` from the
+    /// desktop entry's `[X-Sailjail]` section, and both names are
+    /// `harbour-vuo` there. Installs from before the sandbox kept their files
+    /// one level up, in `<data>/harbour-vuo`; that directory is still visible
+    /// inside the sandbox when it exists, which is what lets
+    /// [`adopt_legacy_files`](Self::adopt_legacy_files) move them.
     #[must_use]
     pub fn resolve() -> Option<Self> {
-        let base = std::env::var_os("XDG_DATA_HOME")
+        let legacy = std::env::var_os("XDG_DATA_HOME")
             .map(PathBuf::from)
             .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local/share")))?
             .join("harbour-vuo");
-        let mut paths = Self::under(base);
+        let mut paths = Self::under(legacy.join("harbour-vuo"));
         // Where the harbour-vuo-sync package installs the unit; see the spec's
         // %{_userunitdir}.
         paths.timer_unit = PathBuf::from("/usr/lib/systemd/user/harbour-vuo-sync.timer");
-        // The real location, which is NOT under the data dir: systemd only
-        // reads unit drop-ins out of the config hierarchy.
-        paths.timer_dropin_dir = std::env::var_os("XDG_CONFIG_HOME")
-            .map(PathBuf::from)
-            .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))?
-            .join("systemd/user/harbour-vuo-sync.timer.d");
+        paths.legacy_dir = Some(legacy);
         Some(paths)
+    }
+
+    /// Move an older install's files into this layout, once.
+    ///
+    /// Before the sandbox, everything lived in `<data>/harbour-vuo`; now it
+    /// lives one level down, and a phone updated in place has its account and
+    /// its mirror in the old place. Nothing to do unless the old account file
+    /// is there: it is the last thing removed below, so its presence means
+    /// the move has not finished. Each file is copied only where the new one
+    /// is missing, so a move that failed part-way -- account across, mirror
+    /// not -- picks up where it stopped rather than declaring itself done.
+    /// The account and the CA certificate are copied (mode and all); the
+    /// mirror goes through SQLite's own backup API rather than a file copy,
+    /// so a write-ahead log the old database had open is carried across too,
+    /// and a backup that fails leaves no half-written target behind. The old
+    /// files are removed only once every copy is in place.
+    ///
+    /// Copies, not renames: inside the sandbox the two directories are two
+    /// mounts of the same filesystem, and a rename between them is refused.
+    pub fn adopt_legacy_files(&self) -> std::io::Result<bool> {
+        let Some(legacy) = self.legacy_dir.as_ref() else {
+            return Ok(false);
+        };
+        let old_account = legacy.join("account.json");
+        if !old_account.exists() {
+            return Ok(false);
+        }
+        if let Some(dir) = self.account.parent() {
+            std::fs::create_dir_all(dir)?;
+        }
+        if !self.account.exists() {
+            std::fs::copy(&old_account, &self.account)?;
+        }
+        let old_ca = legacy.join("ca.pem");
+        if old_ca.exists() && !self.ca_certificate.exists() {
+            std::fs::copy(&old_ca, &self.ca_certificate)?;
+        }
+        let old_db = legacy.join("vuo.sqlite");
+        if old_db.exists() && !self.database.exists() {
+            copy_database(&old_db, &self.database)?;
+        }
+        let old_stamp = legacy.join("last-sync");
+        if old_stamp.exists() && !self.last_sync.exists() {
+            std::fs::copy(&old_stamp, &self.last_sync)?;
+        }
+        // Every copy is in place; now, and only now, the originals go.
+        for name in [
+            "account.json",
+            "ca.pem",
+            "vuo.sqlite",
+            "vuo.sqlite-wal",
+            "vuo.sqlite-shm",
+            "vuo.sqlite-journal",
+            "last-sync",
+        ] {
+            let path = legacy.join(name);
+            if path.exists() {
+                std::fs::remove_file(&path)?;
+            }
+        }
+        Ok(true)
     }
 
     /// `Some` only once an account has been written.
@@ -850,6 +924,72 @@ impl AppPaths {
     #[must_use]
     pub fn from_env() -> Option<Self> {
         Self::resolve()?.configured()
+    }
+}
+
+/// Copy a SQLite database through the backup API.
+///
+/// A file copy would miss whatever the source's write-ahead log still holds,
+/// and a source another process has open. The backup API reads through a
+/// connection, so it sees the database as that process would.
+fn copy_database(from: &std::path::Path, to: &std::path::Path) -> std::io::Result<()> {
+    let sqlite = |e: rusqlite::Error| std::io::Error::other(e.to_string());
+    let source = rusqlite::Connection::open(from).map_err(sqlite)?;
+    let mut target = rusqlite::Connection::open(to).map_err(sqlite)?;
+    let backup = rusqlite::backup::Backup::new(&source, &mut target).map_err(sqlite)?;
+    backup
+        .run_to_completion(256, std::time::Duration::from_millis(5), None)
+        .map_err(sqlite)?;
+    Ok(())
+}
+
+/// The sync timer's own cadence, in minutes -- `OnUnitActiveSec` in
+/// systemd/harbour-vuo-sync.timer, which must agree with this.
+///
+/// The FINEST interval Settings offers. The timer fires this often whatever
+/// the user chose, and [`background_sync_due`] is what applies the choice: the
+/// app runs sandboxed and cannot reach systemd's configuration, so the unit
+/// cannot carry the interval and the process it starts has to decide instead.
+pub const TIMER_CADENCE_MINUTES: i64 = 15;
+
+/// Whether a timer run should sync, given the chosen interval and when the
+/// mirror was last synced (Unix seconds), at `now`.
+///
+/// Pure, so the rule is testable without a clock or a file. `None` for the
+/// interval is "Manual only": never. The comparison is against the interval
+/// LESS a grace of half the timer's cadence plus its jitter, because the
+/// timer will not land exactly on the interval: with a 30-minute choice it
+/// fires at about 15, 30, 45 minutes, and a strict "30 minutes have passed"
+/// would skip the one at 28 and sync at 45 -- every other run, at half the
+/// rate asked for.
+#[must_use]
+pub fn sync_due_at(interval_minutes: Option<i64>, last_sync: Option<i64>, now: i64) -> bool {
+    let Some(minutes) = interval_minutes else {
+        return false;
+    };
+    let Some(last) = last_sync else {
+        return true;
+    };
+    let grace = TIMER_CADENCE_MINUTES * 60 / 2 + 2 * 60;
+    now.saturating_sub(last) >= minutes.saturating_mul(60).saturating_sub(grace)
+}
+
+/// Whether the timer's process should sync now, from the stored account and
+/// the last-sync stamp. `Ok(false)` is the ordinary answer most of the time.
+pub fn background_sync_due(paths: &AppPaths) -> vuo_core::Result<bool> {
+    let account = load_account(&paths.account)?;
+    let interval = crate::settings::sync_interval_minutes_for(account.sync_interval_index);
+    let last = std::fs::read_to_string(&paths.last_sync)
+        .ok()
+        .and_then(|text| text.trim().parse::<i64>().ok());
+    Ok(sync_due_at(interval, last, chrono_now()))
+}
+
+/// Note that the mirror was just synced. Best-effort: a stamp that could not
+/// be written costs one extra background run, not data.
+pub fn record_sync_time(stamp: &std::path::Path) {
+    if let Err(e) = std::fs::write(stamp, format!("{}\n", chrono_now())) {
+        tracing::info!(error = %e, path = %stamp.display(), "could not record the sync time");
     }
 }
 
@@ -1011,12 +1151,184 @@ pub fn sync_once_blocking(paths: &AppPaths) -> vuo_core::Result<vuo_core::sync::
         .enable_all()
         .build()
         .map_err(|e| vuo_core::Error::Config(format!("could not start a runtime: {e}")))?;
-    runtime.block_on(sync::sync(&mut db, &client, SyncOptions::default()))
+    let report = runtime.block_on(sync::sync(&mut db, &client, SyncOptions::default()))?;
+    record_sync_time(&paths.last_sync);
+    Ok(report)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// §an older install's files follow the app into the sandbox.
+    ///
+    /// Before the sandbox everything lived in `<data>/harbour-vuo`; the
+    /// sandbox lets the app write only `<data>/harbour-vuo/harbour-vuo`. A
+    /// phone updated in place has its account and its mirror in the old
+    /// place, and re-entering the API key -- or re-syncing a mirror -- is
+    /// not an acceptable price for an update.
+    #[test]
+    fn an_older_install_s_files_are_adopted_once() {
+        use std::os::unix::fs::PermissionsExt as _;
+        use vuo_core::model::{Category, CategoryId};
+
+        let dir = tempfile::tempdir().expect("tempdir");
+        let legacy = dir.path().join("harbour-vuo");
+        std::fs::create_dir_all(&legacy).expect("mkdir");
+        save_account(
+            &legacy.join("account.json"),
+            &Account {
+                server_url: "https://h.example/".into(),
+                token: "t".into(),
+                ..Account::default()
+            },
+        )
+        .expect("account");
+        std::fs::write(legacy.join("ca.pem"), "not really a certificate\n").expect("ca");
+        {
+            let mut db = Database::open(&legacy.join("vuo.sqlite")).expect("mirror");
+            db.with_tx(|tx| {
+                store::upsert_category(
+                    tx,
+                    &Category {
+                        id: CategoryId(1),
+                        title: "News".to_owned(),
+                        hide_globally: false,
+                    },
+                    1,
+                )
+            })
+            .expect("seed");
+        }
+
+        let mut paths = AppPaths::under(legacy.join("harbour-vuo"));
+        paths.legacy_dir = Some(legacy.clone());
+        assert!(
+            paths.adopt_legacy_files().expect("adopt"),
+            "there was an older install to adopt"
+        );
+
+        assert!(paths.account.exists());
+        assert!(paths.ca_certificate.exists());
+        assert!(paths.database.exists());
+        assert!(
+            !legacy.join("account.json").exists() && !legacy.join("vuo.sqlite").exists(),
+            "the originals go once every copy is in place"
+        );
+        let account = load_account(&paths.account).expect("the adopted account");
+        assert_eq!(account.server_url, "https://h.example/");
+        assert_eq!(
+            std::fs::metadata(&paths.account)
+                .expect("metadata")
+                .permissions()
+                .mode()
+                & 0o777,
+            0o600,
+            "the account file keeps its owner-only mode"
+        );
+        let db = Database::open(&paths.database).expect("the adopted mirror");
+        assert_eq!(
+            store::categories(db.conn()).expect("rows").len(),
+            1,
+            "the mirror came across whole"
+        );
+
+        assert!(
+            !paths.adopt_legacy_files().expect("adopt again"),
+            "a second start finds nothing to do"
+        );
+    }
+
+    #[test]
+    fn a_fresh_install_has_nothing_to_adopt() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut paths = AppPaths::under(dir.path().join("harbour-vuo/harbour-vuo"));
+        assert!(!paths.adopt_legacy_files().expect("no legacy dir"));
+        paths.legacy_dir = Some(dir.path().join("harbour-vuo"));
+        assert!(!paths.adopt_legacy_files().expect("an absent legacy dir"));
+        assert!(!paths.account.exists(), "nothing was invented");
+    }
+
+    /// A move that stopped after the account -- the phone died, say --
+    /// finishes next time rather than counting as done.
+    #[test]
+    fn a_move_that_stopped_part_way_is_finished_next_time() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let legacy = dir.path().join("harbour-vuo");
+        let mut paths = AppPaths::under(legacy.join("harbour-vuo"));
+        paths.legacy_dir = Some(legacy.clone());
+        std::fs::create_dir_all(legacy.join("harbour-vuo")).expect("mkdir");
+        let account = Account {
+            server_url: "https://h.example/".into(),
+            token: "t".into(),
+            ..Account::default()
+        };
+        // Both places have the account: the copy landed, the removal never
+        // ran. The mirror is still only in the old place.
+        save_account(&legacy.join("account.json"), &account).expect("old account");
+        save_account(&paths.account, &account).expect("new account");
+        drop(Database::open(&legacy.join("vuo.sqlite")).expect("old mirror"));
+
+        assert!(
+            paths.adopt_legacy_files().expect("adopt"),
+            "an old account still there means the move is not finished"
+        );
+        assert!(paths.database.exists(), "the mirror came across this time");
+        assert!(!legacy.join("account.json").exists());
+        assert!(!legacy.join("vuo.sqlite").exists());
+    }
+
+    /// §the timer's process applies the interval the user chose.
+    ///
+    /// The timer fires every `TIMER_CADENCE_MINUTES` whatever was chosen; the
+    /// choice is applied here. The grace is what keeps a 30-minute choice
+    /// syncing every 30 minutes rather than every 45: the run that lands a
+    /// couple of minutes short of the interval is the one meant for it.
+    #[test]
+    fn a_timer_run_syncs_only_when_the_chosen_interval_has_passed() {
+        let now = 1_000_000;
+        assert!(
+            !sync_due_at(None, None, now),
+            "manual only never syncs on its own"
+        );
+        assert!(
+            sync_due_at(Some(30), None, now),
+            "a mirror that was never synced is due"
+        );
+        assert!(!sync_due_at(Some(30), Some(now - 10 * 60), now));
+        assert!(
+            sync_due_at(Some(30), Some(now - 28 * 60), now),
+            "the run just short of the interval is the one meant for it"
+        );
+        assert!(!sync_due_at(Some(360), Some(now - 300 * 60), now));
+        assert!(
+            sync_due_at(Some(15), Some(now - 13 * 60), now),
+            "at the finest interval every run is due"
+        );
+
+        // From the files, as the timer's process reads them.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let paths = AppPaths::under(dir.path());
+        save_account(
+            &paths.account,
+            &Account {
+                server_url: "https://h.example/".into(),
+                token: "t".into(),
+                sync_interval_index: 2,
+                ..Account::default()
+            },
+        )
+        .expect("account");
+        assert!(
+            background_sync_due(&paths).expect("readable"),
+            "never synced, so due"
+        );
+        record_sync_time(&paths.last_sync);
+        assert!(
+            !background_sync_due(&paths).expect("readable"),
+            "synced just now, so not due for another half hour"
+        );
+    }
 
     #[test]
     fn a_missing_custom_ca_fails_loudly_rather_than_falling_back() {
@@ -1029,7 +1341,8 @@ mod tests {
             account: dir.path().join("account.json"),
             ca_certificate: dir.path().join("absent.pem"),
             timer_unit: dir.path().join("harbour-vuo-sync.timer"),
-            timer_dropin_dir: dir.path().join("tdd"),
+            last_sync: dir.path().join("last-sync"),
+            legacy_dir: None,
         };
         let account = Account {
             server_url: "https://h.example/".into(),
@@ -1147,7 +1460,8 @@ EQBBQIobIy41+aQiMsM0XBYH3Q==\n\
             account: dir.path().join("account.json"),
             ca_certificate: dir.path().join("absent.pem"),
             timer_unit: dir.path().join("harbour-vuo-sync.timer"),
-            timer_dropin_dir: dir.path().join("tdd"),
+            last_sync: dir.path().join("last-sync"),
+            legacy_dir: None,
         };
         let account = Account {
             server_url: "http://10.77.0.1:8083/".into(),
@@ -1178,7 +1492,8 @@ EQBBQIobIy41+aQiMsM0XBYH3Q==\n\
             account: dir.path().join("account.json"),
             ca_certificate: ca,
             timer_unit: dir.path().join("harbour-vuo-sync.timer"),
-            timer_dropin_dir: dir.path().join("tdd"),
+            last_sync: dir.path().join("last-sync"),
+            legacy_dir: None,
         };
         let account = Account {
             server_url: "https://h.example/".into(),
