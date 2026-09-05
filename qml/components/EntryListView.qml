@@ -262,6 +262,12 @@ SilicaListView {
             y: Theme.paddingMedium
             width: parent.width - Theme.horizontalPageMargin * 2
             spacing: 0
+            // A read row steps back as a whole -- icon, title and detail line
+            // together -- rather than only swapping the title's colour, which
+            // on the device was too little to tell the two apart at a glance.
+            // Now that a read row stays on the list until the reader
+            // refreshes, telling them apart is what the list is for.
+            opacity: unread ? 1.0 : Theme.opacityLow
 
             Item {
                 id: iconGutter
