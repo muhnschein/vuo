@@ -187,6 +187,16 @@ pub struct EntryModel {
     /// Applied to the mirror immediately and queued for the server, so it
     /// works offline and the list updates in the same frame as the tap.
     setRead: qt_method!(fn(&mut self, row: i32, read: bool)),
+    /// Mark many entries read or unread at once, by id.
+    ///
+    /// One transaction and one outbox flush for the lot, which is what the
+    /// selection mode needs: marking forty rows through `setRead` would be
+    /// forty transactions, forty generation bumps and forty flush commands.
+    /// Ids rather than rows, because a selection is a set of articles, and
+    /// rows shift under a reload. Ids that are not in the mirror are
+    /// skipped; the rows this model holds are patched in place, as
+    /// `setRead` does, so the list does not scroll away under the reader.
+    setReadMany: qt_method!(fn(&mut self, ids: QVariantList, read: bool)),
     setStarred: qt_method!(fn(&mut self, row: i32, starred: bool)),
     /// Ask the worker for a NETWORK sync. This is the MANUAL REFRESH: the
     /// one thing that takes a row the reader has finished with off the list.
@@ -304,6 +314,39 @@ impl EntryModel {
             self.announce_local_change(&ctx);
             // Send opportunistically: if there is no signal the intent stays
             // in the outbox and the next sync carries it.
+            ctx.send(Command::FlushOutbox);
+        }
+    }
+
+    fn setReadMany(&mut self, ids: QVariantList, read: bool) {
+        let Some(ctx) = self.context() else { return };
+        // JavaScript numbers arrive as doubles; an id past 2^53 is not one
+        // Miniflux will ever issue, and anything that is not a number at all
+        // is dropped rather than guessed at.
+        let ids: Vec<EntryId> = (&ids)
+            .into_iter()
+            .filter_map(|v| i64::from_qvariant(v.clone()))
+            .map(EntryId)
+            .collect();
+        if ids.is_empty() {
+            return;
+        }
+        let status = if read {
+            EntryStatus::Read
+        } else {
+            EntryStatus::Unread
+        };
+        let applied = ctx
+            .write(|db| worker::apply_local_status_bulk(db, &ids, status))
+            .transpose()
+            .ok()
+            .flatten()
+            .is_some();
+        if applied {
+            for id in &ids {
+                self.mark_row(*id, Some(!read), None);
+            }
+            self.announce_local_change(&ctx);
             ctx.send(Command::FlushOutbox);
         }
     }
