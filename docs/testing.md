@@ -39,30 +39,22 @@ work around it in the app.
 ### The cover test
 
 The load test instantiates every file with its properties at their defaults,
-which for the app cover is the empty one. What that cannot see is the part
-that only exists once there are feeds: the rings of favicons around the
-centre, laid out by a pass of JavaScript over a parsed JSON list rather than
-by a view over model rows, and the rules deciding how bright each ring is
-drawn and when the count appears in the middle of them.
+which for the app cover shows the heading -- the name, the sync line, the
+count -- and nothing of the texture under it: lines of filler text set along
+nested curves that are traced by a pass of JavaScript over the cover's size,
+then painted on a canvas. The painting needs a window and a font, which a
+headless engine has neither of, so the cover splits the work in two:
+`layout` returns the curves, and `onPaint` sets text along them.
 
-`crates/vuo-shim/tests/qml_cover.rs` loads the cover in an engine of its own,
-hands it feeds directly -- no mirror, no worker -- and reads back what was
-drawn: the three states (no feeds; feeds but nothing new, every ring faint
-and no number; feeds and news, the count in the centre, the innermost ring
-solid and each ring out fainter), that the feeds are repeated to fill the
-rings and the first of them take the innermost, that no cell is placed off
-the cover, that the centre is left clear for the count, that the field is
-drawn through its monochrome layer, that a feed with no icon falls back to
-its initial, and that a failed refresh puts Vuo's own translated line on the
-cover rather than the server's words.
-
-The layout pass computes its own measurements from the cover's size rather
-than reading properties bound to it: a `onWidthChanged` handler runs before
-the bindings that depend on the width have been re-evaluated, and a pass
-that read them from there laid the rings out with a one-pixel icon. The test
-cannot see that -- it sets the size before the cover is created -- so the
-cover was also rendered under `qmlscene` against the stubs while it was
-worked out; that is a manual check, not part of `make check`.
+`crates/vuo-shim/tests/qml_cover.rs` loads the cover in an engine of its own
+and reads the curves back: that there are enough of them, that the innermost
+ones close around their strokes (the "eyes" of the pattern) while the outer
+ones reach the edge, that no curve runs off the cover or jumps, that the text
+is the cover's own filler and nothing foreign, and that a failed refresh puts
+Vuo's own translated line on the cover rather than the server's words. What
+the painted result looks like was checked by rendering the cover under
+`qmlscene` against the stubs; that is a manual check, not part of `make
+check`.
 
 ### Outbox reconciliation
 

@@ -3,29 +3,23 @@ import Sailfish.Silica 1.0
 
 /*
  * What the cover has to say while the app is minimised: how much is unread,
- * where it came from, and whether sync is in trouble.
+ * and whether sync is in trouble.
  *
- * Three states, and nothing else on the cover:
+ * The heading is laid out as the platform's own covers lay theirs out: the
+ * name top left with a line under it, and the number top right, large. The
+ * rest of the cover is texture, after Jolla's own packaging: lines of tiny
+ * text laid along nested, flowing curves, in the theme's colour and nothing
+ * else. The text is filler and means nothing; the count is the message, and
+ * the texture is what makes the cover Vuo's rather than a number on a plain
+ * ground.
  *
- *   I.   No feeds -- a fresh install, or an account that has never synced --
- *        and the cover says so, in a line.
- *   II.  Feeds, but nothing new. The feeds' favicons, laid out on rings
- *        around the centre, all of them faint, all monochrome. The centre is
- *        empty: that is the news.
- *   III. Feeds, and something new. The same rings, and the unread count in
- *        the middle of them, large. The innermost ring is drawn solid and
- *        each ring outward fainter, so the eye lands on the number and the
- *        feeds fall away around it. Still monochrome, so a favicon's own
- *        colours never compete with the count.
- *
- * The feeds are repeated around the rings until the cover is full: a handful
- * of feeds is a handful of icons, and the field would otherwise be mostly
- * empty. Feeds with something new come first from the model, so they take
- * the innermost ring.
- *
- * The rings are laid out in a pass over the feeds the model hands over as
- * JSON, which a view over its rows could not do: a view draws each row once,
- * and the point here is to REPEAT the feeds until the rings are full.
+ * The curves are the level sets of a soft distance to three short strokes
+ * (see `field`): each stroke wears a family of capsules that grow outward and
+ * merge into one another, which is the shape the packaging draws. They are
+ * traced in JavaScript and the text is set along them by arc length in the
+ * canvas, once, whenever the cover's size or the theme changes. The canvas
+ * paints on its own thread into an image, so the pass -- some thousands of
+ * glyphs -- never holds up the window.
  *
  * A cover is drawn while the app is NOT the active window, which is the source
  * of most of the care below -- see the BusyIndicator note.
@@ -41,16 +35,6 @@ CoverBackground {
     /// could act on, and the entry list already shows the words.
     property string syncError: ""
     property bool syncErrorIsAuth: false
-
-    /// The feeds, as the feed model hands them over: a JSON list of
-    /// `{feedId, title, unread, icon}`, the ones with something new first.
-    ///
-    /// Parsed with JSON.parse, never eval -- and nothing here builds QML out
-    /// of it (§9.3). The titles are the feed operators' words, so the letter
-    /// drawn from one is drawn as PlainText; the icons are their bytes,
-    /// already sniffed and capped by the core and carried as `data:` URIs, so
-    /// drawing one fetches nothing from the network.
-    property string feedsJson: ""
 
     /// True for a few seconds after a refresh ends badly.
     ///
@@ -87,303 +71,364 @@ CoverBackground {
         onTriggered: cover._showFailure = false
     }
 
-    /// The feeds, in the order they arrived.
-    property var feedList: []
-    /// What the field draws: `{feed, ring, x, y, size}` per cell, the feeds
-    /// repeated ring by ring until the cover is full. `ring` is 0 for the
-    /// innermost. Each cell carries its own size, so a cell can never be
-    /// drawn at a size other than the one it was placed for.
-    property var cells: []
+    // The texture, under everything else.
+    Canvas {
+        id: art
+        objectName: "textArt"
+        anchors.fill: parent
 
-    /// The three states, named once. II is `hasFeeds && !hasNews`.
-    readonly property bool hasFeeds: cover.feedList.length > 0
-    readonly property bool hasNews: cover.unreadCount > 0
+        // Painted on the canvas's own thread into an image rather than on the
+        // render thread into a framebuffer: the pass sets a few thousand
+        // glyphs and takes a good fraction of a second on a phone, and a
+        // cover must not stall the window it belongs to.
+        renderTarget: Canvas.Image
+        renderStrategy: Canvas.Threaded
 
-    /// The field's measurements, all from the cover's width.
-    ///
-    /// A FUNCTION, deliberately, and `gather` calls it rather than reading
-    /// properties bound to these values. A change handler such as
-    /// `onWidthChanged` runs BEFORE the bindings that depend on the width
-    /// have been re-evaluated, so a pass that read `cover.iconSize` from
-    /// there laid the rings out with a one-pixel icon -- and then spent the
-    /// rest of the session making hundreds of thousands of cells. Measured
-    /// under qmlscene: the same pass that gives four rings at the right size
-    /// gave a ring every 1.3 pixels the moment before.
-    ///
-    ///   icon      an icon's edge. A favicon is a 32-pixel image, and a
-    ///             bigger cell only upscales it further past recognition;
-    ///             this is about seven across.
-    ///   inner     the innermost ring's radius: the hole the count sits in,
-    ///             sized for three digits at the size they are drawn below
-    ///             with the icons' inner edges clear of them.
-    ///   ringStep  from one ring to the next, centre to centre.
-    ///   cellStep  along a ring, centre to centre.
-    function metrics() {
-        var icon = Math.max(1, Math.round(cover.width * 0.14))
-        return {
-            icon: icon,
-            inner: cover.width * 0.34,
-            ringStep: icon * 1.3,
-            cellStep: icon * 1.25
+        /// The filler. Any text would do; this one is the one everybody
+        /// recognises as saying nothing.
+        readonly property string filler:
+            "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do "
+            + "eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut "
+            + "enim ad minim veniam, quis nostrud exercitation ullamco laboris "
+            + "nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in "
+            + "reprehenderit in voluptate velit esse cillum dolore eu fugiat "
+            + "nulla pariatur. Excepteur sint occaecat cupidatat non proident, "
+            + "sunt in culpa qui officia deserunt mollit anim id est laborum. "
+
+        /// A glyph's height. Texture, not reading matter: about forty-five
+        /// to the cover's width, which is the packaging's own density.
+        readonly property real glyph: Math.max(4, Math.round(cover.width / 46))
+        /// From one line of text to the next, centre to centre.
+        readonly property real spacing: art.glyph * 1.6
+        /// How softly the strokes' families of curves merge (see `field`).
+        readonly property real softness: art.spacing * 2.0
+        /// The text's darkness on the ground. Greyscale, by way of the
+        /// theme's own colour at less than full strength.
+        readonly property real ink: 0.55
+        /// The heading sits on top; the texture fades in beneath it rather
+        /// than being cut off under it, from `fadeFrom` down to `fadeTo`.
+        readonly property real fadeFrom: heading.y + heading.height * 0.6
+        readonly property real fadeTo: heading.y + heading.height + cover.height * 0.12
+
+        /// The theme's colour, and a repaint when the ambience changes it.
+        property color colour: Theme.primaryColor
+        onColourChanged: art.requestPaint()
+        onWidthChanged: art.requestPaint()
+        onHeightChanged: art.requestPaint()
+
+        /// Three short strokes, in the cover's own proportions, that the
+        /// curves grow out of. Each is a stroke rather than a point so the
+        /// innermost curves are capsules and every family has a direction,
+        /// which is what gives the sweeps their lean.
+        function lobes() {
+            var w = art.width
+            var h = art.height
+            return [
+                { x: w * 0.22, y: h * 0.40, x2: w * 0.34, y2: h * 0.30 },
+                { x: w * 0.90, y: h * 0.68, x2: w * 0.80, y2: h * 0.56 },
+                { x: w * 0.42, y: h * 1.02, x2: w * 0.30, y2: h * 0.92 }
+            ]
         }
-    }
-    /// An icon's edge, for whatever draws relative to it.
-    property int iconSize: cover.metrics().icon
 
-    /// How faint the field is when there is nothing new (state II).
-    property real quietOpacity: 0.3
-    /// With news (state III): the innermost ring is solid, and each ring out
-    /// is this fraction of the one inside it, down to `farOpacity`.
-    property real fade: 0.55
-    property real farOpacity: 0.15
+        /// Distance from (x, y) to the stroke `l`.
+        function strokeDistance(l, x, y) {
+            var vx = l.x2 - l.x
+            var vy = l.y2 - l.y
+            var wx = x - l.x
+            var wy = y - l.y
+            var vv = vx * vx + vy * vy
+            var t = vv > 0 ? Math.max(0, Math.min(1, (wx * vx + wy * vy) / vv)) : 0
+            var dx = x - (l.x + t * vx)
+            var dy = y - (l.y + t * vy)
+            return Math.sqrt(dx * dx + dy * dy)
+        }
 
-    /// Read the feeds again and lay them out on the rings. Called on every
-    /// change to the list and whenever the shape changes, so the cells are
-    /// always the right number.
-    function gather() {
-        var all = []
-        try {
-            all = JSON.parse(cover.feedsJson)
-        } catch (err) {
-            all = []
+        /// A soft "distance to the nearest stroke": exactly the nearest
+        /// stroke's distance far from all of them, and a smooth blend where
+        /// two are close. Its level sets are the curves, one every
+        /// `spacing`, and because the field is a distance they are evenly
+        /// spaced everywhere.
+        function field(L, x, y) {
+            var s = 0
+            for (var i = 0; i < L.length; i++) {
+                s += Math.exp(-art.strokeDistance(L[i], x, y) / art.softness)
+            }
+            return -art.softness * Math.log(s)
         }
-        if (!all || all.length === undefined) {
-            all = []
+
+        function gradient(L, x, y) {
+            var e = 0.5
+            return { x: (art.field(L, x + e, y) - art.field(L, x - e, y)) / (2 * e),
+                     y: (art.field(L, x, y + e) - art.field(L, x, y - e)) / (2 * e) }
         }
-        var made = []
-        if (all.length > 0 && cover.width > 0 && cover.height > 0) {
-            var m = cover.metrics()
-            var cx = cover.width / 2
-            var cy = cover.height / 2
-            // Rings out to the corners: the cover is taller than it is wide,
-            // so a ring runs past the sides long before it reaches the top.
-            var reach = Math.sqrt(cx * cx + cy * cy) + m.icon / 2
-            var next = 0
-            // The cap is a backstop, not a design: a cover's shape gives
-            // four or five rings, and a pass that wants more than thirty-two
-            // has been handed a size it should not have been.
-            for (var ring = 0; ring < 32; ring++) {
-                var radius = m.inner + ring * m.ringStep
-                if (radius > reach) {
+
+        /// Pull a point onto the curve at `level`: a few Newton steps along
+        /// the gradient.
+        function settle(L, p, level) {
+            for (var k = 0; k < 3; k++) {
+                var g = art.gradient(L, p.x, p.y)
+                var n2 = g.x * g.x + g.y * g.y
+                if (n2 < 1e-9) {
                     break
                 }
-                var around = Math.max(1, Math.floor(2 * Math.PI * radius / m.cellStep))
-                // Every other ring turns by half a cell, so the icons nest
-                // rather than line up along spokes.
-                var turn = (ring % 2) * Math.PI / around
-                for (var i = 0; i < around; i++) {
-                    var angle = -Math.PI / 2 + turn + i * 2 * Math.PI / around
-                    // Rounded BEFORE the edge test below, so the cell that
-                    // is kept is the cell that is drawn.
-                    var x = Math.round(cx + radius * Math.cos(angle) - m.icon / 2)
-                    var y = Math.round(cy + radius * Math.sin(angle) - m.icon / 2)
-                    // A cell the edge would cut off entirely is not drawn,
-                    // and takes no feed: the first feeds -- the ones with
-                    // something new -- must all land where they can be seen.
-                    if (x + m.icon <= 0 || x >= cover.width
-                            || y + m.icon <= 0 || y >= cover.height) {
+                var f = art.field(L, p.x, p.y) - level
+                p = { x: p.x - f * g.x / n2, y: p.y - f * g.y / n2 }
+            }
+            return p
+        }
+
+        function inside(p, margin) {
+            return p.x > -margin && p.x < art.width + margin
+                    && p.y > -margin && p.y < art.height + margin
+        }
+
+        /// Follow the curve at `level` from `seed`, one way, until it closes
+        /// on itself or leaves the cover. Two pixels a step, each step
+        /// settled back onto the curve, so the line stays on its level for
+        /// as long as it runs.
+        function walk(L, seed, level, direction) {
+            var h = 2
+            var points = []
+            var p = seed
+            for (var i = 0; i < 4000; i++) {
+                var g = art.gradient(L, p.x, p.y)
+                var n = Math.sqrt(g.x * g.x + g.y * g.y)
+                if (n < 1e-6) {
+                    break
+                }
+                p = art.settle(L, { x: p.x + direction * h * (-g.y / n),
+                                    y: p.y + direction * h * (g.x / n) }, level)
+                points.push(p)
+                if (i > 10 && Math.abs(p.x - seed.x) < h && Math.abs(p.y - seed.y) < h) {
+                    return { points: points, closed: true }
+                }
+                if (!art.inside(p, art.spacing)) {
+                    return { points: points, closed: false }
+                }
+            }
+            return { points: points, closed: false }
+        }
+
+        /// Every curve on the cover, as a polyline each: `{points, closed}`.
+        ///
+        /// Pure, and what the cover's test reads: the painting below only
+        /// sets text along what this returns. Levels one `spacing` apart out
+        /// to the farthest corner; on each level a curve is started from
+        /// several points around each stroke and followed both ways, and a
+        /// start that lands on a curve already drawn is skipped -- which is
+        /// how two strokes' families become one curve where they merge.
+        function layout() {
+            var L = art.lobes()
+            var paths = []
+            if (art.width <= 0 || art.height <= 0) {
+                return paths
+            }
+            var far = 0
+            var corners = [[0, 0], [art.width, 0], [0, art.height], [art.width, art.height]]
+            for (var c = 0; c < corners.length; c++) {
+                far = Math.max(far, art.field(L, corners[c][0], corners[c][1]))
+            }
+            for (var k = 0; k * art.spacing < far + art.spacing; k++) {
+                var level = art.spacing * (k + 0.5)
+                var drawn = []
+                for (var si = 0; si < L.length * 8; si++) {
+                    var i = si % L.length
+                    var angle = -Math.PI / 2 + Math.floor(si / L.length) * Math.PI / 4 + i * 0.7
+                    var cx = (L[i].x + L[i].x2) / 2
+                    var cy = (L[i].y + L[i].y2) / 2
+                    var seed = art.settle(L, { x: cx + level * Math.cos(angle),
+                                               y: cy + level * Math.sin(angle) }, level)
+                    if (!art.inside(seed, 0) || Math.abs(art.field(L, seed.x, seed.y) - level) > 1) {
                         continue
                     }
-                    var feed = all[next % all.length]
-                    next++
-                    made.push({ feed: feed, ring: ring, x: x, y: y, size: m.icon })
+                    var covered = false
+                    for (var d = 0; d < drawn.length && !covered; d++) {
+                        if (Math.abs(drawn[d].x - seed.x) < art.spacing * 0.6
+                                && Math.abs(drawn[d].y - seed.y) < art.spacing * 0.6) {
+                            covered = true
+                        }
+                    }
+                    if (covered) {
+                        continue
+                    }
+                    var forward = art.walk(L, seed, level, 1)
+                    var points = forward.points
+                    if (!forward.closed) {
+                        var back = art.walk(L, seed, level, -1).points
+                        back.reverse()
+                        points = back.concat([seed], points)
+                    }
+                    if (points.length < 4) {
+                        continue
+                    }
+                    for (var j = 0; j < points.length; j += 3) {
+                        drawn.push(points[j])
+                    }
+                    paths.push({ points: points, closed: forward.closed })
                 }
             }
-        }
-        cover.feedList = all
-        cover.cells = made
-    }
-    onFeedsJsonChanged: cover.gather()
-    onWidthChanged: cover.gather()
-    onHeightChanged: cover.gather()
-    Component.onCompleted: cover.gather()
-
-    // No feeds yet: say so, in a line that wraps rather than runs off the
-    // cover in a language where it is longer.
-    Label {
-        objectName: "emptyLabel"
-        anchors.centerIn: parent
-        width: parent.width - 2 * Theme.paddingLarge
-        visible: !cover.hasFeeds
-        horizontalAlignment: Text.AlignHCenter
-        wrapMode: Text.Wrap
-        textFormat: Text.PlainText
-        font.pixelSize: Theme.fontSizeSmall
-        color: Theme.secondaryColor
-        text: qsTr("No feeds")
-    }
-
-    // The feeds, on rings around the centre, filling the cover. The outer
-    // rings run past every edge, which the clip takes care of.
-    Item {
-        id: field
-        objectName: "faviconField"
-        anchors.fill: parent
-        clip: true
-
-        // ALL MONOCHROME, in one pass. The field is rendered to a texture and
-        // drawn through a shader that keeps each pixel's brightness and drops
-        // its colour, so a favicon's own palette never competes with the
-        // count and the field reads as one material. Greyscale rather than
-        // a tint in the theme's colour: tinting keeps the brightness too, so
-        // a dark icon would vanish into a dark ambience, and on a light one
-        // -- where the primary colour is black -- every icon would flatten
-        // to a silhouette. One texture the size of the cover rather than an
-        // effect per cell, and QtQuick's own ShaderEffect rather than
-        // QtGraphicalEffects, which the app does not otherwise import. The
-        // shader is fixed text: nothing foreign is anywhere near it (§9.3).
-        layer.enabled: true
-        layer.effect: ShaderEffect {
-            // Qt draws with premultiplied alpha, so the brightness of the
-            // premultiplied colour is already scaled by the pixel's coverage,
-            // and a grey made from it is premultiplied too.
-            fragmentShader: "
-                varying highp vec2 qt_TexCoord0;
-                uniform sampler2D source;
-                uniform lowp float qt_Opacity;
-                void main() {
-                    lowp vec4 pixel = texture2D(source, qt_TexCoord0);
-                    lowp float light = dot(pixel.rgb, vec3(0.299, 0.587, 0.114));
-                    gl_FragColor = vec4(vec3(light), pixel.a) * qt_Opacity;
-                }"
+            return paths
         }
 
-        Repeater {
-            model: cover.cells
+        onPaint: {
+            var ctx = art.getContext("2d")
+            if (!ctx) {
+                return
+            }
+            ctx.clearRect(0, 0, art.width, art.height)
+            ctx.font = art.glyph + "px " + Theme.fontFamily
+            ctx.textBaseline = "middle"
+            var r = Math.round(art.colour.r * 255)
+            var g = Math.round(art.colour.g * 255)
+            var b = Math.round(art.colour.b * 255)
 
+            var paths = art.layout()
+            var offset = 0
+            for (var p = 0; p < paths.length; p++) {
+                var points = paths[p].points
+                // Arc length along the polyline, so glyphs are set by
+                // distance and not by point count.
+                var along = [0]
+                for (var i = 1; i < points.length; i++) {
+                    var dx = points[i].x - points[i - 1].x
+                    var dy = points[i].y - points[i - 1].y
+                    along.push(along[i - 1] + Math.sqrt(dx * dx + dy * dy))
+                }
+                var total = along[along.length - 1]
+                var s = 0
+                var seg = 1
+                // Each curve starts elsewhere in the filler, or every line
+                // would open with the same word.
+                var t = offset
+                while (s < total) {
+                    var ch = art.filler.charAt(t % art.filler.length)
+                    t++
+                    var advance = ctx.measureText(ch).width + art.glyph * 0.08
+                    var mid = s + advance / 2
+                    while (seg < along.length - 1 && along[seg] < mid) {
+                        seg++
+                    }
+                    var a = points[seg - 1]
+                    var b2 = points[seg]
+                    var run = along[seg] - along[seg - 1]
+                    var f = run > 0 ? (mid - along[seg - 1]) / run : 0
+                    var x = a.x + (b2.x - a.x) * f
+                    var y = a.y + (b2.y - a.y) * f
+                    if (ch !== " ") {
+                        var fade = Math.max(0, Math.min(1, (y - art.fadeFrom) / (art.fadeTo - art.fadeFrom)))
+                        if (fade > 0.02) {
+                            ctx.fillStyle = "rgba(" + r + "," + g + "," + b + "," + (art.ink * fade) + ")"
+                            ctx.save()
+                            ctx.translate(x, y)
+                            ctx.rotate(Math.atan2(b2.y - a.y, b2.x - a.x))
+                            ctx.fillText(ch, -advance / 2, 0)
+                            ctx.restore()
+                        }
+                    }
+                    s += advance
+                }
+                offset = (offset + 37) % art.filler.length
+            }
+        }
+    }
+
+    // The name and what the number means, top left; the number top right,
+    // always -- a zero says as much as a count.
+    Column {
+        id: heading
+        anchors {
+            top: parent.top
+            left: parent.left
+            right: unreadLabel.left
+            margins: Theme.paddingLarge
+            rightMargin: Theme.paddingMedium
+        }
+
+        Label {
+            objectName: "brand"
+            width: parent.width
+            textFormat: Text.PlainText
+            text: "Vuo"
+            color: Theme.highlightColor
+            font.pixelSize: Theme.fontSizeMedium
+            truncationMode: TruncationMode.Fade
+        }
+
+        // The line under the name is where sync speaks. There is no room on a
+        // cover for anything longer, and the count above it must not be
+        // replaced by a spinner: it is the one thing the cover is for.
+        Row {
+            width: parent.width
+            spacing: Theme.paddingSmall
+
+            // Exactly one of the two states occupies this, so the spinner
+            // cannot be drawn across the warning.
             Item {
-                objectName: "fieldCell"
-                /// Which ring this cell is on, 0 innermost. Read by the
-                /// cover's test.
-                property int ring: modelData.ring
+                id: statusSlot
+                width: cover._showFailure || cover.syncing ? Theme.iconSizeSmall : 0
+                height: Theme.iconSizeSmall
+                anchors.verticalCenter: parent.verticalCenter
 
-                x: modelData.x
-                y: modelData.y
-                width: modelData.size
-                height: modelData.size
-                // OPAQUE INSIDE, TRANSPARENT OUTSIDE while there is news;
-                // ALL TRANSPARENT while there is none. Nothing is drawn
-                // behind the icons -- no plate, no outline. The field IS the
-                // icons, and the rings are the only structure in it.
-                opacity: cover.hasNews
-                         ? Math.max(cover.farOpacity, Math.pow(cover.fade, ring))
-                         : cover.quietOpacity
+                BusyIndicator {
+                    anchors.centerIn: parent
+                    running: cover.syncing && !cover._showFailure
+                    size: BusyIndicatorSize.ExtraSmall
+                    // THE COVER IS NOT THE ACTIVE WINDOW, and Silica's
+                    // indicator gates its RotationAnimator on
+                    // `_forceAnimation || (visible && Qt.application.active)`
+                    // (BusyIndicator.qml:80). On a cover the second half is
+                    // always false, so the spinner appeared, sat perfectly
+                    // still, and read as a frozen app. `_forceAnimation` is
+                    // the escape hatch that predicate is written around.
+                    _forceAnimation: true
+                }
 
                 Image {
-                    id: favicon
-                    objectName: "cellFavicon"
-                    anchors.fill: parent
-                    sourceSize.width: width
-                    sourceSize.height: height
-                    fillMode: Image.PreserveAspectFit
-                    // A `data:` URI built in Rust from bytes already in the
-                    // mirror -- no network fetch happens here, so drawing the
-                    // cover cannot leak the device's IP (§9.3).
-                    source: modelData.feed.icon
-                    asynchronous: true
-                    // An icon whose format the device ships no handler for
-                    // leaves its cell empty rather than dropping a letter into
-                    // a field of pictures. The model sends feeds without an
-                    // icon only when NO feed has one, so that is the one case
-                    // the initial below is drawn for.
-                    visible: status === Image.Ready
-                }
-
-                // A mirror whose icons have not been fetched yet -- a first
-                // sync -- would otherwise leave the field blank. Then, and only
-                // then, the feeds arrive without icons and this draws them.
-                Label {
-                    objectName: "cellInitial"
                     anchors.centerIn: parent
-                    visible: modelData.feed.icon.length === 0
-                    textFormat: Text.PlainText
-                    text: modelData.feed.title.substring(0, 1).toUpperCase()
-                    font.pixelSize: Math.round(parent.width * 0.5)
-                    color: Theme.primaryColor
+                    source: "image://theme/icon-s-warning"
+                    visible: cover._showFailure
                 }
+            }
+
+            Label {
+                objectName: "subtitle"
+                width: parent.width - statusSlot.width - Theme.paddingSmall
+                anchors.verticalCenter: parent.verticalCenter
+                textFormat: Text.PlainText
+                // Fixed, translated strings only -- never the server's error
+                // text.
+                text: cover._showFailure
+                      ? (cover.syncErrorIsAuth ? qsTr("Sign-in failed") : qsTr("Refresh failed"))
+                      : (cover.syncing ? qsTr("Refreshing") : qsTr("Unread"))
+                font.pixelSize: Theme.fontSizeExtraSmall
+                color: cover._showFailure ? Theme.errorColor : Theme.secondaryHighlightColor
+                truncationMode: TruncationMode.Fade
             }
         }
     }
 
-    // The count, in the hole the rings leave at the centre. Only while there
-    // is one: a zero would say what the empty centre already says, and the
-    // number is the one thing on the cover with any colour, so it must mean
-    // something when it is there.
     Label {
         id: unreadLabel
         objectName: "unreadTotal"
-        anchors.centerIn: parent
-        visible: cover.hasNews
+        anchors {
+            top: parent.top
+            right: parent.right
+            topMargin: Theme.paddingMedium
+            rightMargin: Theme.paddingLarge
+        }
         textFormat: Text.PlainText
         // Three digits is what a feed reader needs -- an unread count in the
         // hundreds is an ordinary week here, not the runaway a chat app's
         // would be. Past that the reader is not counting them off a cover
         // anyway.
         text: cover.unreadCount > 999 ? "999+" : cover.unreadCount
-        // Four glyphs at the huge size would reach the innermost ring; the
-        // number steps down instead, which keeps the digits legible AND the
-        // hole clear around them.
+        // Four glyphs at the huge size run straight over the app's name; the
+        // number is anchored to the edge and grows leftwards into it. It
+        // steps down instead, which keeps the digits legible AND the name
+        // readable.
         font.pixelSize: cover.unreadCount > 99 ? Theme.fontSizeExtraLarge
                                                : Theme.fontSizeHuge
         color: Theme.primaryColor
-    }
-
-    // Sync speaks along the top edge, and only while it has something to
-    // say. There is no room on a cover for anything longer, and the count
-    // in the centre must not be replaced by a spinner: it is the one thing
-    // the cover is for. The outer rings under this line are the faintest, so
-    // it stays legible without a plate. The TOP edge rather than the bottom,
-    // which is where the cover action's icon is drawn.
-    Row {
-        objectName: "status"
-        anchors {
-            top: parent.top
-            horizontalCenter: parent.horizontalCenter
-            topMargin: Theme.paddingMedium
-        }
-        spacing: Theme.paddingSmall
-        visible: cover._showFailure || cover.syncing
-
-        // Exactly one of the two states occupies this, so the spinner
-        // cannot be drawn across the warning.
-        Item {
-            width: Theme.iconSizeSmall
-            height: Theme.iconSizeSmall
-            anchors.verticalCenter: parent.verticalCenter
-
-            BusyIndicator {
-                anchors.centerIn: parent
-                running: cover.syncing && !cover._showFailure
-                size: BusyIndicatorSize.ExtraSmall
-                // THE COVER IS NOT THE ACTIVE WINDOW, and Silica's
-                // indicator gates its RotationAnimator on
-                // `_forceAnimation || (visible && Qt.application.active)`
-                // (BusyIndicator.qml:80). On a cover the second half is
-                // always false, so the spinner appeared, sat perfectly
-                // still, and read as a frozen app. `_forceAnimation` is
-                // the escape hatch that predicate is written around.
-                _forceAnimation: true
-            }
-
-            Image {
-                anchors.centerIn: parent
-                source: "image://theme/icon-s-warning"
-                visible: cover._showFailure
-            }
-        }
-
-        Label {
-            objectName: "subtitle"
-            anchors.verticalCenter: parent.verticalCenter
-            textFormat: Text.PlainText
-            // Fixed, translated strings only -- never the server's error
-            // text.
-            text: cover._showFailure
-                  ? (cover.syncErrorIsAuth ? qsTr("Sign-in failed") : qsTr("Refresh failed"))
-                  : (cover.syncing ? qsTr("Refreshing") : "")
-            font.pixelSize: Theme.fontSizeExtraSmall
-            color: cover._showFailure ? Theme.errorColor : Theme.secondaryHighlightColor
-        }
     }
 
     CoverActionList {
