@@ -315,8 +315,22 @@ SilicaListView {
     ViewPlaceholder {
         // Not while syncing: "Nothing to read / Pull down to refresh"
         // under a running spinner reads as a refusal.
-        enabled: listView.count === 0
-                 && !(listView.entryModel && listView.entryModel.syncing)
+        //
+        // And not before the model is READY -- scoped and loaded. Gated on
+        // the view's count alone this was enabled at construction, when
+        // every model still held nothing, and then faded out over the rows
+        // that arrived a moment later: "Nothing to read" flashing across the
+        // list at every launch. The model's own count and its `ready` flag
+        // change together, in the one reload, so there is no such moment.
+        //
+        // A conditional rather than an `&&` chain: with no model -- this file
+        // is instantiated standalone by the load test -- the chain yields
+        // `undefined`, which a bool property refuses.
+        enabled: listView.entryModel
+                 ? (listView.entryModel.ready
+                    && listView.entryModel.count === 0
+                    && !listView.entryModel.syncing)
+                 : false
         // "Nothing to read / Pull down to refresh" is an Unread string.
         // Under a Favourites tab it reads as a refusal, and refreshing
         // does not create favourites.

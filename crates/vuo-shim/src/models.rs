@@ -174,6 +174,13 @@ pub struct EntryModel {
 
     count: qt_property!(i32; READ row_count NOTIFY countChanged),
     countChanged: qt_signal!(),
+    /// True once a scope has been set, which is when `count` starts to mean
+    /// something. A list's "nothing to read" placeholder reads this: gated
+    /// on `count` alone it was enabled at construction, when every model
+    /// holds nothing yet, and then faded out over the rows that arrived a
+    /// moment later -- reported from a device as "Nothing to read" flashing
+    /// across the list at every launch.
+    ready: qt_property!(bool; READ is_ready NOTIFY countChanged),
 
     /// Set the scope and load a fresh list. `kind`: 0 unread, 1 starred,
     /// 2 all, 3 feed (id), 4 category (id).
@@ -543,6 +550,10 @@ impl EntryModel {
             self.announce_local_change(&ctx);
             ctx.send(Command::FlushOutbox);
         }
+    }
+
+    fn is_ready(&self) -> bool {
+        self.scope.is_some()
     }
 
     fn id_at(&self, row: i32) -> Option<EntryId> {
