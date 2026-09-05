@@ -532,6 +532,16 @@ mod tests {
 pub struct SyncSignal {
     generation: std::sync::atomic::AtomicU64,
     running: std::sync::atomic::AtomicBool,
+    /// Bumped when the USER asks for a fresh list -- the pulley's Refresh, or
+    /// the cover's action -- as opposed to the mirror merely changing.
+    ///
+    /// The distinction is what the entry lists are built on: a row that stops
+    /// matching its list (read, on Unread) stays on screen through any number
+    /// of mirror changes and leaves only when this moves. One counter for
+    /// every model rather than a flag on the one that was pulled, because a
+    /// refresh is asked of the app, not of a tab: pulling on Unread and
+    /// swiping to Favourites should not find an unstarred row still there.
+    refresh_epoch: std::sync::atomic::AtomicU64,
     /// A one-shot result the UI has to SHOW rather than merely reload for.
     ///
     /// The generation counter says "the mirror changed"; it cannot carry the
@@ -640,6 +650,18 @@ impl SyncSignal {
     pub fn set_running(&self, running: bool) {
         self.running
             .store(running, std::sync::atomic::Ordering::Release);
+    }
+
+    /// Record that the user asked for a fresh list. Called from the Qt thread.
+    pub fn mark_refreshed(&self) {
+        self.refresh_epoch
+            .fetch_add(1, std::sync::atomic::Ordering::Release);
+    }
+
+    #[must_use]
+    pub fn refresh_epoch(&self) -> u64 {
+        self.refresh_epoch
+            .load(std::sync::atomic::Ordering::Acquire)
     }
 
     #[must_use]

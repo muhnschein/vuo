@@ -26,7 +26,7 @@
 //! pre-escaped by [`crate::article`], which is the one place markup is
 //! generated, and QML sets `Text.StyledText` there.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use qmetaobject::*;
 use vuo_core::db::store;
@@ -175,10 +175,10 @@ pub struct EntryModel {
     count: qt_property!(i32; READ row_count NOTIFY countChanged),
     countChanged: qt_signal!(),
 
-    /// Set the scope and reload. `kind`: 0 unread, 1 starred, 2 all,
-    /// 3 feed (id), 4 category (id).
+    /// Set the scope and load a fresh list. `kind`: 0 unread, 1 starred,
+    /// 2 all, 3 feed (id), 4 category (id).
     setScope: qt_method!(fn(&mut self, kind: i32, id: i64)),
-    /// Re-read the mirror. Called after the worker reports a change.
+    /// Re-read the mirror, keeping the rows on screen. See [`reload`].
     refresh: qt_method!(fn(&mut self)),
     entryIdAt: qt_method!(fn(&self, row: i32) -> i64),
 
@@ -188,7 +188,8 @@ pub struct EntryModel {
     /// works offline and the list updates in the same frame as the tap.
     setRead: qt_method!(fn(&mut self, row: i32, read: bool)),
     setStarred: qt_method!(fn(&mut self, row: i32, starred: bool)),
-    /// Ask the worker for a NETWORK sync.
+    /// Ask the worker for a NETWORK sync. This is the MANUAL REFRESH: the
+    /// one thing that takes a row the reader has finished with off the list.
     ///
     /// Distinct from `refresh`, which only re-reads the local mirror. Nothing
     /// in the UI used to reach the worker at all, so `Command::Sync` had a
@@ -247,6 +248,10 @@ pub struct EntryModel {
     scope: Option<Scope>,
     /// The worker generation this model last reloaded at.
     seen_generation: u64,
+    /// The manual-refresh epoch this model's rows were loaded under. A reload
+    /// under a newer one starts from nothing rather than keeping the rows on
+    /// screen -- see [`reload`](EntryModel::reload).
+    seen_refresh_epoch: u64,
     /// Feed name and icon URI per feed id, built once and reused.
     ///
     /// Re-encoding every icon on every reload would base64 the same few
@@ -352,6 +357,16 @@ impl EntryModel {
             self.syncErrorIsAuth = false;
             self.syncStateChanged();
         }
+        // The reader asked for a fresh list, so give them one NOW, before the
+        // network has answered: the rows they have read leave at the pull,
+        // and whatever the sync brings lands on top of a list that is already
+        // honest. Every other list starts over too -- the epoch says so, and
+        // the bump is what makes them look. This model's own cursor is moved
+        // past it, as `announce_local_change` does, or the next poll would
+        // reset a list that was just reset.
+        ctx.signal().mark_refreshed();
+        self.reload_fresh();
+        self.announce_local_change(&ctx);
         // Set before sending, not after: the worker clears this flag when the
         // command finishes, and a fast failure can beat us to it. Setting it
         // afterwards would leave the spinner running forever.
@@ -478,7 +493,10 @@ impl EntryModel {
             }
         };
         if done {
-            self.reload();
+            // Fresh, not retained: "mark all as read" is the reader saying
+            // they are done with everything on this list, and a list that
+            // stayed full of dimmed rows would look as if nothing happened.
+            self.reload_fresh();
             self.announce_local_change(&ctx);
             ctx.send(Command::FlushOutbox);
         }
@@ -493,7 +511,8 @@ impl EntryModel {
 
     fn setScope(&mut self, kind: i32, id: i64) {
         self.scope = Some(Scope::from_qml(kind, id));
-        self.reload();
+        // A new scope is a new list; nothing from the old one belongs on it.
+        self.reload_fresh();
     }
 
     fn refresh(&mut self) {
@@ -508,22 +527,75 @@ impl EntryModel {
             .unwrap_or(0)
     }
 
-    /// Re-read rows from the mirror.
+    /// Re-read rows from the mirror, KEEPING the rows already on screen.
+    ///
+    /// A row that has stopped matching its list -- read, on Unread; unstarred,
+    /// on Favourites -- stays where it is, drawn in its new state, until the
+    /// reader asks for a fresh list. Reported from a device: an article
+    /// opened and marked read vanished from Unread a moment after coming back
+    /// to it, on the poll that noticed the mirror had changed, and the rows
+    /// below it jumped up under the thumb. Rows only ever LEAVE on a manual
+    /// refresh ([`requestSync`](Self::requestSync)), a scope change, or "mark
+    /// all as read"; those go through [`reload_fresh`](Self::reload_fresh).
+    /// Rows still ARRIVE here -- a sync that lands while the app is open shows
+    /// its new articles -- and a kept row the mirror no longer has (the server
+    /// deleted it) goes with it.
     ///
     /// A full reset rather than a diff. For the list sizes a phone actually
     /// scrolls this is imperceptible, and a wrong `begin_insert_rows` range is
     /// a crash inside Qt's model machinery rather than a visual glitch — a bad
     /// trade for a saved millisecond.
     pub fn reload(&mut self) {
+        self.reload_keeping(true);
+    }
+
+    /// Re-read rows from the mirror and show exactly what matches the scope.
+    fn reload_fresh(&mut self) {
+        self.reload_keeping(false);
+    }
+
+    fn reload_keeping(&mut self, keep_shown: bool) {
         let Some(ctx) = self.context() else { return };
         let Some(scope) = self.scope else { return };
 
+        // A manual refresh anywhere -- the pulley on another tab, the cover's
+        // action -- starts every list over, not only the one it was pulled
+        // on. The epoch is how this model finds out it happened elsewhere.
+        let epoch = ctx.signal().refresh_epoch();
+        let keep_shown = keep_shown && epoch == self.seen_refresh_epoch;
+        self.seen_refresh_epoch = epoch;
+
+        let shown: Vec<i64> = if keep_shown {
+            self.rows.iter().map(|r| r.id).collect()
+        } else {
+            Vec::new()
+        };
+
         let entries = ctx
             .read(|db| {
-                store::list_entries(db.conn(), scope.to_filter(), 500, 0).unwrap_or_default()
+                let mut entries = store::list_entries(db.conn(), scope.to_filter(), PAGE_SIZE, 0)
+                    .unwrap_or_default();
+                let listed: HashSet<i64> = entries.iter().map(|e| e.id.get()).collect();
+                // One statement per kept row rather than a built `IN (...)`
+                // list, as the outbox does (§9.4). There are as many of these
+                // as the reader has finished with since they last refreshed,
+                // which is a handful, not a page.
+                for id in shown {
+                    if listed.contains(&id) {
+                        continue;
+                    }
+                    if let Ok(Some(entry)) = store::entry(db.conn(), EntryId(id)) {
+                        entries.push(entry);
+                    }
+                }
+                entries
             })
             .unwrap_or_default();
         let mut rows: Vec<EntryRow> = entries.iter().map(EntryRow::from).collect();
+        // Back into the mirror's own order, newest first, so a kept row sits
+        // where it did rather than at the bottom. A stable sort, and the
+        // fresh rows arrived sorted, so this only moves the kept ones.
+        rows.sort_by_key(|r| (std::cmp::Reverse(r.published), std::cmp::Reverse(r.id)));
         self.refresh_feed_chrome();
         for row in &mut rows {
             if let Some(chrome) = self.feed_chrome.get(&row.feed_id) {
@@ -1472,5 +1544,170 @@ mod row_decoration_tests {
                 "QML reaches this role by name, and the editor's push needs it"
             );
         }
+    }
+
+    /// An unread entry in the seeded feed. No publish time, like the seeded
+    /// one, so the mirror's order is by id: the shim deliberately has no
+    /// chrono, and ids are enough to tell a merge from an append.
+    fn unread_entry(id: i64) -> Entry {
+        Entry {
+            id: EntryId(id),
+            feed_id: FeedId(1),
+            status: EntryStatus::Unread,
+            starred: false,
+            title: format!("entry {id}"),
+            url: None,
+            comments_url: None,
+            author: String::new(),
+            content: String::new(),
+            published_at: None,
+            created_at: None,
+            changed_at: None,
+            reading_time: 1,
+            tags: Vec::new(),
+            enclosures: Vec::new(),
+        }
+    }
+
+    fn put(ctx: &AppContext, entry: &Entry) {
+        ctx.write(|db| db.with_tx(|tx| store::upsert_entry(tx, entry, 1)))
+            .expect("the mirror")
+            .expect("upsert");
+    }
+
+    fn ids(model: &EntryModel) -> Vec<i64> {
+        model.rows().iter().map(|r| r.id).collect()
+    }
+
+    /// §a row the reader has finished with leaves the list when THEY say so.
+    ///
+    /// Reported from a device: an article opened from Unread and marked read
+    /// vanished from the list a moment after coming back to it -- on the poll
+    /// that noticed the mirror had changed -- and the rows below it jumped up
+    /// under the thumb. The row stays now, drawn as read, through any number
+    /// of mirror changes, and leaves on the pulley's Refresh.
+    #[test]
+    fn a_row_read_elsewhere_stays_listed_until_the_reader_refreshes() {
+        let (_dir, ctx) = seeded();
+        put(&ctx, &unread_entry(5));
+
+        let mut model = EntryModel::default();
+        model.attach(std::rc::Rc::clone(&ctx));
+        model.setScope(0, 0);
+        assert_eq!(ids(&model), vec![7, 5], "newest first");
+
+        // The article view marks 5 read: a local write and a bump, which is
+        // what `ArticleModel::apply_local` does.
+        ctx.write(|db| worker::apply_local_status(db, EntryId(5), EntryStatus::Read))
+            .expect("the mirror")
+            .expect("mark read");
+        ctx.signal().bump();
+        assert!(model.pollSync(), "the poll must notice the bump");
+        assert_eq!(
+            ids(&model),
+            vec![7, 5],
+            "the row the reader has read must stay on the list"
+        );
+        assert!(
+            !model.rows().get(1).expect("row 5").unread,
+            "but it must show as read"
+        );
+        assert_eq!(model.unread_total(), 1, "the cover's count is the mirror's");
+
+        // A sync lands with an older article while the read row is still
+        // there. It ARRIVES, and the read row keeps ITS place -- between the
+        // two, where the mirror's order puts it, not at the bottom where an
+        // append would.
+        put(&ctx, &unread_entry(3));
+        ctx.signal().bump();
+        assert!(model.pollSync());
+        assert_eq!(
+            ids(&model),
+            vec![7, 5, 3],
+            "new rows still arrive, and a kept row sits where it did"
+        );
+
+        // The reader pulls Refresh -- on any tab, or on the cover. What
+        // `requestSync` does, minus the worker it would have sent for.
+        ctx.signal().mark_refreshed();
+        ctx.signal().bump();
+        assert!(model.pollSync());
+        assert_eq!(
+            ids(&model),
+            vec![7, 3],
+            "a manual refresh is the one thing that takes a read row off Unread"
+        );
+    }
+
+    /// A new scope is a new list.
+    #[test]
+    fn a_scope_change_shows_only_what_matches_it() {
+        let (_dir, ctx) = seeded();
+        put(&ctx, &unread_entry(5));
+        let mut model = EntryModel::default();
+        model.attach(std::rc::Rc::clone(&ctx));
+        model.setScope(0, 0);
+
+        // Read from the list itself: patched in place, so the row stays.
+        model.setRead(1, true);
+        assert_eq!(ids(&model), vec![7, 5]);
+
+        model.setScope(0, 0);
+        assert_eq!(
+            ids(&model),
+            vec![7],
+            "re-scoping must not carry the finished row over"
+        );
+    }
+
+    /// A kept row the mirror has lost -- the server deleted it -- goes too.
+    #[test]
+    fn a_kept_row_the_mirror_no_longer_has_is_dropped() {
+        let (_dir, ctx) = seeded();
+        put(&ctx, &unread_entry(5));
+        let mut model = EntryModel::default();
+        model.attach(std::rc::Rc::clone(&ctx));
+        model.setScope(0, 0);
+        model.setRead(1, true);
+        assert_eq!(ids(&model), vec![7, 5]);
+
+        ctx.write(|db| db.with_tx(|tx| store::delete_entry(tx, EntryId(5))))
+            .expect("the mirror")
+            .expect("delete");
+        ctx.signal().bump();
+        assert!(model.pollSync());
+        assert_eq!(
+            ids(&model),
+            vec![7],
+            "a row that is not in the mirror cannot be kept on a list of it"
+        );
+    }
+
+    /// Two tabs, one refresh: the epoch reaches the tab that was not pulled.
+    #[test]
+    fn a_manual_refresh_on_one_tab_starts_every_tab_over() {
+        let (_dir, ctx) = seeded();
+        put(&ctx, &unread_entry(5));
+        let mut unread = EntryModel::default();
+        unread.attach(std::rc::Rc::clone(&ctx));
+        unread.setScope(0, 0);
+        let mut all = EntryModel::default();
+        all.attach(std::rc::Rc::clone(&ctx));
+        all.setScope(2, 0);
+
+        unread.setRead(1, true);
+        assert_eq!(ids(&unread), vec![7, 5]);
+        assert!(all.pollSync(), "the other tab hears about the change");
+        assert_eq!(ids(&all), vec![7, 5], "and All lists everything anyway");
+
+        // Refresh pulled on All: its own epoch moves, and the bump carries it.
+        ctx.signal().mark_refreshed();
+        ctx.signal().bump();
+        assert!(unread.pollSync());
+        assert_eq!(
+            ids(&unread),
+            vec![7],
+            "a refresh is asked of the app, not of a tab"
+        );
     }
 }
