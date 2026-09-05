@@ -204,6 +204,14 @@ pub struct ArticleModel {
     /// whether the one they were looking at was already starred.
     pub isRead: qt_property!(bool; NOTIFY entryStateChanged),
     pub isStarred: qt_property!(bool; NOTIFY entryStateChanged),
+    /// The article's own link, or empty when the entry has none.
+    ///
+    /// A property rather than only `openInBrowser`'s return value, because the
+    /// page BINDS to it: the site page attached to the right of the article
+    /// exists exactly when this is non-empty. Validated as http(s) by the
+    /// core before it was stored, so handing it to a WebView or the system
+    /// browser cannot launch anything else.
+    pub articleUrl: qt_property!(QString; NOTIFY entryStateChanged),
     entryStateChanged: qt_signal!(),
 
     clear: qt_method!(fn(&mut self)),
@@ -293,6 +301,7 @@ impl ArticleModel {
             .as_ref()
             .map(|u| u.as_str().to_owned())
             .unwrap_or_default();
+        self.articleUrl = QString::from(self.article_url.clone());
         self.isRead = entry.status == EntryStatus::Read;
         self.isStarred = entry.starred;
         self.entryStateChanged();
@@ -536,6 +545,8 @@ impl ArticleModel {
         // Forget which entry this was, or the next `clear`-then-toggle would
         // mutate the article that is no longer open.
         self.entry_id = 0;
+        self.article_url = String::new();
+        self.articleUrl = QString::from(String::new());
         self.isRead = false;
         self.isStarred = false;
         self.entryStateChanged();

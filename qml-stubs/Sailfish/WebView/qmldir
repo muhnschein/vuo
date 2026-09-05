@@ -1,0 +1,13 @@
+# A stub of Sailfish.WebView, for linting Vuo's QML on a machine without the
+# SailfishOS SDK. See ../Silica/qmldir for the rules: these declare the surface
+# Vuo uses, they are never shipped, and a missing property is added here rather
+# than worked around in the app.
+#
+# The real module is sailfish-components-webview (Gecko, via qtmozembed); the
+# surface below is read off its import/webview/*.qml and qtmozembed's
+# qmozview_defined_wrapper.h.
+module Sailfish.WebView
+
+WebView 1.0 WebView.qml
+WebViewFlickable 1.0 WebViewFlickable.qml
+WebViewPage 1.0 WebViewPage.qml

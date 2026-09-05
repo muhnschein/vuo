@@ -31,6 +31,8 @@ BuildArch:  aarch64
 
 Requires:   sailfishsilica-qt5 >= 0.10.9
 Requires:   nemo-qml-plugin-notifications-qt5
+# Sailfish.WebView, for the site page attached to the right of an article.
+Requires:   sailfish-components-webview-qt5
 
 # The binary's real needs are already known and verified from its ELF header
 # (Qt5 Core/Gui/Widgets/Quick/Qml, libsailfishapp.so.1, glibc <= 2.30). Letting
