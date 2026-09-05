@@ -13,3 +13,13 @@ Categories=Qt;Network;News;
 # shared link reuses the running app rather than starting a second copy.
 X-Nemo-Application-Type=silica-qt5
 X-Nemo-Single-Instance=yes
+
+# Sandboxed, with exactly what it uses. Everything the app writes lives under
+# the directory these two names give it (~/.local/share/harbour-vuo/harbour-vuo
+# -- see AppPaths::resolve in crates/vuo-shim/src/worker.rs). Internet for the
+# Miniflux server; WebView for the Gecko view on the site page. Nothing else:
+# Vuo is one process, as Harbour requires, and syncs on its own while it runs.
+[X-Sailjail]
+Permissions=Internet;WebView
+OrganizationName=harbour-vuo
+ApplicationName=harbour-vuo

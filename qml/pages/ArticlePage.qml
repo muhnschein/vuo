@@ -11,6 +11,10 @@ import "../components"
  * in Text, and a WebView is heavy and awkward inside a list; a block list also
  * gives lazy image loading and font scaling for free (§5).
  *
+ * The article's own SITE is one swipe to the right, as an attached page (see
+ * SitePage.qml). That is the one place a WebView is used, and it fetches
+ * nothing until the reader actually goes there.
+ *
  * Note the delegate picks between LOCAL Components. It never assembles QML
  * from a string, and nothing derived from server data selects code to run
  * (§9.3).
@@ -39,6 +43,21 @@ Page {
         page.autoMarkArmed = article.markReadDelayMs >= 0 && !article.isRead
     }
     Component.onDestruction: article.clear()
+
+    /// Whether the site page has been attached to the right. Once: the page
+    /// becomes Active again every time the reader swipes back from the site,
+    /// and attaching a second copy then would restart the site's load.
+    property bool _siteAttached: false
+
+    // The site, to the right, for an entry that has a link. Attached once
+    // the page is Active, which is when a page is on the stack to attach to;
+    // an entry without a link gets no forward indicator and nothing to swipe
+    // to, rather than a page that says it has nothing to show.
+    onStatusChanged: if (status === PageStatus.Active && !page._siteAttached
+                         && article.articleUrl.length > 0) {
+        page._siteAttached = true
+        pageStack.pushAttached(Qt.resolvedUrl("SitePage.qml"), { url: article.articleUrl })
+    }
 
     // Mark the article read once it has been open long enough.
     //

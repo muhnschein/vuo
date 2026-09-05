@@ -73,6 +73,14 @@ pub enum Command {
     },
     /// Verify the configured credentials, for the settings screen.
     TestConnection,
+    /// How often the worker is to sync on its own, in minutes; `None` for
+    /// "Manual only". Sent when the context is built and whenever Settings
+    /// is saved. The worker schedules its next sync from the last one it
+    /// knows of (the stamp beside the mirror), so a restart does not sync
+    /// at once if the mirror is fresh.
+    SetSyncInterval {
+        minutes: Option<i64>,
+    },
     Shutdown,
 }
 
@@ -285,6 +293,9 @@ impl Worker {
                     }
                 };
 
+                // Beside the database, as `AppPaths::under` lays it out; the
+                // worker is handed only the database's path.
+                let last_sync = db_path.with_file_name("last-sync");
                 let mut db = match Database::open(&db_path) {
                     Ok(db) => db,
                     Err(e) => {
@@ -305,7 +316,36 @@ impl Worker {
                     }
                 };
 
-                while let Ok(command) = rx.recv() {
+                // The worker's own sync, on the interval the user chose.
+                //
+                // Vuo is one process -- Harbour allows no other -- so there
+                // is no timer outside it, and the worker keeps the cadence
+                // itself: it waits for a command only until the next sync is
+                // due, and then runs one as if `Command::Sync` had arrived.
+                // Manual and automatic syncs are the same code; the only
+                // difference is who asked.
+                let mut interval: Option<i64> = None;
+                let mut next_sync: Option<std::time::Instant> = None;
+                loop {
+                    let command = match next_sync {
+                        Some(at) => {
+                            let wait = at.saturating_duration_since(std::time::Instant::now());
+                            match rx.recv_timeout(wait) {
+                                Ok(command) => command,
+                                Err(mpsc::RecvTimeoutError::Timeout) => {
+                                    // As `requestSync` does before sending,
+                                    // so the cover and the list show it.
+                                    signal.set_running(true);
+                                    Command::Sync
+                                }
+                                Err(mpsc::RecvTimeoutError::Disconnected) => break,
+                            }
+                        }
+                        None => match rx.recv() {
+                            Ok(command) => command,
+                            Err(_) => break,
+                        },
+                    };
                     // Shutdown is handled above the guard: there is no spinner
                     // to clear for it, and draining whatever is queued behind
                     // it matters more. A `Sync` sitting in the queue when the
@@ -328,6 +368,12 @@ impl Worker {
                     match command {
                         // Handled above, before the guard.
                         Command::Shutdown => break,
+                        Command::SetSyncInterval { minutes } => {
+                            interval = minutes;
+                            next_sync =
+                                next_sync_delay(interval, read_sync_time(&last_sync), chrono_now())
+                                    .map(|delay| std::time::Instant::now() + delay);
+                        }
                         Command::Sync => {
                             on_event(Event::SyncStarted);
                             let options = SyncOptions::default();
@@ -341,6 +387,9 @@ impl Worker {
                                     on_event(Event::AuthFailed);
                                 }
                                 Ok(report) => {
+                                    // So the next start schedules from this
+                                    // sync rather than syncing at once.
+                                    record_sync_time(&last_sync);
                                     let unread = store::unread_count(db.conn()).unwrap_or(0);
                                     let changed = report.pull.upserted > 0
                                         || report.pull.removed > 0
@@ -374,6 +423,15 @@ impl Worker {
                                     on_event(Event::SyncFailed { message });
                                 }
                             }
+                            // Whatever it did, the next one is an interval
+                            // away: a server that is down is not asked again
+                            // every few seconds.
+                            next_sync = interval.map(|minutes| {
+                                std::time::Instant::now()
+                                    + std::time::Duration::from_secs(
+                                        minutes.max(1).unsigned_abs() * 60,
+                                    )
+                            });
                         }
                         Command::Subscribe { feed_url } => {
                             let result = runtime.block_on(client.create_feed(&feed_url, None));
@@ -766,20 +824,13 @@ pub struct AppPaths {
     /// rather than a file picker: it is a rare, deliberate act, and a path the
     /// user chose would be one more thing to validate.
     pub ca_certificate: PathBuf,
-    /// The sync timer unit itself, which ships in the separate
-    /// `harbour-vuo-sync` package.
+    /// When the mirror was last synced, as Unix seconds in a file.
     ///
-    /// Its presence is how the app knows whether background refresh exists on
-    /// this device at all. A bare `stat`, deliberately: asking systemd
-    /// (`systemctl --user show`) forks, blocks, and answers "not-found" for a
-    /// unit it merely has not reloaded yet.
-    pub timer_unit: PathBuf,
-    /// Where the systemd user drop-in for the sync timer is written.
-    ///
-    /// Under `XDG_CONFIG_HOME`, not the data dir the rest of these live in:
-    /// systemd reads unit configuration from the config hierarchy and would
-    /// never look at a file placed beside the database.
-    pub timer_dropin_dir: PathBuf,
+    /// Written after every successful sync and read when the worker starts,
+    /// so the first automatic sync of a session is scheduled from the last
+    /// one rather than run the moment the app opens. A file beside the
+    /// database rather than a row in it: one small read, no query.
+    pub last_sync: PathBuf,
 }
 
 impl AppPaths {
@@ -791,65 +842,85 @@ impl AppPaths {
     #[must_use]
     pub fn under(base: impl Into<PathBuf>) -> Self {
         let base = base.into();
-        // Kept under the same base so a test can point everything at one
-        // tempdir; `resolve` below puts it in the real systemd location.
-        let timer_dropin_dir = base.join("systemd/user/harbour-vuo-sync.timer.d");
         AppPaths {
             database: base.join("vuo.sqlite"),
             account: base.join("account.json"),
             ca_certificate: base.join("ca.pem"),
-            // Under the same base so a test can stage one; `resolve` below
-            // points at the real packaged location.
-            timer_unit: base.join("systemd/user/harbour-vuo-sync.timer"),
-            timer_dropin_dir,
+            last_sync: base.join("last-sync"),
         }
     }
 
     /// Resolve the standard locations, honouring `XDG_DATA_HOME`.
+    ///
+    /// `<data>/harbour-vuo/harbour-vuo`, two levels, because that is the one
+    /// directory the sandbox lets the app write: Sailjail whitelists
+    /// `$HOME/.local/share/<OrganizationName>/<ApplicationName>` from the
+    /// desktop entry's `[X-Sailjail]` section, and both names are
+    /// `harbour-vuo` there.
     #[must_use]
     pub fn resolve() -> Option<Self> {
         let base = std::env::var_os("XDG_DATA_HOME")
             .map(PathBuf::from)
             .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local/share")))?
-            .join("harbour-vuo");
-        let mut paths = Self::under(base);
-        // Where the harbour-vuo-sync package installs the unit; see the spec's
-        // %{_userunitdir}.
-        paths.timer_unit = PathBuf::from("/usr/lib/systemd/user/harbour-vuo-sync.timer");
-        // The real location, which is NOT under the data dir: systemd only
-        // reads unit drop-ins out of the config hierarchy.
-        paths.timer_dropin_dir = std::env::var_os("XDG_CONFIG_HOME")
-            .map(PathBuf::from)
-            .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))?
-            .join("systemd/user/harbour-vuo-sync.timer.d");
-        Some(paths)
+            .join("harbour-vuo/harbour-vuo");
+        Some(Self::under(base))
     }
 
     /// `Some` only once an account has been written.
     ///
     /// Returns `None` when the app has never been set up, which is not an
-    /// error: a background timer firing before first run should do nothing
-    /// quietly.
+    /// error: it is what the first run looks like.
     #[must_use]
     pub fn configured(self) -> Option<Self> {
         self.account.exists().then_some(self)
-    }
-
-    /// Whether the background-sync package is installed on this device.
-    ///
-    /// The interval setting drives a systemd timer that ships in
-    /// `harbour-vuo-sync`. With that package absent the control governs
-    /// nothing, so the Settings page hides the whole section rather than
-    /// offering a choice with no effect.
-    #[must_use]
-    pub fn background_sync_installed(&self) -> bool {
-        self.timer_unit.exists()
     }
 
     /// Resolve paths and confirm an account has been configured.
     #[must_use]
     pub fn from_env() -> Option<Self> {
         Self::resolve()?.configured()
+    }
+}
+
+/// How long the worker waits before its next automatic sync, given the
+/// chosen interval and when the mirror was last synced (Unix seconds), at
+/// `now`.
+///
+/// `None` for the interval is "Manual only": never. A mirror never synced, or
+/// synced longer ago than the interval, is due straight away -- after a short
+/// pause, so an app that has just opened draws its list before the network
+/// is touched. Otherwise the wait is what remains of the interval.
+#[must_use]
+pub fn next_sync_delay(
+    interval_minutes: Option<i64>,
+    last_sync: Option<i64>,
+    now: i64,
+) -> Option<std::time::Duration> {
+    const SOON: u64 = 10;
+    let minutes = interval_minutes?;
+    let Some(last) = last_sync else {
+        return Some(std::time::Duration::from_secs(SOON));
+    };
+    let due_at = last.saturating_add(minutes.saturating_mul(60));
+    let remaining = due_at.saturating_sub(now);
+    Some(std::time::Duration::from_secs(
+        remaining.max(0).unsigned_abs().max(SOON),
+    ))
+}
+
+/// The last-sync stamp, if there is one.
+#[must_use]
+pub fn read_sync_time(stamp: &std::path::Path) -> Option<i64> {
+    std::fs::read_to_string(stamp)
+        .ok()
+        .and_then(|text| text.trim().parse::<i64>().ok())
+}
+
+/// Note that the mirror was just synced. Best-effort: a stamp that could not
+/// be written costs one extra background run, not data.
+pub fn record_sync_time(stamp: &std::path::Path) {
+    if let Err(e) = std::fs::write(stamp, format!("{}\n", chrono_now())) {
+        tracing::info!(error = %e, path = %stamp.display(), "could not record the sync time");
     }
 }
 
@@ -997,26 +1068,50 @@ pub fn transport_config_for(
     Ok(config)
 }
 
-/// One synchronous sync pass, for the systemd timer.
-pub fn sync_once_blocking(paths: &AppPaths) -> vuo_core::Result<vuo_core::sync::SyncReport> {
-    let account = load_account(&paths.account)?;
-    let server = url::Url::parse(&account.server_url)
-        .map_err(|_| vuo_core::Error::Config("the stored server URL is not a URL".to_owned()))?;
-    let config = transport_config_for(paths, &account)?;
-    let transport = Transport::new(server, ApiToken::new(account.token), &config)?;
-    let client = MinifluxClient::new(transport);
-    let mut db = Database::open(&paths.database)?;
-
-    let runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .map_err(|e| vuo_core::Error::Config(format!("could not start a runtime: {e}")))?;
-    runtime.block_on(sync::sync(&mut db, &client, SyncOptions::default()))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// §the worker syncs on its own, on the interval the user chose.
+    ///
+    /// Vuo is one process, so the cadence is the worker's to keep. The rule
+    /// is pure so it can be stated without a clock: never for "Manual only";
+    /// soon for a mirror never synced or overdue, but not at once, so the
+    /// list is drawn before the network is touched; otherwise what remains.
+    #[test]
+    fn the_next_sync_is_scheduled_from_the_last_one() {
+        let now = 1_000_000;
+        let secs = |d: Option<std::time::Duration>| d.map(|d| d.as_secs());
+        assert_eq!(next_sync_delay(None, Some(now), now), None, "manual only");
+        assert_eq!(
+            secs(next_sync_delay(Some(30), None, now)),
+            Some(10),
+            "never synced: soon, after the list has been drawn"
+        );
+        assert_eq!(
+            secs(next_sync_delay(Some(30), Some(now - 3600), now)),
+            Some(10),
+            "overdue: soon"
+        );
+        assert_eq!(
+            secs(next_sync_delay(Some(30), Some(now - 10 * 60), now)),
+            Some(20 * 60),
+            "ten minutes into a half hour: twenty to go"
+        );
+        assert_eq!(
+            secs(next_sync_delay(Some(30), Some(now - 30 * 60 + 5), now)),
+            Some(10),
+            "five seconds to go still waits the short pause, never less"
+        );
+
+        // And the stamp round-trips through the file the worker reads.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let stamp = dir.path().join("last-sync");
+        assert_eq!(read_sync_time(&stamp), None, "no stamp yet");
+        record_sync_time(&stamp);
+        let recorded = read_sync_time(&stamp).expect("a stamp");
+        assert!((chrono_now() - recorded).abs() < 5);
+    }
 
     #[test]
     fn a_missing_custom_ca_fails_loudly_rather_than_falling_back() {
@@ -1028,8 +1123,7 @@ mod tests {
             database: dir.path().join("db.sqlite"),
             account: dir.path().join("account.json"),
             ca_certificate: dir.path().join("absent.pem"),
-            timer_unit: dir.path().join("harbour-vuo-sync.timer"),
-            timer_dropin_dir: dir.path().join("tdd"),
+            last_sync: dir.path().join("last-sync"),
         };
         let account = Account {
             server_url: "https://h.example/".into(),
@@ -1146,8 +1240,7 @@ EQBBQIobIy41+aQiMsM0XBYH3Q==\n\
             database: dir.path().join("db.sqlite"),
             account: dir.path().join("account.json"),
             ca_certificate: dir.path().join("absent.pem"),
-            timer_unit: dir.path().join("harbour-vuo-sync.timer"),
-            timer_dropin_dir: dir.path().join("tdd"),
+            last_sync: dir.path().join("last-sync"),
         };
         let account = Account {
             server_url: "http://10.77.0.1:8083/".into(),
@@ -1177,8 +1270,7 @@ EQBBQIobIy41+aQiMsM0XBYH3Q==\n\
             database: dir.path().join("db.sqlite"),
             account: dir.path().join("account.json"),
             ca_certificate: ca,
-            timer_unit: dir.path().join("harbour-vuo-sync.timer"),
-            timer_dropin_dir: dir.path().join("tdd"),
+            last_sync: dir.path().join("last-sync"),
         };
         let account = Account {
             server_url: "https://h.example/".into(),

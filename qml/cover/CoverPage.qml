@@ -1,20 +1,18 @@
 import QtQuick 2.6
 import Sailfish.Silica 1.0
+import "../components"
 
 /*
  * What the cover has to say while the app is minimised: how much is unread,
- * where it came from, and whether sync is in trouble.
+ * and whether sync is in trouble.
  *
- * The heading is laid out as the platform's own covers lay theirs out: the
- * name top left with a line under it, and the number top right, large. Under
- * it, a staggered field of feed favicons and nothing else -- no plates behind
- * them -- dimmed, the few repeated to fill it; whichever feed has something
- * new is drawn bright where it stands. No feeds yet -- a fresh install, or an
- * account that has never synced -- and the cover says so in a line instead.
- *
- * The grid is laid out in a pass over the feeds the model hands over as JSON,
- * which a view over its rows could not do: a view draws each row once, and the
- * point here is to REPEAT the feeds until the grid is full.
+ * The heading is laid out as the platform's own covers lay theirs out, and
+ * with postivene's measures exactly: the name top left with a line under it,
+ * the two set close, and the number top right, large. The rest of the cover
+ * is texture, after Jolla's own packaging -- see components/TextArt.qml. The
+ * text is filler and means nothing; the count is the message, and the
+ * texture is what makes the cover Vuo's rather than a number on a plain
+ * ground.
  *
  * A cover is drawn while the app is NOT the active window, which is the source
  * of most of the care below -- see the BusyIndicator note.
@@ -30,16 +28,6 @@ CoverBackground {
     /// could act on, and the entry list already shows the words.
     property string syncError: ""
     property bool syncErrorIsAuth: false
-
-    /// The feeds, as the feed model hands them over: a JSON list of
-    /// `{feedId, title, unread, icon}`, the ones with something new first.
-    ///
-    /// Parsed with JSON.parse, never eval -- and nothing here builds QML out
-    /// of it (§9.3). The titles are the feed operators' words, so the letter
-    /// drawn from one is drawn as PlainText; the icons are their bytes,
-    /// already sniffed and capped by the core and carried as `data:` URIs, so
-    /// drawing one fetches nothing from the network.
-    property string feedsJson: ""
 
     /// True for a few seconds after a refresh ends badly.
     ///
@@ -76,59 +64,17 @@ CoverBackground {
         onTriggered: cover._showFailure = false
     }
 
-    /// The feeds, in the order they arrived.
-    property var feedList: []
-    /// What the grid draws: `{feed, row, col, loud}` per cell, the feeds
-    /// repeated to fill it and `loud` on the first cell of any feed with
-    /// something new.
-    property var cells: []
-
-    /// The grid's shape: four across, with every other row shifted half a cell
-    /// and holding one more, cut off at both edges -- so the rows nest, and
-    /// the grid reads as a field of icons rather than a table. Four rather
-    /// than the three a grid of faces would use: a favicon is a 32-pixel
-    /// image, and a wider cell only upscales it further past recognition.
-    property int columns: 4
-    property int cellSize: Math.floor(cover.width / cover.columns)
-    property int rowStep: Math.max(1, Math.round(cover.cellSize * 0.9))
-    property int rows: cover.cellSize > 0
-                       ? Math.ceil(grid.height / cover.rowStep)
-                       : 0
-
-    /// Read the feeds again: who is there and what fills the grid. Called on
-    /// every change to the list and whenever the shape changes, so the cells
-    /// are always the right number.
-    function gather() {
-        var all = []
-        try {
-            all = JSON.parse(cover.feedsJson)
-        } catch (err) {
-            all = []
-        }
-        if (!all || all.length === undefined) {
-            all = []
-        }
-        var made = []
-        var lit = {}
-        var next = 0
-        for (var row = 0; row < cover.rows && all.length > 0; row++) {
-            var across = row % 2 === 0 ? cover.columns + 1 : cover.columns
-            for (var col = 0; col < across; col++) {
-                var feed = all[next % all.length]
-                next++
-                var loud = feed.unread > 0 && !lit[feed.feedId]
-                if (loud) {
-                    lit[feed.feedId] = true
-                }
-                made.push({ feed: feed, row: row, col: col, loud: loud })
-            }
-        }
-        cover.feedList = all
-        cover.cells = made
+    // The texture, under everything else. It begins where postivene's field
+    // of faces begins under the same heading -- a large padding below it --
+    // and fades in over the next tenth of the cover rather than starting on
+    // a hard line.
+    TextArt {
+        id: art
+        objectName: "textArt"
+        anchors.fill: parent
+        fadeFrom: heading.y + heading.height + Theme.paddingLarge
+        fadeTo: fadeFrom + cover.height * 0.1
     }
-    onFeedsJsonChanged: cover.gather()
-    onRowsChanged: cover.gather()
-    Component.onCompleted: cover.gather()
 
     // The name and what the number means, top left; the number top right,
     // always -- a zero says as much as a count.
@@ -141,6 +87,9 @@ CoverBackground {
             margins: Theme.paddingLarge
             rightMargin: Theme.paddingMedium
         }
+        // Postivene's: the two lines set closer than their line boxes would
+        // put them, so they read as one heading.
+        spacing: -Theme.paddingSmall
 
         Label {
             objectName: "brand"
@@ -158,13 +107,17 @@ CoverBackground {
         Row {
             width: parent.width
             spacing: Theme.paddingSmall
+            // No taller than the line it holds: the icon's slot used to set
+            // the row's height, which pushed this line down from the name by
+            // more than postivene's sits from its own.
+            height: subtitleLabel.height
 
             // Exactly one of the two states occupies this, so the spinner
             // cannot be drawn across the warning.
             Item {
                 id: statusSlot
                 width: cover._showFailure || cover.syncing ? Theme.iconSizeSmall : 0
-                height: Theme.iconSizeSmall
+                height: subtitleLabel.height
                 anchors.verticalCenter: parent.verticalCenter
 
                 BusyIndicator {
@@ -189,6 +142,7 @@ CoverBackground {
             }
 
             Label {
+                id: subtitleLabel
                 objectName: "subtitle"
                 width: parent.width - statusSlot.width - Theme.paddingSmall
                 anchors.verticalCenter: parent.verticalCenter
@@ -227,99 +181,6 @@ CoverBackground {
         font.pixelSize: cover.unreadCount > 99 ? Theme.fontSizeExtraLarge
                                                : Theme.fontSizeHuge
         color: Theme.primaryColor
-    }
-
-    // No feeds yet: say so, in a line that wraps rather than runs off the
-    // cover in a language where it is longer.
-    Label {
-        objectName: "emptyLabel"
-        anchors.centerIn: grid
-        width: parent.width - 2 * Theme.paddingLarge
-        visible: cover.feedList.length === 0
-        horizontalAlignment: Text.AlignHCenter
-        wrapMode: Text.Wrap
-        textFormat: Text.PlainText
-        font.pixelSize: Theme.fontSizeSmall
-        color: Theme.secondaryColor
-        text: qsTr("No feeds")
-    }
-
-    // The feeds, filling the room under the heading. The shifted rows run past
-    // both edges by half a cell, which the clip takes care of.
-    Item {
-        id: grid
-        objectName: "faviconGrid"
-        anchors {
-            top: heading.bottom
-            left: parent.left
-            right: parent.right
-            bottom: parent.bottom
-            topMargin: Theme.paddingMedium
-        }
-        clip: true
-
-        Repeater {
-            model: cover.cells
-
-            Item {
-                objectName: "gridCell"
-                // Read by the cover's test, and the one place the quiet/loud
-                // distinction is written down.
-                property bool loud: modelData.loud
-
-                x: modelData.col * cover.cellSize
-                   - (modelData.row % 2 === 0 ? cover.cellSize / 2 : 0)
-                y: modelData.row * cover.rowStep
-                // A fraction of the cell rather than the cell less a padding:
-                // the rows are a nested 0.9 of a cell apart, so an icon the
-                // size of its cell would overlap the row above it and the
-                // field would close up into a wall. This leaves a gap between
-                // neighbours about as wide as the one between diagonal ones.
-                width: Math.round(cover.cellSize * 0.74)
-                height: width
-                // Nothing is drawn behind the icons -- no plate, no ring. The
-                // field IS the icons, and the only thing separating a feed
-                // with something new from the rest is that the rest are
-                // dimmed. (Postivene desaturates its quiet half through
-                // QtGraphicalEffects; a shader module the app otherwise never
-                // imports, running per cell, is a steep price for a favicon,
-                // and dimming reads the same at cover size.)
-                opacity: loud ? 1.0 : 0.35
-
-                Image {
-                    id: favicon
-                    objectName: "cellFavicon"
-                    anchors.fill: parent
-                    sourceSize.width: width
-                    sourceSize.height: height
-                    fillMode: Image.PreserveAspectFit
-                    // A `data:` URI built in Rust from bytes already in the
-                    // mirror -- no network fetch happens here, so drawing the
-                    // cover cannot leak the device's IP (§9.3).
-                    source: modelData.feed.icon
-                    asynchronous: true
-                    // An icon whose format the device ships no handler for
-                    // leaves its cell empty rather than dropping a letter into
-                    // a field of pictures. The model sends feeds without an
-                    // icon only when NO feed has one, so that is the one case
-                    // the initial below is drawn for.
-                    visible: status === Image.Ready
-                }
-
-                // A mirror whose icons have not been fetched yet -- a first
-                // sync -- would otherwise leave the grid blank. Then, and only
-                // then, the feeds arrive without icons and this draws them.
-                Label {
-                    objectName: "cellInitial"
-                    anchors.centerIn: parent
-                    visible: modelData.feed.icon.length === 0
-                    textFormat: Text.PlainText
-                    text: modelData.feed.title.substring(0, 1).toUpperCase()
-                    font.pixelSize: Math.round(parent.width * 0.5)
-                    color: Theme.primaryColor
-                }
-            }
-        }
     }
 
     CoverActionList {

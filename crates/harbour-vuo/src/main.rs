@@ -32,14 +32,6 @@ fn main() {
         )
         .init();
 
-    // The systemd user timer starts the same binary with --sync-once rather
-    // than shipping a second program: §5 says background refresh shares
-    // vuo-core rather than reimplementing sync in a script, and sharing the
-    // binary is the strongest form of that.
-    if std::env::args().any(|a| a == "--sync-once") {
-        std::process::exit(sync_once());
-    }
-
     vuo_shim::register_qml_types();
 
     // Install the shared context before any QML loads: QML constructs the
@@ -69,36 +61,6 @@ fn install_context() -> vuo_core::Result<()> {
     })?;
     vuo_shim::context::refresh(&paths)?;
     Ok(())
-}
-
-/// Run one sync pass headlessly, then exit.
-///
-/// Exit code 75 (EX_TEMPFAIL) for a transient failure, so the unit can treat
-/// "the phone had no signal" as success rather than as a fault worth
-/// restarting and logging about.
-fn sync_once() -> i32 {
-    let Some(paths) = vuo_shim::worker::AppPaths::from_env() else {
-        eprintln!("vuo: not configured yet; nothing to sync");
-        return 0;
-    };
-    match vuo_shim::worker::sync_once_blocking(&paths) {
-        Ok(report) => {
-            tracing::info!(
-                upserted = report.pull.upserted,
-                deleted = report.entries_deleted,
-                "background sync finished"
-            );
-            0
-        }
-        Err(e) if e.is_transient() => {
-            tracing::info!(error = %e, "background sync deferred");
-            75
-        }
-        Err(e) => {
-            tracing::warn!(error = %e, "background sync failed");
-            1
-        }
-    }
 }
 
 #[cfg(feature = "sailfishapp")]

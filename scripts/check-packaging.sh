@@ -72,7 +72,7 @@ for f in harbour-vuo.desktop qml/harbour-vuo.qml LICENSE; do
     [ -e "$f" ] || bad "the spec installs $f, which does not exist"
 done
 
-[ "$checked" -ge 8 ] || bad "check #2 only examined $checked files; the spec parse must have failed"
+[ "$checked" -ge 7 ] || bad "check #2 only examined $checked files; the spec parse must have failed"
 note "every file the spec installs is present ($checked checked, derived from the spec)"
 
 # 3. The desktop entry must validate.

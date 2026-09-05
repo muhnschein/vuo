@@ -277,6 +277,7 @@ fn build_from(
     let config = crate::worker::transport_config_for(paths, &account)?;
     let db = Database::open(&paths.database)?;
     let fingerprint = fingerprint(&account);
+    let sync_interval = crate::settings::sync_interval_minutes_for(account.sync_interval_index);
 
     let signal = std::sync::Arc::new(SyncSignal::default());
     let worker = Worker::spawn(
@@ -293,6 +294,11 @@ fn build_from(
     // opened after this honours it rather than falling back to Ask.
     ctx.set_media_policy(account.media_policy);
     ctx.set_mark_read_delay_index(account.mark_read_delay_index);
+    // And the worker its cadence: it syncs on its own from here on, on the
+    // interval the account stores, scheduled from the last sync it knows of.
+    ctx.send(Command::SetSyncInterval {
+        minutes: sync_interval,
+    });
     Ok(ctx)
 }
 
@@ -532,6 +538,16 @@ mod tests {
 pub struct SyncSignal {
     generation: std::sync::atomic::AtomicU64,
     running: std::sync::atomic::AtomicBool,
+    /// Bumped when the USER asks for a fresh list -- the pulley's Refresh, or
+    /// the cover's action -- as opposed to the mirror merely changing.
+    ///
+    /// The distinction is what the entry lists are built on: a row that stops
+    /// matching its list (read, on Unread) stays on screen through any number
+    /// of mirror changes and leaves only when this moves. One counter for
+    /// every model rather than a flag on the one that was pulled, because a
+    /// refresh is asked of the app, not of a tab: pulling on Unread and
+    /// swiping to Favourites should not find an unstarred row still there.
+    refresh_epoch: std::sync::atomic::AtomicU64,
     /// A one-shot result the UI has to SHOW rather than merely reload for.
     ///
     /// The generation counter says "the mirror changed"; it cannot carry the
@@ -640,6 +656,18 @@ impl SyncSignal {
     pub fn set_running(&self, running: bool) {
         self.running
             .store(running, std::sync::atomic::Ordering::Release);
+    }
+
+    /// Record that the user asked for a fresh list. Called from the Qt thread.
+    pub fn mark_refreshed(&self) {
+        self.refresh_epoch
+            .fetch_add(1, std::sync::atomic::Ordering::Release);
+    }
+
+    #[must_use]
+    pub fn refresh_epoch(&self) -> u64 {
+        self.refresh_epoch
+            .load(std::sync::atomic::Ordering::Acquire)
     }
 
     #[must_use]

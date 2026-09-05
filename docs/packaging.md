@@ -80,23 +80,31 @@ unconditionally, and without the package the link fails late and confusingly.
 
 ## Distribution
 
-Chum and OpenRepos. Harbour is a stretch goal at best and is not designed
-around: its library restrictions and its rules about background services are
-both awkward for this app. The `%bcond_with harbour` in the spec exists so a
-Harbour-shaped build can drop the systemd timer subpackage, not because Harbour
-is a target.
+Harbour. Its two rules that bear on this app are both met: one process, with
+no background service, and a sandbox declared in the desktop entry. Chum and
+OpenRepos take the same package.
+
+## The sandbox
+
+The desktop entry carries an `[X-Sailjail]` section, so the app runs under
+Sailjail with exactly the permissions it uses: `Internet` for the Miniflux
+server, `WebView` for the Gecko view on the site page. Sailjail lets the app
+write `$HOME/.local/share/<OrganizationName>/<ApplicationName>` and nothing
+else of the home directory; both names are `harbour-vuo`, so everything Vuo
+keeps lives in `~/.local/share/harbour-vuo/harbour-vuo/`.
 
 ## Background sync
 
-A systemd **user** timer running the same binary with `--sync-once`, rather
-than an in-process timer.
+In-process, on the worker thread that does every other sync: Vuo is one
+process, as Harbour requires, so there is no timer outside it. The worker
+waits for a command only until the next sync is due and then runs one as if
+the pulley had asked. The interval is the account's `sync_interval_index`,
+sent to the worker when the context is built and again whenever Settings is
+saved; "Manual only" means never. The first sync of a session is scheduled
+from the last one, recorded in a stamp beside the mirror, so an app opened on
+a fresh mirror draws its list first and does not sync at once.
 
-The reason is that SailfishOS suspends applications aggressively, and a
-suspended app's timer does not fire. The timer unit uses
-`RandomizedDelaySec=5min` so that every device does not wake at the same
-instant and hit the user's server together, and `Persistent=true` so a run
-missed while the phone was suspended happens on wake rather than being skipped.
-
-Exit code 75 (`EX_TEMPFAIL`) means "no signal, try later", so the unit treats
-the ordinary case of a phone without connectivity as success rather than as a
-fault worth restarting and logging about.
+This runs while the app is open or minimised to its cover, and not at all
+when it is closed. Whether SailfishOS keeps a minimised app's worker thread
+running through a long idle is the one thing here that needs a device to
+answer.

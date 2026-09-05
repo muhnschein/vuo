@@ -27,97 +27,100 @@
 <context>
     <name>ArticlePage</name>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="99"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="118"/>
         <source>Article</source>
         <translation>Artikel</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="120"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="139"/>
         <source>Read</source>
         <translation>Gelesen</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="120"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="139"/>
         <source>Unread</source>
         <translation>Ungelesen</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="127"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="146"/>
         <source>★ Favourite</source>
         <translation>★ Favorit</translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/pages/ArticlePage.qml" line="142"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="161"/>
         <source>%n image(s) are not proxied by your server and were not loaded.</source>
-        <translation><numerusform>%n Bild wird von Ihrem Server nicht weitergeleitet und wurde nicht geladen.</numerusform><numerusform>%n Bilder werden von Ihrem Server nicht weitergeleitet und wurden nicht geladen.</numerusform></translation>
+        <translation>
+            <numerusform>%n Bild wird von Ihrem Server nicht weitergeleitet und wurde nicht geladen.</numerusform>
+            <numerusform>%n Bilder werden von Ihrem Server nicht weitergeleitet und wurden nicht geladen.</numerusform>
+        </translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="157"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="176"/>
         <source>This article was too large to display in full.</source>
         <translation>Dieser Artikel war zu groß, um vollständig angezeigt zu werden.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="162"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="181"/>
         <source>Mark as unread</source>
         <translation>Als ungelesen markieren</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="162"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="181"/>
         <source>Mark as read</source>
         <translation>Als gelesen markieren</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="171"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="190"/>
         <source>Remove favourite</source>
         <translation>Favorit entfernen</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="172"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="191"/>
         <source>Add favourite</source>
         <translation>Zu Favoriten hinzufügen</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="176"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="195"/>
         <source>Open in browser</source>
         <translation>Im Browser öffnen</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="188"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="207"/>
         <source>Fetch original content</source>
         <translation>Originalinhalt abrufen</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="196"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="215"/>
         <source>Asking the server for the original article…</source>
         <translation>Server wird nach dem Originalartikel gefragt …</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="335"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="354"/>
         <source>Tap to load images from %1</source>
         <translation>Tippen, um Bilder von %1 zu laden</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="429"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="448"/>
         <source>Loaded the original article.</source>
         <translation>Originalartikel geladen.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="433"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="452"/>
         <source>The server could not extract the original article.</source>
         <translation>Der Server konnte den Originalartikel nicht extrahieren.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="436"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="455"/>
         <source>This feed already carries the full article.</source>
         <translation>Dieser Feed enthält bereits den vollständigen Artikel.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="438"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="457"/>
         <source>The server rejected the API key.</source>
         <translation>Der Server hat den API-Schlüssel abgelehnt.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="442"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="461"/>
         <source>Could not fetch the original article: %1</source>
         <translation>Originalartikel konnte nicht abgerufen werden: %1</translation>
     </message>
@@ -125,29 +128,24 @@
 <context>
     <name>CoverPage</name>
     <message>
-        <location filename="../qml/cover/CoverPage.qml" line="199"/>
+        <location filename="../qml/cover/CoverPage.qml" line="153"/>
         <source>Sign-in failed</source>
         <translation>Anmeldung fehlgeschlagen</translation>
     </message>
     <message>
-        <location filename="../qml/cover/CoverPage.qml" line="199"/>
+        <location filename="../qml/cover/CoverPage.qml" line="153"/>
         <source>Refresh failed</source>
         <translation>Aktualisierung fehlgeschlagen</translation>
     </message>
     <message>
-        <location filename="../qml/cover/CoverPage.qml" line="200"/>
+        <location filename="../qml/cover/CoverPage.qml" line="154"/>
         <source>Refreshing</source>
         <translation>Wird aktualisiert</translation>
     </message>
     <message>
-        <location filename="../qml/cover/CoverPage.qml" line="200"/>
+        <location filename="../qml/cover/CoverPage.qml" line="154"/>
         <source>Unread</source>
         <translation>Ungelesen</translation>
-    </message>
-    <message>
-        <location filename="../qml/cover/CoverPage.qml" line="237"/>
-        <source>No feeds</source>
-        <translation>Keine Feeds</translation>
     </message>
 </context>
 <context>
@@ -198,47 +196,37 @@
         <source>The server stops refreshing this feed.</source>
         <translation>Der Server aktualisiert diesen Feed nicht mehr.</translation>
     </message>
-    <message>
-        <location filename="../qml/pages/EditFeedPage.qml" line="179"/>
-        <source>Saving…</source>
-        <translation>Wird gespeichert …</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/EditFeedPage.qml" line="179"/>
-        <source>Changes are saved automatically.</source>
-        <translation>Änderungen werden automatisch gespeichert.</translation>
-    </message>
 </context>
 <context>
     <name>EntryListPage</name>
     <message>
         <location filename="../qml/pages/EntryListPage.qml" line="11"/>
-        <location filename="../qml/pages/EntryListPage.qml" line="210"/>
+        <location filename="../qml/pages/EntryListPage.qml" line="149"/>
         <source>Unread</source>
         <translation>Ungelesen</translation>
     </message>
     <message>
-        <location filename="../qml/pages/EntryListPage.qml" line="210"/>
+        <location filename="../qml/pages/EntryListPage.qml" line="149"/>
         <source>Favourites</source>
         <translation>Favoriten</translation>
     </message>
     <message>
-        <location filename="../qml/pages/EntryListPage.qml" line="210"/>
+        <location filename="../qml/pages/EntryListPage.qml" line="149"/>
         <source>All</source>
         <translation>Alle</translation>
     </message>
     <message>
-        <location filename="../qml/pages/EntryListPage.qml" line="261"/>
+        <location filename="../qml/pages/EntryListPage.qml" line="299"/>
         <source>The server rejected the API key.</source>
         <translation>Der Server hat den API-Schlüssel abgelehnt.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/EntryListPage.qml" line="262"/>
+        <location filename="../qml/pages/EntryListPage.qml" line="300"/>
         <source>Open settings</source>
         <translation>Einstellungen öffnen</translation>
     </message>
     <message>
-        <location filename="../qml/pages/EntryListPage.qml" line="264"/>
+        <location filename="../qml/pages/EntryListPage.qml" line="302"/>
         <source>Refresh failed: %1</source>
         <translation>Aktualisierung fehlgeschlagen: %1</translation>
     </message>
@@ -246,88 +234,122 @@
 <context>
     <name>EntryListView</name>
     <message numerus="yes">
-        <location filename="../qml/components/EntryListView.qml" line="139"/>
+        <location filename="../qml/components/EntryListView.qml" line="191"/>
         <source>%n article(s)</source>
-        <translation><numerusform>%n Artikel</numerusform><numerusform>%n Artikel</numerusform></translation>
+        <translation>
+            <numerusform>%n Artikel</numerusform>
+            <numerusform>%n Artikel</numerusform>
+        </translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="168"/>
+        <location filename="../qml/components/EntryListView.qml" line="224"/>
+        <source>Select all</source>
+        <translation>Alle auswählen</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="225"/>
+        <source>Deselect all</source>
+        <translation>Auswahl aufheben</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="242"/>
         <source>Settings</source>
         <translation>Einstellungen</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="172"/>
+        <location filename="../qml/components/EntryListView.qml" line="247"/>
         <source>Feeds</source>
         <translation>Feeds</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="178"/>
+        <location filename="../qml/components/EntryListView.qml" line="258"/>
+        <location filename="../qml/components/EntryListView.qml" line="264"/>
+        <source>Select articles</source>
+        <translation>Artikel auswählen</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="269"/>
         <source>Mark all as read</source>
         <translation>Alle als gelesen markieren</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="197"/>
+        <location filename="../qml/components/EntryListView.qml" line="288"/>
         <source>Marking all as read</source>
         <translation>Alle werden als gelesen markiert</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="203"/>
+        <location filename="../qml/components/EntryListView.qml" line="295"/>
         <source>Refresh</source>
         <translation>Aktualisieren</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="231"/>
+        <location filename="../qml/components/EntryListView.qml" line="332"/>
         <source>No favourites</source>
         <translation>Keine Favoriten</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="232"/>
+        <location filename="../qml/components/EntryListView.qml" line="333"/>
         <source>Nothing to read</source>
         <translation>Nichts zu lesen</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="234"/>
+        <location filename="../qml/components/EntryListView.qml" line="335"/>
         <source>Star an article to keep it here</source>
         <translation>Artikel favorisieren, um ihn hier zu behalten</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="235"/>
+        <location filename="../qml/components/EntryListView.qml" line="336"/>
         <source>Pull down to refresh</source>
         <translation>Zum Aktualisieren herunterziehen</translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/components/EntryListView.qml" line="344"/>
+        <location filename="../qml/components/EntryListView.qml" line="491"/>
         <source>%n min read</source>
-        <translation><numerusform>%n Min. Lesezeit</numerusform><numerusform>%n Min. Lesezeit</numerusform></translation>
+        <translation>
+            <numerusform>%n Min. Lesezeit</numerusform>
+            <numerusform>%n Min. Lesezeit</numerusform>
+        </translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/components/EntryListView.qml" line="346"/>
-        <location filename="../qml/components/EntryListView.qml" line="348"/>
+        <location filename="../qml/components/EntryListView.qml" line="492"/>
         <source>%n min</source>
-        <translation><numerusform>%n Min.</numerusform><numerusform>%n Min.</numerusform></translation>
+        <translation>
+            <numerusform>%n Min.</numerusform>
+            <numerusform>%n Min.</numerusform>
+        </translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="401"/>
+        <location filename="../qml/components/EntryListView.qml" line="235"/>
+        <location filename="../qml/components/EntryListView.qml" line="570"/>
         <source>Mark as read</source>
         <translation>Als gelesen markieren</translation>
     </message>
+    <message numerus="yes">
+        <location filename="../qml/components/EntryListView.qml" line="189"/>
+        <source>%n selected</source>
+        <translation>
+            <numerusform>%n ausgewählt</numerusform>
+            <numerusform>%n ausgewählt</numerusform>
+        </translation>
+    </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="401"/>
+        <location filename="../qml/components/EntryListView.qml" line="230"/>
+        <location filename="../qml/components/EntryListView.qml" line="570"/>
         <source>Mark as unread</source>
         <translation>Als ungelesen markieren</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="405"/>
+        <location filename="../qml/components/EntryListView.qml" line="574"/>
         <source>Remove favourite</source>
         <translation>Favorit entfernen</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="405"/>
+        <location filename="../qml/components/EntryListView.qml" line="574"/>
         <source>Add favourite</source>
         <translation>Zu Favoriten hinzufügen</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="409"/>
+        <location filename="../qml/components/EntryListView.qml" line="578"/>
         <source>Open in browser</source>
         <translation>Im Browser öffnen</translation>
     </message>
@@ -378,6 +400,19 @@
         <location filename="../qml/pages/FeedListPage.qml" line="131"/>
         <source>Unsubscribing</source>
         <translation>Wird abbestellt</translation>
+    </message>
+</context>
+<context>
+    <name>OnboardingPage</name>
+    <message>
+        <location filename="../qml/pages/OnboardingPage.qml" line="81"/>
+        <source>Focus on what matters.</source>
+        <translation>Fokus auf das Wesentliche.</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/OnboardingPage.qml" line="91"/>
+        <source>Continue</source>
+        <translation>Weiter</translation>
     </message>
 </context>
 <context>
@@ -498,64 +533,91 @@
         <translation>Miniflux leitet standardmäßig nur einfache HTTP-Bilder weiter, daher kommen die meisten Bilder ungeschützt an. Sie direkt zu laden verrät diesen Websites Ihre IP-Adresse und wann Sie lesen. Bitten Sie Ihre Serveradministration, MEDIA_PROXY_MODE=all zu setzen, um vollen Schutz zu erhalten.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="189"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="185"/>
         <source>Synchronisation</source>
         <translation>Synchronisation</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="197"/>
-        <source>Background refresh</source>
-        <translation>Aktualisierung im Hintergrund</translation>
+        <location filename="../qml/pages/SettingsPage.qml" line="193"/>
+        <source>Sync with server</source>
+        <translation>Abgleich mit dem Server</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="199"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="235"/>
+        <source>For a self-hosted server with a private certificate authority. Place the certificate at ~/.local/share/harbour-vuo/harbour-vuo/ca.pem. Certificate verification is never disabled, and there is no option to disable it.</source>
+        <translation>Für einen selbst gehosteten Server mit eigener Zertifizierungsstelle. Legen Sie das Zertifikat unter ~/.local/share/harbour-vuo/harbour-vuo/ca.pem ab. Die Zertifikatsprüfung wird nie abgeschaltet, und es gibt keine Option dafür.</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="195"/>
         <source>Manual only</source>
         <translation>Nur manuell</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="200"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="196"/>
         <source>Every 15 minutes</source>
         <translation>Alle 15 Minuten</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="201"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="197"/>
         <source>Every 30 minutes</source>
         <translation>Alle 30 Minuten</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="202"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="198"/>
         <source>Hourly</source>
         <translation>Stündlich</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="203"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="199"/>
         <source>Every 6 hours</source>
         <translation>Alle 6 Stunden</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="216"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="213"/>
+        <source>How often Vuo fetches from your Miniflux server while it is open or on the cover. How often the server itself checks your feeds is set on the server, not here.</source>
+        <translation>Wie oft Vuo von Ihrem Miniflux-Server abruft, solange die App geöffnet oder auf dem Cover ist. Wie oft der Server selbst Ihre Feeds prüft, wird auf dem Server eingestellt, nicht hier.</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="224"/>
         <source>Advanced</source>
         <translation>Erweitert</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="220"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="228"/>
         <source>Use a custom CA certificate</source>
         <translation>Eigenes CA-Zertifikat verwenden</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="227"/>
-        <source>For a self-hosted server with a private certificate authority. Place the certificate at ~/.local/share/harbour-vuo/ca.pem. Certificate verification is never disabled, and there is no option to disable it.</source>
-        <translation>Für einen selbst gehosteten Server mit eigener Zertifizierungsstelle. Legen Sie das Zertifikat unter ~/.local/share/harbour-vuo/ca.pem ab. Die Zertifikatsprüfung wird nie deaktiviert, und es gibt keine Möglichkeit, sie zu deaktivieren.</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="228"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="236"/>
         <source>Only applies to an https:// server. This one is not encrypted by TLS, so no certificate is used.</source>
         <translation>Gilt nur für einen https://-Server. Dieser ist nicht per TLS verschlüsselt, daher wird kein Zertifikat verwendet.</translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/pages/SettingsPage.qml" line="240"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="248"/>
         <source>%n change(s) waiting to be sent to the server.</source>
-        <translation><numerusform>%n Änderung wartet auf die Übertragung zum Server.</numerusform><numerusform>%n Änderungen warten auf die Übertragung zum Server.</numerusform></translation>
+        <translation>
+            <numerusform>%n Änderung wartet auf die Übertragung zum Server.</numerusform>
+            <numerusform>%n Änderungen warten auf die Übertragung zum Server.</numerusform>
+        </translation>
+    </message>
+</context>
+<context>
+    <name>SitePage</name>
+    <message>
+        <location filename="../qml/pages/SitePage.qml" line="47"/>
+        <location filename="../qml/pages/SitePage.qml" line="58"/>
+        <source>Website</source>
+        <translation>Webseite</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SitePage.qml" line="68"/>
+        <source>Back</source>
+        <translation>Zurück</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SitePage.qml" line="73"/>
+        <source>Open in browser</source>
+        <translation>Im Browser öffnen</translation>
     </message>
 </context>
 </TS>

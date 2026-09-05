@@ -21,10 +21,18 @@ Page {
     /// DERIVED from `scopeKind` rather than stored beside it, so the
     /// highlighted tab cannot drift out of step with what the model shows.
     property var scopeTabKinds: [0, 1, 2]
+    /// Selection mode: this page was pushed over a tab, on that tab's own
+    /// model, for the reader to pick rows and act on them. See
+    /// EntryListView. No strip -- there is one list here, and swiping
+    /// sideways would be a swipe away from the selection -- and no
+    /// re-scoping, since the model is the tab's and already scoped.
+    property bool selecting: false
+
     /// Feed and category pages are pushed with a name to show, so they keep
     /// the PageHeader and get no strip. `indexOf` returning -1 is exactly that
     /// case, so one expression drives both the strip and its visibility.
-    property bool showScopeTabs: page.scopeTabKinds.indexOf(page.scopeKind) >= 0
+    property bool showScopeTabs: !page.selecting
+                                 && page.scopeTabKinds.indexOf(page.scopeKind) >= 0
 
     /// One EntryModel per tab, in `scopeTabKinds` order. Empty for a feed or
     /// category view, which uses `model` instead.
@@ -59,7 +67,10 @@ Page {
     /// the list that owns it, and never re-scoped. Re-scoping a shared model
     /// was what made a neighbouring tab impossible to keep populated.
     function applyScope() {
-        if (page.model && !page.showScopeTabs) {
+        // Not in selection mode either: the model is a tab's, scoped once
+        // for the life of the app, and `setScope` starts a fresh list --
+        // which would drop the read rows the reader may be selecting.
+        if (page.model && !page.showScopeTabs && !page.selecting) {
             page.model.setScope(page.scopeKind, page.scopeId)
         }
     }
@@ -253,6 +264,7 @@ Page {
             tabStripHeight: page.stripBand
             scopeLabel: page.scopeLabel
             title: page.title
+            selecting: page.selecting
             }
         }
     }

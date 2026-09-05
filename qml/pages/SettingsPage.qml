@@ -182,19 +182,15 @@ Page {
                 text: qsTr("Miniflux proxies plain-http images only by default, so most images arrive unproxied. Loading them directly tells those sites your IP address and when you read. Ask your server administrator to set MEDIA_PROXY_MODE=all for full protection.")
             }
 
-            // Hidden unless harbour-vuo-sync is installed: the interval drives
-            // a systemd timer that ships in that package, so without it this
-            // is a choice that governs nothing.
-            SectionHeader {
-                text: qsTr("Synchronisation")
-                visible: settings.backgroundSyncAvailable
-            }
+            SectionHeader { text: qsTr("Synchronisation") }
 
+            // The worker keeps this cadence itself, while the app is open or
+            // on the cover: Vuo is one process, as Harbour requires, so there
+            // is no timer outside it to do so.
             ComboBox {
                 id: refreshCombo
-                visible: settings.backgroundSyncAvailable
                 width: parent.width
-                label: qsTr("Background refresh")
+                label: qsTr("Sync with server")
                 menu: ContextMenu {
                     MenuItem { text: qsTr("Manual only") }
                     MenuItem { text: qsTr("Every 15 minutes") }
@@ -203,6 +199,18 @@ Page {
                     MenuItem { text: qsTr("Every 6 hours") }
                 }
                 onCurrentIndexChanged: if (page.ready) settings.syncIntervalIndex = currentIndex
+            }
+
+            Label {
+                x: Theme.horizontalPageMargin
+                width: parent.width - Theme.horizontalPageMargin * 2
+                wrapMode: Text.Wrap
+                textFormat: Text.PlainText
+                font.pixelSize: Theme.fontSizeExtraSmall
+                color: Theme.secondaryColor
+                // The two cadences are easy to confuse, and only one of them
+                // is set here.
+                text: qsTr("How often Vuo fetches from your Miniflux server while it is open or on the cover. How often the server itself checks your feeds is set on the server, not here.")
             }
 
             // "Only on Wi-Fi" used to sit here. It is gone rather than hidden:
@@ -224,7 +232,7 @@ Page {
                 // rather than as something that might be needed.
                 enabled: serverField.text.indexOf("https:") === 0
                 description: enabled
-                    ? qsTr("For a self-hosted server with a private certificate authority. Place the certificate at ~/.local/share/harbour-vuo/ca.pem. Certificate verification is never disabled, and there is no option to disable it.")
+                    ? qsTr("For a self-hosted server with a private certificate authority. Place the certificate at ~/.local/share/harbour-vuo/harbour-vuo/ca.pem. Certificate verification is never disabled, and there is no option to disable it.")
                     : qsTr("Only applies to an https:// server. This one is not encrypted by TLS, so no certificate is used.")
                 onClicked: settings.useCustomCa = checked
             }
