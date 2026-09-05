@@ -277,6 +277,7 @@ fn build_from(
     let config = crate::worker::transport_config_for(paths, &account)?;
     let db = Database::open(&paths.database)?;
     let fingerprint = fingerprint(&account);
+    let sync_interval = crate::settings::sync_interval_minutes_for(account.sync_interval_index);
 
     let signal = std::sync::Arc::new(SyncSignal::default());
     let worker = Worker::spawn(
@@ -293,6 +294,11 @@ fn build_from(
     // opened after this honours it rather than falling back to Ask.
     ctx.set_media_policy(account.media_policy);
     ctx.set_mark_read_delay_index(account.mark_read_delay_index);
+    // And the worker its cadence: it syncs on its own from here on, on the
+    // interval the account stores, scheduled from the last sync it knows of.
+    ctx.send(Command::SetSyncInterval {
+        minutes: sync_interval,
+    });
     Ok(ctx)
 }
 

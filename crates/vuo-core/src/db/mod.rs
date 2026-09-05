@@ -66,9 +66,9 @@ impl Database {
         // processes opening the mirror at the same moment contend on it -- and
         // with the timeout still unset, the loser failed immediately with
         // "database is locked" rather than waiting a few milliseconds. On a
-        // device the UI and the systemd timer really do start together, so
-        // this ordering is the difference between a working app and one that
-        // fails to launch when the timer fires.
+        // device the UI thread and the worker thread really do open the
+        // mirror together at start-up, so this ordering is the difference
+        // between a working app and one that fails to launch.
         conn.busy_timeout(std::time::Duration::from_secs(5))?;
         // WAL: the background sync unit and the UI process both hold the
         // database open. WAL lets a reader proceed while a writer commits,
@@ -92,8 +92,8 @@ impl Database {
     /// Changing `journal_mode` needs a brief exclusive lock, and — unlike
     /// almost every other statement — **`busy_timeout` does not apply to it**:
     /// SQLite returns `SQLITE_BUSY` immediately rather than waiting. So two
-    /// processes opening a fresh mirror together (the UI and the systemd timer
-    /// starting at once, which happens on a device) had one of them fail
+    /// connections opening a fresh mirror together (the UI thread and the
+    /// worker thread at start-up, which is the normal case) had one of them fail
     /// outright with "database is locked".
     ///
     /// Journal mode is a persistent property of the file, so the loser does
@@ -161,10 +161,10 @@ impl Database {
     /// rescue it, because the transaction cannot be saved by waiting; it has to
     /// be rolled back and retried.
     ///
-    /// Vuo has exactly the shape that hits this. The UI process and the systemd
-    /// timer process both hold the mirror open, and the write path is
+    /// Vuo has exactly the shape that hits this. The UI thread and the worker
+    /// thread both hold the mirror open, and the write path is
     /// read-then-write: "mark this feed read" reads the unread ids, then queues
-    /// them. Measured before this change, with the timer committing between
+    /// them. Measured before this change, with the worker committing between
     /// those two halves, the user's mark failed with "database is locked" and
     /// was lost.
     ///
@@ -231,9 +231,9 @@ mod tests {
     #[test]
     fn a_write_transaction_survives_a_concurrent_committer() {
         // Regression: with BEGIN DEFERRED this failed with "database is
-        // locked" and the user's queued action was lost. Vuo runs the UI and
-        // a systemd timer against the same file, so this race is the normal
-        // case, not an exotic one.
+        // locked" and the user's queued action was lost. Vuo runs the UI
+        // thread and the worker thread against the same file, so this race is
+        // the normal case, not an exotic one.
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join("mirror.sqlite");
         let mut ui = Database::open(&path).expect("ui");

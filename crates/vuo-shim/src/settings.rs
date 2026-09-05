@@ -80,12 +80,12 @@ pub struct Settings {
     /// How many local changes are still waiting to reach the server. Shown so
     /// the user can tell "nothing happened" from "not sent yet".
     pendingActions: qt_property!(i32; READ pendingActionsCount NOTIFY changed),
-    /// Whether the `harbour-vuo-sync` package is installed.
-    ///
-    /// The Settings page hides the whole Synchronisation section when it is
-    /// not: the interval drives a systemd timer that ships in that package, so
-    /// without it the control is a choice with no effect.
-    backgroundSyncAvailable: qt_property!(bool; READ backgroundSyncAvailable NOTIFY changed),
+    /// Whether an account is stored at all: a server and a key. What the
+    /// root window asks on start-up to choose between the entry list and the
+    /// onboarding page, and what the onboarding page asks again on its way
+    /// back from Settings. Read from the file each time, so the answer is
+    /// right before anything has called `reload`.
+    configured: qt_property!(bool; READ is_configured NOTIFY changed),
 
     changed: qt_signal!(),
     /// Result of a connection test. `ok` false means the message is an error.
@@ -170,8 +170,10 @@ impl Settings {
         self.markReadDelayIndex = MARK_READ_DEFAULT_INDEX;
     }
 
-    fn backgroundSyncAvailable(&self) -> bool {
-        AppPaths::resolve().is_some_and(|paths| paths.background_sync_installed())
+    fn is_configured(&self) -> bool {
+        AppPaths::resolve()
+            .and_then(|paths| worker::load_account(&paths.account).ok())
+            .is_some_and(|account| !account.server_url.is_empty() && !account.token.is_empty())
     }
 
     fn pendingActionsCount(&self) -> i32 {
@@ -255,13 +257,13 @@ impl Settings {
         if let Some(ctx) = self.ctx.clone().or_else(crate::context::current) {
             ctx.set_media_policy(self.mediaPolicy);
             ctx.set_mark_read_delay_index(self.markReadDelayIndex);
+            // And the interval, to the worker that keeps it. A context
+            // rebuilt just above was told at build time; one that survived
+            // the save -- same server, same key -- hears it here.
+            ctx.send(worker::Command::SetSyncInterval {
+                minutes: sync_interval_minutes_for(self.syncIntervalIndex),
+            });
         }
-        // The Sync interval needs no more than the write above: the timer's
-        // process reads it from the account file on every run and decides
-        // for itself (`worker::background_sync_due`). It used to be applied
-        // by writing a systemd drop-in from here, which the sandbox the app
-        // now runs in does not allow -- `~/.config/systemd` is not the app's
-        // to write, and systemd is not its to reload.
         self.changed();
     }
 
@@ -383,8 +385,8 @@ impl Settings {
 }
 
 /// The sync interval a stored `sync_interval_index` means, in minutes, or
-/// `None` for "Manual only". Shared with the timer's process, which reads the
-/// index from the account file and has no `Settings` object.
+/// `None` for "Manual only". Shared with the context, which reads the index
+/// from the account file when it builds the worker and has no `Settings`.
 #[must_use]
 pub fn sync_interval_minutes_for(index: i32) -> Option<i64> {
     let index = usize::try_from(index).unwrap_or(0);
@@ -720,24 +722,6 @@ mod tests {
     }
 
     #[test]
-    fn the_synchronisation_section_is_hidden_without_the_sync_package() {
-        // The interval is read by the timer's process, which ships in
-        // harbour-vuo-sync. With that package absent the control governs
-        // nothing, so the page hides the section.
-        let dir = tempfile::tempdir().expect("tempdir");
-        let paths = temp_paths(&dir);
-        assert!(
-            !paths.background_sync_installed(),
-            "nothing is installed in a temp dir"
-        );
-
-        // Stage the unit as the package would, and the section comes back.
-        std::fs::create_dir_all(paths.timer_unit.parent().expect("a parent")).expect("mkdir");
-        std::fs::write(&paths.timer_unit, "[Timer]\n").expect("stage the unit");
-        assert!(paths.background_sync_installed());
-    }
-
-    #[test]
     fn manual_only_means_no_timer() {
         let mut s = Settings {
             syncIntervalIndex: 0,
@@ -758,15 +742,15 @@ mod tests {
         }
     }
 
-    /// §the Sync interval setting, from the picker to the timer's process.
+    /// §the Sync interval setting, from the picker to the worker.
     ///
     /// `sync_interval_minutes` once had ZERO production callers: the user's
     /// choice was rendered, persisted to the account file and read back on
-    /// the next launch, and never reached anything. The timer's process now
-    /// reads the stored index through `sync_interval_minutes_for`, so the
-    /// two must agree on what every index means.
+    /// the next launch, and never reached anything. The context now reads
+    /// the stored index through `sync_interval_minutes_for` when it builds
+    /// the worker, so the two must agree on what every index means.
     #[test]
-    fn every_sync_interval_choice_means_the_same_minutes_to_the_timer() {
+    fn every_sync_interval_choice_means_the_same_minutes_to_the_worker() {
         // The picker's own indices, so a reordering of SYNC_INTERVALS_MINUTES
         // has to come through here.
         for (index, expected) in [
@@ -784,19 +768,9 @@ mod tests {
             assert_eq!(
                 sync_interval_minutes_for(index),
                 expected,
-                "the timer's process must read index {index} the same way"
+                "the context must read index {index} the same way"
             );
         }
-        // The finest choice is the timer's own cadence: anything finer could
-        // never be honoured.
-        assert_eq!(
-            SYNC_INTERVALS_MINUTES
-                .iter()
-                .copied()
-                .filter(|m| *m > 0)
-                .min(),
-            Some(crate::worker::TIMER_CADENCE_MINUTES)
-        );
     }
 
     #[test]

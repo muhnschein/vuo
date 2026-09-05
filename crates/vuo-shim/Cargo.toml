@@ -48,10 +48,9 @@ tracing = "0.1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 url = "2.5"
-# For the UPDATE that stores scraped article content, and for the backup API
-# that carries an older install's mirror into the sandbox's directory; the
-# shim does not otherwise touch SQL.
-rusqlite = { version = "0.32", features = ["bundled", "backup"] }
+# Only for the one UPDATE that stores scraped article content; the shim does
+# not otherwise touch SQL.
+rusqlite = { version = "0.32", features = ["bundled"] }
 
 [dev-dependencies]
 tempfile = "3"

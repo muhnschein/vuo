@@ -80,11 +80,9 @@ unconditionally, and without the package the link fails late and confusingly.
 
 ## Distribution
 
-Chum and OpenRepos. Harbour is a stretch goal at best and is not designed
-around: its library restrictions and its rules about background services are
-both awkward for this app. The `%bcond_with harbour` in the spec exists so a
-Harbour-shaped build can drop the systemd timer subpackage, not because Harbour
-is a target.
+Harbour. Its two rules that bear on this app are both met: one process, with
+no background service, and a sandbox declared in the desktop entry. Chum and
+OpenRepos take the same package.
 
 ## The sandbox
 
@@ -93,35 +91,20 @@ Sailjail with exactly the permissions it uses: `Internet` for the Miniflux
 server, `WebView` for the Gecko view on the site page. Sailjail lets the app
 write `$HOME/.local/share/<OrganizationName>/<ApplicationName>` and nothing
 else of the home directory; both names are `harbour-vuo`, so everything Vuo
-keeps lives in `~/.local/share/harbour-vuo/harbour-vuo/`. An install from
-before the sandbox kept its files one level up. The first start after the
-update moves them there (`AppPaths::adopt_legacy_files`), the mirror through
-SQLite's backup API so a write-ahead log comes across too, and removes the
-originals only once every copy is in place. The old directory is still visible
-inside the sandbox while it exists, which is what makes the move possible from
-within.
+keeps lives in `~/.local/share/harbour-vuo/harbour-vuo/`.
 
 ## Background sync
 
-A systemd **user** timer running the same binary with `--sync-once`, rather
-than an in-process timer.
+In-process, on the worker thread that does every other sync: Vuo is one
+process, as Harbour requires, so there is no timer outside it. The worker
+waits for a command only until the next sync is due and then runs one as if
+the pulley had asked. The interval is the account's `sync_interval_index`,
+sent to the worker when the context is built and again whenever Settings is
+saved; "Manual only" means never. The first sync of a session is scheduled
+from the last one, recorded in a stamp beside the mirror, so an app opened on
+a fresh mirror draws its list first and does not sync at once.
 
-The reason is that SailfishOS suspends applications aggressively, and a
-suspended app's timer does not fire. The timer unit uses `RandomizedDelaySec`
-so that every device does not wake at the same instant and hit the user's
-server together, and `Persistent=true` so a run missed while the phone was
-suspended happens on wake rather than being skipped.
-
-The timer fires every 15 minutes -- the finest interval Settings offers --
-whatever the user chose, and the interval is applied by the process it
-starts: `--sync-once` reads the chosen interval from the account file and the
-time of the last sync from a stamp beside the mirror (written by the app and
-by the timer's process alike), and exits at once when the interval has not
-passed or the choice is "Manual only". The interval used to be applied by a
-systemd drop-in written from the Settings page; the sandbox does not let the
-app write `~/.config/systemd` or reload systemd, and the timer's process,
-which runs outside the sandbox, is the one place the choice can take effect.
-
-Exit code 75 (`EX_TEMPFAIL`) means "no signal, try later", so the unit treats
-the ordinary case of a phone without connectivity as success rather than as a
-fault worth restarting and logging about.
+This runs while the app is open or minimised to its cover, and not at all
+when it is closed. Whether SailfishOS keeps a minimised app's worker thread
+running through a long idle is the one thing here that needs a device to
+answer.
