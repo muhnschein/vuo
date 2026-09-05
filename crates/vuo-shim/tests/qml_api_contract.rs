@@ -203,6 +203,7 @@ fn every_member_the_qml_uses_is_implemented_in_rust() {
         "feeds",
         "article",
         "settings",
+        "account",
         "model",
         "feedModel",
     ];

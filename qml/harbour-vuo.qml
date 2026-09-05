@@ -47,6 +47,10 @@ ApplicationWindow {
     EntryModel { id: starredEntries }
     EntryModel { id: allEntries }
     FeedModel { id: feeds }
+    // Asked one thing here: whether an account is stored at all. That
+    // decides the first page, and it is read from the file on every access,
+    // so it is right before anything has been loaded.
+    Settings { id: account }
 
     // Models observe SQLite, and the worker writes to SQLite from another
     // thread. This is how they find out. A poll rather than a signal because
@@ -79,7 +83,9 @@ ApplicationWindow {
         feeds.refresh()
     }
 
-    initialPage: Component {
+    Component {
+        id: entryList
+
         EntryListPage {
             // In `scopeTabKinds` order: unread, starred, all.
             scopeModels: [entries, starredEntries, allEntries]
@@ -87,6 +93,27 @@ ApplicationWindow {
             feedModel: feeds
             scopeKind: 0
         }
+    }
+
+    // A fresh install opens on the onboarding page instead of an empty list,
+    // and moves to the list once an account has been saved.
+    Component {
+        id: onboarding
+
+        OnboardingPage {
+            account: account
+            onFinished: app.showEntries()
+        }
+    }
+
+    initialPage: account.configured ? entryList : onboarding
+
+    /// Swap the onboarding page for the entry list, and fetch: a mirror that
+    /// has just been given a server has nothing in it yet, and the pulley's
+    /// Refresh should not be the first thing a new user has to find.
+    function showEntries() {
+        pageStack.replace(entryList)
+        entries.requestSync()
     }
 
     // The cover is a separate Component so its bindings can reach the models
