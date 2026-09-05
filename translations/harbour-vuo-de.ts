@@ -128,24 +128,24 @@
 <context>
     <name>CoverPage</name>
     <message>
-        <location filename="../qml/cover/CoverPage.qml" line="383"/>
+        <location filename="../qml/cover/CoverPage.qml" line="401"/>
         <source>Sign-in failed</source>
         <translation>Anmeldung fehlgeschlagen</translation>
     </message>
     <message>
-        <location filename="../qml/cover/CoverPage.qml" line="383"/>
+        <location filename="../qml/cover/CoverPage.qml" line="401"/>
         <source>Refresh failed</source>
         <translation>Aktualisierung fehlgeschlagen</translation>
     </message>
     <message>
-        <location filename="../qml/cover/CoverPage.qml" line="384"/>
+        <location filename="../qml/cover/CoverPage.qml" line="402"/>
         <source>Refreshing</source>
         <translation>Wird aktualisiert</translation>
     </message>
     <message>
-        <location filename="../qml/cover/CoverPage.qml" line="213"/>
-        <source>No feeds</source>
-        <translation>Keine Feeds</translation>
+        <location filename="../qml/cover/CoverPage.qml" line="402"/>
+        <source>Unread</source>
+        <translation>Ungelesen</translation>
     </message>
 </context>
 <context>
@@ -201,32 +201,32 @@
     <name>EntryListPage</name>
     <message>
         <location filename="../qml/pages/EntryListPage.qml" line="11"/>
-        <location filename="../qml/pages/EntryListPage.qml" line="138"/>
+        <location filename="../qml/pages/EntryListPage.qml" line="149"/>
         <source>Unread</source>
         <translation>Ungelesen</translation>
     </message>
     <message>
-        <location filename="../qml/pages/EntryListPage.qml" line="138"/>
+        <location filename="../qml/pages/EntryListPage.qml" line="149"/>
         <source>Favourites</source>
         <translation>Favoriten</translation>
     </message>
     <message>
-        <location filename="../qml/pages/EntryListPage.qml" line="138"/>
+        <location filename="../qml/pages/EntryListPage.qml" line="149"/>
         <source>All</source>
         <translation>Alle</translation>
     </message>
     <message>
-        <location filename="../qml/pages/EntryListPage.qml" line="287"/>
+        <location filename="../qml/pages/EntryListPage.qml" line="299"/>
         <source>The server rejected the API key.</source>
         <translation>Der Server hat den API-Schlüssel abgelehnt.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/EntryListPage.qml" line="288"/>
+        <location filename="../qml/pages/EntryListPage.qml" line="300"/>
         <source>Open settings</source>
         <translation>Einstellungen öffnen</translation>
     </message>
     <message>
-        <location filename="../qml/pages/EntryListPage.qml" line="290"/>
+        <location filename="../qml/pages/EntryListPage.qml" line="302"/>
         <source>Refresh failed: %1</source>
         <translation>Aktualisierung fehlgeschlagen: %1</translation>
     </message>
@@ -234,7 +234,7 @@
 <context>
     <name>EntryListView</name>
     <message numerus="yes">
-        <location filename="../qml/components/EntryListView.qml" line="132"/>
+        <location filename="../qml/components/EntryListView.qml" line="191"/>
         <source>%n article(s)</source>
         <translation>
             <numerusform>%n Artikel</numerusform>
@@ -242,52 +242,68 @@
         </translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="161"/>
+        <location filename="../qml/components/EntryListView.qml" line="224"/>
+        <source>Select all</source>
+        <translation>Alle auswählen</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="225"/>
+        <source>Deselect all</source>
+        <translation>Auswahl aufheben</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="242"/>
         <source>Settings</source>
         <translation>Einstellungen</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="165"/>
+        <location filename="../qml/components/EntryListView.qml" line="247"/>
         <source>Feeds</source>
         <translation>Feeds</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="171"/>
+        <location filename="../qml/components/EntryListView.qml" line="258"/>
+        <location filename="../qml/components/EntryListView.qml" line="264"/>
+        <source>Select articles</source>
+        <translation>Artikel auswählen</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="269"/>
         <source>Mark all as read</source>
         <translation>Alle als gelesen markieren</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="190"/>
+        <location filename="../qml/components/EntryListView.qml" line="288"/>
         <source>Marking all as read</source>
         <translation>Alle werden als gelesen markiert</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="196"/>
+        <location filename="../qml/components/EntryListView.qml" line="295"/>
         <source>Refresh</source>
         <translation>Aktualisieren</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="224"/>
+        <location filename="../qml/components/EntryListView.qml" line="323"/>
         <source>No favourites</source>
         <translation>Keine Favoriten</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="225"/>
+        <location filename="../qml/components/EntryListView.qml" line="324"/>
         <source>Nothing to read</source>
         <translation>Nichts zu lesen</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="227"/>
+        <location filename="../qml/components/EntryListView.qml" line="326"/>
         <source>Star an article to keep it here</source>
         <translation>Artikel favorisieren, um ihn hier zu behalten</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="228"/>
+        <location filename="../qml/components/EntryListView.qml" line="327"/>
         <source>Pull down to refresh</source>
         <translation>Zum Aktualisieren herunterziehen</translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/components/EntryListView.qml" line="360"/>
+        <location filename="../qml/components/EntryListView.qml" line="482"/>
         <source>%n min read</source>
         <translation>
             <numerusform>%n Min. Lesezeit</numerusform>
@@ -295,7 +311,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/components/EntryListView.qml" line="361"/>
+        <location filename="../qml/components/EntryListView.qml" line="483"/>
         <source>%n min</source>
         <translation>
             <numerusform>%n Min.</numerusform>
@@ -303,27 +319,37 @@
         </translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="433"/>
+        <location filename="../qml/components/EntryListView.qml" line="235"/>
+        <location filename="../qml/components/EntryListView.qml" line="561"/>
         <source>Mark as read</source>
         <translation>Als gelesen markieren</translation>
     </message>
+    <message numerus="yes">
+        <location filename="../qml/components/EntryListView.qml" line="189"/>
+        <source>%n selected</source>
+        <translation>
+            <numerusform>%n ausgewählt</numerusform>
+            <numerusform>%n ausgewählt</numerusform>
+        </translation>
+    </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="433"/>
+        <location filename="../qml/components/EntryListView.qml" line="230"/>
+        <location filename="../qml/components/EntryListView.qml" line="561"/>
         <source>Mark as unread</source>
         <translation>Als ungelesen markieren</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="437"/>
+        <location filename="../qml/components/EntryListView.qml" line="565"/>
         <source>Remove favourite</source>
         <translation>Favorit entfernen</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="437"/>
+        <location filename="../qml/components/EntryListView.qml" line="565"/>
         <source>Add favourite</source>
         <translation>Zu Favoriten hinzufügen</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="441"/>
+        <location filename="../qml/components/EntryListView.qml" line="569"/>
         <source>Open in browser</source>
         <translation>Im Browser öffnen</translation>
     </message>
