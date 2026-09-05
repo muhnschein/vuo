@@ -128,22 +128,22 @@
 <context>
     <name>CoverPage</name>
     <message>
-        <location filename="../qml/cover/CoverPage.qml" line="401"/>
+        <location filename="../qml/cover/CoverPage.qml" line="153"/>
         <source>Sign-in failed</source>
         <translation>Anmeldung fehlgeschlagen</translation>
     </message>
     <message>
-        <location filename="../qml/cover/CoverPage.qml" line="401"/>
+        <location filename="../qml/cover/CoverPage.qml" line="153"/>
         <source>Refresh failed</source>
         <translation>Aktualisierung fehlgeschlagen</translation>
     </message>
     <message>
-        <location filename="../qml/cover/CoverPage.qml" line="402"/>
+        <location filename="../qml/cover/CoverPage.qml" line="154"/>
         <source>Refreshing</source>
         <translation>Wird aktualisiert</translation>
     </message>
     <message>
-        <location filename="../qml/cover/CoverPage.qml" line="402"/>
+        <location filename="../qml/cover/CoverPage.qml" line="154"/>
         <source>Unread</source>
         <translation>Ungelesen</translation>
     </message>
@@ -283,27 +283,27 @@
         <translation>Aktualisieren</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="323"/>
+        <location filename="../qml/components/EntryListView.qml" line="332"/>
         <source>No favourites</source>
         <translation>Keine Favoriten</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="324"/>
+        <location filename="../qml/components/EntryListView.qml" line="333"/>
         <source>Nothing to read</source>
         <translation>Nichts zu lesen</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="326"/>
+        <location filename="../qml/components/EntryListView.qml" line="335"/>
         <source>Star an article to keep it here</source>
         <translation>Artikel favorisieren, um ihn hier zu behalten</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="327"/>
+        <location filename="../qml/components/EntryListView.qml" line="336"/>
         <source>Pull down to refresh</source>
         <translation>Zum Aktualisieren herunterziehen</translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/components/EntryListView.qml" line="482"/>
+        <location filename="../qml/components/EntryListView.qml" line="491"/>
         <source>%n min read</source>
         <translation>
             <numerusform>%n Min. Lesezeit</numerusform>
@@ -311,7 +311,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/components/EntryListView.qml" line="483"/>
+        <location filename="../qml/components/EntryListView.qml" line="492"/>
         <source>%n min</source>
         <translation>
             <numerusform>%n Min.</numerusform>
@@ -320,7 +320,7 @@
     </message>
     <message>
         <location filename="../qml/components/EntryListView.qml" line="235"/>
-        <location filename="../qml/components/EntryListView.qml" line="561"/>
+        <location filename="../qml/components/EntryListView.qml" line="570"/>
         <source>Mark as read</source>
         <translation>Als gelesen markieren</translation>
     </message>
@@ -334,22 +334,22 @@
     </message>
     <message>
         <location filename="../qml/components/EntryListView.qml" line="230"/>
-        <location filename="../qml/components/EntryListView.qml" line="561"/>
+        <location filename="../qml/components/EntryListView.qml" line="570"/>
         <source>Mark as unread</source>
         <translation>Als ungelesen markieren</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="565"/>
+        <location filename="../qml/components/EntryListView.qml" line="574"/>
         <source>Remove favourite</source>
         <translation>Favorit entfernen</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="565"/>
+        <location filename="../qml/components/EntryListView.qml" line="574"/>
         <source>Add favourite</source>
         <translation>Zu Favoriten hinzufügen</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="569"/>
+        <location filename="../qml/components/EntryListView.qml" line="578"/>
         <source>Open in browser</source>
         <translation>Im Browser öffnen</translation>
     </message>
@@ -400,6 +400,19 @@
         <location filename="../qml/pages/FeedListPage.qml" line="131"/>
         <source>Unsubscribing</source>
         <translation>Wird abbestellt</translation>
+    </message>
+</context>
+<context>
+    <name>OnboardingPage</name>
+    <message>
+        <location filename="../qml/pages/OnboardingPage.qml" line="81"/>
+        <source>Focus on what matters.</source>
+        <translation>Fokus auf das Wesentliche.</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/OnboardingPage.qml" line="91"/>
+        <source>Continue</source>
+        <translation>Weiter</translation>
     </message>
 </context>
 <context>
@@ -520,62 +533,67 @@
         <translation>Miniflux leitet standardmäßig nur einfache HTTP-Bilder weiter, daher kommen die meisten Bilder ungeschützt an. Sie direkt zu laden verrät diesen Websites Ihre IP-Adresse und wann Sie lesen. Bitten Sie Ihre Serveradministration, MEDIA_PROXY_MODE=all zu setzen, um vollen Schutz zu erhalten.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="189"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="185"/>
         <source>Synchronisation</source>
         <translation>Synchronisation</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="197"/>
-        <source>Background refresh</source>
-        <translation>Aktualisierung im Hintergrund</translation>
+        <location filename="../qml/pages/SettingsPage.qml" line="193"/>
+        <source>Sync with server</source>
+        <translation>Abgleich mit dem Server</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="199"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="235"/>
+        <source>For a self-hosted server with a private certificate authority. Place the certificate at ~/.local/share/harbour-vuo/harbour-vuo/ca.pem. Certificate verification is never disabled, and there is no option to disable it.</source>
+        <translation>Für einen selbst gehosteten Server mit eigener Zertifizierungsstelle. Legen Sie das Zertifikat unter ~/.local/share/harbour-vuo/harbour-vuo/ca.pem ab. Die Zertifikatsprüfung wird nie abgeschaltet, und es gibt keine Option dafür.</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="195"/>
         <source>Manual only</source>
         <translation>Nur manuell</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="200"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="196"/>
         <source>Every 15 minutes</source>
         <translation>Alle 15 Minuten</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="201"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="197"/>
         <source>Every 30 minutes</source>
         <translation>Alle 30 Minuten</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="202"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="198"/>
         <source>Hourly</source>
         <translation>Stündlich</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="203"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="199"/>
         <source>Every 6 hours</source>
         <translation>Alle 6 Stunden</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="216"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="213"/>
+        <source>How often Vuo fetches from your Miniflux server while it is open or on the cover. How often the server itself checks your feeds is set on the server, not here.</source>
+        <translation>Wie oft Vuo von Ihrem Miniflux-Server abruft, solange die App geöffnet oder auf dem Cover ist. Wie oft der Server selbst Ihre Feeds prüft, wird auf dem Server eingestellt, nicht hier.</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="224"/>
         <source>Advanced</source>
         <translation>Erweitert</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="220"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="228"/>
         <source>Use a custom CA certificate</source>
         <translation>Eigenes CA-Zertifikat verwenden</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="227"/>
-        <source>For a self-hosted server with a private certificate authority. Place the certificate at ~/.local/share/harbour-vuo/ca.pem. Certificate verification is never disabled, and there is no option to disable it.</source>
-        <translation>Für einen selbst gehosteten Server mit eigener Zertifizierungsstelle. Legen Sie das Zertifikat unter ~/.local/share/harbour-vuo/ca.pem ab. Die Zertifikatsprüfung wird nie deaktiviert, und es gibt keine Möglichkeit, sie zu deaktivieren.</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="228"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="236"/>
         <source>Only applies to an https:// server. This one is not encrypted by TLS, so no certificate is used.</source>
         <translation>Gilt nur für einen https://-Server. Dieser ist nicht per TLS verschlüsselt, daher wird kein Zertifikat verwendet.</translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/pages/SettingsPage.qml" line="240"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="248"/>
         <source>%n change(s) waiting to be sent to the server.</source>
         <translation>
             <numerusform>%n Änderung wartet auf die Übertragung zum Server.</numerusform>
