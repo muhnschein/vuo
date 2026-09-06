@@ -201,9 +201,16 @@ if ls translations/*.qm >/dev/null 2>&1; then
     install -Dm 644 translations/*.qm %{buildroot}%{_datadir}/harbour-vuo/translations/
 fi
 
+# The licence text, INSIDE the app's own datadir rather than through
+# `%%license`. GPL-3.0 asks for it to travel with the binary, and rpm's
+# `%%license` would put it in %{_defaultlicensedir} -- which Harbour rejects:
+# a package may install only /usr/bin/harbour-vuo, /usr/share/harbour-vuo/*,
+# its .desktop file and its icons, and everything else is
+# "Installation not allowed in this location".
+install -Dm 644 LICENSE %{buildroot}%{_datadir}/harbour-vuo/LICENSE
+
 %files
 %defattr(-,root,root,-)
-%license LICENSE
 %{_bindir}/harbour-vuo
 %{_datadir}/harbour-vuo
 %{_datadir}/applications/harbour-vuo.desktop

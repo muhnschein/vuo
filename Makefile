@@ -40,7 +40,7 @@ endif
 endif
 
 .PHONY: all check fmt fmt-check clippy test qmllint qml-load shim deny \
-        fuzz-check packaging msrv fuzz-quick live-test textart rpm vendor clean help
+        fuzz-check packaging harbour msrv fuzz-quick live-test textart rpm vendor clean help
 
 all: check
 
@@ -127,8 +127,12 @@ lockfile:
 	scripts/check-lockfile.sh
 
 ## packaging: spec, desktop entry and installed-file checks (no SDK needed)
-packaging:
+packaging: harbour
 	scripts/check-packaging.sh
+
+## harbour: the Harbour intake rules that need no device build
+harbour:
+	scripts/check-harbour.sh
 
 ## deny: advisories, licences, banned and duplicated crates
 deny:

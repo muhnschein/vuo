@@ -46,6 +46,16 @@ ApplicationWindow {
     EntryModel { id: entries }
     EntryModel { id: starredEntries }
     EntryModel { id: allEntries }
+    // And a fourth for BROWSING: the list a feed or a category opens into.
+    //
+    // Not one of the three. Opening a feed calls `setScope(3, feedId)` on
+    // whatever model the page was handed, and `setScope` is a plain overwrite:
+    // handing it a tab's model re-scoped the very list that tab shows, and
+    // nothing ever set it back. Reported from a device -- open a feed, go
+    // back, and the Unread tab lists that one feed's articles until the app is
+    // restarted. This model is the only one a pushed view ever re-scopes, and
+    // no tab is bound to it.
+    EntryModel { id: browseEntries }
     FeedModel { id: feeds }
     // Asked one thing here: whether an account is stored at all. That
     // decides the first page, and it is read from the file on every access,
@@ -68,6 +78,9 @@ ApplicationWindow {
             var changed = entries.pollSync()
             changed = starredEntries.pollSync() || changed
             changed = allEntries.pollSync() || changed
+            // Cheap while nothing is being browsed: a model with no scope
+            // reloads nothing.
+            changed = browseEntries.pollSync() || changed
             if (changed) {
                 feeds.pollSync()
             }
@@ -90,7 +103,11 @@ ApplicationWindow {
             // In `scopeTabKinds` order: unread, starred, all.
             scopeModels: [entries, starredEntries, allEntries]
             model: entries
+            browseModel: browseEntries
             feedModel: feeds
+            // `entries` is polled first above, so it is the model that takes
+            // the sync-failure notice. See EntryListPage.noticeModel.
+            noticeModel: entries
             scopeKind: 0
         }
     }

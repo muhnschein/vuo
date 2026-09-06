@@ -13,10 +13,10 @@ or behind an explicit opt-in gate. There are exactly two gates:
 | --- | --- |
 | `fmt-check` | formatting drift |
 | `clippy` | including the `unwrap`/`expect`/`panic`/indexing denials on production code |
-| `test` | 155 tests across 8 binaries, plus the shim's under offscreen Qt |
+| `test` | 263 tests across 17 binaries, the shim's under offscreen Qt |
 | `qmllint` | QML syntax |
 | `qml-load` | **every QML file compiled in a real engine** against the Silica stubs |
-| `packaging` | spec/Cargo version drift, missing installed files, desktop entry validity |
+| `packaging` | spec/Cargo version drift, missing installed files, desktop entry validity, and the Harbour intake rules that need no device (`scripts/check-harbour.sh`) |
 | `deny` | advisories, licences, banned and duplicated crates |
 
 ## The parts worth explaining

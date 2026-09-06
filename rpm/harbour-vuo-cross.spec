@@ -78,12 +78,14 @@ if ls %{_sourcedir}/translations/*.qm >/dev/null 2>&1; then
         %{buildroot}%{_datadir}/harbour-vuo/translations/
 fi
 
+# Inside the app's own datadir: Harbour allows a package to install only
+# /usr/bin/harbour-vuo, /usr/share/harbour-vuo/*, its .desktop file and its
+# icons. %{_datadir}/licenses is not on that list.
 install -D -m 644 %{_sourcedir}/LICENSE \
-    %{buildroot}%{_datadir}/licenses/%{name}/LICENSE
+    %{buildroot}%{_datadir}/harbour-vuo/LICENSE
 
 %files
 %defattr(-,root,root,-)
-%{_datadir}/licenses/%{name}/LICENSE
 %{_bindir}/harbour-vuo
 %{_datadir}/harbour-vuo
 %{_datadir}/applications/harbour-vuo.desktop

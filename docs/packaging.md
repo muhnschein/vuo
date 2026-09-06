@@ -80,9 +80,49 @@ unconditionally, and without the package the link fails late and confusingly.
 
 ## Distribution
 
-Harbour. Its two rules that bear on this app are both met: one process, with
-no background service, and a sandbox declared in the desktop entry. Chum and
-OpenRepos take the same package.
+Harbour. Chum and OpenRepos take the same package.
+
+## Harbour readiness
+
+Harbour runs `rpmvalidation.sh` from
+[`sailfishos/sdk-harbour-rpmvalidator`](https://github.com/sailfishos/sdk-harbour-rpmvalidator)
+over the submitted RPM. Most of what it checks is decided in this repository
+rather than by the compiler, so `scripts/check-harbour.sh` holds those rules on
+every `make check`: the paths the specs install to, the `[X-Sailjail]` keys,
+permissions and names, the QML modules the pages import, the four icon sizes,
+and the RPM constructs (scriptlets, triggers, `Obsoletes`, `%license`) that
+intake rejects. Its rules are **transcribed** from the validator's own
+configuration -- `make check` has no network -- so re-read them against
+upstream when a submission is being prepared.
+
+Two rules cannot be checked there, because both are decided by the device link:
+
+- **The shared libraries the binary needs.** `scripts/cross-build.sh` reads
+  them off the cross-built ELF and reports any that Harbour's
+  `allowed_libraries.conf` does not list. It warns rather than fails, because
+  that script's output is the test package people install on a phone.
+- **The glibc symbol versions.** The same script prints the highest ones
+  required; the validator wants `__libc_start_main@GLIBC_2.34`, which means
+  building against a current SDK target.
+
+### Known blockers
+
+- **`libQt5Widgets.so.5` is linked, and Harbour does not allow it.** `qttypes`
+  emits `-lQt5Widgets` unconditionally (its `build.rs`), and `qmetaobject`'s
+  `QmlEngine` is a `QApplication`, whose constructor and `exec` stay as
+  undefined references in the C++ glue even though the device entry point uses
+  `SailfishApp::application()` instead. Confirmed on a host build; the device
+  link is the same shape. `--as-needed` does not help, because the references
+  are real. Resolving it means removing them -- garbage-collecting the unused
+  `QmlEngineHolder` at link time, or carrying a patch to `qmetaobject` -- and
+  proving the result on a device.
+- **No release package can be built yet.** `rpm/harbour-vuo.spec` cannot run
+  under the SDK's own cargo (see "The Rust floor" and `docs/sdk-build.md`), and
+  what CI produces is a *test* package: cross-built outside `sb2`, unstripped,
+  with `AutoReqProv: no`. A submission has to come from the spec.
+
+The two rules that shaped the app itself are met: one process, with no
+background service, and a sandbox declared in the desktop entry.
 
 ## Generated files that are committed
 
