@@ -52,6 +52,11 @@ build, which is the one thing vendoring exists to prevent.
 The spec forces `--with vendor` automatically under OBS and Chum, because
 neither can pass `--with` on the command line.
 
+`cargo vendor` does *not* put `qmetaobject` in the bundle, and that is correct:
+`[patch.crates-io]` resolves it from `third_party/qmetaobject`, which is in the
+source tarball already. Only its proc-macro half, `qmetaobject_impl`, is
+fetched. See "QtWidgets, and the vendored qmetaobject" below.
+
 ## The Rust floor
 
 SailfishOS ships an older Rust than current stable. Two separate pins, for two
@@ -80,9 +85,93 @@ unconditionally, and without the package the link fails late and confusingly.
 
 ## Distribution
 
-Harbour. Its two rules that bear on this app are both met: one process, with
-no background service, and a sandbox declared in the desktop entry. Chum and
-OpenRepos take the same package.
+Harbour. Chum and OpenRepos take the same package.
+
+## Harbour readiness
+
+Harbour runs `rpmvalidation.sh` from
+[`sailfishos/sdk-harbour-rpmvalidator`](https://github.com/sailfishos/sdk-harbour-rpmvalidator)
+over the submitted RPM. Most of what it checks is decided in this repository
+rather than by the compiler, so `scripts/check-harbour.sh` holds those rules on
+every `make check`: the paths the specs install to, the `[X-Sailjail]` keys,
+permissions and names, the QML modules the pages import, the four icon sizes,
+and the RPM constructs (scriptlets, triggers, `Obsoletes`, `%license`) that
+intake rejects. Its rules are **transcribed** from the validator's own
+configuration -- `make check` has no network -- so re-read them against
+upstream when a submission is being prepared.
+
+Two rules are decided by the link rather than by the tree:
+
+- **The shared libraries the binary needs.** `scripts/check-linked-libs.sh`
+  holds the allowed list and is run over both links: the host build, by
+  `make check`, and the cross build, by `scripts/cross-build.sh`. The host
+  build is the stricter of the two -- it is the one that actually constructs
+  `qmetaobject`'s application object, where the device entry point uses
+  SailfishApp's instead -- so a regression is caught without a phone. The cross
+  build reports rather than stops, and the `rpm` workflow fails the job *after*
+  uploading the package: a package that breaks this rule still installs and
+  runs, and is exactly the one you want in your hands while working out why.
+- **The glibc symbol versions.** `scripts/cross-build.sh` prints the highest
+  ones required; the validator wants `__libc_start_main@GLIBC_2.34`, which
+  means building against a current SDK target. Measured on 5.2.0.15: `GLIBC_2.34`.
+
+### QtWidgets, and the vendored qmetaobject
+
+`qmetaobject` builds its QML engine on `QApplication`, which comes from
+QtWidgets -- and `libQt5Widgets.so.5` is not on Harbour's list, since a Silica
+app is expected to use QtGui's `QGuiApplication`. Upstream carries that
+unconditionally, on the released crate and on master, with no feature to turn
+it off. It was the one `NEEDED` entry the aarch64 link produced that intake
+would have refused.
+
+Nothing here needs QtWidgets. Vuo's device entry point never constructs a
+`QmlEngine` at all -- it uses `SailfishApp::application()`, which returns a
+`QGuiApplication` -- but the reference survives anyway, because `cpp!` compiles
+a crate's C++ into one object and the linker takes all of it or none. So
+`third_party/qmetaobject` is upstream 0.2.10 plus
+`third_party/qmetaobject.patch`: three lines, swapping the include, the member
+type and the constructor.
+
+`qttypes` separately passes `-lQt5Widgets` unconditionally, which would record
+the dependency even with nothing using it. Rather than fork a second crate for
+one line, `crates/harbour-vuo/build.rs` links the binary with `--as-needed`,
+which drops any library no symbol refers to. That works only *because* the
+patch removed the last reference; with `QApplication` still in use the library
+is genuinely needed and `--as-needed` keeps it. Which is why `make check`
+links and inspects the host binary rather than trusting the flag.
+
+Carrying someone else's crate in-tree is only safe while the difference is
+visible, so `make vendor-check` (`scripts/check-vendored.sh`) fetches the
+crates.io tarball, applies the patch, and requires the result to match the
+vendored tree byte for byte. It needs the network, so it is an opt-in gate
+rather than part of `make check`; CI runs it on every push. The crate's own
+`tests/` are not vendored -- cargo never builds a dependency's tests, and
+leaving them in gives the security scanners a thousand lines to report on that
+this repository does not compile.
+
+One consequence worth knowing: a path dependency is not lint-capped the way a
+fetched crate is, so `RUSTFLAGS: -D warnings` in CI turned the vendored crate's
+own forty-six warnings into errors. Warnings are denied by the lint tables in
+`Cargo.toml` instead, which apply to the crates that opt into them. The
+vendored crate still prints its warnings on a clean build; they are upstream's.
+
+The approach, the patch, the vendor check and this section all come from
+[postivene](https://github.com/muhnschein/postivene), which hit the same rule
+first. The real fix is upstream: a feature flag choosing between `QApplication`
+and `QGuiApplication` would serve every Sailfish app built on `qmetaobject`.
+
+### The remaining blocker
+
+**No release package can be built yet.** `rpm/harbour-vuo.spec` cannot run
+under the SDK's own cargo (see "The Rust floor" and `docs/sdk-build.md`), and
+what CI produces is a *test* package: cross-built outside `sb2`, with
+`AutoReqProv: no`. A submission has to come from the spec.
+
+Everything else measured on the 5.2.0.15 aarch64 build passes: every linked
+library is allowed, the glibc floor is right, the binary is stripped and has no
+`rpath`, and the packaged tree is exactly the four locations Harbour allows.
+The two rules that shaped the app itself are met as well: one process, with no
+background service, and a sandbox declared in the desktop entry.
 
 ## Generated files that are committed
 

@@ -245,9 +245,13 @@ SilicaListView {
         MenuItem {
             visible: !listView.selecting
             text: qsTr("Feeds")
+            // `browseModel`, NOT this list's own: opening a feed re-scopes
+            // whatever model it is handed, and handing it a tab's model left
+            // that tab showing the feed for the rest of the session.
             onClicked: pageStack.push(Qt.resolvedUrl("../pages/FeedListPage.qml"),
                                       { model: listView.hostPage ? listView.hostPage.feedModel : null,
-                                        entryModel: listView.entryModel })
+                                        entryModel: listView.hostPage ? listView.hostPage.browseModel : null,
+                                        noticeModel: listView.hostPage ? listView.hostPage.noticeModel : null })
         }
         MenuItem {
             // The platform's way to act on many rows at once, as the Gallery
@@ -259,6 +263,7 @@ SilicaListView {
             onClicked: pageStack.push(Qt.resolvedUrl("../pages/EntryListPage.qml"), {
                 model: listView.entryModel,
                 feedModel: listView.hostPage ? listView.hostPage.feedModel : null,
+                noticeModel: listView.hostPage ? listView.hostPage.noticeModel : null,
                 scopeKind: listView.scopeKind,
                 scopeId: listView.scopeId,
                 scopeLabel: qsTr("Select articles"),

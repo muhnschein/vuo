@@ -787,6 +787,12 @@ pub const ROLE_FEED_CRAWLER: i32 = USER_ROLE + 5;
 pub const ROLE_FEED_DISABLED: i32 = USER_ROLE + 6;
 /// Keep this feed out of the global unread list.
 pub const ROLE_FEED_HIDDEN: i32 = USER_ROLE + 7;
+/// A `data:` URI for the feed's icon, or empty when the mirror has none.
+///
+/// A separate constant from [`ROLE_FEED_ICON`] although it carries the same
+/// thing: role numbers are per-model, and the two models number theirs from
+/// `USER_ROLE` independently.
+pub const ROLE_FEED_ICON_URI: i32 = USER_ROLE + 8;
 
 #[derive(Debug, Clone, Default)]
 pub struct FeedRow {
@@ -800,6 +806,9 @@ pub struct FeedRow {
     pub crawler: bool,
     pub disabled: bool,
     pub hide_globally: bool,
+    /// The feed's icon as a `data:` URI, or empty. Built from bytes already in
+    /// the mirror, so drawing it fetches nothing (§9.3).
+    pub icon_uri: String,
 }
 
 #[derive(QObject, Default)]
@@ -1009,6 +1018,21 @@ impl FeedModel {
         let rows: Vec<FeedRow> = ctx
             .read(|db| {
                 let counts = store::unread_counts_by_feed(db.conn()).unwrap_or_default();
+                // The icons come from the same query the entry list uses, so
+                // the two lists cannot disagree about what a feed looks like.
+                // Encoded on every reload rather than cached: this model
+                // reloads on a generation bump, not on the poll, and a mirror
+                // holds tens of feeds.
+                let mut icons: std::collections::HashMap<i64, String> =
+                    store::feed_chrome(db.conn())
+                        .unwrap_or_default()
+                        .into_iter()
+                        .filter_map(|feed| {
+                            let (mime, bytes) = feed.icon?;
+                            let uri = data_uri(&mime, &bytes);
+                            (!uri.is_empty()).then_some((feed.feed_id, uri))
+                        })
+                        .collect();
                 store::feeds(db.conn())
                     .unwrap_or_default()
                     .iter()
@@ -1022,6 +1046,7 @@ impl FeedModel {
                         crawler: f.crawler,
                         disabled: f.disabled,
                         hide_globally: f.hide_globally,
+                        icon_uri: icons.remove(&f.id.get()).unwrap_or_default(),
                     })
                     .collect()
             })
@@ -1060,6 +1085,7 @@ impl QAbstractListModel for FeedModel {
             ROLE_FEED_CRAWLER => row.crawler.into(),
             ROLE_FEED_DISABLED => row.disabled.into(),
             ROLE_FEED_HIDDEN => row.hide_globally.into(),
+            ROLE_FEED_ICON_URI => QString::from(row.icon_uri.clone()).into(),
             _ => QVariant::default(),
         }
     }
@@ -1074,6 +1100,7 @@ impl QAbstractListModel for FeedModel {
         names.insert(ROLE_FEED_CRAWLER, "crawler".into());
         names.insert(ROLE_FEED_DISABLED, "feedDisabled".into());
         names.insert(ROLE_FEED_HIDDEN, "hideGlobally".into());
+        names.insert(ROLE_FEED_ICON_URI, "feedIcon".into());
         names
     }
 }
@@ -1313,11 +1340,21 @@ mod row_decoration_tests {
         assert!(row.crawler, "the seeded feed has the crawler on");
         assert!(!row.disabled);
         assert!(!row.hide_globally);
+        // The Feeds page draws the same icon the entry list does. It came from
+        // a different query for a while -- this one had none at all -- so the
+        // page showed bare names and the reader had to recognise a feed by its
+        // title alone.
+        assert!(
+            row.icon_uri.starts_with("data:image/png;base64,"),
+            "a feed row must carry its icon as a data URI, got {:?}",
+            row.icon_uri
+        );
         let names = <FeedModel as QAbstractListModel>::role_names(&model);
         for (role, name) in [
             (ROLE_FEED_CRAWLER, "crawler"),
             (ROLE_FEED_DISABLED, "feedDisabled"),
             (ROLE_FEED_HIDDEN, "hideGlobally"),
+            (ROLE_FEED_ICON_URI, "feedIcon"),
         ] {
             assert_eq!(
                 names.get(&role).map(|n| n.to_string()),

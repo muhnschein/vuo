@@ -38,22 +38,38 @@ Page {
     /// category view, which uses `model` instead.
     property var scopeModels: []
 
+    /// The model a pushed feed or category view scopes to itself.
+    ///
+    /// Handed on rather than used here: this page passes it to FeedListPage,
+    /// which passes it back as the `model` of the page a feed opens into. It
+    /// is deliberately NOT any of `scopeModels`. `setScope` overwrites, and
+    /// nothing restores what it overwrote, so a feed view over a tab's model
+    /// left that tab showing the feed for the rest of the session.
+    property var browseModel: null
+
+    /// The model whose refresh failures the banner speaks for.
+    ///
+    /// NOT `currentModel`. The worker leaves a failure in a slot that holds
+    /// exactly one, and the app-wide poll drains it into the first model it
+    /// polls -- so only that one model ever carries `syncError`, whatever the
+    /// page is showing. Naming it here is what lets a feed view, and the
+    /// Favourites and All tabs, report a failed refresh at all.
+    property var noticeModel: page.currentModel
+
     Component.onCompleted: page.applyScope()
 
     // Re-assert this page's scope whenever it becomes the visible one.
     //
-    // Every list page shares ONE EntryModel -- FeedListPage hands its own
-    // `entryModel` straight to the page it pushes -- so opening a feed
-    // re-scopes the very object the Unread page is showing. Setting the scope
-    // only in Component.onCompleted meant that scope then stuck: coming back
-    // from a feed left the Unread page listing that feed's entries under an
-    // "Unread" header, and no amount of navigating fixed it because no page
-    // ever set the scope again. Restarting the app was the only way out.
-    // Both hooks fire when a page is first shown, so the scope is applied
-    // twice there. That is deliberate: `onCompleted` alone cannot survive the
-    // back-navigation above, and relying on `Activating` alone would leave a
-    // page that somehow never got a status change showing nothing at all. The
-    // cost is one extra query against an already-open SQLite connection.
+    // Every BROWSE page shares one model -- `browseModel`, handed down through
+    // FeedListPage -- so a second feed opened from the first one's pulley
+    // re-scopes the object the first is showing. Setting the scope only in
+    // Component.onCompleted would leave that scope stuck when the reader came
+    // back. Both hooks fire when a page is first shown, so the scope is
+    // applied twice there. That is deliberate: `onCompleted` alone cannot
+    // survive the back-navigation above, and relying on `Activating` alone
+    // would leave a page that somehow never got a status change showing
+    // nothing at all. The cost is one extra query against an already-open
+    // SQLite connection.
     //
     // The reload it causes is wanted for its own sake, too: marking an article
     // read from the article view changes the mirror but not this page's rows,
@@ -61,7 +77,7 @@ Page {
     // unread until the next sync.
     onStatusChanged: if (status === PageStatus.Activating) page.applyScope()
 
-    /// Scope the single model a feed or category view uses.
+    /// Scope the browse model this feed or category view was given.
     ///
     /// The tab scopes are NOT set here: each tab's model is scoped once, by
     /// the list that owns it, and never re-scoped. Re-scoping a shared model
@@ -98,7 +114,9 @@ Page {
     /// all three of the strip's behaviours below are its three uses of it.
     property real yOffset: pager.currentItem ? pager.currentItem.yOffset : 0
 
-    /// The model the page-level furniture (the notice banner) speaks for.
+    /// The model this page is showing -- the visible tab's, or the one model a
+    /// feed view has. The fallback for `noticeModel`, which is what the banner
+    /// actually reads.
     property var currentModel: page.showScopeTabs
                                ? (page.scopeModels[pager.currentIndex] || null)
                                : page.model
@@ -287,19 +305,19 @@ Page {
     /// it. `requestSync` clears both fields, so a retry produces an empty
     /// token first and the next failure is a genuine change even when the
     /// server says the same thing twice.
-    property string _failureToken: page.currentModel
-                                  ? (page.currentModel.syncErrorIsAuth
-                                     ? "auth" : page.currentModel.syncError)
+    property string _failureToken: page.noticeModel
+                                  ? (page.noticeModel.syncErrorIsAuth
+                                     ? "auth" : page.noticeModel.syncError)
                                   : ""
 
     on_FailureTokenChanged: {
         if (page._failureToken.length === 0) {
             notice.dismiss()
-        } else if (page.currentModel.syncErrorIsAuth) {
+        } else if (page.noticeModel.syncErrorIsAuth) {
             notice.post(qsTr("The server rejected the API key."), true,
                         qsTr("Open settings"))
         } else {
-            notice.post(qsTr("Refresh failed: %1").arg(page.currentModel.syncError),
+            notice.post(qsTr("Refresh failed: %1").arg(page.noticeModel.syncError),
                         true, "")
         }
     }

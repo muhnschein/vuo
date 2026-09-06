@@ -4,9 +4,15 @@ import Sailfish.Silica 1.0
 Page {
     id: page
     property var model
-    /// The shared entry model, so a per-feed view can be scoped without
-    /// constructing a second one.
+    /// The BROWSE entry model: the one a per-feed view scopes to itself.
+    ///
+    /// Never a tab's model. `setScope` overwrites and nothing restores it, so
+    /// a feed view over the Unread tab's model left that tab listing the feed
+    /// until the app was restarted. See harbour-vuo.qml's `browseEntries`.
     property var entryModel
+    /// The model that carries refresh failures. Handed straight on; see
+    /// EntryListPage.noticeModel.
+    property var noticeModel: null
 
     // Re-read on the way in.
     //
@@ -67,9 +73,38 @@ Page {
                         color: Theme.highlightColor
                         font.pixelSize: Theme.fontSizeSmall
                     }
+                    Image {
+                        id: favicon
+
+                        // Centred on the title's line box, the same way the
+                        // entry list centres its own -- see
+                        // components/EntryListView.qml.
+                        anchors.left: parent.left
+                        anchors.verticalCenter: feedTitle.verticalCenter
+                        width: Theme.fontSizeMedium
+                        height: Theme.fontSizeMedium
+                        sourceSize.width: Theme.fontSizeMedium
+                        sourceSize.height: Theme.fontSizeMedium
+                        fillMode: Image.PreserveAspectFit
+                        // A `data:` URI built in Rust from bytes already in
+                        // the mirror -- drawing it fetches nothing, so
+                        // scrolling this list cannot leak the device's IP
+                        // (§9.3).
+                        source: feedIcon
+                        asynchronous: true
+                        // The mirror stores whatever format the icon arrived
+                        // in and the device ships handlers for only some of
+                        // them. Collapsing on failure keeps a missing handler
+                        // to a missing icon rather than a broken-image glyph.
+                        visible: feedIcon.length > 0 && status === Image.Ready
+                    }
                     Label {
                         id: feedTitle
+                        // The gutter is the same width whether or not this row
+                        // has an icon, so a list mixing the two does not look
+                        // ragged.
                         anchors.left: parent.left
+                        anchors.leftMargin: favicon.width + Theme.paddingMedium
                         anchors.right: unreadBadge.left
                         anchors.rightMargin: unreadBadge.width > 0 ? Theme.paddingMedium : 0
                         // A feed name is chosen by the feed operator.
@@ -81,7 +116,11 @@ Page {
                 }
                 Label {
                     visible: errorMessage.length > 0
-                    width: parent.width
+                    // Indented to the title, not to the icon gutter: the two
+                    // lines are one row. The width comes off the indent too,
+                    // or a long error would run past the right margin.
+                    x: favicon.width + Theme.paddingMedium
+                    width: parent.width - x
                     // The server's own error text, relayed verbatim from a
                     // remote site. Plain text.
                     textFormat: Text.PlainText
@@ -99,7 +138,11 @@ Page {
             // exist and omitted `model` entirely, so the page opened empty.
             onClicked: pageStack.push(Qt.resolvedUrl("EntryListPage.qml"), {
                 model: page.entryModel,
+                // Passed on so the feed view's own pulley can open Feeds
+                // again, and the feed opened from THERE has a model too.
+                browseModel: page.entryModel,
                 feedModel: page.model,
+                noticeModel: page.noticeModel,
                 scopeLabel: qsTr("Feed"),
                 title: title,
                 scopeKind: 3,

@@ -6,9 +6,10 @@
 #     phone, no server account, and no network.
 #
 # Anything that cannot be verified under those conditions is either badly
-# layered or belongs behind an explicit opt-in gate. The two opt-in gates are
-# `make live-test` (needs a real Miniflux) and `make rpm` (needs the Sailfish
-# SDK); neither is part of `check`.
+# layered or belongs behind an explicit opt-in gate. The opt-in gates are
+# `make live-test` (needs a real Miniflux), `make rpm` (needs the Sailfish SDK)
+# and `make vendor-check` (needs crates.io); none is part of `check`. CI runs
+# the last of those as a step of its own.
 
 CARGO ?= cargo
 # The Rust floor the SailfishOS SDK ships. `make msrv` re-checks against it so
@@ -40,7 +41,8 @@ endif
 endif
 
 .PHONY: all check fmt fmt-check clippy test qmllint qml-load shim deny \
-        fuzz-check packaging msrv fuzz-quick live-test textart rpm vendor clean help
+        fuzz-check packaging harbour msrv fuzz-quick live-test vendor-check \
+        textart rpm vendor clean help
 
 all: check
 
@@ -127,8 +129,26 @@ lockfile:
 	scripts/check-lockfile.sh
 
 ## packaging: spec, desktop entry and installed-file checks (no SDK needed)
-packaging:
+packaging: harbour
 	scripts/check-packaging.sh
+
+## harbour: the Harbour intake rules that need no device build
+harbour:
+	scripts/check-harbour.sh
+ifeq ($(HAVE_QT),yes)
+	@echo "== linked libraries (host build) =="
+	# The allowed-libraries rule is decided by the link, so the only way to
+	# hold it here is to link. The host's Qt is not the device's, but the
+	# thing that goes wrong is the same on both: qttypes passes
+	# `-lQt5Widgets` unconditionally, and it stays unless nothing refers to
+	# QtWidgets. The host build is the STRICTER of the two -- it is the one
+	# that actually constructs qmetaobject's application object, where the
+	# device entry point uses SailfishApp's instead.
+	$(CARGO) build -p harbour-vuo --bin harbour-vuo
+	scripts/check-linked-libs.sh target/debug/harbour-vuo
+else
+	@echo "== linked libraries SKIPPED: no qmake found at $(QMAKE) =="
+endif
 
 ## deny: advisories, licences, banned and duplicated crates
 deny:
@@ -141,6 +161,11 @@ deny:
 		echo "CI installs it, so a green local run without it is not a green CI run." >&2; \
 		exit 1; \
 	fi
+
+## vendor-check: prove third_party/qmetaobject is upstream plus its one patch.
+## Needs crates.io, so it is an opt-in gate rather than part of `check`.
+vendor-check:
+	scripts/check-vendored.sh
 
 ## msrv: re-check against the SailfishOS Rust floor
 msrv:

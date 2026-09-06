@@ -12,6 +12,11 @@
 # Usage: scripts/cross-build.sh [path-to-unpacked-sdk-rootfs]
 set -euo pipefail
 
+# Run from the repository root: the cargo invocation and the paths below are
+# relative to it, and cross-rpm.sh calls this from wherever it was itself run.
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+
 ROOTFS="${1:-/home/user/sdk/rootfs}"
 ARCH=aarch64
 # Overridable: the SDK target version the rootfs was unpacked from.
@@ -77,3 +82,20 @@ echo "== $BIN =="
 file "$BIN"
 echo "-- highest versioned symbols required (must not exceed the device's) --"
 "$BINDIR/readelf" --version-info "$BIN" | grep -oE "GLIBC_2\.[0-9]+|GLIBCXX_3\.4(\.[0-9]+)?" | sort -uV | tail -4
+
+# -- the shared libraries Harbour allows a package to link ------------------
+#
+# The one intake rule that is decided by the DEVICE link, so nothing running
+# on a bare host can see it. The list lives in scripts/check-linked-libs.sh,
+# which `make check` also runs over the host build.
+#
+# A failure here does NOT stop the package being built: this script's output is
+# the test package people install on a phone, and a phone is exactly where you
+# want to be when something is wrong. It is reported loudly instead, and CI
+# fails the job on it.
+echo "-- shared libraries, against Harbour's allowed list --"
+if "$ROOT/scripts/check-linked-libs.sh" "$BIN" "$BINDIR/readelf"; then
+    :
+else
+    echo "WARNING: the package is being built anyway; Harbour would refuse it." >&2
+fi

@@ -145,6 +145,85 @@ fn every_scope_tab_has_a_scope_kind() {
     );
 }
 
+/// §a pushed feed view never re-scopes a tab's model.
+///
+/// `setScope` is a plain overwrite and nothing restores what it overwrote, so
+/// the model a feed view is handed shows that feed until something else scopes
+/// it. Handing it a TAB's model is therefore permanent: reported from a device
+/// as "open a feed, swipe back twice, and the list still shows only that
+/// feed's articles, with no way back except killing the app".
+///
+/// Neither qmllint nor the load test can see this -- both models are a
+/// `property var` holding a perfectly valid EntryModel, and the wrong one is
+/// wrong only in where else it is bound. So the wiring is asserted here.
+#[test]
+fn a_feed_view_is_never_given_a_tabs_model() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(2)
+        .expect("the workspace root");
+    let window =
+        std::fs::read_to_string(root.join("qml/harbour-vuo.qml")).expect("harbour-vuo.qml");
+    let view = std::fs::read_to_string(root.join("qml/components/EntryListView.qml"))
+        .expect("EntryListView.qml");
+    let feeds =
+        std::fs::read_to_string(root.join("qml/pages/FeedListPage.qml")).expect("FeedListPage.qml");
+
+    // The models bound to the three tabs, by the id the window gives them.
+    let tab_models: Vec<String> = {
+        let line = window
+            .lines()
+            .find(|l| l.trim_start().starts_with("scopeModels:"))
+            .expect("the window binds scopeModels");
+        let open = line.find('[').expect("an array literal");
+        let close = line[open..].find(']').expect("a closed array literal") + open;
+        line[open + 1..close]
+            .split(',')
+            .map(|name| name.trim().to_owned())
+            .filter(|name| !name.is_empty())
+            .collect()
+    };
+    assert!(tab_models.len() >= 3, "three tabs, three models");
+
+    let browse = window
+        .lines()
+        .find_map(|l| l.trim_start().strip_prefix("browseModel:"))
+        .expect("the window names the model feed views scope")
+        .trim()
+        .to_owned();
+    assert!(
+        !tab_models.contains(&browse),
+        "the browse model is `{browse}`, which is also a tab's ({tab_models:?}); \
+         opening a feed would leave that tab showing the feed"
+    );
+
+    // And the pulley must reach for it rather than for the list it is on.
+    let push = view
+        .split_once("FeedListPage.qml")
+        .map(|(_, rest)| rest.split_once("})").map(|(args, _)| args).unwrap_or(rest))
+        .expect("the pulley opens the feeds page");
+    assert!(
+        push.contains("browseModel"),
+        "the Feeds pulley item must hand over the browse model, not this \
+         tab's; it passes: {push}"
+    );
+
+    // The feeds page then hands that same model to the page it pushes, and
+    // hands it on again so a feed opened from THAT page has one too.
+    let opened = feeds
+        .split_once("EntryListPage.qml")
+        .map(|(_, rest)| rest.split_once("})").map(|(args, _)| args).unwrap_or(rest))
+        .expect("the feeds page opens a feed");
+    assert!(
+        opened.contains("model: page.entryModel"),
+        "a feed opens onto the browse model it was given: {opened}"
+    );
+    assert!(
+        opened.contains("browseModel: page.entryModel"),
+        "and passes it on, so the feed view's own Feeds pulley works: {opened}"
+    );
+}
+
 /// Role names exposed through `role_names()`, which delegates see as
 /// context properties rather than as members of the model.
 fn declared_roles(root: &Path) -> BTreeSet<String> {

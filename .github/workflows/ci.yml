@@ -26,10 +26,6 @@ jobs:
   check:
     name: host checks
     runs-on: ubuntu-latest
-    env:
-      # Not workflow-global: cargo-fuzz composes its own RUSTFLAGS, and having
-      # ours merged in there is noise at best.
-      RUSTFLAGS: -D warnings
     steps:
       - uses: actions/checkout@v4
 
@@ -59,6 +55,12 @@ jobs:
 
       - name: make check
         run: make check
+
+      # Needs crates.io, so it is not part of `make check` (docs/scope.md §8).
+      # What it guards is a Harbour rule: third_party/qmetaobject is what keeps
+      # QtWidgets out of the binary. See docs/packaging.md.
+      - name: make vendor-check
+        run: make vendor-check
 
   msrv:
     name: SailfishOS Rust floor

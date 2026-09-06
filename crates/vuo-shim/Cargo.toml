@@ -18,6 +18,13 @@ authors.workspace = true
 # behaviour -- so it applies MOST to the crates that actually touch Qt, not
 # least. `unsafe_code` stays allowed here (qmetaobject's macros require it and
 # it is reviewed line by line); the panic denials do not.
+# Not `[lints] workspace = true`: this crate needs `unsafe_code` allowed, and
+# the workspace table denies it. `warnings` is restated instead of inherited --
+# it used to come from `RUSTFLAGS` in CI, which the vendored qmetaobject can no
+# longer tolerate. See the workspace manifest.
+[lints.rust]
+warnings = "deny"
+
 [lints.clippy]
 unwrap_used = "deny"
 expect_used = "deny"
