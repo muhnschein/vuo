@@ -60,7 +60,14 @@ ApplicationWindow {
     // Asked one thing here: whether an account is stored at all. That
     // decides the first page, and it is read from the file on every access,
     // so it is right before anything has been loaded.
-    Settings { id: account }
+    //
+    // NOT `id: account`. OnboardingPage declares `property var account`, and a
+    // binding is resolved against the object's own properties before the ids
+    // around it -- so `account: account` in the Component below bound that
+    // property to itself. Qt called it a binding loop and left it null, which
+    // it did on a device while every check in the build passed. The id has to
+    // be a name no page declares.
+    Settings { id: accountSettings }
 
     // Models observe SQLite, and the worker writes to SQLite from another
     // thread. This is how they find out. A poll rather than a signal because
@@ -118,12 +125,12 @@ ApplicationWindow {
         id: onboarding
 
         OnboardingPage {
-            account: account
+            account: accountSettings
             onFinished: app.showEntries()
         }
     }
 
-    initialPage: account.configured ? entryList : onboarding
+    initialPage: accountSettings.configured ? entryList : onboarding
 
     /// Swap the onboarding page for the entry list, and fetch: a mirror that
     /// has just been given a server has nothing in it yet, and the pulley's
