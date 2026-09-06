@@ -29,14 +29,14 @@ Page {
         page.finished()
     }
 
-    // The cover's texture, at a page's size: the same strokes -- they are
-    // the component's own -- drawn much finer, which is all that ever made
-    // this pattern read differently from the cover's. The middle is cleared
-    // for the words.
+    // The cover's texture, at a page's density: the same pattern, painted
+    // much finer, which is the whole of the difference between the two
+    // masks. The middle is cleared for the words.
     TextArt {
         id: art
+        objectName: "textArt"
         anchors.fill: parent
-        glyphsAcross: 115
+        source: "../art/onboarding.png"
         ink: 0.6
         clearX: page.width / 2
         clearY: page.height * 0.45

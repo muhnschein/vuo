@@ -210,6 +210,82 @@ fn every_page_reference_resolves_to_a_file() {
     );
 }
 
+/// Every texture the QML names must be there, and must be a coverage mask.
+///
+/// Two separate ways for the texture to come out wrong on a device, neither
+/// of which anything else here would catch:
+///
+///   - A `source:` that names no file. Qt reports a missing image as a
+///     warning on a channel this test's parent does not read, and the page
+///     simply comes up bare.
+///   - A mask that is not GRAYSCALE. `components/TextArt.qml` samples the
+///     RED channel for coverage, because that is where `scripts/png-mask.py`
+///     puts it. Re-export one of these as RGBA -- which any image editor
+///     will do by default, and which looks identical in a viewer, since the
+///     art is white with an alpha channel -- and every pixel's red is 1.0:
+///     the shader would tint the whole surface solid.
+#[test]
+fn every_texture_the_qml_names_is_a_mask_that_exists() {
+    let root = repo_root();
+    let mut files: Vec<std::path::PathBuf> = Vec::new();
+    collect_qml(&root.join("qml"), &mut files);
+    files.sort();
+    assert!(!files.is_empty(), "no QML found");
+
+    let mut checked = 0usize;
+    let mut problems: Vec<String> = Vec::new();
+    for file in &files {
+        let source = std::fs::read_to_string(file).expect("read qml");
+        let dir = file.parent().expect("qml file has a parent");
+        for (lineno, line) in source.lines().enumerate() {
+            let code = line.split("//").next().unwrap_or("");
+            let Some(idx) = code.find("source: \"") else {
+                continue;
+            };
+            let after = &code[idx + "source: \"".len()..];
+            let Some(end) = after.find('"') else { continue };
+            let target = &after[..end];
+            // `image://theme/...` is Silica's own provider, not a file.
+            if !target.ends_with(".png") {
+                continue;
+            }
+            checked += 1;
+            let path = dir.join(target);
+            let where_ = format!(
+                "{}:{}",
+                file.strip_prefix(&root).unwrap_or(file).display(),
+                lineno + 1
+            );
+            let Ok(bytes) = std::fs::read(&path) else {
+                problems.push(format!("{where_} — `{target}` names no such file"));
+                continue;
+            };
+            if bytes.get(..8) != Some(b"\x89PNG\r\n\x1a\n") {
+                problems.push(format!("{where_} — `{target}` is not a PNG"));
+                continue;
+            }
+            // IHDR is always first: 8 bytes of signature, 8 of chunk header,
+            // then width, height, bit depth, colour type.
+            let depth = bytes.get(24).copied().unwrap_or(0);
+            let colour = bytes.get(25).copied().unwrap_or(255);
+            if (depth, colour) != (8, 0) {
+                problems.push(format!(
+                    "{where_} — `{target}` is bit depth {depth} colour type {colour}; \
+                     the shader reads coverage from the red channel of an 8-bit \
+                     grayscale mask, so regenerate it with `make textart`"
+                ));
+            }
+        }
+    }
+
+    assert!(checked > 0, "found no textures to check");
+    assert!(
+        problems.is_empty(),
+        "the texture would not draw on a device:\n{}",
+        problems.join("\n")
+    );
+}
+
 fn collect_qml(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return;

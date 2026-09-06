@@ -40,27 +40,28 @@ work around it in the app.
 
 The load test instantiates every file with its properties at their defaults,
 which for the app cover shows the heading -- the name, the sync line, the
-count -- and nothing of the texture under it: lines of filler text set along
-nested curves that `components/TextArt.qml` traces over the item's size, then
-paints on a canvas. The painting needs a window and a font, which a headless
-engine has neither of, so the component splits the work in two: `layout`
-returns the curves, and the paint sets text along them.
+count. What it cannot see is what that heading says as sync and the count
+move underneath it, which is what `crates/vuo-shim/tests/qml_cover.rs` drives
+in an engine of its own: the count survives a refresh, a failure puts Vuo's
+own translated line on the cover rather than the server's words, and a count
+too wide for the corner is capped rather than pushed into the app's name.
 
-`crates/vuo-shim/tests/qml_cover.rs` loads the cover in an engine of its own
-and reads the curves back: that there are enough of them, that the innermost
-ones close around their strokes (the "eyes" of the pattern) while the outer
-ones reach the edge, that no curve runs away from the frame, that the stride
-stays inside its own cap, that the text is the cover's own filler and nothing
-foreign, and that a failed refresh puts Vuo's own translated line on the
-cover rather than the server's words.
+The texture under it is **not computed at runtime**. It is painted ahead of
+time by `tools/textart/` and shipped as a coverage mask in `qml/art/`; see
+the packaging notes. Two things about it are still checked:
 
-What the painted result *looks like*, and how long it takes, are checked by
-rendering the component under `qmlscene` against the stubs -- a manual check,
-not part of `make check`. It is worth doing before touching that file: a
-device reported the onboarding page freezing for fourteen seconds, and the
-same harness measured the tracing at 1109 ms on a host against 39 ms for the
-rewrite, over an identical set of 128 curves. Rendering the old and the new
-side by side is what showed the pattern had not changed while the cost had.
+- `qml_loads.rs` walks every `source:` in the QML and asserts the file is
+  there and is an 8-bit **grayscale** PNG. The shader reads coverage from the
+  red channel, so a mask re-exported as RGBA -- which any image editor does
+  by default, and which looks identical in a viewer -- would tint the whole
+  surface solid.
+- The cover test asserts the texture fades in *below* the heading. It is
+  drawn under the whole cover, so that fade is the only thing keeping the
+  app's name off a field of text.
+
+What the pattern *looks like* is a manual check: render it, look at it. That
+is worth doing before touching `tools/textart/`, and the harness that does it
+is `make textart` itself -- it writes the masks, and the masks are what ships.
 
 ### Outbox reconciliation
 

@@ -1,12 +1,17 @@
-//! The cover: the heading, and the texture under it.
+//! The cover: what it says, and where its texture stops.
 //!
 //! The QML load test compiles and instantiates this file with every property
-//! at its default and can see the heading. What it cannot see is the texture:
-//! lines of filler text set along curves that are traced by a pass of
-//! JavaScript over the cover's size. The painting itself needs a window and
-//! a font, which a headless engine has neither of, so the pass is split in
-//! two -- `layout` returns the curves, and `onPaint` sets text along them --
-//! and this reads the curves back.
+//! at its default, which shows the heading. What it cannot see is what the
+//! heading says as sync and the count move underneath it, and it does not
+//! look at the texture's geometry at all.
+//!
+//! The texture itself is no longer computed here -- it is a mask painted
+//! ahead of time by `tools/textart/` and shipped in `qml/art/`, and
+//! `qml_loads.rs` checks that the masks are there and are masks. What is
+//! left for this test is the one thing about the texture that is still the
+//! cover's own decision: WHERE IT FADES IN. It is drawn under the whole
+//! cover, heading included, and only the fade keeps the app's name off a
+//! field of text.
 //!
 //! Run under `QT_QPA_PLATFORM=offscreen`; `make check` sets it.
 
@@ -22,8 +27,8 @@
 
 use qmetaobject::*;
 
-/// Loads the cover at a size, since the stub `CoverBackground` has none of its
-/// own, and reads it back.
+/// Loads the cover at a size, since the stub `CoverBackground` has none of
+/// its own, and reads it back.
 const PROBE_QML: &str = r"
     import QtQuick 2.0
     Item {
@@ -54,75 +59,12 @@ const PROBE_QML: &str = r"
             loader.item.syncError = text
             return 'ok'
         }
-        // The curves the texture is set along, traced once and summarised:
-        // how many, how many close on themselves, how many points in all,
-        // and whether any point lies off the cover by more than a line.
-        property var curves: null
-        function trace() {
-            var art = findIn(loader.item, 'textArt')
-            if (!art) { return 'missing:textArt' }
-            curves = art.layout()
-            return '' + curves.length
+        // Where the texture starts, against where the heading ends. Both in
+        // the coordinates the cover lays them out in.
+        function headingBottom() {
+            var item = findIn(loader.item, 'heading')
+            return item ? '' + (item.y + item.height) : 'missing:heading'
         }
-        function closed() {
-            var n = 0
-            for (var i = 0; i < curves.length; i++) { if (curves[i].closed) { n++ } }
-            return '' + n
-        }
-        // The points are flat: [x0, y0, x1, y1, ...].
-        function points() {
-            var n = 0
-            for (var i = 0; i < curves.length; i++) { n += curves[i].points.length / 2 }
-            return '' + n
-        }
-        // A curve is walked until it is a `spacing` outside the frame, and
-        // the check comes after the stride that took it there, so the last
-        // point of a curve that leaves can be one stride further out. A
-        // stride is capped at three spacings, so four is the bound; past
-        // that a walk has run away and is setting text nobody can see.
-        function stray() {
-            var art = findIn(loader.item, 'textArt')
-            var margin = art.spacing * 4 + 1
-            for (var i = 0; i < curves.length; i++) {
-                var pts = curves[i].points
-                for (var j = 0; j < pts.length; j += 2) {
-                    if (pts[j] < -margin || pts[j] > art.width + margin
-                            || pts[j + 1] < -margin || pts[j + 1] > art.height + margin) {
-                        return 'yes:' + pts[j] + ',' + pts[j + 1]
-                    }
-                }
-            }
-            return 'no'
-        }
-        // The greatest gap between two consecutive points of any curve: a
-        // curve that jumped would set text across the gap.
-        function longestStep() {
-            var worst = 0
-            for (var i = 0; i < curves.length; i++) {
-                var pts = curves[i].points
-                for (var j = 2; j < pts.length; j += 2) {
-                    var dx = pts[j] - pts[j-2], dy = pts[j+1] - pts[j-1]
-                    worst = Math.max(worst, Math.sqrt(dx * dx + dy * dy))
-                }
-            }
-            return '' + worst
-        }
-        function spacing() { return '' + findIn(loader.item, 'textArt').spacing }
-        // How much line there is to set text along, which is what the point
-        // count used to stand in for -- and no longer can, now that the
-        // stride varies with how sharply the curve turns.
-        function length() {
-            var total = 0
-            for (var i = 0; i < curves.length; i++) {
-                var pts = curves[i].points
-                for (var j = 2; j < pts.length; j += 2) {
-                    var dx = pts[j] - pts[j-2], dy = pts[j+1] - pts[j-1]
-                    total += Math.sqrt(dx * dx + dy * dy)
-                }
-            }
-            return '' + Math.round(total)
-        }
-        function filler() { return findIn(loader.item, 'textArt').filler }
     }
 ";
 
@@ -146,8 +88,7 @@ fn stubs_dir() -> std::path::PathBuf {
 /// One test, because `QmlEngine::new()` builds a `QApplication` and there may
 /// be only one of those per process.
 #[test]
-#[allow(clippy::too_many_lines)]
-fn the_cover_says_the_count_over_a_texture_of_text_along_curves() {
+fn the_cover_says_the_count_over_a_texture_that_starts_below_it() {
     let mut engine = QmlEngine::new();
     engine.add_import_path(QString::from(stubs_dir().to_string_lossy().into_owned()));
     engine.load_data(QByteArray::from(PROBE_QML));
@@ -198,60 +139,26 @@ fn the_cover_says_the_count_over_a_texture_of_text_along_curves() {
     assert_eq!(get!("unreadTotal", "text"), "4");
 
     // ---------------------------------------------------------- the texture
-    let curves: usize = call!("trace").parse().unwrap_or(0);
+    let source = get!("textArt", "source");
     assert!(
-        curves >= 12,
-        "the cover's size gives only {curves} curves; the texture would be bare"
+        source.ends_with("art/cover.png"),
+        "the cover must draw the cover's own mask -- the page's is painted at \
+         a density that is mush at this size -- got {source:?}"
     );
-    let closed: usize = call!("closed").parse().unwrap_or(0);
+    // It is drawn under the WHOLE cover, so the fade is the only thing
+    // keeping the app's name off a field of text.
+    let fade_from = number!(get!("textArt", "fadeFrom"));
+    let fade_to = number!(get!("textArt", "fadeTo"));
+    let heading_bottom = number!(call!("headingBottom"));
     assert!(
-        closed >= 3,
-        "the innermost curves close around their strokes -- the 'eyes' of \
-         the pattern -- and only {closed} of {curves} did"
-    );
-    assert!(
-        closed < curves,
-        "every curve closed, so none of them reach the cover's edge and the \
-         corners are bare"
-    );
-    // How much LINE there is, not how many points: the stride varies with
-    // how sharply the curve turns, so a straight outer ring is a handful of
-    // points and thousands of pixels. Length is what the text is set along.
-    let length = number!(call!("length"));
-    let points = number!(call!("points"));
-    assert!(
-        length >= 4000.0,
-        "{length} pixels of curve across {curves} curves is not enough line \
-         to set text along"
+        fade_from >= heading_bottom,
+        "the texture reaches full strength at {fade_from}, above where the \
+         heading ends at {heading_bottom}: the app's name would sit in text"
     );
     assert!(
-        points < length,
-        "the stride collapsed to a point a pixel: {points} points over \
-         {length} pixels is the slow tracing this was rewritten to avoid"
-    );
-    assert_eq!(
-        call!("stray"),
-        "no",
-        "a curve ran away from the cover: it is setting text nobody can see"
-    );
-    // A stride is bounded, and bounded by the ring's own curvature: a chord
-    // of length l across a circle of radius r bulges l*l/8r from it, and
-    // `traceRing` solves that for a bulge under half a pixel. So the cap
-    // below is the absolute one, and what it guards is a stride running away
-    // -- text set across a gap it does not follow.
-    let spacing = number!(call!("spacing"));
-    let step = number!(call!("longestStep"));
-    assert!(
-        step <= spacing * 3.0 + 1.0,
-        "a curve jumped {step} pixels between points, past the {spacing} \
-         spacing's own cap; the text set across that gap would not follow it"
-    );
-    // The filler is the cover's own fixed text. Nothing foreign is anywhere
-    // near the canvas, and this is the assertion that keeps it so.
-    let filler = call!("filler");
-    assert!(
-        filler.starts_with("Lorem ipsum") && !filler.contains('<'),
-        "the texture's text must be the fixed filler, got {filler:?}"
+        fade_to > fade_from,
+        "the texture must fade in over a band rather than start on a hard \
+         line: {fade_from} to {fade_to}"
     );
 
     // ------------------------------------------------------- what sync says

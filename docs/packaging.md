@@ -84,6 +84,38 @@ Harbour. Its two rules that bear on this app are both met: one process, with
 no background service, and a sandbox declared in the desktop entry. Chum and
 OpenRepos take the same package.
 
+## Generated files that are committed
+
+Two things in the tree are produced by a tool and tracked anyway, so that a
+build needs neither of the tools:
+
+| File | Made by | Needs |
+| --- | --- | --- |
+| `translations/*.qm` | `lrelease` | Qt's linguist tools |
+| `qml/art/*.png` | `make textart` | a QML runtime and a display (or `xvfb`) |
+
+The art is the texture the cover and the onboarding page wear: nested curves
+of tiny filler text, after Jolla's own packaging. It used to be painted at
+runtime, and a device reported the onboarding page freezing for fourteen
+seconds while it was; painting it ahead of time costs nothing to show, looks
+the same on every phone, and cannot half-arrive. `tools/textart/` holds the
+painter and is **not** installed.
+
+What ships is a **coverage mask** -- one grayscale channel, no colour -- which
+`qml/components/TextArt.qml` tints with the theme's own colour. One file is
+therefore right on every ambience, a light one included, and there is nothing
+to regenerate when Sailfish gains another. The same shader dims it and cuts
+the two holes the app needs: the band the cover's heading sits in, and the
+disc the onboarding page's title sits in. Both are geometry the app knows and
+the painter does not, so neither is baked in.
+
+One caveat, stated because it cannot be fixed here: **the masks are not
+rendered in the device's own font.** Sail Sans Pro ships with SailfishOS and
+is not redistributable, so whichever machine runs `make textart` renders them
+with its default sans instead. At these sizes the letters are texture rather
+than reading matter and the pattern is identical, but it is the one respect
+in which the shipped art is not what the device would have drawn for itself.
+
 ## The sandbox
 
 The desktop entry carries an `[X-Sailjail]` section, so the app runs under
