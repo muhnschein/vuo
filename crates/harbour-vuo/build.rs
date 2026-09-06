@@ -32,6 +32,21 @@ fn main() {
             println!("cargo:rustc-link-search=native={sysroot}/usr/lib64");
         }
     }
+    // Drop the libraries no symbol in the binary refers to.
+    //
+    // `qttypes` passes `-lQt5Widgets` unconditionally (its build.rs), with no
+    // feature to turn it off. Once the vendored qmetaobject stops building its
+    // engine on `QApplication` nothing refers to QtWidgets, and this drops the
+    // DT_NEEDED entry that would otherwise fail Harbour's allowed-libraries
+    // check -- see docs/packaging.md. Order matters: as a `rustc-link-arg-bins`
+    // it lands ahead of the `-l` flags the build scripts emit, which is the
+    // only position where `--as-needed` has any effect on them.
+    //
+    // It prunes ONLY libraries nothing needs, so it is right for the others
+    // too. It is not a way to hide a real dependency: with `QApplication` still
+    // in use the library is genuinely needed and this keeps it.
+    println!("cargo:rustc-link-arg-bins=-Wl,--as-needed");
+
     println!("cargo:rerun-if-changed=src/main.rs");
     println!("cargo:rerun-if-env-changed=VUO_SYSROOT");
     println!("cargo:rerun-if-env-changed=QT_INCLUDE_PATH");

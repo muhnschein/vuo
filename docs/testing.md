@@ -16,8 +16,12 @@ or behind an explicit opt-in gate. There are exactly two gates:
 | `test` | 263 tests across 17 binaries, the shim's under offscreen Qt |
 | `qmllint` | QML syntax |
 | `qml-load` | **every QML file compiled in a real engine** against the Silica stubs |
-| `packaging` | spec/Cargo version drift, missing installed files, desktop entry validity, and the Harbour intake rules that need no device (`scripts/check-harbour.sh`) |
+| `packaging` | spec/Cargo version drift, missing installed files, desktop entry validity, the Harbour intake rules that need no device (`scripts/check-harbour.sh`), and the libraries the host build actually links (`scripts/check-linked-libs.sh`) |
 | `deny` | advisories, licences, banned and duplicated crates |
+
+`make vendor-check` is a gate of its own, run by CI and not by `check`: it
+needs crates.io to prove `third_party/qmetaobject` is upstream plus its one
+patch. See `docs/packaging.md`.
 
 ## The parts worth explaining
 

@@ -52,6 +52,18 @@ repository = "https://github.com/muhnschein/vuo"
 authors = ["Vuo contributors"]
 
 [workspace.lints.rust]
+# Denied HERE rather than through `RUSTFLAGS: -D warnings` in CI, which is
+# where it used to live.
+#
+# RUSTFLAGS reaches the whole dependency graph. Cargo caps lints for the crates
+# it fetches, so that was harmless -- until `third_party/qmetaobject`, which is
+# a PATH dependency and therefore not capped: its own forty-six warnings became
+# forty-six errors and nothing built. A lints table applies to the crates that
+# opt into it, which is what the rule was always about.
+#
+# The crates that do not inherit this table (vuo-shim, harbour-vuo, which need
+# `unsafe_code` allowed) carry `warnings = "deny"` in their own.
+warnings = "deny"
 unsafe_code = "deny"
 missing_debug_implementations = "warn"
 rust_2018_idioms = { level = "warn", priority = -1 }
@@ -68,6 +80,20 @@ indexing_slicing = "deny"
 integer_division = "warn"
 todo = "deny"
 unimplemented = "deny"
+
+# qmetaobject builds its QML engine on `QApplication`, which comes from
+# QtWidgets -- a library Harbour does not allow, since a Silica app is expected
+# to use QtGui's `QGuiApplication`. Upstream carries that unconditionally, on
+# the released crate and on master, with no feature to turn it off, so the only
+# way past it is to carry the crate.
+#
+# `third_party/qmetaobject` is upstream 0.2.10 plus `third_party/qmetaobject.patch`
+# -- three lines swapping the include, the member type and the constructor --
+# and `make vendor-check` proves it is exactly that and nothing more. The
+# approach, the patch and the vendor check are all taken from postivene, which
+# hit this first.
+[patch.crates-io]
+qmetaobject = { path = "third_party/qmetaobject" }
 
 [profile.release]
 # The device build is size-sensitive; a phone does not need 16 codegen units'

@@ -1,0 +1,43 @@
+Use QGuiApplication instead of QApplication.
+
+QApplication comes from QtWidgets, and libQt5Widgets.so.5 is not on
+Harbour's allowed-libraries list: a Silica app is expected to use QtGui's
+QGuiApplication, and Jolla's validator refuses a package whose binary
+links it. Measured on the aarch64 link before this patch, it was the one
+NEEDED entry the check in scripts/cross-build.sh refused.
+
+Nothing in Vuo needs QtWidgets. The application object here is used only
+for exec() and quit(), both of which QGuiApplication provides -- see
+`self->app->exec()` and `self->app->quit()` below the patched lines --
+and the device entry point does not construct one at all: it uses
+SailfishApp::application(), which returns a QGuiApplication.
+
+Upstream carries this unconditionally, on the released crate and on
+master, with no feature to switch it off. See docs/packaging.md.
+
+--- a/src/qtdeclarative.rs
++++ b/src/qtdeclarative.rs
+@@ -28,7 +28,7 @@
+     #include <memory>
+     #include <QtQuick/QtQuick>
+     #include <QtCore/QDebug>
+-    #include <QtWidgets/QApplication>
++    #include <QtGui/QGuiApplication>
+     #include <QtQml/QQmlComponent>
+ 
+     struct SingleApplicationGuard {
+@@ -47,12 +47,12 @@
+     };
+ 
+     struct QmlEngineHolder : SingleApplicationGuard {
+-        std::unique_ptr<QApplication> app;
++        std::unique_ptr<QGuiApplication> app;
+         std::unique_ptr<QQmlApplicationEngine> engine;
+         std::unique_ptr<QQuickView> view;
+ 
+         QmlEngineHolder(int &argc, char **argv)
+-            : app(new QApplication(argc, argv))
++            : app(new QGuiApplication(argc, argv))
+             , engine(new QQmlApplicationEngine())
+         {}
+     };

@@ -12,6 +12,11 @@
 # Usage: scripts/cross-build.sh [path-to-unpacked-sdk-rootfs]
 set -euo pipefail
 
+# Run from the repository root: the cargo invocation and the paths below are
+# relative to it, and cross-rpm.sh calls this from wherever it was itself run.
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+
 ROOTFS="${1:-/home/user/sdk/rootfs}"
 ARCH=aarch64
 # Overridable: the SDK target version the rootfs was unpacked from.
@@ -80,48 +85,17 @@ echo "-- highest versioned symbols required (must not exceed the device's) --"
 
 # -- the shared libraries Harbour allows a package to link ------------------
 #
-# The one Harbour rule that cannot be checked anywhere else: it is decided by
-# the DEVICE link, so scripts/check-harbour.sh -- which runs in `make check`,
-# where there is no cross toolchain -- cannot see it. Anything not on this
-# list fails intake with "Cannot link to shared library".
+# The one intake rule that is decided by the DEVICE link, so nothing running
+# on a bare host can see it. The list lives in scripts/check-linked-libs.sh,
+# which `make check` also runs over the host build.
 #
-# Transcribed from sailfishos/sdk-harbour-rpmvalidator's
-# allowed_libraries.conf as of 2026-09-06, minus the entries no Qt/Rust app
-# could reach (SDL2, PulseAudio, Wayland, the codecs). Note what is NOT there:
-# libQt5Widgets. qttypes links it unconditionally (build.rs:246) and
-# qmetaobject's QmlEngine is a QApplication, so this is a real risk for this
-# binary rather than a theoretical one.
+# A failure here does NOT stop the package being built: this script's output is
+# the test package people install on a phone, and a phone is exactly where you
+# want to be when something is wrong. It is reported loudly instead, and CI
+# fails the job on it.
 echo "-- shared libraries, against Harbour's allowed list --"
-harbour_allows() {
-    case "$1" in
-        libQt5Core.so.5|libQt5Gui.so.5|libQt5Qml.so.5|libQt5Quick.so.5|\
-libQt5Network.so.5|libQt5Concurrent.so.5|libQt5DBus.so.5|libQt5Sql.so.5|\
-libQt5Svg.so.5|libQt5Xml.so.5|libQt5XmlPatterns.so.5|libQt5Multimedia.so.5|\
-libQt5Sensors.so.5|libQt5Positioning.so.5|libQt5WebSockets.so.5|libQt5Location.so.5) ;;
-        libsailfishapp.so.1|libsailfishsilica.so.1|libmdeclarativecache5.so.0) ;;
-        libqt5embedwidget.so.1|libsailfishwebengine.so.1) ;;
-        libEGL.so.1|libGLESv1_CM.so.1|libGLESv2.so.2) ;;
-        ld-linux-aarch64.so.1|ld-linux-armhf.so.3|ld-linux.so.2) ;;
-        libc.so.6|libm.so.6|libdl.so.2|librt.so.1|libpthread.so.0|libresolv.so.2) ;;
-        libstdc++.so.6|libgcc_s.so.1|libz.so.1) ;;
-        libcrypto.so.3|libssl.so.3|libsqlite3.so.0|libpng16.so.16|libxml2.so.2) ;;
-        libdbus-1.so.3|libglib-2.0.so.0|libgobject-2.0.so.0|libgio-2.0.so.0) ;;
-        *) return 1 ;;
-    esac
-    return 0
-}
-forbidden=0
-for lib in $("$BINDIR/readelf" -d "$BIN" | sed -n 's/.*Shared library: \[\(.*\)\]/\1/p'); do
-    if harbour_allows "$lib"; then
-        echo "   ok       $lib"
-    else
-        echo "   REJECTED $lib"
-        forbidden=$((forbidden + 1))
-    fi
-done
-if [ "$forbidden" -ne 0 ]; then
-    echo
-    echo "WARNING: $forbidden linked libraries are not on Harbour's allowed list." >&2
-    echo "The package will install and run on a device, but Harbour will refuse it." >&2
-    echo "See docs/packaging.md, \"Harbour readiness\"." >&2
+if "$ROOT/scripts/check-linked-libs.sh" "$BIN" "$BINDIR/readelf"; then
+    :
+else
+    echo "WARNING: the package is being built anyway; Harbour would refuse it." >&2
 fi

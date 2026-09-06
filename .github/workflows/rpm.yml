@@ -210,3 +210,15 @@ jobs:
           path: dist/*.rpm
           if-no-files-found: error
           retention-days: 30
+
+      # AFTER the upload, deliberately.
+      #
+      # Which libraries the binary needs is the one Harbour rule that only the
+      # device link can answer, and a package that breaks it still installs and
+      # runs -- so it is exactly the package you want in your hands while you
+      # work out why. The artifact is kept and the job goes red.
+      - name: Harbour's allowed-libraries rule
+        run: |
+          bin=target/aarch64-unknown-linux-gnu/release/harbour-vuo
+          readelf=/opt/cross/bin/aarch64-meego-linux-gnu-readelf
+          ./scripts/check-linked-libs.sh "$bin" "$readelf"
