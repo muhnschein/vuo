@@ -53,6 +53,11 @@ Window {
                 if (complete && !written) {
                     written = true
                     console.log("wrote", modelData.file, save(modelData.file))
+                    // Traced a second time, and only to be told off: a ring
+                    // drawn twice is the one defect of this pattern anyone
+                    // notices, and it has shipped once. The script reads
+                    // this line and refuses the master if it is not zero.
+                    console.log("OVERLAPS", modelData.file, overlaps())
                     win.done++
                     if (win.done === win.masters.length) {
                         Qt.quit()

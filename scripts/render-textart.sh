@@ -35,14 +35,28 @@ trap 'rm -rf "$work"' EXIT
 cp tools/textart/*.qml "$work/"
 
 echo "== painting the masters =="
-run() { QT_QPA_PLATFORM=xcb "$QMLSCENE" -I "$ROOT/qml-stubs" "$work/render.qml"; }
 if command -v xvfb-run >/dev/null 2>&1 && [ -z "${DISPLAY:-}" ]; then
     ( cd "$work" && xvfb-run -a -s "-screen 0 1400x1000x24" \
         env QT_QPA_PLATFORM=xcb "$QMLSCENE" -I "$ROOT/qml-stubs" render.qml )
 elif [ -n "${DISPLAY:-}" ]; then
-    ( cd "$work" && run )
+    ( cd "$work" && QT_QPA_PLATFORM=xcb "$QMLSCENE" -I "$ROOT/qml-stubs" render.qml )
 else
     echo "no DISPLAY and no xvfb-run: install xvfb, or run this on a desktop." >&2
+    exit 1
+fi | tee "$work/painted.log"
+
+# A ring traced twice draws text on top of text, which is what a device
+# reported once the art was otherwise right. The painter counts it; refuse
+# the master rather than shipping it.
+if grep -q "^qml: OVERLAPS" "$work/painted.log"; then
+    if grep "^qml: OVERLAPS" "$work/painted.log" | grep -qv " 0$"; then
+        echo "FAIL: the painter drew over itself:" >&2
+        grep "^qml: OVERLAPS" "$work/painted.log" >&2
+        exit 1
+    fi
+    echo "  no master draws over itself"
+else
+    echo "FAIL: the painter reported no overlap count; did render.qml change?" >&2
     exit 1
 fi
 

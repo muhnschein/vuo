@@ -238,12 +238,30 @@ Canvas {
     // ----------------------------------------------------------- the tracing
 
     /// Follow the curve at `level` from a seed, one way, until it closes on
-    /// itself or leaves the canvas. Returns flat `[x0, y0, x1, y1, ...]`.
+    /// itself, leaves the canvas, or reaches ground an earlier curve of this
+    /// ring has already covered. Returns flat `[x0, y0, x1, y1, ...]`.
     ///
     /// One stride along the tangent, then one Newton correction back onto the
     /// level: two evaluations a step, and the correction is what stops the
     /// line drifting off its own ring over thousands of pixels.
-    function walk(L, sx, sy, level, direction, step, maxSteps, soft, sc, fg) {
+    ///
+    /// `covered` is where the ring's earlier curves have been (see
+    /// `traceRing`), and stopping when this one reaches them is what keeps a
+    /// ring from being TRACED TWICE. A device reported the pattern
+    /// overlapping itself in a couple of places: two seeds on one ring, the
+    /// second of them just beyond the end of the curve the first had drawn
+    /// -- so the grid, which was only ever asked about the SEED, let it
+    /// through, and it retraced seven hundred pixels of the same line two
+    /// pixels to the side. Asking on every stride is the whole fix: a later
+    /// curve fills whatever is left of its ring and stops where the pattern
+    /// is already there.
+    ///
+    /// The question it asks is the same one `overlaps` asks afterwards --
+    /// "is there already ink within `near` of here" -- so the two cannot
+    /// disagree about what counts as drawing twice, and the curves meet
+    /// rather than overlapping by however coarse a grid cell happens to be.
+    function walk(L, sx, sy, level, direction, step, maxSteps, soft, sc, fg,
+                  covered, cell, near) {
         var points = []
         var x = sx, y = sy
         var w = art.width, h = art.height
@@ -265,6 +283,16 @@ Canvas {
                 x -= correction * fg[1]
                 y -= correction * fg[2]
             }
+            // BEFORE the point is kept, not after: a stride is as long as
+            // the ring's own curvature allows, so a curve can go from a
+            // comfortable distance to touching in one of them. Keeping the
+            // point that stopped the walk is what left a few overlaps behind
+            // when this stopped on grid cells instead. No `i > 6` guard is
+            // needed -- `covered` holds only the curves traced BEFORE this
+            // one, so there is nothing of its own to trip on.
+            if (art.inked(covered, cell, x, y, near)) {
+                return { points: points, closed: false }
+            }
             points.push(x, y)
             if (i > 6) {
                 var dx = x - sx, dy = y - sy
@@ -277,6 +305,42 @@ Canvas {
             }
         }
         return { points: points, closed: false }
+    }
+
+    /// Whether any point already recorded in `grid` is within `near` of
+    /// (x, y). The grid buckets points by `cell`, and `near` is never more
+    /// than a cell, so the nine around it are all that can hold one.
+    function inked(grid, cell, x, y, near) {
+        var gx = Math.floor(x / cell), gy = Math.floor(y / cell)
+        var limit = near * near
+        for (var ox = -1; ox <= 1; ox++) {
+            for (var oy = -1; oy <= 1; oy++) {
+                var bucket = grid[(gy + oy) * 65536 + (gx + ox)]
+                if (!bucket) {
+                    continue
+                }
+                for (var i = 0; i < bucket.length; i += 2) {
+                    var dx = x - bucket[i], dy = y - bucket[i + 1]
+                    if (dx * dx + dy * dy < limit) {
+                        return true
+                    }
+                }
+            }
+        }
+        return false
+    }
+
+    /// Record a point as drawn, for `inked` to find.
+    ///
+    /// Not `ink`: that is the property saying how dark the text is, and a
+    /// function of the same name is simply not reachable -- the call comes
+    /// back "TypeError", because it is asking a number to be a function.
+    function markInk(grid, cell, x, y) {
+        var key = Math.floor(y / cell) * 65536 + Math.floor(x / cell)
+        if (!grid[key]) {
+            grid[key] = []
+        }
+        grid[key].push(x, y)
     }
 
     /// Every curve of one ring, as `{points, closed}` with `points` flat.
@@ -298,12 +362,36 @@ Canvas {
         var level = spacing * (k + 0.5)
 
         // A chord of this length sits within `tol` of a circle of radius
-        // `level`, so the outermost rings are walked in long strides and the
-        // innermost, which actually curve, in short ones.
+        // `level`, so the innermost rings, which actually curve, are walked
+        // in short strides.
+        //
+        // The CAP is what matters on the outer ones, and it is half a
+        // spacing rather than three: the checks that stop two curves being
+        // drawn over one another compare sampled POINTS, so a stride long
+        // enough to cross another curve between two of its own samples hides
+        // the crossing from them -- which is exactly what shipped, text over
+        // text at a shallow angle with every sample comfortably far from
+        // every other. Two segments that cross have endpoints within a
+        // stride of the crossing, so a stride under half the spacing cannot
+        // hide one from a check that refuses 0.8 of it. This was a stride of
+        // twenty pixels when the pattern was painted on the phone and the
+        // arithmetic had to be cheap; it is painted here now, where it can
+        // afford to be careful.
         var tol = 0.4
         var step = Math.sqrt(8 * level * tol)
-        if (step < 1.5) { step = 1.5 } else if (step > spacing * 3) { step = spacing * 3 }
+        if (step < 1.5) { step = 1.5 } else if (step > spacing * 0.5) { step = spacing * 0.5 }
 
+        // How close two bits of line may come before the later one gives
+        // up: just under the spacing the rings are drawn at, because that
+        // spacing IS the room a line of text needs. Half of it was tried and
+        // is visibly wrong -- the glyphs are nearly as tall as the spacing,
+        // so lines that pass within half of it collide even though no curve
+        // is drawn twice. The seed check and the walk both mean this by
+        // "already drawn", and no point that comes within it is ever kept,
+        // so `overlaps` passes by construction rather than by luck.
+        var near = spacing * 0.95
+        // Big enough that the nine cells around a point hold everything
+        // within `near` of it, and that a stride cannot skip over a cell.
         var cell = Math.max(spacing, step)
         var grid = {}
         var sc = new Array(3 * n)
@@ -337,23 +425,16 @@ Canvas {
                 continue
             }
 
-            var gx0 = Math.floor(sx / cell), gy0 = Math.floor(sy / cell)
-            var covered = false
-            for (var ox = -1; ox <= 1 && !covered; ox++) {
-                for (var oy = -1; oy <= 1 && !covered; oy++) {
-                    if (grid[(gy0 + oy) * 65536 + (gx0 + ox)]) {
-                        covered = true
-                    }
-                }
-            }
-            if (covered) {
+            if (art.inked(grid, cell, sx, sy, near)) {
                 continue
             }
 
-            var forward = art.walk(L, sx, sy, level, 1, step, maxSteps, soft, sc, fg)
+            var forward = art.walk(L, sx, sy, level, 1, step, maxSteps, soft, sc, fg,
+                                   grid, cell, near)
             var points = forward.points
             if (!forward.closed) {
-                var back = art.walk(L, sx, sy, level, -1, step, maxSteps, soft, sc, fg).points
+                var back = art.walk(L, sx, sy, level, -1, step, maxSteps, soft, sc, fg,
+                                    grid, cell, near).points
                 var joined = []
                 for (var b = back.length - 2; b >= 0; b -= 2) {
                     joined.push(back[b], back[b + 1])
@@ -368,11 +449,69 @@ Canvas {
                 continue
             }
             for (var m = 0; m < points.length; m += 2) {
-                grid[Math.floor(points[m + 1] / cell) * 65536 + Math.floor(points[m] / cell)] = true
+                art.markInk(grid, cell, points[m], points[m + 1])
             }
             out.push({ points: points, closed: forward.closed })
         }
         return out
+    }
+
+    /// Where two DIFFERENT curves are drawn over one another, which is the
+    /// one defect of this pattern a person notices: text on top of text.
+    ///
+    /// Returns how many pairs of points sit closer than half the line
+    /// spacing. `make textart` refuses to ship a master that reports any,
+    /// because that is exactly what shipped once -- a ring traced twice by
+    /// two seeds. Pairs from the SAME curve are not counted: a curve comes
+    /// legitimately near itself around a tight end cap, where a ring is a
+    /// capsule barely wider than the stride that walks it.
+    function overlaps() {
+        var curves = art.layout()
+        var xs = [], ys = [], owner = []
+        for (var c = 0; c < curves.length; c++) {
+            var p = curves[c].points
+            for (var i = 0; i < p.length; i += 2) {
+                xs.push(p[i])
+                ys.push(p[i + 1])
+                owner.push(c)
+            }
+        }
+        var cell = art.spacing
+        var grid = {}
+        for (var n = 0; n < xs.length; n++) {
+            var key = Math.floor(ys[n] / cell) * 65536 + Math.floor(xs[n] / cell)
+            if (!grid[key]) {
+                grid[key] = []
+            }
+            grid[key].push(n)
+        }
+        // Below the walk's own 0.95, so this has teeth: it fails on a
+        // regression that lets two curves run closer than a line of text
+        // needs, rather than only on one that draws the same line twice.
+        var tooClose = cell * 0.8
+        var found = 0
+        for (var a = 0; a < xs.length; a++) {
+            var gx = Math.floor(xs[a] / cell), gy = Math.floor(ys[a] / cell)
+            for (var ox = -1; ox <= 1; ox++) {
+                for (var oy = -1; oy <= 1; oy++) {
+                    var bucket = grid[(gy + oy) * 65536 + (gx + ox)]
+                    if (!bucket) {
+                        continue
+                    }
+                    for (var bi = 0; bi < bucket.length; bi++) {
+                        var b = bucket[bi]
+                        if (b <= a || owner[a] === owner[b]) {
+                            continue
+                        }
+                        var dx = xs[a] - xs[b], dy = ys[a] - ys[b]
+                        if (Math.sqrt(dx * dx + dy * dy) < tooClose) {
+                            found++
+                        }
+                    }
+                }
+            }
+        }
+        return found
     }
 
     /// Every curve on the canvas. Pure, and what the cover's test reads: the
