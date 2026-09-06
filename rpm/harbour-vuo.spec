@@ -36,7 +36,6 @@ Source2:    vendor.toml
 %endif
 
 Requires:   sailfishsilica-qt5 >= 0.10.9
-Requires:   nemo-qml-plugin-notifications-qt5
 # Sailfish.WebView, for the site page attached to the right of an article.
 # Ships with the OS since 3.1; this only states the dependency.
 Requires:   sailfish-components-webview-qt5

@@ -160,18 +160,46 @@ The approach, the patch, the vendor check and this section all come from
 first. The real fix is upstream: a feature flag choosing between `QApplication`
 and `QGuiApplication` would serve every Sailfish app built on `qmetaobject`.
 
-### The remaining blocker
+### The submission package
 
-**No release package can be built yet.** `rpm/harbour-vuo.spec` cannot run
-under the SDK's own cargo (see "The Rust floor" and `docs/sdk-build.md`), and
-what CI produces is a *test* package: cross-built outside `sb2`, with
-`AutoReqProv: no`. A submission has to come from the spec.
+Harbour takes a package you built: nothing at Jolla rebuilds it from source,
+and `rpmvalidation.sh` judges the RPM's contents rather than its provenance.
+So the SDK gap in `docs/sdk-build.md` — `rpm/harbour-vuo.spec` cannot run under
+the SDK's own cargo — is not on the path to the store. It costs Chum and OBS,
+which do build from the spec, and it makes the recipe ours to maintain.
+
+`.github/workflows/rpm.yml` builds the package that gets submitted. A **release
+build** (a `v*` tag, or the dispatch form's `release` box) differs from a test
+build in one field: `Release: 1` rather than `1.<run number>`, so the file is
+`harbour-vuo-VERSION-1.aarch64.rpm` as Harbour's naming rule wants. The same
+job then checks that name, and the binary's linked libraries, over the result.
+
+Two deliberate departures from what an SDK build would produce:
+
+- **`AutoReqProv: no`.** Ubuntu's rpm generates soname `Requires` the phone's
+  rpmdb does not recognise, and the install then fails on dependencies that are
+  present — a worse failure than having none. The package declares its
+  dependencies at PACKAGE level instead (`sailfishsilica-qt5`,
+  `sailfish-components-webview-qt5`), which is what Harbour's own allowed list
+  is written in terms of, and every library the binary links comes with those
+  two. `rpm/harbour-vuo.spec` leaves the generator on, which is right for the
+  rpm that gets it right.
+- **Hardening restated by hand.** Inside `sb2` the distro's `%optflags` reach
+  every C/C++ compile through rpm's build environment; this route does not go
+  through rpm at all, so `scripts/cross-build.sh` passes `-O2
+  -D_FORTIFY_SOURCE=2 -fstack-protector-strong -fPIC` and links `-z relro -z
+  now` itself, then reads RELRO, BIND_NOW and PIE back off the ELF so a flag
+  that stops being applied is visible rather than silent.
 
 Everything else measured on the 5.2.0.15 aarch64 build passes: every linked
 library is allowed, the glibc floor is right, the binary is stripped and has no
 `rpath`, and the packaged tree is exactly the four locations Harbour allows.
 The two rules that shaped the app itself are met as well: one process, with no
 background service, and a sandbox declared in the desktop entry.
+
+Only `aarch64` is built. Harbour's form asks for `aarch64, armv7hl`; armv7hl
+has never been attempted here, and the store simply will not offer the app to
+a device of an architecture it has no package for.
 
 ## Generated files that are committed
 

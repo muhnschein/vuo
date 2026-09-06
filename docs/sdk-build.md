@@ -7,12 +7,16 @@ recipe follows [muhnschein/postivene](https://github.com/muhnschein/postivene)'s
 
 ## Result, in one line
 
-**An aarch64 RPM now exists**, built by the route in *Cross-building without
-the SDK's cargo* below. `mb2` itself still does not complete, for the reason in
-*The blocker*: Vuo's dependency graph needs Rust 1.88 and the SDK 5.0.0.43
-tooling ships 1.75. The way round it is to keep the SDK's *compiler and
-sysroot* — which is what has to match the device — and drive them with a host
-cargo new enough to parse the lockfile.
+**The submission package is built by the route in *Cross-building without the
+SDK's cargo* below**, and that is now a decision rather than a stopgap: Harbour
+takes a package you built, so the SDK is not on the path to the store.
+
+`mb2` itself still does not complete, for the reason in *The blocker*: Vuo's
+dependency graph needs Rust 1.88 and the SDK tooling ships 1.75. The way round
+it is to keep the SDK's *compiler and sysroot* — which is what has to match the
+device — and drive them with a host cargo new enough to parse the lockfile.
+What that costs is Chum and OBS, which do build from the spec. See
+*Resolving it*, which measures the alternative rather than guessing at it.
 
 ## Environment, without a Docker daemon
 
@@ -117,11 +121,17 @@ the result. What comes out:
 ```
 $ readelf -d harbour-vuo | grep NEEDED
   libstdc++.so.6  libsailfishapp.so.1  libQt5Core.so.5  libQt5Gui.so.5
-  libQt5Widgets.so.5  libQt5Quick.so.5  libQt5Qml.so.5  libgcc_s.so.1 ...
-$ # highest versioned symbol required:
-GLIBC_2.30      # == the device's glibc
+  libQt5Quick.so.5  libQt5Qml.so.5  libgcc_s.so.1  libm.so.6  libc.so.6
+$ # highest versioned symbol required, against 5.0.0.43:
+GLIBC_2.30      # == that target's glibc
 GLIBCXX_3.4     # the baseline, so any libstdc++ will do
 ```
+
+That listing used to have `libQt5Widgets.so.5` in it, which Harbour does not
+allow; see docs/packaging.md, "QtWidgets, and the vendored qmetaobject". The
+script now reads the whole list back against Harbour's allowed set on every
+build, and reports the hardening (RELRO, BIND_NOW, PIE) the same way, since
+neither is visible in the source.
 
 ### Two defects it found immediately
 
@@ -178,9 +188,15 @@ and Vuo sends no username at all -- the username is what `/v1/me` *returns*.
 ### What this does and does not prove
 
 It proves the code compiles and links against real Qt 5.6.3 and real
-`libsailfishapp`, which nothing before it did. It does **not** make `mb2` work,
-and it is not how a release should be built: the blocker in the next section is
-still the thing to fix. Treat the output as a test package.
+`libsailfishapp`, which nothing before it did. It does **not** make `mb2` work.
+
+It also no longer means the output is only a test package. `rpm.yml` builds a
+release package on a `v*` tag or on request, differing from a test one in
+exactly one field — `Release: 1` rather than `1.<run number>` — and the same
+job checks Harbour's file-name rule and its allowed-libraries rule over the
+result. What an SDK build would still do differently is generate soname-level
+`Requires`; see the note in `rpm/harbour-vuo-cross.spec` for why letting
+Ubuntu's rpm do that is worse than not doing it.
 
 ## What the build found in the spec
 
@@ -230,18 +246,63 @@ The job now runs `cargo +${{ steps.msrv.outputs.version }}`, and
 
 ### Resolving it
 
-Two options, and the choice is a real trade rather than a cleanup:
+Three options. The second is the one that gets measured wrong, so it is
+measured here.
 
-1. **A newer Rust in the build target.** `mb2` normally installs Jolla's
-   `rust`/`cargo` packages, which may be newer than the tooling's 1.75. This
-   environment cannot reach those repos, so it is unverified — but it is the
-   only option that does not move the code backwards.
+1. **A newer Rust in the build target.** `mb2` installs Jolla's `rust`/`cargo`
+   packages into the target on first build. Measured against the 5.2.0.15 SDK
+   on 2026-09-02: they are `1.75.0+git2`, so this does not currently help. It
+   remains the only option that does not move the code backwards, and it is
+   Jolla's to make — every Rust Sailfish app hits this, postivene included, so
+   it is worth raising with them rather than working around forever.
+
 2. **Roll the dependency tree back** to something cargo 1.75 can parse. This
-   was attempted and abandoned deliberately: it cascades through
-   `reqwest` → `tower-http` → `async-compression` → `compression-codecs`, and
-   drags the TLS stack back with it. For an app whose whole job is talking TLS
-   to the user's server, and whose §9.1 is explicit about it, trading current
-   rustls for an SDK version number is the wrong way round.
+   was done in full, against the lockfile at `c4694fe`, to find out what it
+   really costs. Two numbers have to reach zero: dependencies whose manifest
+   declares `edition2024` (which cargo 1.75 cannot *parse*, and vendoring
+   parses every manifest whether or not it is compiled), and compiled crates
+   whose `rust-version` exceeds 1.75 (which cargo *refuses to build*).
+
+   Both reach zero, with about thirteen `cargo update --precise` pins:
+
+   | | from | to |
+   | --- | --- | --- |
+   | `url` | 2.5.8 | 2.5.2 |
+   | `hyper-rustls` | 0.27.9 | 0.27.3 |
+   | `async-compression` | 0.4.43 | 0.4.18 |
+   | `tempfile` | 3.27 | 3.14 (drags `rustix` 1.1.4 → 0.38.44) |
+   | `quinn` / `quinn-proto` | 0.11.11 / 0.11.17 | 0.11.5 / 0.11.9 |
+   | `indexmap`, `zeroize`, `security-framework`, `chacha20`, `wiremock` (dev) | | one minor each |
+
+   **`rustls` 0.23.43, `reqwest` 0.12.28 and `hyper` 1.11.0 do not move.** An
+   earlier version of this section said the rollback "cascades through
+   `reqwest` → `tower-http` → `async-compression`, and drags the TLS stack back
+   with it". That was written from a failed attempt rather than from a
+   completed one, and it is wrong: the TLS stack is untouched. Most of what
+   breaks the vendor bundle is not even compiled — `quinn` and its `rand`
+   family are `reqwest`'s HTTP/3 support, which Vuo does not enable; they sit
+   in the lockfile because cargo locks optional dependencies too.
+
+   The real cost is one line of that table. `url` 2.5.2 means `idna` 0.5.0,
+   which reintroduces
+   [RUSTSEC-2024-0421](https://rustsec.org/advisories/RUSTSEC-2024-0421):
+   `idna` accepts Punycode labels that decode to pure ASCII. `cargo deny check
+   advisories` fails on it, and it is a domain-confusion bug in the parser
+   §9.1's redirect origin-pinning rests on — the thing that keeps the API token
+   from leaving the configured server. That single crate is also the biggest
+   win in the table (it removes the whole ICU subtree, eight of the nineteen
+   offending manifests, and the 1.88 floor with it), so there is no version of
+   this rollback that skips it.
+
+   Trading that for an SDK version number is the wrong way round.
+
+3. **Do not build the release with the SDK at all.** Harbour takes a package
+   you built and submit; nothing at Jolla rebuilds it from source, and the
+   validator judges the RPM's contents rather than its provenance. This is what
+   Vuo does: `.github/workflows/rpm.yml` produces the submission package, with
+   the SDK's own compiler and sysroot but the host's cargo. It closes off Chum
+   and OBS, which do build from the spec, and it makes the recipe ours to
+   maintain. See docs/packaging.md, "Harbour readiness".
 
 `make lockfile` reports the gap on every run so it stays visible.
 

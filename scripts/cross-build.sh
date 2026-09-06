@@ -47,8 +47,16 @@ export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER="$CROSS-gcc"
 export CC_aarch64_unknown_linux_gnu="$CROSS-gcc"
 export CXX_aarch64_unknown_linux_gnu="$CROSS-g++"
 export AR_aarch64_unknown_linux_gnu="$CROSS-ar"
-export CFLAGS_aarch64_unknown_linux_gnu="--sysroot=$SR -B$BINDIR/"
-export CXXFLAGS_aarch64_unknown_linux_gnu="--sysroot=$SR -B$BINDIR/"
+# The hardening the distro's own %optflags would apply, restated.
+#
+# Inside sb2 these arrive from rpm and reach every C/C++ compile the spec
+# drives. This route does not go through rpm's build environment at all, so
+# without them the C++ glue -- qmetaobject's, and main.rs's SailfishApp block --
+# would be the one part of the package built softer than an SDK build's. All
+# four are GCC 10.3 features, which is what /opt/cross is.
+HARDEN="-O2 -D_FORTIFY_SOURCE=2 -fstack-protector-strong -fPIC"
+export CFLAGS_aarch64_unknown_linux_gnu="--sysroot=$SR -B$BINDIR/ $HARDEN"
+export CXXFLAGS_aarch64_unknown_linux_gnu="--sysroot=$SR -B$BINDIR/ $HARDEN"
 
 # Setting BOTH makes qttypes read the Qt version out of qtcoreversion.h rather
 # than shelling out to a qmake it cannot exec. Same trick as the spec.
@@ -63,11 +71,17 @@ export PKG_CONFIG_LIBDIR="$SR/usr/lib64/pkgconfig:$SR/usr/share/pkgconfig"
 # inside the rootfs. The rest comes from the host's :i386 packages.
 export LD_LIBRARY_PATH="$ROOTFS/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 
+# `-z relro -z now` is the link half of the same hardening: the GOT is made
+# read-only and every symbol is resolved at load rather than lazily, so a
+# write through a stray pointer cannot redirect a later call. Checked after
+# the link, below.
 export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUSTFLAGS="\
 -C link-arg=--sysroot=$SR \
 -C link-arg=-B$BINDIR/ \
 -C link-arg=-L$SR/usr/lib64 \
 -C link-arg=-L$SR/lib64 \
+-C link-arg=-Wl,-z,relro \
+-C link-arg=-Wl,-z,now \
 -C link-arg=-Wl,-rpath-link,$SR/usr/lib64 \
 -C link-arg=-Wl,-rpath-link,$SR/lib64"
 
@@ -93,6 +107,18 @@ echo "-- highest versioned symbols required (must not exceed the device's) --"
 # the test package people install on a phone, and a phone is exactly where you
 # want to be when something is wrong. It is reported loudly instead, and CI
 # fails the job on it.
+# The link half of the hardening above, read back off the ELF. A flag that
+# stops being applied -- a rustflags edit, a linker that ignores it -- is
+# invisible otherwise, and this is the one place it can be seen.
+echo "-- hardening --"
+dyn=$("$BINDIR/readelf" -d "$BIN")
+hdr=$("$BINDIR/readelf" -lW "$BIN")
+soft=0
+case "$hdr" in *GNU_RELRO*) echo "   ok       RELRO" ;; *) echo "   MISSING  RELRO"; soft=1 ;; esac
+case "$dyn" in *BIND_NOW*|*"Flags: NOW"*) echo "   ok       BIND_NOW" ;; *) echo "   MISSING  BIND_NOW"; soft=1 ;; esac
+case "$(file -b "$BIN")" in *"pie executable"*) echo "   ok       PIE" ;; *) echo "   MISSING  PIE"; soft=1 ;; esac
+[ "$soft" -eq 0 ] || echo "WARNING: the binary is built softer than an SDK build would be." >&2
+
 echo "-- shared libraries, against Harbour's allowed list --"
 if "$ROOT/scripts/check-linked-libs.sh" "$BIN" "$BINDIR/readelf"; then
     :
