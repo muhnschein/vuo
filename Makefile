@@ -40,7 +40,7 @@ endif
 endif
 
 .PHONY: all check fmt fmt-check clippy test qmllint qml-load shim deny \
-        fuzz-check packaging msrv fuzz-quick live-test rpm vendor clean help
+        fuzz-check packaging msrv fuzz-quick live-test textart rpm vendor clean help
 
 all: check
 
@@ -164,6 +164,11 @@ live-test:
 	@test -n "$$VUO_LIVE_BASE_URL" || { echo "set VUO_LIVE_BASE_URL" >&2; exit 1; }
 	@test -n "$$VUO_LIVE_TOKEN"    || { echo "set VUO_LIVE_TOKEN" >&2; exit 1; }
 	$(CARGO) test -p vuo-core --features live-integration-tests -- --ignored --nocapture
+
+## textart: regenerate the texture masks in qml/art/ from tools/textart/.
+## Needs a QML runtime and a display (or xvfb); the results are committed.
+textart:
+	scripts/render-textart.sh
 
 ## rpm: build a device RPM. Needs the SailfishOS SDK (Docker build engine).
 rpm:

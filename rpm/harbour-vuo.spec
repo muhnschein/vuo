@@ -4,7 +4,6 @@
 # Sailfish app (§4). Notes on the non-obvious parts are inline; the rationale
 # for the whole approach is in docs/packaging.md.
 
-%bcond_with harbour
 %bcond_with vendor
 %bcond_with lto
 %bcond_without xz
@@ -38,6 +37,9 @@ Source2:    vendor.toml
 
 Requires:   sailfishsilica-qt5 >= 0.10.9
 Requires:   nemo-qml-plugin-notifications-qt5
+# Sailfish.WebView, for the site page attached to the right of an article.
+# Ships with the OS since 3.1; this only states the dependency.
+Requires:   sailfish-components-webview-qt5
 
 BuildRequires:  pkgconfig(sailfishapp) >= 1.0.3
 BuildRequires:  pkgconfig(Qt5Core)
@@ -61,15 +63,8 @@ A native SailfishOS client for a self-hosted Miniflux instance.
 Vuo syncs against Miniflux's own REST API, mirrors entries into a local
 database for offline reading, and reconciles changes made offline when
 connectivity returns. It does not fetch or parse feeds itself: that is the
-server's job.
-
-%if %{without harbour}
-%package -n %{name}-sync
-Summary:    Background sync timer for Vuo
-Requires:   %{name} = %{version}-%{release}
-%description -n %{name}-sync
-A systemd user timer that refreshes Vuo's mirror periodically.
-%endif
+server's job. One process, sandboxed, as Harbour requires: the app syncs on
+its own while it is open or on the cover, and nothing runs when it is not.
 
 %prep
 %setup -q -n %{name}-%{version}
@@ -206,13 +201,6 @@ if ls translations/*.qm >/dev/null 2>&1; then
     install -Dm 644 translations/*.qm %{buildroot}%{_datadir}/harbour-vuo/translations/
 fi
 
-%if %{without harbour}
-install -Dm 644 systemd/harbour-vuo-sync.service \
-    %{buildroot}%{_userunitdir}/harbour-vuo-sync.service
-install -Dm 644 systemd/harbour-vuo-sync.timer \
-    %{buildroot}%{_userunitdir}/harbour-vuo-sync.timer
-%endif
-
 %files
 %defattr(-,root,root,-)
 %license LICENSE
@@ -220,26 +208,6 @@ install -Dm 644 systemd/harbour-vuo-sync.timer \
 %{_datadir}/harbour-vuo
 %{_datadir}/applications/harbour-vuo.desktop
 %{_datadir}/icons/hicolor/*/apps/harbour-vuo.png
-
-%if %{without harbour}
-%files -n %{name}-sync
-%defattr(-,root,root,-)
-%{_userunitdir}/harbour-vuo-sync.service
-%{_userunitdir}/harbour-vuo-sync.timer
-
-%post -n %{name}-sync
-systemctl-user daemon-reload || :
-systemctl-user enable harbour-vuo-sync.timer || :
-
-%preun -n %{name}-sync
-if [ "$1" = "0" ]; then
-    systemctl-user disable harbour-vuo-sync.timer || :
-    systemctl-user stop harbour-vuo-sync.timer || :
-fi
-
-%postun -n %{name}-sync
-systemctl-user daemon-reload || :
-%endif
 
 %changelog
 * Fri Aug 28 2026 Vuo contributors <noreply@example.invalid> - 0.1.0-1

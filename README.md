@@ -70,8 +70,8 @@ scripts/build-rpm.sh aarch64
 
 ## Status
 
-Pre-1.0, under active development. Targets Chum / OpenRepos; Harbour's library
-restrictions and its background-service rules make it a stretch goal at best.
+Pre-1.0, under active development. Targets Harbour: one process, sandboxed,
+syncing on its own while it runs.
 
 ## Licence
 

@@ -80,12 +80,12 @@ pub struct Settings {
     /// How many local changes are still waiting to reach the server. Shown so
     /// the user can tell "nothing happened" from "not sent yet".
     pendingActions: qt_property!(i32; READ pendingActionsCount NOTIFY changed),
-    /// Whether the `harbour-vuo-sync` package is installed.
-    ///
-    /// The Settings page hides the whole Synchronisation section when it is
-    /// not: the interval drives a systemd timer that ships in that package, so
-    /// without it the control is a choice with no effect.
-    backgroundSyncAvailable: qt_property!(bool; READ backgroundSyncAvailable NOTIFY changed),
+    /// Whether an account is stored at all: a server and a key. What the
+    /// root window asks on start-up to choose between the entry list and the
+    /// onboarding page, and what the onboarding page asks again on its way
+    /// back from Settings. Read from the file each time, so the answer is
+    /// right before anything has called `reload`.
+    configured: qt_property!(bool; READ is_configured NOTIFY changed),
 
     changed: qt_signal!(),
     /// Result of a connection test. `ok` false means the message is an error.
@@ -170,8 +170,10 @@ impl Settings {
         self.markReadDelayIndex = MARK_READ_DEFAULT_INDEX;
     }
 
-    fn backgroundSyncAvailable(&self) -> bool {
-        AppPaths::resolve().is_some_and(|paths| paths.background_sync_installed())
+    fn is_configured(&self) -> bool {
+        AppPaths::resolve()
+            .and_then(|paths| worker::load_account(&paths.account).ok())
+            .is_some_and(|account| !account.server_url.is_empty() && !account.token.is_empty())
     }
 
     fn pendingActionsCount(&self) -> i32 {
@@ -255,17 +257,12 @@ impl Settings {
         if let Some(ctx) = self.ctx.clone().or_else(crate::context::current) {
             ctx.set_media_policy(self.mediaPolicy);
             ctx.set_mark_read_delay_index(self.markReadDelayIndex);
-        }
-        // And make the Sync interval choice take effect. Until this call the
-        // setting was rendered, persisted and read back and reached NOTHING:
-        // the timer unit's hardcoded OnUnitActiveSec=30min governed every
-        // device regardless of what the user picked.
-        //
-        // Only where there is a timer to govern. Writing a drop-in for a unit
-        // that is not installed leaves a file systemd will never read, and
-        // then runs systemctl twice for it.
-        if paths.background_sync_installed() {
-            self.apply_sync_interval(paths);
+            // And the interval, to the worker that keeps it. A context
+            // rebuilt just above was told at build time; one that survived
+            // the save -- same server, same key -- hears it here.
+            ctx.send(worker::Command::SetSyncInterval {
+                minutes: sync_interval_minutes_for(self.syncIntervalIndex),
+            });
         }
         self.changed();
     }
@@ -381,102 +378,21 @@ impl Settings {
         }
     }
 
-    /// The systemd drop-in that makes the chosen interval take effect.
-    ///
-    /// `None` (the "Manual only" choice) produces a drop-in that disables the
-    /// periodic run rather than deleting the file: an absent drop-in means
-    /// "whatever the package shipped", which is a 30-minute timer, and silently
-    /// syncing every 30 minutes is the opposite of what the user asked for.
-    ///
-    /// Pure, so the mapping is testable without a systemd on the box; the
-    /// writer below is the only part that touches the filesystem.
-    #[must_use]
-    pub fn timer_dropin(minutes: Option<i64>) -> String {
-        // Built line by line rather than as one continued literal: a `\`
-        // continuation inside a format! string is easy to lose to a reformat,
-        // and losing it silently indents every line of a systemd unit.
-        let Some(m) = minutes else {
-            return [
-                "# Written by Vuo: the Sync interval setting is \"Manual only\".",
-                "# The timer stays installed but never fires on its own; the",
-                "# user syncs with the pulley menu.",
-                "[Timer]",
-                "OnBootSec=",
-                "OnUnitActiveSec=",
-                "",
-            ]
-            .join("\n");
-        };
-        // Proportional jitter: a 15-minute interval must not carry the unit's
-        // fixed 5-minute spread, and a 6-hourly one deserves more.
-        let jitter = (m / 6).clamp(1, 30);
-        [
-            "# Written by Vuo from the Sync interval setting. Edits are".to_owned(),
-            "# overwritten the next time that setting is saved.".to_owned(),
-            "[Timer]".to_owned(),
-            "# The unit ships a default; clear it before setting ours, or".to_owned(),
-            "# systemd keeps BOTH and fires on the shorter one.".to_owned(),
-            "OnUnitActiveSec=".to_owned(),
-            format!("OnUnitActiveSec={m}min"),
-            "RandomizedDelaySec=".to_owned(),
-            format!("RandomizedDelaySec={jitter}min"),
-            String::new(),
-        ]
-        .join("\n")
-    }
-
-    /// Write the drop-in and ask systemd to pick it up.
-    ///
-    /// Best-effort: on a desktop with no user systemd this does nothing and
-    /// says so in the log rather than failing the save. The setting is still
-    /// persisted either way.
-    fn apply_sync_interval(&self, paths: &AppPaths) {
-        let body = Self::timer_dropin(self.sync_interval_minutes());
-        let dir = &paths.timer_dropin_dir;
-        if let Err(e) = std::fs::create_dir_all(dir) {
-            tracing::warn!(error = %e, dir = %dir.display(), "could not create the timer drop-in directory");
-            return;
-        }
-        let file = dir.join("50-vuo-interval.conf");
-        if let Err(e) = std::fs::write(&file, body) {
-            tracing::warn!(error = %e, file = %file.display(), "could not write the timer drop-in");
-            return;
-        }
-        // `daemon-reload` then `restart`: a reload alone leaves the running
-        // timer on its old schedule until it next fires.
-        //
-        // On a detached thread, because `save` is called from QML and therefore
-        // runs on the Qt UI thread. `Command::status()` blocks until the child
-        // exits, and `daemon-reload` on a phone is not instant -- waiting for
-        // two of them would freeze the Settings page for as long as systemd
-        // takes. Nothing here needs the exit status; the drop-in is already on
-        // disk and applies at the next login even if this never runs.
-        std::thread::spawn(|| {
-            for args in [
-                ["--user", "daemon-reload"].as_slice(),
-                ["--user", "restart", "harbour-vuo-sync.timer"].as_slice(),
-            ] {
-                match std::process::Command::new("systemctl").args(args).status() {
-                    Ok(status) if status.success() => {}
-                    Ok(status) => {
-                        tracing::info!(?args, %status, "systemctl declined; the drop-in applies at next login");
-                    }
-                    Err(e) => {
-                        tracing::info!(error = %e, "no systemctl here; the drop-in applies wherever one runs");
-                        return;
-                    }
-                }
-            }
-        });
-    }
-
     /// The chosen sync interval in minutes, or `None` for "Manual only".
     pub fn sync_interval_minutes(&self) -> Option<i64> {
-        let index = usize::try_from(self.syncIntervalIndex).unwrap_or(0);
-        match SYNC_INTERVALS_MINUTES.get(index) {
-            Some(0) | None => None,
-            Some(minutes) => Some(*minutes),
-        }
+        sync_interval_minutes_for(self.syncIntervalIndex)
+    }
+}
+
+/// The sync interval a stored `sync_interval_index` means, in minutes, or
+/// `None` for "Manual only". Shared with the context, which reads the index
+/// from the account file when it builds the worker and has no `Settings`.
+#[must_use]
+pub fn sync_interval_minutes_for(index: i32) -> Option<i64> {
+    let index = usize::try_from(index).unwrap_or(0);
+    match SYNC_INTERVALS_MINUTES.get(index) {
+        Some(0) | None => None,
+        Some(minutes) => Some(*minutes),
     }
 }
 
@@ -806,43 +722,6 @@ mod tests {
     }
 
     #[test]
-    fn the_synchronisation_section_is_hidden_without_the_sync_package() {
-        // The interval drives a systemd timer that ships in harbour-vuo-sync.
-        // With that package tabled, the control governs nothing, and writing a
-        // drop-in for a unit that is not installed leaves a file systemd never
-        // reads.
-        let dir = tempfile::tempdir().expect("tempdir");
-        let paths = temp_paths(&dir);
-        assert!(
-            !paths.background_sync_installed(),
-            "nothing is installed in a temp dir"
-        );
-
-        let mut s = Settings {
-            serverUrl: QString::from("http://10.77.0.1:8083/"),
-            apiKey: QString::from("k"),
-            syncIntervalIndex: 3,
-            ..Settings::default()
-        };
-        s.save_to(&paths);
-        assert!(
-            !paths.timer_dropin_dir.join("50-vuo-interval.conf").exists(),
-            "no drop-in may be written for a timer that is not installed"
-        );
-
-        // Stage the unit as the package would, and the plumbing comes back.
-        std::fs::create_dir_all(paths.timer_unit.parent().expect("a parent")).expect("mkdir");
-        std::fs::write(&paths.timer_unit, "[Timer]\n").expect("stage the unit");
-        assert!(paths.background_sync_installed());
-
-        s.syncIntervalIndex = 4;
-        s.save_to(&paths);
-        let dropin = std::fs::read_to_string(paths.timer_dropin_dir.join("50-vuo-interval.conf"))
-            .expect("a drop-in once the timer exists");
-        assert!(dropin.contains("OnUnitActiveSec=360min"), "{dropin}");
-    }
-
-    #[test]
     fn manual_only_means_no_timer() {
         let mut s = Settings {
             syncIntervalIndex: 0,
@@ -863,15 +742,15 @@ mod tests {
         }
     }
 
-    /// §the Sync interval setting, from the picker to systemd.
+    /// §the Sync interval setting, from the picker to the worker.
     ///
-    /// `sync_interval_minutes` had ZERO production callers: the user's choice
-    /// was rendered, persisted to the account file and read back on the next
-    /// launch, and never reached anything. Every device ran the timer unit's
-    /// hardcoded `OnUnitActiveSec=30min` no matter what was picked -- the same
-    /// defect shape as the Images setting.
+    /// `sync_interval_minutes` once had ZERO production callers: the user's
+    /// choice was rendered, persisted to the account file and read back on
+    /// the next launch, and never reached anything. The context now reads
+    /// the stored index through `sync_interval_minutes_for` when it builds
+    /// the worker, so the two must agree on what every index means.
     #[test]
-    fn every_sync_interval_choice_produces_a_drop_in_that_says_what_it_means() {
+    fn every_sync_interval_choice_means_the_same_minutes_to_the_worker() {
         // The picker's own indices, so a reordering of SYNC_INTERVALS_MINUTES
         // has to come through here.
         for (index, expected) in [
@@ -886,52 +765,11 @@ mod tests {
                 ..Settings::default()
             };
             assert_eq!(s.sync_interval_minutes(), expected, "index {index}");
-        }
-
-        // "Manual only" must actively stop the timer. An EMPTY drop-in would
-        // leave the packaged 30-minute default in force, which is the one
-        // outcome the user explicitly did not ask for.
-        let manual = Settings::timer_dropin(None);
-        assert!(manual.contains("OnUnitActiveSec="));
-        assert!(
-            !manual.contains("OnUnitActiveSec=30min"),
-            "manual-only must not leave a periodic run: {manual}"
-        );
-
-        // A chosen interval must CLEAR the shipped value before setting its
-        // own: systemd accumulates OnUnitActiveSec= across drop-ins and fires
-        // on the shortest, so appending 360min to a shipped 30min still syncs
-        // every 30 minutes.
-        let six_hourly = Settings::timer_dropin(Some(360));
-        let clear = six_hourly
-            .find("OnUnitActiveSec=\n")
-            .expect("a clearing line");
-        let set = six_hourly
-            .find("OnUnitActiveSec=360min")
-            .expect("our value");
-        assert!(
-            clear < set,
-            "the clearing line must come FIRST, or systemd keeps both and takes \
-             the shorter one:\n{six_hourly}"
-        );
-
-        // Jitter is proportional, not the unit's fixed 5 minutes.
-        assert!(Settings::timer_dropin(Some(15)).contains("RandomizedDelaySec=2min"));
-        assert!(Settings::timer_dropin(Some(360)).contains("RandomizedDelaySec=30min"));
-
-        // No line may be indented. This is not fussiness: the first version of
-        // timer_dropin was one `\`-continued literal, rustfmt collapsed it, and
-        // every line silently gained seventeen spaces. Every `contains` check
-        // above still passed, because `contains` does not care what precedes
-        // the match -- so the unit file was wrong and the tests were green.
-        for minutes in [None, Some(15), Some(360)] {
-            for line in Settings::timer_dropin(minutes).lines() {
-                assert_eq!(
-                    line,
-                    line.trim_start(),
-                    "a systemd unit line must not be indented: {line:?}"
-                );
-            }
+            assert_eq!(
+                sync_interval_minutes_for(index),
+                expected,
+                "the context must read index {index} the same way"
+            );
         }
     }
 

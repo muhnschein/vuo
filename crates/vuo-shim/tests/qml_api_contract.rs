@@ -203,6 +203,7 @@ fn every_member_the_qml_uses_is_implemented_in_rust() {
         "feeds",
         "article",
         "settings",
+        "account",
         "model",
         "feedModel",
     ];
@@ -330,30 +331,73 @@ fn looks_like_a_role(word: &str) -> bool {
 /// and a property being set (`textFormat:`) are both excluded. Member accesses
 /// are the other test's job, and a name on the left of a colon is a property
 /// this QML declares rather than a value it reads.
-/// Blank out `/* ... */` comments, keeping every newline so line numbers hold.
-fn strip_block_comments(source: &str) -> String {
+/// Blank out the insides of `"..."` and `'...'` literals and every comment,
+/// keeping every newline so line numbers hold.
+///
+/// One pass over the whole source rather than per line, and strings and
+/// comments together rather than one after the other, because each can
+/// contain the other's delimiter: a `//` comment routinely holds an
+/// apostrophe (`the feed's name`), which read as an opening quote swallowed
+/// the rest of the file, and a `/*` inside a string is text. Per line was
+/// not enough either: `bare_identifiers` blanks a string that opens and
+/// closes on one line, which is every translated string in the app, but the
+/// GLSL shader handed to the cover's `ShaderEffect` is ONE literal spanning
+/// a dozen lines, and the lines inside it read as code full of
+/// `qt_TexCoord0` and `gl_FragColor`. A name inside a string or a comment is
+/// never a role lookup, however many lines it runs to.
+fn strip_strings_and_comments(source: &str) -> String {
+    #[derive(Clone, Copy, PartialEq, Eq)]
+    enum In {
+        Code,
+        Line,
+        Block,
+        Str(char),
+    }
     let mut out = String::with_capacity(source.len());
+    let mut state = In::Code;
+    let mut escaped = false;
     let mut chars = source.chars().peekable();
-    let mut depth = 0usize;
     while let Some(c) = chars.next() {
-        if depth == 0 && c == '/' && chars.peek() == Some(&'*') {
-            chars.next();
-            depth += 1;
-            continue;
-        }
-        if depth > 0 && c == '*' && chars.peek() == Some(&'/') {
-            chars.next();
-            depth -= 1;
-            continue;
-        }
-        if depth > 0 {
-            // Keep the newlines, drop the prose.
-            if c == '\n' {
-                out.push('\n');
+        if c == '\n' {
+            out.push('\n');
+            if state == In::Line {
+                state = In::Code;
             }
             continue;
         }
-        out.push(c);
+        match state {
+            In::Code => {
+                if c == '/' && chars.peek() == Some(&'/') {
+                    chars.next();
+                    state = In::Line;
+                } else if c == '/' && chars.peek() == Some(&'*') {
+                    chars.next();
+                    state = In::Block;
+                } else if c == '"' || c == '\'' {
+                    state = In::Str(c);
+                    out.push(c);
+                } else {
+                    out.push(c);
+                }
+            }
+            In::Line => {}
+            In::Block => {
+                if c == '*' && chars.peek() == Some(&'/') {
+                    chars.next();
+                    state = In::Code;
+                }
+            }
+            In::Str(q) => {
+                if escaped {
+                    escaped = false;
+                } else if c == '\\' {
+                    escaped = true;
+                } else if c == q {
+                    state = In::Code;
+                    out.push(c);
+                }
+            }
+        }
     }
     out
 }
@@ -432,17 +476,42 @@ fn qml_declared_identifiers(files: &[PathBuf]) -> BTreeSet<String> {
             // JavaScript locals inside a handler or a function. `var shortAge
             // = ...` is not a model role, and reporting it as an undefined one
             // is noise that trains the reader to ignore this test.
-            let mut decl = code.split_whitespace().peekable();
-            while let Some(word) = decl.next() {
-                if matches!(word, "var" | "let" | "const") {
-                    if let Some(name) = decl.peek() {
-                        let name: String = name
+            //
+            // EVERY declarator of a comma-separated `var a = 1, b = 2`, not
+            // just the first. The text art declares a run and the run's width
+            // on one line, and only the second of them was reported -- as a
+            // role no model exposes, from a file that has no model, which is
+            // exactly the noise this branch exists to prevent.
+            for keyword in ["var ", "let ", "const "] {
+                let mut rest = code;
+                while let Some(idx) = rest.find(keyword) {
+                    // `myvar x` does not declare anything: the keyword has to
+                    // start a word.
+                    let starts_word = idx == 0
+                        || !rest[..idx].ends_with(|c: char| c.is_alphanumeric() || c == '_');
+                    rest = rest.get(idx + keyword.len()..).unwrap_or("");
+                    if !starts_word {
+                        continue;
+                    }
+                    for part in rest.split(',') {
+                        let part = part.trim_start();
+                        let name: String = part
                             .chars()
                             .take_while(|c| c.is_alphanumeric() || *c == '_')
                             .collect();
-                        if !name.is_empty() {
-                            names.insert(name);
+                        // A declarator is `name`, `name =` or `name;`.
+                        // Anything else means the comma was inside an
+                        // initialiser -- an argument list, an array -- and
+                        // the declaration ended before it.
+                        let after = part.get(name.len()..).unwrap_or("").trim_start();
+                        if name.is_empty()
+                            || !(after.is_empty()
+                                || after.starts_with('=')
+                                || after.starts_with(';'))
+                        {
+                            break;
                         }
+                        names.insert(name);
                     }
                 }
             }
@@ -518,11 +587,11 @@ fn every_role_the_delegates_use_is_exposed_by_a_model() {
 
     for file in &files {
         let source = std::fs::read_to_string(file).expect("read qml");
-        // `/* ... */` blocks are prose, like `//` lines. Naming a role while
+        // Comments are prose, and strings are text. Naming a role while
         // explaining why the code does what it does is not a reference to it.
         // Blanked rather than removed so the reported line numbers still point
         // at the real line.
-        let source = strip_block_comments(&source);
+        let source = strip_strings_and_comments(&source);
         for (lineno, line) in source.lines().enumerate() {
             for word in bare_identifiers(line) {
                 if roles.contains(&word) {

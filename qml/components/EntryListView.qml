@@ -70,6 +70,63 @@ SilicaListView {
     property string scopeLabel: ""
     property string title: ""
 
+    /// Selection mode: a tap on a row selects it rather than opening it, the
+    /// header counts the selection, and the pulley offers what to do with
+    /// it. Entered by pushing an EntryListPage with `selecting` set over
+    /// the tab's OWN model, so the rows are the ones the reader was just
+    /// looking at; swiping back is how it is cancelled, as everywhere on
+    /// the platform, so there is no Cancel item.
+    property bool selecting: false
+    /// The selected rows' entry ids, an object used as a set. REPLACED on
+    /// every change rather than mutated, so the bindings that read it in
+    /// the delegates are re-evaluated: a `var` holding the same object
+    /// does not announce what happened inside it.
+    property var selectedIds: ({})
+    property int selectedCount: 0
+
+    function toggleSelected(id) {
+        var next = {}
+        var n = 0
+        for (var k in listView.selectedIds) {
+            if (Number(k) !== id) {
+                next[k] = true
+                n++
+            }
+        }
+        if (listView.selectedIds[id] !== true) {
+            next[id] = true
+            n++
+        }
+        listView.selectedIds = next
+        listView.selectedCount = n
+    }
+
+    /// Select every row on the list, or none.
+    function selectAll(on) {
+        var next = {}
+        var n = 0
+        if (on && listView.entryModel) {
+            for (var row = 0; row < listView.count; row++) {
+                next[listView.entryModel.entryIdAt(row)] = true
+                n++
+            }
+        }
+        listView.selectedIds = next
+        listView.selectedCount = n
+    }
+
+    /// Mark the selection read or unread, in one write, and leave.
+    function applyRead(read) {
+        var ids = []
+        for (var k in listView.selectedIds) {
+            ids.push(Number(k))
+        }
+        if (ids.length > 0 && listView.entryModel) {
+            listView.entryModel.setReadMany(ids, read)
+        }
+        pageStack.pop()
+    }
+
     // Everything this list draws stays inside its own bounds, which are the
     // whole page. The pulley menu lives at negative content coordinates,
     // above `originY`, so being full-page is what lets it be revealed from
@@ -128,9 +185,11 @@ SilicaListView {
             visible: !listView.showScopeTabs
             height: visible ? implicitHeight : 0
             title: listView.scopeLabel
-            description: listView.entryModel && listView.entryModel.count > 0
-                         ? qsTr("%n article(s)", "", listView.entryModel.count)
-                         : ""
+            description: listView.selecting
+                         ? qsTr("%n selected", "", listView.selectedCount)
+                         : (listView.entryModel && listView.entryModel.count > 0
+                            ? qsTr("%n article(s)", "", listView.entryModel.count)
+                            : "")
         }
 
         // PageHeader's own title label offers no supported way to force its
@@ -157,15 +216,54 @@ SilicaListView {
     }
 
     PullDownMenu {
+        // ------------------------------------------------ selection mode
+        // What to do with the selection. Nothing here is destructive, so
+        // no remorse: a row marked read by mistake is one tap from unread.
         MenuItem {
+            visible: listView.selecting
+            text: listView.selectedCount < listView.count ? qsTr("Select all")
+                                                          : qsTr("Deselect all")
+            onClicked: listView.selectAll(listView.selectedCount < listView.count)
+        }
+        MenuItem {
+            visible: listView.selecting && listView.selectedCount > 0
+            text: qsTr("Mark as unread")
+            onClicked: listView.applyRead(false)
+        }
+        MenuItem {
+            visible: listView.selecting && listView.selectedCount > 0
+            text: qsTr("Mark as read")
+            onClicked: listView.applyRead(true)
+        }
+
+        // ------------------------------------------------------ the list
+        MenuItem {
+            visible: !listView.selecting
             text: qsTr("Settings")
             onClicked: pageStack.push(Qt.resolvedUrl("../pages/SettingsPage.qml"))
         }
         MenuItem {
+            visible: !listView.selecting
             text: qsTr("Feeds")
             onClicked: pageStack.push(Qt.resolvedUrl("../pages/FeedListPage.qml"),
                                       { model: listView.hostPage ? listView.hostPage.feedModel : null,
                                         entryModel: listView.entryModel })
+        }
+        MenuItem {
+            // The platform's way to act on many rows at once, as the Gallery
+            // and Email apps do it: a page of the same rows where a tap
+            // selects, then the pulley. Over the tab's own model, so the
+            // rows are exactly the ones the reader was looking at.
+            visible: !listView.selecting && listView.count > 0
+            text: qsTr("Select articles")
+            onClicked: pageStack.push(Qt.resolvedUrl("../pages/EntryListPage.qml"), {
+                model: listView.entryModel,
+                feedModel: listView.hostPage ? listView.hostPage.feedModel : null,
+                scopeKind: listView.scopeKind,
+                scopeId: listView.scopeId,
+                scopeLabel: qsTr("Select articles"),
+                selecting: true
+            })
         }
         MenuItem {
             text: qsTr("Mark all as read")
@@ -176,7 +274,7 @@ SilicaListView {
             // bounded by the unread count; on All it is every article ever
             // synced. A mitigation, not a fix -- the Rust wants an id-only
             // projection and an already-read filter before All gets it.
-            visible: listView.scopeKind !== 2
+            visible: !listView.selecting && listView.scopeKind !== 2
             onClicked: {
                 // Capture the scope NOW, not when the countdown fires.
                 // `markAllRead` would read whatever scope the shared model is
@@ -193,6 +291,7 @@ SilicaListView {
             }
         }
         MenuItem {
+            visible: !listView.selecting
             text: qsTr("Refresh")
             // Asks the worker for a network sync. `refresh()` alone only
             // re-reads the local mirror, so on its own the pulley menu
@@ -216,8 +315,22 @@ SilicaListView {
     ViewPlaceholder {
         // Not while syncing: "Nothing to read / Pull down to refresh"
         // under a running spinner reads as a refusal.
-        enabled: listView.count === 0
-                 && !(listView.entryModel && listView.entryModel.syncing)
+        //
+        // And not before the model is READY -- scoped and loaded. Gated on
+        // the view's count alone this was enabled at construction, when
+        // every model still held nothing, and then faded out over the rows
+        // that arrived a moment later: "Nothing to read" flashing across the
+        // list at every launch. The model's own count and its `ready` flag
+        // change together, in the one reload, so there is no such moment.
+        //
+        // A conditional rather than an `&&` chain: with no model -- this file
+        // is instantiated standalone by the load test -- the chain yields
+        // `undefined`, which a bool property refuses.
+        enabled: listView.entryModel
+                 ? (listView.entryModel.ready
+                    && listView.entryModel.count === 0
+                    && !listView.entryModel.syncing)
+                 : false
         // "Nothing to read / Pull down to refresh" is an Unread string.
         // Under a Favourites tab it reads as a refusal, and refreshing
         // does not create favourites.
@@ -243,6 +356,23 @@ SilicaListView {
     delegate: ListItem {
         id: item
         contentHeight: column.height + Theme.paddingMedium * 2
+        // The long-press menu is the other way to act on one row, and in
+        // selection mode the tap already is that.
+        showMenuOnPressAndHold: !listView.selecting
+
+        /// Whether this row is in the selection. Read off `selectedIds`,
+        /// which is replaced on every change so this re-evaluates.
+        readonly property bool selected: listView.selecting
+                                         && listView.selectedIds[entryId] === true
+
+        // Silica's own mark for a selected row: the highlight backing it
+        // paints under a pressed one, kept on. No checkbox column, which
+        // would shift every row's text sideways on entering the mode.
+        Rectangle {
+            anchors.fill: parent
+            visible: item.selected
+            color: Theme.rgba(Theme.highlightBackgroundColor, Theme.highlightBackgroundOpacity)
+        }
 
         /// The icon column's width, whether or not there IS an icon.
         ///
@@ -262,6 +392,12 @@ SilicaListView {
             y: Theme.paddingMedium
             width: parent.width - Theme.horizontalPageMargin * 2
             spacing: 0
+            // A read row steps back as a whole -- icon, title and detail line
+            // together -- rather than only swapping the title's colour, which
+            // on the device was too little to tell the two apart at a glance.
+            // Now that a read row stays on the list until the reader
+            // refreshes, telling them apart is what the list is for.
+            opacity: unread ? 1.0 : Theme.opacityLow
 
             Item {
                 id: iconGutter
@@ -423,10 +559,16 @@ SilicaListView {
             }
         }
 
-        onClicked: pageStack.push(Qt.resolvedUrl("../pages/ArticlePage.qml"), {
-            entryId: entryId,
-            entryTitle: title
-        })
+        onClicked: {
+            if (listView.selecting) {
+                listView.toggleSelected(entryId)
+            } else {
+                pageStack.push(Qt.resolvedUrl("../pages/ArticlePage.qml"), {
+                    entryId: entryId,
+                    entryTitle: title
+                })
+            }
+        }
 
         menu: ContextMenu {
             MenuItem {

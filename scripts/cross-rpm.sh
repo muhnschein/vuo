@@ -46,7 +46,7 @@ else
 fi
 
 cp "$BIN" harbour-vuo.desktop LICENSE "$TOP/SOURCES/"
-cp -r icons qml systemd "$TOP/SOURCES/"
+cp -r icons qml "$TOP/SOURCES/"
 if ls translations/*.qm >/dev/null 2>&1; then
     mkdir -p "$TOP/SOURCES/translations"
     cp translations/*.qm "$TOP/SOURCES/translations/"
@@ -64,7 +64,6 @@ RC
 rpmbuild -bb "$TOP/SPECS/harbour-vuo-cross.spec" \
     --rcfile "/usr/lib/rpm/rpmrc:$TOP/rpmrc" \
     --define "_topdir $TOP" \
-    --define "_userunitdir /usr/lib/systemd/user" \
     --define "vuo_release ${VUO_RELEASE:-1}" \
     --target aarch64
 

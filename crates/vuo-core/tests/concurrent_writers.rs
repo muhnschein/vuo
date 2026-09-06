@@ -1,7 +1,7 @@
-//! Two processes, one mirror.
+//! Two connections, one mirror.
 //!
-//! Vuo runs the UI and a systemd timer against the same SQLite file, so a user
-//! action racing a background sync is the normal case rather than an exotic
+//! Vuo runs the UI thread and the worker thread against the same SQLite file,
+//! so a user action racing a background sync is the normal case rather than an exotic
 //! one. §5 makes the mirror the single source of truth for the UI, which means
 //! a lost write here is a lost *user action* — a mark or a star the user made
 //! and watched disappear.
@@ -223,10 +223,10 @@ fn an_opened_database_carries_a_busy_timeout() {
 #[test]
 fn two_processes_can_open_a_fresh_mirror_at_once() {
     // Regression: `migrate` read `user_version` BEFORE opening its
-    // transaction, so two processes starting together both saw version 0, both
+    // transaction, so two connections opening together both saw version 0, both
     // ran migration 1, and the loser failed on "table already exists" against
-    // a database that was in perfect shape. On a device the UI and the
-    // systemd timer really do start at the same moment.
+    // a database that was in perfect shape. At start-up the UI thread and
+    // the worker thread really do open it at the same moment.
     use std::sync::{Arc, Barrier};
 
     let dir = tempfile::tempdir().expect("tempdir");

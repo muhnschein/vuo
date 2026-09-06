@@ -206,8 +206,8 @@ fn apply(conn: &mut Connection, migrations: &[Migration]) -> Result<()> {
 
     // The version is read INSIDE the write transaction, not before it.
     //
-    // Vuo opens the mirror from two processes -- the UI and the systemd timer
-    // -- and on a device they can start at the same moment. Reading the
+    // Vuo opens the mirror twice -- once on the UI thread and once on the
+    // worker thread -- and at start-up they open it at the same moment. Reading the
     // version first and then opening a transaction is a check-then-act race:
     // both processes see version 0, both try to run migration 1, and the loser
     // fails on `CREATE TABLE ... already exists` with the database in a

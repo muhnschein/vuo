@@ -74,10 +74,10 @@ and its evidence are in [docs/sdk-build.md](sdk-build.md).
 - **SailfishApp integration is unrun.** The `cpp!` block in
   `crates/harbour-vuo/src/main.rs` is behind the `sailfishapp` feature and has
   never been compiled, because the headers only exist inside the SDK.
-- **Background sync is unproven against suspend.** §11 flags this as carrying
-  the most schedule risk after the toolchain, and it remains open: a systemd
-  user timer is the design, but whether it survives device suspend reliably is
-  exactly the thing that needs a device.
+- **Background sync is unproven against a long idle.** It runs in-process,
+  on the worker thread, while the app is open or on its cover; whether
+  SailfishOS keeps that thread's timer running through hours of a minimised
+  app is exactly the thing that needs a device.
 - **The ephemeral-Miniflux CI job has never run**, and its container images are
   pinned by version tag rather than by digest — see the note at the top of that
   workflow.

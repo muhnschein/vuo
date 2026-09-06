@@ -1,15 +1,17 @@
-//! The cover, drawn from the feeds the model hands it.
+//! The cover: what it says, and where its texture stops.
 //!
 //! The QML load test compiles and instantiates this file with every property
-//! at its default, which is the empty cover and nothing else. What it cannot
-//! see is the part that only exists once there are feeds: the staggered grid,
-//! which is laid out by a pass of JavaScript over a parsed JSON list rather
-//! than by a view over model rows, and the rule that decides which cells are
-//! drawn bright. Both are runtime behaviour, so they need a running engine.
+//! at its default, which shows the heading. What it cannot see is what the
+//! heading says as sync and the count move underneath it, and it does not
+//! look at the texture's geometry at all.
 //!
-//! No mirror and no worker here on purpose. The cover takes its feeds as a
-//! string, so the interesting half can be driven directly -- including shapes
-//! a real mirror is awkward to produce, like a feed with no icon at all.
+//! The texture itself is no longer computed here -- it is a mask painted
+//! ahead of time by `tools/textart/` and shipped in `qml/art/`, and
+//! `qml_loads.rs` checks that the masks are there and are masks. What is
+//! left for this test is the one thing about the texture that is still the
+//! cover's own decision: WHERE IT FADES IN. It is drawn under the whole
+//! cover, heading included, and only the fade keeps the app's name off a
+//! field of text.
 //!
 //! Run under `QT_QPA_PLATFORM=offscreen`; `make check` sets it.
 
@@ -25,8 +27,8 @@
 
 use qmetaobject::*;
 
-/// Loads the cover at a size, since the stub `CoverBackground` has none of its
-/// own, and reads it back.
+/// Loads the cover at a size, since the stub `CoverBackground` has none of
+/// its own, and reads it back.
 const PROBE_QML: &str = r"
     import QtQuick 2.0
     Item {
@@ -45,26 +47,11 @@ const PROBE_QML: &str = r"
             }
             return null
         }
-        function allIn(node, name, found) {
-            if (!node) { return found }
-            if (node.objectName === name) { found.push(node) }
-            var kids = node.data !== undefined ? node.data : node.children
-            for (var i = 0; kids && i < kids.length; i++) {
-                allIn(kids[i], name, found)
-            }
-            return found
-        }
         function get(name, property) {
             var item = findIn(loader.item, name)
             if (!item) { return 'missing:' + name }
             return '' + item[property]
         }
-        function at(name, which, property) {
-            var items = allIn(loader.item, name, [])
-            if (which >= items.length) { return 'missing:' + name + '[' + which + ']' }
-            return '' + items[which][property]
-        }
-        function feeds(json) { loader.item.feedsJson = json; return 'ok' }
         function count(total) { loader.item.unreadCount = total; return 'ok' }
         function syncing(on) { loader.item.syncing = on; return 'ok' }
         function failure(text, auth) {
@@ -72,55 +59,14 @@ const PROBE_QML: &str = r"
             loader.item.syncError = text
             return 'ok'
         }
-        // The grid's cells, and how many of them are drawn bright.
-        function drawn() { return '' + allIn(loader.item, 'gridCell', []).length }
-        function lit() {
-            var cells = allIn(loader.item, 'gridCell', [])
-            var total = 0
-            for (var i = 0; i < cells.length; i++) {
-                if (cells[i].loud) { total += 1 }
-            }
-            return '' + total
-        }
-        // The leftmost cell: a shifted row starts half a cell off the edge.
-        function leftmost() {
-            var cells = allIn(loader.item, 'gridCell', [])
-            var least = 0
-            for (var i = 0; i < cells.length; i++) {
-                if (cells[i].x < least) { least = cells[i].x }
-            }
-            return '' + least
-        }
-        function planned() { return '' + loader.item.cells.length }
-        function listed() { return '' + loader.item.feedList.length }
-        // Letters drawn into the field. The grid is favicons and nothing
-        // else, so this is zero unless the feeds arrived without icons.
-        function letters() {
-            var all = allIn(loader.item, 'cellInitial', [])
-            var shown = 0
-            for (var i = 0; i < all.length; i++) {
-                if (all[i].visible) { shown += 1 }
-            }
-            return '' + shown
+        // Where the texture starts, against where the heading ends. Both in
+        // the coordinates the cover lays them out in.
+        function headingBottom() {
+            var item = findIn(loader.item, 'heading')
+            return item ? '' + (item.y + item.height) : 'missing:heading'
         }
     }
 ";
-
-/// Two feeds with something new and one quiet one, in the order the model
-/// sends them: whatever is unread first, and every one of them with an icon,
-/// since a feed the mirror has no favicon for does not reach the cover while
-/// any other one does.
-const FEEDS: &str = r#"[
-    {"feedId":1,"title":"Tagesschau","unread":3,"icon":"data:image/png;base64,iVBORw0KGgo="},
-    {"feedId":2,"title":"lwn","unread":1,"icon":"data:image/png;base64,iVBORw0KGgo="},
-    {"feedId":3,"title":"Zeit","unread":0,"icon":"data:image/png;base64,iVBORw0KGgo="}
-]"#;
-
-/// What a first sync looks like: feeds, and no icons fetched yet.
-const ICONLESS: &str = r#"[
-    {"feedId":1,"title":"Tagesschau","unread":3,"icon":""},
-    {"feedId":2,"title":"lwn","unread":1,"icon":""}
-]"#;
 
 fn cover_url() -> String {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -142,8 +88,7 @@ fn stubs_dir() -> std::path::PathBuf {
 /// One test, because `QmlEngine::new()` builds a `QApplication` and there may
 /// be only one of those per process.
 #[test]
-#[allow(clippy::too_many_lines)]
-fn the_cover_draws_a_field_of_feeds_and_lights_whichever_has_something_new() {
+fn the_cover_says_the_count_over_a_texture_that_starts_below_it() {
     let mut engine = QmlEngine::new();
     engine.add_import_path(QString::from(stubs_dir().to_string_lossy().into_owned()));
     engine.load_data(QByteArray::from(PROBE_QML));
@@ -164,6 +109,13 @@ fn the_cover_draws_a_field_of_feeds_and_lights_whichever_has_something_new() {
             call!("get", QString::from($name), QString::from($property))
         };
     }
+    macro_rules! number {
+        ($text:expr) => {{
+            let text = $text;
+            text.parse::<f64>()
+                .unwrap_or_else(|_| panic!("not a number: {text:?}"))
+        }};
+    }
 
     assert_eq!(
         call!("load", QString::from(cover_url())),
@@ -171,112 +123,43 @@ fn the_cover_draws_a_field_of_feeds_and_lights_whichever_has_something_new() {
         "the cover did not load"
     );
 
-    // ---------------------------------------------------------- nothing yet
-    assert_eq!(
-        get!("emptyLabel", "visible"),
-        "true",
-        "a cover with no feeds must say so"
-    );
-    assert_eq!(get!("emptyLabel", "text"), "No feeds");
-    assert_ne!(
-        get!("emptyLabel", "wrapMode"),
-        "0",
-        "the line cannot wrap, so a longer language runs off the cover"
-    );
-    assert_eq!(
-        call!("drawn"),
-        "0",
-        "a grid is drawn from feeds that are not there"
-    );
-    assert_eq!(
-        get!("unreadTotal", "text"),
-        "0",
-        "the count must be there from the start; a zero says as much as a count"
-    );
+    // ---------------------------------------------------------- the heading
     assert_eq!(
         get!("brand", "text"),
         "Vuo",
         "the cover does not name the app in its corner"
     );
     assert_eq!(get!("subtitle", "text"), "Unread");
-
-    // -------------------------------------------------------- with feeds in
-    assert_eq!(call!("feeds", QString::from(FEEDS)), "ok");
-    assert_eq!(call!("count", 4), "ok");
-
-    assert_eq!(call!("listed"), "3", "all three feeds were handed over");
     assert_eq!(
-        get!("emptyLabel", "visible"),
-        "false",
-        "the cover says there are no feeds while there are three"
+        get!("unreadTotal", "text"),
+        "0",
+        "the count must be there from the start; a zero says as much as a count"
     );
+    assert_eq!(call!("count", 4), "ok");
     assert_eq!(get!("unreadTotal", "text"), "4");
 
-    let planned: usize = call!("planned").parse().unwrap_or(0);
+    // ---------------------------------------------------------- the texture
+    let source = get!("textArt", "source");
     assert!(
-        planned >= 8,
-        "the cover's shape gives the grid fewer than two rows: {planned} cells"
+        source.ends_with("art/cover.png"),
+        "the cover must draw the cover's own mask -- the page's is painted at \
+         a density that is mush at this size -- got {source:?}"
     );
-    assert_eq!(
-        call!("drawn"),
-        planned.to_string(),
-        "the grid is not filled from the feeds there are"
-    );
+    // It is drawn under the WHOLE cover, so the fade is the only thing
+    // keeping the app's name off a field of text.
+    let fade_from = number!(get!("textArt", "fadeFrom"));
+    let fade_to = number!(get!("textArt", "fadeTo"));
+    let heading_bottom = number!(call!("headingBottom"));
     assert!(
-        planned > 3,
-        "the grid must REPEAT the feeds to fill itself, not stop at three cells"
-    );
-    assert_eq!(
-        call!("lit"),
-        "2",
-        "the two feeds with something new are not the two cells drawn bright, \
-         once each"
-    );
-    let leftmost: f64 = call!("leftmost").parse().unwrap_or(0.0);
-    assert!(
-        leftmost < 0.0,
-        "no row is shifted off the edge, so the rows do not stagger"
-    );
-
-    // The first cell is the first feed: its icon reaches the Image as the
-    // `data:` URI it arrived as, and nothing in the cover fetches anything.
-    let source = call!(
-        "at",
-        QString::from("cellFavicon"),
-        0,
-        QString::from("source")
+        fade_from >= heading_bottom,
+        "the texture reaches full strength at {fade_from}, above where the \
+         heading ends at {heading_bottom}: the app's name would sit in text"
     );
     assert!(
-        source.starts_with("data:image/png;base64,"),
-        "the first cell must draw the first feed's icon, got {source:?}"
+        fade_to > fade_from,
+        "the texture must fade in over a band rather than start on a hard \
+         line: {fade_from} to {fade_to}"
     );
-    // The field is favicons and nothing else. A letter among them is the bug
-    // this asserts against: the model sends feeds without an icon only when NO
-    // feed has one.
-    assert_eq!(
-        call!("letters"),
-        "0",
-        "a letter was drawn into a field of favicons"
-    );
-
-    // ------------------------------------------------- before any icon lands
-    // Icons are fetched lazily, so a first sync has feeds and no pictures of
-    // them. The grid draws initials then rather than nothing at all.
-    assert_eq!(call!("feeds", QString::from(ICONLESS)), "ok");
-    let planned_plain: usize = call!("planned").parse().unwrap_or(0);
-    assert!(planned_plain > 0, "the grid emptied itself");
-    assert_eq!(
-        call!("letters"),
-        planned_plain.to_string(),
-        "with no icons anywhere every cell must fall back to a letter, or the \
-         cover is blank under a real unread count"
-    );
-    assert_eq!(
-        call!("at", QString::from("cellInitial"), 1, QString::from("text")),
-        "L",
-        "and the letter is the feed's own initial"
-    );
-    assert_eq!(call!("feeds", QString::from(FEEDS)), "ok");
 
     // ------------------------------------------------------- what sync says
     assert_eq!(call!("syncing", true), "ok");
@@ -287,6 +170,7 @@ fn the_cover_draws_a_field_of_feeds_and_lights_whichever_has_something_new() {
         "the count must survive a refresh; it is the one thing the cover is for"
     );
     assert_eq!(call!("syncing", false), "ok");
+    assert_eq!(get!("subtitle", "text"), "Unread");
 
     // §9.3: the server's own words never reach the cover.
     assert_eq!(

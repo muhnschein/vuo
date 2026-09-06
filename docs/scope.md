@@ -109,8 +109,8 @@ precisely because the code exists nearby or the feature is one API call away.
 |                                                               |
 |  +-----------------------------+   +----------------------+   |
 |  |  QML / Silica UI            |   |  Background sync     |   |
-|  |  - unread / feed / category |   |  - systemd user timer|   |
-|  |  - article view (blocks)    |   |  - suspend-aware     |   |
+|  |  - unread / feed / category |   |  - the worker's own  |   |
+|  |  - article view (blocks)    |   |    cadence, in-app   |   |
 |  |  - settings, account setup  |   |  - shares the core   |   |
 |  +--------------+--------------+   +----------+-----------+   |
 |                 |  models / signals           |               |
@@ -155,8 +155,8 @@ Key decisions:
   over rendering, lazy image loading, and font scaling — and keeps the QML
   dumb.
 - **Background refresh shares `vuo-core`** rather than reimplementing sync in
-  a script. Whether it runs as a separate systemd user unit or in-process
-  under Sailfish's keepalive rules is an open question (§11).
+  a script. It runs in-process, on the worker thread, on the interval the
+  user chose: Harbour allows the app no second process.
 
 ---
 
@@ -206,9 +206,9 @@ browser) lands after milestone 4 and before release.
   for the emulator.
 - **OBS builds have no network.** Vendor crate sources and gate the offline
   path behind a spec flag from the start; retrofitting this is tedious.
-- **Distribution:** target Chum/OpenRepos. Harbour's library restrictions and
-  the background-service requirement make it a stretch goal at best; do not
-  design around it.
+- **Distribution:** target Harbour. One process, no background service, a
+  sandbox declared in the desktop entry; Chum and OpenRepos take the same
+  package.
 - **Credentials:** the API key is stored under the app's data directory with
   restrictive permissions, relying on Sailfish's home encryption. No custom
   keyring, no SQLCipher, unless a concrete threat model justifies it.
