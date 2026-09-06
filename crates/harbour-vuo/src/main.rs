@@ -25,10 +25,22 @@
 use qmetaobject::*;
 
 fn main() {
+    // `vuo_shim=info` is in the default on purpose, not only under `VUO_LOG`.
+    //
+    // The shim logs a bare handful of lines a session, and they are the ones
+    // that matter when something goes wrong where no Rust diagnostic can
+    // follow it: opening the mirror, starting the sync worker, installing the
+    // context. A device process that dies on a signal prints no backtrace and
+    // no panic message — the binary is stripped — so the last line reached is
+    // the whole of the evidence, and a user reproducing a crash should not
+    // have to know an environment variable to produce it.
     tracing_subscriber::fmt()
         .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_env("VUO_LOG")
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn,vuo_core=info")),
+            tracing_subscriber::EnvFilter::try_from_env("VUO_LOG").unwrap_or_else(|_| {
+                tracing_subscriber::EnvFilter::new(
+                    "warn,vuo_core=info,vuo_shim=info,harbour_vuo=info",
+                )
+            }),
         )
         .init();
 

@@ -275,10 +275,17 @@ fn build_from(
     let server = url::Url::parse(&account.server_url)
         .map_err(|_| vuo_core::Error::Config(NOT_A_URL.to_owned()))?;
     let config = crate::worker::transport_config_for(paths, &account)?;
+    // The steps below are logged one by one on purpose. Building the context
+    // is the only part of Vuo that runs BOTH at start-up and again from inside
+    // a QML tap, and the second of those has been seen to end a device process
+    // with a signal rather than an error -- which leaves no Rust diagnostic at
+    // all, only a last line reached. See docs/testing.md.
+    tracing::info!("opening the mirror");
     let db = Database::open(&paths.database)?;
     let fingerprint = fingerprint(&account);
     let sync_interval = crate::settings::sync_interval_minutes_for(account.sync_interval_index);
 
+    tracing::info!("starting the sync worker");
     let signal = std::sync::Arc::new(SyncSignal::default());
     let worker = Worker::spawn(
         paths.database.clone(),
@@ -299,6 +306,7 @@ fn build_from(
     ctx.send(Command::SetSyncInterval {
         minutes: sync_interval,
     });
+    tracing::info!("the application context is built");
     Ok(ctx)
 }
 
@@ -325,11 +333,13 @@ pub fn refresh(paths: &AppPaths) -> vuo_core::Result<Rc<AppContext>> {
             return Ok(existing);
         }
         // Told to stop, but not waited for: a join here runs on the Qt thread.
+        tracing::info!("retiring the worker for the previous account");
         existing.retire();
     }
 
     let ctx = build_from(paths, account, log_event)?;
     install(Rc::clone(&ctx));
+    tracing::info!("the application context is installed");
     Ok(ctx)
 }
 

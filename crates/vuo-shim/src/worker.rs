@@ -315,6 +315,11 @@ impl Worker {
                         return;
                     }
                 };
+                // Paired with the "starting the sync worker" line the Qt thread
+                // logs: between the two lies a thread start, a second open of
+                // the mirror and the whole TLS client, none of which reports
+                // anything of its own on the way through.
+                tracing::info!("the sync worker is ready");
 
                 // The worker's own sync, on the interval the user chose.
                 //
@@ -635,30 +640,34 @@ impl Worker {
                                 }
                             }
                         }
-                        Command::TestConnection => match runtime.block_on(client.me()) {
-                            Ok(user) => {
-                                // The username is the user's own, from their own
-                                // server, but it is still rendered as plain text.
-                                signal.post(Notice::ConnectionTested {
-                                    ok: true,
-                                    message: user.username.clone(),
-                                });
-                                on_event(Event::ConnectionTested {
-                                    ok: true,
-                                    message: user.username,
-                                });
+                        Command::TestConnection => {
+                            tracing::info!("asking the server who we are");
+                            match runtime.block_on(client.me()) {
+                                Ok(user) => {
+                                    // The username is the user's own, from
+                                    // their own server, but it is still
+                                    // rendered as plain text.
+                                    signal.post(Notice::ConnectionTested {
+                                        ok: true,
+                                        message: user.username.clone(),
+                                    });
+                                    on_event(Event::ConnectionTested {
+                                        ok: true,
+                                        message: user.username,
+                                    });
+                                }
+                                Err(e) => {
+                                    signal.post(Notice::ConnectionTested {
+                                        ok: false,
+                                        message: e.to_string(),
+                                    });
+                                    on_event(Event::ConnectionTested {
+                                        ok: false,
+                                        message: e.to_string(),
+                                    });
+                                }
                             }
-                            Err(e) => {
-                                signal.post(Notice::ConnectionTested {
-                                    ok: false,
-                                    message: e.to_string(),
-                                });
-                                on_event(Event::ConnectionTested {
-                                    ok: false,
-                                    message: e.to_string(),
-                                });
-                            }
-                        },
+                        }
                         Command::FlushOutbox => {
                             match runtime.block_on(sync::replay::flush(&mut db, &client)) {
                                 Ok(outcome) if outcome.auth_failed => {

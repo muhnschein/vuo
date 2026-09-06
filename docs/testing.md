@@ -126,3 +126,51 @@ names the assumption it protects. That is what makes it worth running against
 an ephemeral server weekly: cursor semantics and mutation idempotency are
 contract questions about someone else's software, and the alternative to
 checking them is finding out by regression.
+
+### A crash that only happens on a device
+
+`make check` runs the QML in a real engine, and the shim's tests drive the
+settings screen's save-and-test path against a temporary home directory. Both
+are worth having, and neither reproduces a fault that needs a phone: Sailfish's
+Qt, libhybris, Sailjail, and an `aarch64` binary built at `opt-level = "z"` with
+fat LTO are all outside what a laptop can stand in for.
+
+When the process dies on a **signal** rather than an error, there is nothing
+else to read. The device package is stripped, so a backtrace names no
+functions; `panic = "abort"` means a Rust panic would at least print its
+message first, so a silent death (`echo $?` → 139, `SIGSEGV`) is *not* a panic
+and no Rust diagnostic is coming. The only evidence is the last line the
+process managed to log.
+
+That is why the shim logs at `info` **by default**, not only under `VUO_LOG`,
+and why the account path is narrated step by step. Configuring an account is
+the one operation that runs both at start-up and again from inside a QML tap,
+and the second of those has been seen to end a device process with a signal.
+A first-run configure should read:
+
+```
+saving the account
+the account file is written
+opening the mirror
+starting the sync worker
+the application context is built
+the application context is installed
+the settings screen has published the saved account
+the test is queued for the worker
+the settings screen has finished the test
+the sync worker is ready            # the worker thread, in parallel
+asking the server who we are
+```
+
+Whichever line is missing bounds the fault to the statements between it and
+the one before it. Run the app from a terminal so the lines are on screen:
+
+```sh
+sailjail /usr/bin/harbour-vuo       # add VUO_LOG=debug for the HTTP stack too
+echo $?                             # 139 = SIGSEGV, 134 = abort, 137 = OOM kill
+```
+
+One test costs nothing and separates the two halves of that path: fill in the
+server and the key and **swipe back instead of tapping Test connection**. The
+page saves on destruction, so that runs everything up to and including
+building the context, and none of the network round trip.
