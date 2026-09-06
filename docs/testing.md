@@ -36,25 +36,31 @@ passes happily and that would have failed at launch on a device.
 If a Silica property is missing from the stubs, **add it to the stubs**; do not
 work around it in the app.
 
-### The cover test
+### The cover test, and the texture
 
 The load test instantiates every file with its properties at their defaults,
 which for the app cover shows the heading -- the name, the sync line, the
 count -- and nothing of the texture under it: lines of filler text set along
-nested curves that are traced by a pass of JavaScript over the cover's size,
-then painted on a canvas. The painting needs a window and a font, which a
-headless engine has neither of, so the cover splits the work in two:
-`layout` returns the curves, and `onPaint` sets text along them.
+nested curves that `components/TextArt.qml` traces over the item's size, then
+paints on a canvas. The painting needs a window and a font, which a headless
+engine has neither of, so the component splits the work in two: `layout`
+returns the curves, and the paint sets text along them.
 
 `crates/vuo-shim/tests/qml_cover.rs` loads the cover in an engine of its own
 and reads the curves back: that there are enough of them, that the innermost
 ones close around their strokes (the "eyes" of the pattern) while the outer
-ones reach the edge, that no curve runs off the cover or jumps, that the text
-is the cover's own filler and nothing foreign, and that a failed refresh puts
-Vuo's own translated line on the cover rather than the server's words. What
-the painted result looks like was checked by rendering the cover under
-`qmlscene` against the stubs; that is a manual check, not part of `make
-check`.
+ones reach the edge, that no curve runs away from the frame, that the stride
+stays inside its own cap, that the text is the cover's own filler and nothing
+foreign, and that a failed refresh puts Vuo's own translated line on the
+cover rather than the server's words.
+
+What the painted result *looks like*, and how long it takes, are checked by
+rendering the component under `qmlscene` against the stubs -- a manual check,
+not part of `make check`. It is worth doing before touching that file: a
+device reported the onboarding page freezing for fourteen seconds, and the
+same harness measured the tracing at 1109 ms on a host against 39 ms for the
+rewrite, over an identical set of 128 curves. Rendering the old and the new
+side by side is what showed the pattern had not changed while the cost had.
 
 ### Outbox reconciliation
 

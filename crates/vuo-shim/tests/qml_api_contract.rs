@@ -476,17 +476,42 @@ fn qml_declared_identifiers(files: &[PathBuf]) -> BTreeSet<String> {
             // JavaScript locals inside a handler or a function. `var shortAge
             // = ...` is not a model role, and reporting it as an undefined one
             // is noise that trains the reader to ignore this test.
-            let mut decl = code.split_whitespace().peekable();
-            while let Some(word) = decl.next() {
-                if matches!(word, "var" | "let" | "const") {
-                    if let Some(name) = decl.peek() {
-                        let name: String = name
+            //
+            // EVERY declarator of a comma-separated `var a = 1, b = 2`, not
+            // just the first. The text art declares a run and the run's width
+            // on one line, and only the second of them was reported -- as a
+            // role no model exposes, from a file that has no model, which is
+            // exactly the noise this branch exists to prevent.
+            for keyword in ["var ", "let ", "const "] {
+                let mut rest = code;
+                while let Some(idx) = rest.find(keyword) {
+                    // `myvar x` does not declare anything: the keyword has to
+                    // start a word.
+                    let starts_word = idx == 0
+                        || !rest[..idx].ends_with(|c: char| c.is_alphanumeric() || c == '_');
+                    rest = rest.get(idx + keyword.len()..).unwrap_or("");
+                    if !starts_word {
+                        continue;
+                    }
+                    for part in rest.split(',') {
+                        let part = part.trim_start();
+                        let name: String = part
                             .chars()
                             .take_while(|c| c.is_alphanumeric() || *c == '_')
                             .collect();
-                        if !name.is_empty() {
-                            names.insert(name);
+                        // A declarator is `name`, `name =` or `name;`.
+                        // Anything else means the comma was inside an
+                        // initialiser -- an argument list, an array -- and
+                        // the declaration ended before it.
+                        let after = part.get(name.len()..).unwrap_or("").trim_start();
+                        if name.is_empty()
+                            || !(after.is_empty()
+                                || after.starts_with('=')
+                                || after.starts_with(';'))
+                        {
+                            break;
                         }
+                        names.insert(name);
                     }
                 }
             }

@@ -64,10 +64,12 @@ CoverBackground {
         onTriggered: cover._showFailure = false
     }
 
-    // The texture, under everything else. It begins where postivene's field
-    // of faces begins under the same heading -- a large padding below it --
-    // and fades in over the next tenth of the cover rather than starting on
-    // a hard line.
+    // The texture, under everything else -- the same pattern, from the same
+    // strokes, that fills the onboarding page; only finer there, since a
+    // page has the room for it. It begins where postivene's field of faces
+    // begins under the same heading -- a large padding below it -- and fades
+    // in over the next tenth of the cover rather than starting on a hard
+    // line.
     TextArt {
         id: art
         objectName: "textArt"

@@ -69,20 +69,26 @@ const PROBE_QML: &str = r"
             for (var i = 0; i < curves.length; i++) { if (curves[i].closed) { n++ } }
             return '' + n
         }
+        // The points are flat: [x0, y0, x1, y1, ...].
         function points() {
             var n = 0
-            for (var i = 0; i < curves.length; i++) { n += curves[i].points.length }
+            for (var i = 0; i < curves.length; i++) { n += curves[i].points.length / 2 }
             return '' + n
         }
+        // A curve is walked until it is a `spacing` outside the frame, and
+        // the check comes after the stride that took it there, so the last
+        // point of a curve that leaves can be one stride further out. A
+        // stride is capped at three spacings, so four is the bound; past
+        // that a walk has run away and is setting text nobody can see.
         function stray() {
             var art = findIn(loader.item, 'textArt')
-            var margin = art.spacing * 2
+            var margin = art.spacing * 4 + 1
             for (var i = 0; i < curves.length; i++) {
                 var pts = curves[i].points
-                for (var j = 0; j < pts.length; j++) {
-                    if (pts[j].x < -margin || pts[j].x > art.width + margin
-                            || pts[j].y < -margin || pts[j].y > art.height + margin) {
-                        return 'yes:' + pts[j].x + ',' + pts[j].y
+                for (var j = 0; j < pts.length; j += 2) {
+                    if (pts[j] < -margin || pts[j] > art.width + margin
+                            || pts[j + 1] < -margin || pts[j + 1] > art.height + margin) {
+                        return 'yes:' + pts[j] + ',' + pts[j + 1]
                     }
                 }
             }
@@ -94,12 +100,27 @@ const PROBE_QML: &str = r"
             var worst = 0
             for (var i = 0; i < curves.length; i++) {
                 var pts = curves[i].points
-                for (var j = 1; j < pts.length; j++) {
-                    var dx = pts[j].x - pts[j-1].x, dy = pts[j].y - pts[j-1].y
+                for (var j = 2; j < pts.length; j += 2) {
+                    var dx = pts[j] - pts[j-2], dy = pts[j+1] - pts[j-1]
                     worst = Math.max(worst, Math.sqrt(dx * dx + dy * dy))
                 }
             }
             return '' + worst
+        }
+        function spacing() { return '' + findIn(loader.item, 'textArt').spacing }
+        // How much line there is to set text along, which is what the point
+        // count used to stand in for -- and no longer can, now that the
+        // stride varies with how sharply the curve turns.
+        function length() {
+            var total = 0
+            for (var i = 0; i < curves.length; i++) {
+                var pts = curves[i].points
+                for (var j = 2; j < pts.length; j += 2) {
+                    var dx = pts[j] - pts[j-2], dy = pts[j+1] - pts[j-1]
+                    total += Math.sqrt(dx * dx + dy * dy)
+                }
+            }
+            return '' + Math.round(total)
         }
         function filler() { return findIn(loader.item, 'textArt').filler }
     }
@@ -193,22 +214,37 @@ fn the_cover_says_the_count_over_a_texture_of_text_along_curves() {
         "every curve closed, so none of them reach the cover's edge and the \
          corners are bare"
     );
-    let points: usize = call!("points").parse().unwrap_or(0);
+    // How much LINE there is, not how many points: the stride varies with
+    // how sharply the curve turns, so a straight outer ring is a handful of
+    // points and thousands of pixels. Length is what the text is set along.
+    let length = number!(call!("length"));
+    let points = number!(call!("points"));
     assert!(
-        points >= 2000,
-        "{points} points across {curves} curves is not enough line to set \
-         text along"
+        length >= 4000.0,
+        "{length} pixels of curve across {curves} curves is not enough line \
+         to set text along"
+    );
+    assert!(
+        points < length,
+        "the stride collapsed to a point a pixel: {points} points over \
+         {length} pixels is the slow tracing this was rewritten to avoid"
     );
     assert_eq!(
         call!("stray"),
         "no",
-        "a curve ran off the cover: text would be set where nobody can see it"
+        "a curve ran away from the cover: it is setting text nobody can see"
     );
+    // A stride is bounded, and bounded by the ring's own curvature: a chord
+    // of length l across a circle of radius r bulges l*l/8r from it, and
+    // `traceRing` solves that for a bulge under half a pixel. So the cap
+    // below is the absolute one, and what it guards is a stride running away
+    // -- text set across a gap it does not follow.
+    let spacing = number!(call!("spacing"));
     let step = number!(call!("longestStep"));
     assert!(
-        step <= 4.0,
-        "a curve jumped {step} pixels between points; the text set across \
-         that gap would not follow it"
+        step <= spacing * 3.0 + 1.0,
+        "a curve jumped {step} pixels between points, past the {spacing} \
+         spacing's own cap; the text set across that gap would not follow it"
     );
     // The filler is the cover's own fixed text. Nothing foreign is anywhere
     // near the canvas, and this is the assertion that keeps it so.

@@ -29,27 +29,19 @@ Page {
         page.finished()
     }
 
-    // The same texture as the cover's, but the whole page of it, from five
-    // strokes rather than three so the sweeps fill a page's width, and a
-    // little stronger. The middle is cleared for the words.
+    // The cover's texture, at a page's size: the same strokes -- they are
+    // the component's own -- drawn much finer, which is all that ever made
+    // this pattern read differently from the cover's. The middle is cleared
+    // for the words.
     TextArt {
         id: art
         anchors.fill: parent
-        // A page is about two and a half covers wide; the same glyph as on
-        // the cover, so it reads as the same material.
-        referenceWidth: page.width / 2.5
+        glyphsAcross: 115
         ink: 0.6
         clearX: page.width / 2
         clearY: page.height * 0.45
         clearRadius: Math.min(page.width, page.height) * 0.22
         clearFeather: Math.min(page.width, page.height) * 0.16
-        strokes: [
-            { x: 0.12, y: 0.16, x2: 0.28, y2: 0.08 },
-            { x: 0.95, y: 0.30, x2: 0.84, y2: 0.20 },
-            { x: 0.06, y: 0.78, x2: 0.16, y2: 0.66 },
-            { x: 0.70, y: 1.02, x2: 0.58, y2: 0.90 },
-            { x: 1.00, y: 0.72, x2: 0.92, y2: 0.62 }
-        ]
     }
 
     Column {
