@@ -111,11 +111,18 @@ Two rules cannot be checked there, because both are decided by the device link:
   emits `-lQt5Widgets` unconditionally (its `build.rs`), and `qmetaobject`'s
   `QmlEngine` is a `QApplication`, whose constructor and `exec` stay as
   undefined references in the C++ glue even though the device entry point uses
-  `SailfishApp::application()` instead. Confirmed on a host build; the device
-  link is the same shape. `--as-needed` does not help, because the references
-  are real. Resolving it means removing them -- garbage-collecting the unused
-  `QmlEngineHolder` at link time, or carrying a patch to `qmetaobject` -- and
-  proving the result on a device.
+  `SailfishApp::application()` instead. Confirmed on the aarch64 link itself
+  (SailfishOS 5.2.0.15): it is the one `NEEDED` entry the check above refuses,
+  and everything else the binary asks for is allowed. `--as-needed` does not
+  help, because the references are real. Resolving it means removing them --
+  garbage-collecting the unused `QmlEngineHolder` at link time, or carrying a
+  patch to `qmetaobject` -- and proving the result on a device, since both
+  touch how the application object itself is built.
+
+  Nothing else in that link is a problem. The highest glibc symbol version the
+  binary needs is `GLIBC_2.34`, which is what the validator wants to see; it
+  is stripped; it has no `rpath`; and the packaged tree is exactly the four
+  locations Harbour allows.
 - **No release package can be built yet.** `rpm/harbour-vuo.spec` cannot run
   under the SDK's own cargo (see "The Rust floor" and `docs/sdk-build.md`), and
   what CI produces is a *test* package: cross-built outside `sb2`, unstripped,
