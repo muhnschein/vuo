@@ -210,6 +210,7 @@ build needs neither of the tools:
 | --- | --- | --- |
 | `translations/*.qm` | `lrelease` | Qt's linguist tools |
 | `qml/art/*.png` | `make textart` | a QML runtime and a display (or `xvfb`) |
+| `store/cover.png` | `scripts/render-store-cover.sh` | the same, plus two font files |
 
 The art is the texture the cover and the onboarding page wear: nested curves
 of tiny filler text, after Jolla's own packaging. It used to be painted at
@@ -225,6 +226,14 @@ to regenerate when Sailfish gains another. The same shader dims it and cuts
 the two holes the app needs: the band the cover's heading sits in, and the
 disc the onboarding page's title sits in. Both are geometry the app knows and
 the painter does not, so neither is baked in.
+
+`store/` is the Harbour Store page's own assets and is **not installed** --
+nothing in either spec touches it. `store/cover.png` is the 1080x540 banner at
+the top of Vuo's Store page: the onboarding screen laid out for a landscape
+frame, from the same painter with strokes read for that shape, so the Store
+page and the app look like one thing. Its wordmark is Fira Sans (SIL OFL); the
+script fetches the two files it needs and `.gitignore` keeps them out of the
+tree, since the rendered PNG is what is tracked.
 
 One caveat, stated because it cannot be fixed here: **the masks are not
 rendered in the device's own font.** Sail Sans Pro ships with SailfishOS and

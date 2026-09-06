@@ -14,6 +14,10 @@
 /BUILDROOT/
 *.rpm
 
+# Fonts fetched by scripts/render-store-cover.sh. Not ours to redistribute,
+# and the rendered store/cover.png is what is tracked.
+/.fonts/
+
 # insta snapshot review leftovers
 *.snap.new
 
