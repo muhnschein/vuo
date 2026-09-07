@@ -110,7 +110,37 @@ else
     note "the spec builds the right binary with the right features"
 fi
 
-# 5. Cargo.lock must be committed: OBS builds --locked and offline.
+# 5. Every language ships, and none of them has drifted.
+#
+#    A .ts without a .qm is a language that is IN the tree and not on the
+#    phone: the specs install `translations/*.qm` and nothing warns when one is
+#    absent. And a source string added to the QML reaches only the catalogue
+#    someone remembered to run `lupdate` over, so the message counts are
+#    compared against English -- 40 catalogues is far past the number anyone
+#    keeps in their head.
+#
+#    Untranslated entries are NOT an error. Qt falls back to the source string,
+#    which is English and correct; a check that failed on them would mean no UI
+#    string could be added without 39 translations in the same commit.
+missing_qm=""
+drifted=""
+reference=$(grep -c "<message" translations/harbour-vuo-en.ts 2>/dev/null || echo 0)
+if [ "$reference" -eq 0 ]; then
+    bad "translations/harbour-vuo-en.ts is missing; it is the reference catalogue"
+else
+    for ts in translations/*.ts; do
+        [ -f "${ts%.ts}.qm" ] || missing_qm="$missing_qm ${ts##*/}"
+        n=$(grep -c "<message" "$ts")
+        [ "$n" -eq "$reference" ] || drifted="$drifted ${ts##*/}($n)"
+    done
+    [ -z "$missing_qm" ] || bad "no compiled .qm for:$missing_qm -- run lrelease translations/*.ts"
+    [ -z "$drifted" ] || bad "these catalogues disagree with English ($reference messages):$drifted -- run lupdate over all of them"
+    if [ -z "$missing_qm" ] && [ -z "$drifted" ]; then
+        note "$(ls translations/*.ts | wc -l | tr -d ' ') translations, all compiled and all carrying $reference messages"
+    fi
+fi
+
+# 6. Cargo.lock must be committed: OBS builds --locked and offline.
 [ -f Cargo.lock ] || bad "Cargo.lock must be committed for reproducible offline builds"
 note "Cargo.lock is present"
 

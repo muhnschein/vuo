@@ -178,7 +178,10 @@ cargo build $jobs_opt \
     --features sailfishapp \
     $OFFLINE
 
-lrelease -idbased translations/*.ts || :
+# NOT -idbased, which the Sailfish app template uses: that keys messages by
+# `qtTrId` ids, and Vuo's strings are `qsTr`, keyed by context and source. With
+# -idbased every lookup misses and the app is English in every locale.
+lrelease translations/*.ts || :
 
 %install
 install -D %{targetdir}/harbour-vuo %{buildroot}%{_bindir}/harbour-vuo

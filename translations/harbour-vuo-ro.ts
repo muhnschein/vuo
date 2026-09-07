@@ -1,27 +1,27 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE TS>
-<TS version="2.1" language="de" sourcelanguage="en">
+<TS version="2.1" language="ro" sourcelanguage="en">
 <context>
     <name>AddFeedPage</name>
     <message>
         <location filename="../qml/pages/AddFeedPage.qml" line="19"/>
         <source>Subscribe</source>
-        <translation>Abonnieren</translation>
+        <translation>Abonează-te</translation>
     </message>
     <message>
         <location filename="../qml/pages/AddFeedPage.qml" line="23"/>
         <source>Feed or site address</source>
-        <translation>Feed- oder Seitenadresse</translation>
+        <translation>Adresa fluxului sau a sitului</translation>
     </message>
     <message>
         <location filename="../qml/pages/AddFeedPage.qml" line="24"/>
         <source>https://example.com/feed.xml</source>
-        <translation>https://beispiel.de/feed.xml</translation>
+        <translation>https://exemplu.ro/flux.xml</translation>
     </message>
     <message>
         <location filename="../qml/pages/AddFeedPage.qml" line="42"/>
         <source>Your server discovers the feed and fetches it. Vuo never downloads feeds itself.</source>
-        <translation>Ihr Server findet den Feed und ruft ihn ab. Vuo lädt Feeds niemals selbst herunter.</translation>
+        <translation>Serverul tău găsește fluxul și îl descarcă. Vuo nu descarcă niciodată fluxuri singur.</translation>
     </message>
 </context>
 <context>
@@ -29,17 +29,17 @@
     <message>
         <location filename="../qml/pages/ArticlePage.qml" line="118"/>
         <source>Article</source>
-        <translation>Artikel</translation>
+        <translation>Articol</translation>
     </message>
     <message>
         <location filename="../qml/pages/ArticlePage.qml" line="139"/>
         <source>Read</source>
-        <translation>Gelesen</translation>
+        <translation>Citit</translation>
     </message>
     <message>
         <location filename="../qml/pages/ArticlePage.qml" line="139"/>
         <source>Unread</source>
-        <translation>Ungelesen</translation>
+        <translation>Necitite</translation>
     </message>
     <message>
         <location filename="../qml/pages/ArticlePage.qml" line="146"/>
@@ -50,79 +50,80 @@
         <location filename="../qml/pages/ArticlePage.qml" line="161"/>
         <source>%n image(s) are not proxied by your server and were not loaded.</source>
         <translation>
-            <numerusform>%n Bild wird von Ihrem Server nicht weitergeleitet und wurde nicht geladen.</numerusform>
-            <numerusform>%n Bilder werden von Ihrem Server nicht weitergeleitet und wurden nicht geladen.</numerusform>
+            <numerusform>%n imagine nu trece prin serverul tău și nu a fost încărcată.</numerusform>
+            <numerusform>%n imagini nu trec prin serverul tău și nu au fost încărcate.</numerusform>
+            <numerusform>%n de imagini nu trec prin serverul tău și nu au fost încărcate.</numerusform>
         </translation>
     </message>
     <message>
         <location filename="../qml/pages/ArticlePage.qml" line="176"/>
         <source>This article was too large to display in full.</source>
-        <translation>Dieser Artikel war zu groß, um vollständig angezeigt zu werden.</translation>
+        <translation>Articolul a fost prea mare pentru a fi afișat în întregime.</translation>
     </message>
     <message>
         <location filename="../qml/pages/ArticlePage.qml" line="181"/>
         <source>Mark as unread</source>
-        <translation>Als ungelesen markieren</translation>
+        <translation>Marchează ca necitit</translation>
     </message>
     <message>
         <location filename="../qml/pages/ArticlePage.qml" line="181"/>
         <source>Mark as read</source>
-        <translation>Als gelesen markieren</translation>
+        <translation>Marchează ca citit</translation>
     </message>
     <message>
         <location filename="../qml/pages/ArticlePage.qml" line="190"/>
         <source>Remove favourite</source>
-        <translation>Favorit entfernen</translation>
+        <translation>Scoate de la favorite</translation>
     </message>
     <message>
         <location filename="../qml/pages/ArticlePage.qml" line="191"/>
         <source>Add favourite</source>
-        <translation>Zu Favoriten hinzufügen</translation>
+        <translation>Adaugă la favorite</translation>
     </message>
     <message>
         <location filename="../qml/pages/ArticlePage.qml" line="195"/>
         <source>Open in browser</source>
-        <translation>Im Browser öffnen</translation>
+        <translation>Deschide în navigator</translation>
     </message>
     <message>
         <location filename="../qml/pages/ArticlePage.qml" line="207"/>
         <source>Fetch original content</source>
-        <translation>Originalinhalt abrufen</translation>
+        <translation>Adu conținutul original</translation>
     </message>
     <message>
         <location filename="../qml/pages/ArticlePage.qml" line="215"/>
         <source>Asking the server for the original article…</source>
-        <translation>Server wird nach dem Originalartikel gefragt …</translation>
+        <translation>Se cere serverului articolul original…</translation>
     </message>
     <message>
         <location filename="../qml/pages/ArticlePage.qml" line="354"/>
         <source>Tap to load images from %1</source>
-        <translation>Tippen, um Bilder von %1 zu laden</translation>
+        <translation>Atinge pentru a încărca imaginile de la %1</translation>
     </message>
     <message>
         <location filename="../qml/pages/ArticlePage.qml" line="448"/>
         <source>Loaded the original article.</source>
-        <translation>Originalartikel geladen.</translation>
+        <translation>Articolul original a fost încărcat.</translation>
     </message>
     <message>
         <location filename="../qml/pages/ArticlePage.qml" line="452"/>
         <source>The server could not extract the original article.</source>
-        <translation>Der Server konnte den Originalartikel nicht extrahieren.</translation>
+        <translation>Serverul nu a putut extrage articolul original.</translation>
     </message>
     <message>
         <location filename="../qml/pages/ArticlePage.qml" line="455"/>
         <source>This feed already carries the full article.</source>
-        <translation>Dieser Feed enthält bereits den vollständigen Artikel.</translation>
+        <translation>Fluxul conține deja articolul întreg.</translation>
     </message>
     <message>
         <location filename="../qml/pages/ArticlePage.qml" line="457"/>
         <source>The server rejected the API key.</source>
-        <translation>Der Server hat den API-Schlüssel abgelehnt.</translation>
+        <translation>Serverul a respins cheia API.</translation>
     </message>
     <message>
         <location filename="../qml/pages/ArticlePage.qml" line="461"/>
         <source>Could not fetch the original article: %1</source>
-        <translation>Originalartikel konnte nicht abgerufen werden: %1</translation>
+        <translation>Articolul original nu a putut fi adus: %1</translation>
     </message>
 </context>
 <context>
@@ -130,22 +131,22 @@
     <message>
         <location filename="../qml/cover/CoverPage.qml" line="156"/>
         <source>Sign-in failed</source>
-        <translation>Anmeldung fehlgeschlagen</translation>
+        <translation>Autentificare eșuată</translation>
     </message>
     <message>
         <location filename="../qml/cover/CoverPage.qml" line="156"/>
         <source>Refresh failed</source>
-        <translation>Aktualisierung fehlgeschlagen</translation>
+        <translation>Actualizare eșuată</translation>
     </message>
     <message>
         <location filename="../qml/cover/CoverPage.qml" line="157"/>
         <source>Refreshing</source>
-        <translation>Wird aktualisiert</translation>
+        <translation>Se actualizează</translation>
     </message>
     <message>
         <location filename="../qml/cover/CoverPage.qml" line="157"/>
         <source>Unread</source>
-        <translation>Ungelesen</translation>
+        <translation>Necitite</translation>
     </message>
 </context>
 <context>
@@ -153,48 +154,48 @@
     <message>
         <location filename="../qml/pages/EditFeedPage.qml" line="100"/>
         <source>Could not save: %1</source>
-        <translation>Speichern fehlgeschlagen: %1</translation>
+        <translation>Nu s-a putut salva: %1</translation>
     </message>
     <message>
         <location filename="../qml/pages/EditFeedPage.qml" line="112"/>
         <source>Feed settings</source>
-        <translation>Feed-Einstellungen</translation>
+        <translation>Setările fluxului</translation>
     </message>
     <message>
         <location filename="../qml/pages/EditFeedPage.qml" line="117"/>
         <location filename="../qml/pages/EditFeedPage.qml" line="118"/>
         <source>Name</source>
-        <translation>Name</translation>
+        <translation>Nume</translation>
     </message>
     <message>
         <location filename="../qml/pages/EditFeedPage.qml" line="138"/>
         <source>Fetch original content</source>
-        <translation>Originalinhalt abrufen</translation>
+        <translation>Adu conținutul original</translation>
     </message>
     <message>
         <location filename="../qml/pages/EditFeedPage.qml" line="139"/>
         <source>The server scrapes each article&apos;s own page instead of using what the feed provides.</source>
-        <translation>Der Server ruft die Originalseite jedes Artikels ab, statt den Inhalt des Feeds zu verwenden.</translation>
+        <translation>Serverul citește pagina proprie a fiecărui articol în loc de ce oferă fluxul.</translation>
     </message>
     <message>
         <location filename="../qml/pages/EditFeedPage.qml" line="149"/>
         <source>Hide from unread</source>
-        <translation>Aus „Ungelesen“ ausblenden</translation>
+        <translation>Ascunde din necitite</translation>
     </message>
     <message>
         <location filename="../qml/pages/EditFeedPage.qml" line="150"/>
         <source>Keep this feed&apos;s articles out of the Unread and All lists. The feed itself still shows them.</source>
-        <translation>Artikel dieses Feeds aus „Ungelesen“ und „Alle“ heraushalten. Im Feed selbst bleiben sie sichtbar.</translation>
+        <translation>Ține articolele acestui flux în afara listelor Necitite și Toate. Fluxul însuși le arată în continuare.</translation>
     </message>
     <message>
         <location filename="../qml/pages/EditFeedPage.qml" line="161"/>
         <source>Pause updates</source>
-        <translation>Aktualisierung pausieren</translation>
+        <translation>Suspendă actualizările</translation>
     </message>
     <message>
         <location filename="../qml/pages/EditFeedPage.qml" line="162"/>
         <source>The server stops refreshing this feed.</source>
-        <translation>Der Server aktualisiert diesen Feed nicht mehr.</translation>
+        <translation>Serverul nu mai actualizează acest flux.</translation>
     </message>
 </context>
 <context>
@@ -203,155 +204,159 @@
         <location filename="../qml/pages/EntryListPage.qml" line="11"/>
         <location filename="../qml/pages/EntryListPage.qml" line="167"/>
         <source>Unread</source>
-        <translation>Ungelesen</translation>
+        <translation>Necitite</translation>
     </message>
     <message>
         <location filename="../qml/pages/EntryListPage.qml" line="167"/>
         <source>Favourites</source>
-        <translation>Favoriten</translation>
+        <translation>Favorite</translation>
     </message>
     <message>
         <location filename="../qml/pages/EntryListPage.qml" line="167"/>
         <source>All</source>
-        <translation>Alle</translation>
+        <translation>Toate</translation>
     </message>
     <message>
         <location filename="../qml/pages/EntryListPage.qml" line="317"/>
         <source>The server rejected the API key.</source>
-        <translation>Der Server hat den API-Schlüssel abgelehnt.</translation>
+        <translation>Serverul a respins cheia API.</translation>
     </message>
     <message>
         <location filename="../qml/pages/EntryListPage.qml" line="318"/>
         <source>Open settings</source>
-        <translation>Einstellungen öffnen</translation>
+        <translation>Deschide setările</translation>
     </message>
     <message>
         <location filename="../qml/pages/EntryListPage.qml" line="320"/>
         <source>Refresh failed: %1</source>
-        <translation>Aktualisierung fehlgeschlagen: %1</translation>
+        <translation>Actualizare eșuată: %1</translation>
     </message>
 </context>
 <context>
     <name>EntryListView</name>
     <message numerus="yes">
+        <location filename="../qml/components/EntryListView.qml" line="189"/>
+        <source>%n selected</source>
+        <translation>
+            <numerusform>%n selectat</numerusform>
+            <numerusform>%n selectate</numerusform>
+            <numerusform>%n de selectate</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
         <location filename="../qml/components/EntryListView.qml" line="191"/>
         <source>%n article(s)</source>
         <translation>
-            <numerusform>%n Artikel</numerusform>
-            <numerusform>%n Artikel</numerusform>
+            <numerusform>%n articol</numerusform>
+            <numerusform>%n articole</numerusform>
+            <numerusform>%n de articole</numerusform>
         </translation>
     </message>
     <message>
         <location filename="../qml/components/EntryListView.qml" line="246"/>
         <source>Select all</source>
-        <translation>Alle auswählen</translation>
+        <translation>Selectează tot</translation>
     </message>
     <message>
         <location filename="../qml/components/EntryListView.qml" line="247"/>
         <source>Deselect all</source>
-        <translation>Auswahl aufheben</translation>
+        <translation>Deselectează tot</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="252"/>
+        <location filename="../qml/components/EntryListView.qml" line="604"/>
+        <source>Mark as unread</source>
+        <translation>Marchează ca necitit</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="257"/>
+        <location filename="../qml/components/EntryListView.qml" line="604"/>
+        <source>Mark as read</source>
+        <translation>Marchează ca citit</translation>
     </message>
     <message>
         <location filename="../qml/components/EntryListView.qml" line="264"/>
         <source>Settings</source>
-        <translation>Einstellungen</translation>
+        <translation>Setări</translation>
     </message>
     <message>
         <location filename="../qml/components/EntryListView.qml" line="269"/>
         <source>Feeds</source>
-        <translation>Feeds</translation>
+        <translation>Fluxuri</translation>
     </message>
     <message>
         <location filename="../qml/components/EntryListView.qml" line="284"/>
         <location filename="../qml/components/EntryListView.qml" line="291"/>
         <source>Select articles</source>
-        <translation>Artikel auswählen</translation>
+        <translation>Selectează articole</translation>
     </message>
     <message>
         <location filename="../qml/components/EntryListView.qml" line="296"/>
         <source>Mark all as read</source>
-        <translation>Alle als gelesen markieren</translation>
+        <translation>Marchează tot ca citit</translation>
     </message>
     <message>
         <location filename="../qml/components/EntryListView.qml" line="315"/>
         <source>Marking all as read</source>
-        <translation>Alle werden als gelesen markiert</translation>
+        <translation>Se marchează tot ca citit</translation>
     </message>
     <message>
         <location filename="../qml/components/EntryListView.qml" line="322"/>
         <source>Refresh</source>
-        <translation>Aktualisieren</translation>
+        <translation>Actualizează</translation>
     </message>
     <message>
         <location filename="../qml/components/EntryListView.qml" line="366"/>
         <source>No favourites</source>
-        <translation>Keine Favoriten</translation>
+        <translation>Niciun favorit</translation>
     </message>
     <message>
         <location filename="../qml/components/EntryListView.qml" line="367"/>
         <source>Nothing to read</source>
-        <translation>Nichts zu lesen</translation>
+        <translation>Nimic de citit</translation>
     </message>
     <message>
         <location filename="../qml/components/EntryListView.qml" line="369"/>
         <source>Star an article to keep it here</source>
-        <translation>Artikel favorisieren, um ihn hier zu behalten</translation>
+        <translation>Adaugă un articol la favorite ca să rămână aici</translation>
     </message>
     <message>
         <location filename="../qml/components/EntryListView.qml" line="370"/>
         <source>Pull down to refresh</source>
-        <translation>Zum Aktualisieren herunterziehen</translation>
+        <translation>Trage în jos pentru a actualiza</translation>
     </message>
     <message numerus="yes">
         <location filename="../qml/components/EntryListView.qml" line="525"/>
         <source>%n min read</source>
         <translation>
-            <numerusform>%n Min. Lesezeit</numerusform>
-            <numerusform>%n Min. Lesezeit</numerusform>
+            <numerusform>%n min de citit</numerusform>
+            <numerusform>%n min de citit</numerusform>
+            <numerusform>%n min de citit</numerusform>
         </translation>
     </message>
     <message numerus="yes">
         <location filename="../qml/components/EntryListView.qml" line="526"/>
         <source>%n min</source>
         <translation>
-            <numerusform>%n Min.</numerusform>
-            <numerusform>%n Min.</numerusform>
+            <numerusform>%n min</numerusform>
+            <numerusform>%n min</numerusform>
+            <numerusform>%n min</numerusform>
         </translation>
-    </message>
-    <message>
-        <location filename="../qml/components/EntryListView.qml" line="257"/>
-        <location filename="../qml/components/EntryListView.qml" line="604"/>
-        <source>Mark as read</source>
-        <translation>Als gelesen markieren</translation>
-    </message>
-    <message numerus="yes">
-        <location filename="../qml/components/EntryListView.qml" line="189"/>
-        <source>%n selected</source>
-        <translation>
-            <numerusform>%n ausgewählt</numerusform>
-            <numerusform>%n ausgewählt</numerusform>
-        </translation>
-    </message>
-    <message>
-        <location filename="../qml/components/EntryListView.qml" line="252"/>
-        <location filename="../qml/components/EntryListView.qml" line="604"/>
-        <source>Mark as unread</source>
-        <translation>Als ungelesen markieren</translation>
     </message>
     <message>
         <location filename="../qml/components/EntryListView.qml" line="608"/>
         <source>Remove favourite</source>
-        <translation>Favorit entfernen</translation>
+        <translation>Scoate de la favorite</translation>
     </message>
     <message>
         <location filename="../qml/components/EntryListView.qml" line="608"/>
         <source>Add favourite</source>
-        <translation>Zu Favoriten hinzufügen</translation>
+        <translation>Adaugă la favorite</translation>
     </message>
     <message>
         <location filename="../qml/components/EntryListView.qml" line="612"/>
         <source>Open in browser</source>
-        <translation>Im Browser öffnen</translation>
+        <translation>Deschide în navigator</translation>
     </message>
 </context>
 <context>
@@ -359,47 +364,47 @@
     <message>
         <location filename="../qml/pages/FeedListPage.qml" line="35"/>
         <source>Feeds</source>
-        <translation>Feeds</translation>
+        <translation>Fluxuri</translation>
     </message>
     <message>
         <location filename="../qml/pages/FeedListPage.qml" line="39"/>
         <source>Add subscription</source>
-        <translation>Abonnement hinzufügen</translation>
+        <translation>Adaugă abonament</translation>
     </message>
     <message>
         <location filename="../qml/pages/FeedListPage.qml" line="47"/>
         <source>No feeds</source>
-        <translation>Keine Feeds</translation>
+        <translation>Niciun flux</translation>
     </message>
     <message>
         <location filename="../qml/pages/FeedListPage.qml" line="48"/>
         <source>Subscribe from the pulley menu</source>
-        <translation>Über das Pulley-Menü abonnieren</translation>
+        <translation>Abonează-te din meniul glisant</translation>
     </message>
     <message>
         <location filename="../qml/pages/FeedListPage.qml" line="146"/>
         <source>Feed</source>
-        <translation>Feed</translation>
+        <translation>Flux</translation>
     </message>
     <message>
         <location filename="../qml/pages/FeedListPage.qml" line="154"/>
         <source>Feed settings</source>
-        <translation>Feed-Einstellungen</translation>
+        <translation>Setările fluxului</translation>
     </message>
     <message>
         <location filename="../qml/pages/FeedListPage.qml" line="169"/>
         <source>Mark feed as read</source>
-        <translation>Feed als gelesen markieren</translation>
+        <translation>Marchează fluxul ca citit</translation>
     </message>
     <message>
         <location filename="../qml/pages/FeedListPage.qml" line="173"/>
         <source>Unsubscribe</source>
-        <translation>Abbestellen</translation>
+        <translation>Dezabonează-te</translation>
     </message>
     <message>
         <location filename="../qml/pages/FeedListPage.qml" line="174"/>
         <source>Unsubscribing</source>
-        <translation>Wird abbestellt</translation>
+        <translation>Se dezabonează</translation>
     </message>
 </context>
 <context>
@@ -407,12 +412,12 @@
     <message>
         <location filename="../qml/pages/OnboardingPage.qml" line="72"/>
         <source>Focus on what matters.</source>
-        <translation>Fokus auf das Wesentliche.</translation>
+        <translation>Concentrează-te pe ce contează.</translation>
     </message>
     <message>
         <location filename="../qml/pages/OnboardingPage.qml" line="82"/>
         <source>Continue</source>
-        <translation>Weiter</translation>
+        <translation>Continuă</translation>
     </message>
 </context>
 <context>
@@ -420,184 +425,185 @@
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="70"/>
         <source>Settings</source>
-        <translation>Einstellungen</translation>
+        <translation>Setări</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="72"/>
         <source>Account</source>
-        <translation>Konto</translation>
+        <translation>Cont</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="77"/>
         <source>Server address</source>
-        <translation>Serveradresse</translation>
+        <translation>Adresa serverului</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="78"/>
         <source>https://miniflux.example.com</source>
-        <translation>https://miniflux.beispiel.de</translation>
+        <translation>https://miniflux.exemplu.ro</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="86"/>
         <source>API key</source>
-        <translation>API-Schlüssel</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="108"/>
-        <source>Test connection</source>
-        <translation>Verbindung testen</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="129"/>
-        <source>Connected as %1</source>
-        <translation>Verbunden als %1</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="130"/>
-        <source>Test failed: %1</source>
-        <translation>Test fehlgeschlagen: %1</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="133"/>
-        <source>Reading</source>
-        <translation>Lesen</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="138"/>
-        <source>Mark as read when opened</source>
-        <translation>Beim Öffnen als gelesen markieren</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="140"/>
-        <source>Never</source>
-        <translation>Nie</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="141"/>
-        <source>Immediately</source>
-        <translation>Sofort</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="142"/>
-        <source>After 5 seconds</source>
-        <translation>Nach 5 Sekunden</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="143"/>
-        <source>After 15 seconds</source>
-        <translation>Nach 15 Sekunden</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="144"/>
-        <source>After 30 seconds</source>
-        <translation>Nach 30 Sekunden</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="156"/>
-        <source>The delay counts only while the article is on screen. Marking an article read or unread yourself always wins.</source>
-        <translation>Die Verzögerung läuft nur, solange der Artikel angezeigt wird. Markieren Sie einen Artikel selbst, hat das immer Vorrang.</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="159"/>
-        <source>Images</source>
-        <translation>Bilder</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="164"/>
-        <source>Images not proxied by your server</source>
-        <translation>Bilder, die Ihr Server nicht weiterleitet</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="166"/>
-        <source>Never load</source>
-        <translation>Nie laden</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="167"/>
-        <source>Ask each site</source>
-        <translation>Pro Website fragen</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="168"/>
-        <source>Always load</source>
-        <translation>Immer laden</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="183"/>
-        <source>Synchronisation</source>
-        <translation>Synchronisation</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="191"/>
-        <source>Sync with server</source>
-        <translation>Abgleich mit dem Server</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="233"/>
-        <source>For a self-hosted server with a private certificate authority. Place the certificate at ~/.local/share/harbour-vuo/harbour-vuo/ca.pem. Certificate verification is never disabled, and there is no option to disable it.</source>
-        <translation>Für einen selbst gehosteten Server mit eigener Zertifizierungsstelle. Legen Sie das Zertifikat unter ~/.local/share/harbour-vuo/harbour-vuo/ca.pem ab. Die Zertifikatsprüfung wird nie abgeschaltet, und es gibt keine Option dafür.</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="193"/>
-        <source>Manual only</source>
-        <translation>Nur manuell</translation>
+        <translation>Cheie API</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="103"/>
         <source>Create a key in Miniflux under Settings → API Keys.</source>
-        <translation>Erstellen Sie einen Schlüssel in Miniflux unter Einstellungen → API-Schlüssel.</translation>
+        <translation>Creează o cheie în Miniflux la Settings → API Keys.</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="108"/>
+        <source>Test connection</source>
+        <translation>Testează conexiunea</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="129"/>
+        <source>Connected as %1</source>
+        <translation>Conectat ca %1</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="130"/>
+        <source>Test failed: %1</source>
+        <translation>Testul a eșuat: %1</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="133"/>
+        <source>Reading</source>
+        <translation>Citire</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="138"/>
+        <source>Mark as read when opened</source>
+        <translation>Marchează ca citit la deschidere</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="140"/>
+        <source>Never</source>
+        <translation>Niciodată</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="141"/>
+        <source>Immediately</source>
+        <translation>Imediat</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="142"/>
+        <source>After 5 seconds</source>
+        <translation>După 5 secunde</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="143"/>
+        <source>After 15 seconds</source>
+        <translation>După 15 secunde</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="144"/>
+        <source>After 30 seconds</source>
+        <translation>După 30 de secunde</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="156"/>
+        <source>The delay counts only while the article is on screen. Marking an article read or unread yourself always wins.</source>
+        <translation>Întârzierea curge doar cât timp articolul e pe ecran. Dacă îl marchezi tu ca citit sau necitit, asta are întotdeauna prioritate.</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="159"/>
+        <source>Images</source>
+        <translation>Imagini</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="164"/>
+        <source>Images not proxied by your server</source>
+        <translation>Imagini care nu trec prin serverul tău</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="166"/>
+        <source>Never load</source>
+        <translation>Nu încărca niciodată</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="167"/>
+        <source>Ask each site</source>
+        <translation>Întreabă pentru fiecare sit</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="168"/>
+        <source>Always load</source>
+        <translation>Încarcă întotdeauna</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="180"/>
         <source>Miniflux proxies plain-http images only by default, so most images arrive unproxied. Loading them directly tells those sites your IP address and when you read.</source>
-        <translation>Miniflux leitet standardmäßig nur einfache HTTP-Bilder weiter, daher kommen die meisten Bilder ungeschützt an. Sie direkt zu laden verrät diesen Websites Ihre IP-Adresse und wann Sie lesen.</translation>
+        <translation>În mod implicit Miniflux intermediază doar imaginile prin HTTP simplu, așa că cele mai multe ajung direct. Încărcarea lor directă dezvăluie acelor situri adresa ta IP și când citești.</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="183"/>
+        <source>Synchronisation</source>
+        <translation>Sincronizare</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="191"/>
+        <source>Sync with server</source>
+        <translation>Sincronizează cu serverul</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="193"/>
+        <source>Manual only</source>
+        <translation>Doar manual</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="194"/>
         <source>Every 15 minutes</source>
-        <translation>Alle 15 Minuten</translation>
+        <translation>La 15 minute</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="195"/>
         <source>Every 30 minutes</source>
-        <translation>Alle 30 Minuten</translation>
+        <translation>La 30 de minute</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="196"/>
         <source>Hourly</source>
-        <translation>Stündlich</translation>
+        <translation>În fiecare oră</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="197"/>
         <source>Every 6 hours</source>
-        <translation>Alle 6 Stunden</translation>
+        <translation>La 6 ore</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="211"/>
         <source>How often Vuo fetches from your Miniflux server while it is open or on the cover. How often the server itself checks your feeds is set on the server, not here.</source>
-        <translation>Wie oft Vuo von Ihrem Miniflux-Server abruft, solange die App geöffnet oder auf dem Cover ist. Wie oft der Server selbst Ihre Feeds prüft, wird auf dem Server eingestellt, nicht hier.</translation>
+        <translation>Cât de des aduce Vuo de pe serverul tău Miniflux cât timp e deschis sau pe copertă. Cât de des verifică serverul însuși fluxurile se stabilește pe server, nu aici.</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="222"/>
         <source>Advanced</source>
-        <translation>Erweitert</translation>
+        <translation>Avansat</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="226"/>
         <source>Use a custom CA certificate</source>
-        <translation>Eigenes CA-Zertifikat verwenden</translation>
+        <translation>Folosește un certificat CA propriu</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="233"/>
+        <source>For a self-hosted server with a private certificate authority. Place the certificate at ~/.local/share/harbour-vuo/harbour-vuo/ca.pem. Certificate verification is never disabled, and there is no option to disable it.</source>
+        <translation>Pentru un server propriu cu o autoritate de certificare privată. Pune certificatul în ~/.local/share/harbour-vuo/harbour-vuo/ca.pem. Verificarea certificatelor nu este niciodată dezactivată și nu există o opțiune pentru asta.</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="234"/>
         <source>Only applies to an https:// server. This one is not encrypted by TLS, so no certificate is used.</source>
-        <translation>Gilt nur für einen https://-Server. Dieser ist nicht per TLS verschlüsselt, daher wird kein Zertifikat verwendet.</translation>
+        <translation>Se aplică doar unui server https://. Acesta nu este criptat cu TLS, deci nu se folosește niciun certificat.</translation>
     </message>
     <message numerus="yes">
         <location filename="../qml/pages/SettingsPage.qml" line="246"/>
         <source>%n change(s) waiting to be sent to the server.</source>
         <translation>
-            <numerusform>%n Änderung wartet auf die Übertragung zum Server.</numerusform>
-            <numerusform>%n Änderungen warten auf die Übertragung zum Server.</numerusform>
+            <numerusform>%n modificare așteaptă să fie trimisă la server.</numerusform>
+            <numerusform>%n modificări așteaptă să fie trimise la server.</numerusform>
+            <numerusform>%n de modificări așteaptă să fie trimise la server.</numerusform>
         </translation>
     </message>
 </context>
@@ -606,52 +612,52 @@
     <message>
         <location filename="../qml/pages/SetupDialog.qml" line="101"/>
         <source>Your Miniflux server</source>
-        <translation>Ihr Miniflux-Server</translation>
+        <translation>Serverul tău Miniflux</translation>
     </message>
     <message>
         <location filename="../qml/pages/SetupDialog.qml" line="102"/>
         <source>Start reading</source>
-        <translation>Lesen beginnen</translation>
+        <translation>Începe să citești</translation>
     </message>
     <message>
         <location filename="../qml/pages/SetupDialog.qml" line="112"/>
         <source>Vuo reads from your own Miniflux instance. It never fetches feeds itself.</source>
-        <translation>Vuo liest von Ihrer eigenen Miniflux-Instanz. Feeds ruft es niemals selbst ab.</translation>
+        <translation>Vuo citește de pe propria ta instanță Miniflux. Nu aduce niciodată fluxuri singur.</translation>
     </message>
     <message>
         <location filename="../qml/pages/SetupDialog.qml" line="118"/>
         <source>Server address</source>
-        <translation>Serveradresse</translation>
+        <translation>Adresa serverului</translation>
     </message>
     <message>
         <location filename="../qml/pages/SetupDialog.qml" line="119"/>
         <source>https://miniflux.example.com</source>
-        <translation>https://miniflux.beispiel.de</translation>
+        <translation>https://miniflux.exemplu.ro</translation>
     </message>
     <message>
         <location filename="../qml/pages/SetupDialog.qml" line="126"/>
         <source>API key</source>
-        <translation>API-Schlüssel</translation>
+        <translation>Cheie API</translation>
     </message>
     <message>
         <location filename="../qml/pages/SetupDialog.qml" line="142"/>
         <source>Create a key in Miniflux under Settings → API Keys.</source>
-        <translation>Erstellen Sie einen Schlüssel in Miniflux unter Einstellungen → API-Schlüssel.</translation>
+        <translation>Creează o cheie în Miniflux la Settings → API Keys.</translation>
     </message>
     <message>
         <location filename="../qml/pages/SetupDialog.qml" line="151"/>
         <source>Test connection</source>
-        <translation>Verbindung testen</translation>
+        <translation>Testează conexiunea</translation>
     </message>
     <message>
         <location filename="../qml/pages/SetupDialog.qml" line="175"/>
         <source>Connected as %1</source>
-        <translation>Verbunden als %1</translation>
+        <translation>Conectat ca %1</translation>
     </message>
     <message>
         <location filename="../qml/pages/SetupDialog.qml" line="176"/>
         <source>Test failed: %1</source>
-        <translation>Test fehlgeschlagen: %1</translation>
+        <translation>Testul a eșuat: %1</translation>
     </message>
 </context>
 <context>
@@ -660,17 +666,17 @@
         <location filename="../qml/pages/SitePage.qml" line="47"/>
         <location filename="../qml/pages/SitePage.qml" line="58"/>
         <source>Website</source>
-        <translation>Webseite</translation>
+        <translation>Sit web</translation>
     </message>
     <message>
         <location filename="../qml/pages/SitePage.qml" line="68"/>
         <source>Back</source>
-        <translation>Zurück</translation>
+        <translation>Înapoi</translation>
     </message>
     <message>
         <location filename="../qml/pages/SitePage.qml" line="73"/>
         <source>Open in browser</source>
-        <translation>Im Browser öffnen</translation>
+        <translation>Deschide în navigator</translation>
     </message>
 </context>
 </TS>

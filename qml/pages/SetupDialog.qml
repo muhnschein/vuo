@@ -70,6 +70,14 @@ Dialog {
         }
     }
 
+    // The stored defaults -- images, sync interval, when an article counts as
+    // read -- into this object, so that saving carries them rather than
+    // `i32::default()`. Nothing is shown from them here; this screen asks for
+    // the account and nothing else. Without it a first run saved Strict images
+    // and "Manual only" sync, because zero is what an unloaded Rust field
+    // holds and zero is the first entry of both lists.
+    Component.onCompleted: settings.reload()
+
     // One way, on accept: nothing here binds a field back to the object it
     // writes, which is what made the settings page overwrite what it had just
     // loaded (see SettingsPage.ready).
@@ -131,7 +139,7 @@ Dialog {
                 textFormat: Text.PlainText
                 font.pixelSize: Theme.fontSizeExtraSmall
                 color: Theme.secondaryColor
-                text: qsTr("Create a key in Miniflux under Settings → API Keys. A key can be revoked for this device alone.")
+                text: qsTr("Create a key in Miniflux under Settings → API Keys.")
             }
 
             // Optional, and worth offering here rather than only in Settings:

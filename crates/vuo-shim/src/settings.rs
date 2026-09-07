@@ -31,6 +31,17 @@ pub const MEDIA_ALLOW: i32 = 2;
 /// Background refresh intervals, in minutes. Index 0 is "manual only".
 pub const SYNC_INTERVALS_MINUTES: [i64; 5] = [0, 15, 30, 60, 360];
 
+/// A new install syncs hourly.
+///
+/// "Manual only" was the default by accident rather than by choice: it is
+/// index 0, and index 0 is what `i32::default()` gives. So every new install
+/// was a reader that never refreshed until the user found the pulley menu --
+/// the one behaviour a feed reader must not have out of the box. Hourly is
+/// the compromise this settles on: often enough that the list is worth
+/// opening, rare enough to be invisible on a phone's battery and on a
+/// self-hosted server.
+pub const SYNC_INTERVAL_DEFAULT_INDEX: i32 = 3;
+
 /// When an opened article is marked read. Index 0 is "never".
 ///
 /// "Never" sits at index 0 on purpose: `i32::default()` is 0, so any future
@@ -151,23 +162,26 @@ impl Settings {
     /// Vuo is actually configured it took the loaded branch and passed with the
     /// default flipped.
     pub fn load_from(&mut self, paths: &AppPaths) {
-        if let Ok(account) = worker::load_account(&paths.account) {
-            self.serverUrl = QString::from(account.server_url);
-            // The key is loaded so the field is not blank when the user opens
-            // settings to change something else. It is displayed with
-            // echoMode: Password.
-            self.apiKey = QString::from(account.token);
-            self.useCustomCa = account.use_custom_ca;
-            self.mediaPolicy = account.media_policy;
-            self.syncIntervalIndex = account.sync_interval_index;
-            self.wifiOnly = account.wifi_only;
-            self.markReadDelayIndex = account.mark_read_delay_index;
-            return;
-        }
-        // First run: default to Ask rather than Strict, because on a stock
-        // Miniflux most images are un-proxied and Strict would blank them.
-        self.mediaPolicy = MEDIA_ASK;
-        self.markReadDelayIndex = MARK_READ_DEFAULT_INDEX;
+        // A first run gets `Account::default()`, which is the one place the
+        // out-of-the-box settings live -- and the same values serde fills in
+        // for a field an older account file does not carry.
+        //
+        // This branch used to write its own list of defaults, and the two
+        // drifted: a first run left the sync interval at `i32::default()`,
+        // which is "Manual only", while an account file merely MISSING the
+        // field was given the real default. A new install therefore never
+        // refreshed on its own.
+        let account = worker::load_account(&paths.account).unwrap_or_default();
+        self.serverUrl = QString::from(account.server_url);
+        // The key is loaded so the field is not blank when the user opens
+        // settings to change something else. It is displayed with
+        // echoMode: Password.
+        self.apiKey = QString::from(account.token);
+        self.useCustomCa = account.use_custom_ca;
+        self.mediaPolicy = account.media_policy;
+        self.syncIntervalIndex = account.sync_interval_index;
+        self.wifiOnly = account.wifi_only;
+        self.markReadDelayIndex = account.mark_read_delay_index;
     }
 
     fn is_configured(&self) -> bool {
@@ -436,6 +450,47 @@ pub fn sync_interval_minutes_for(index: i32) -> Option<i64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// §what a new install is set to before anyone has chosen anything.
+    ///
+    /// Two of these are the difference between a reader that works out of the
+    /// box and one that looks broken: never refreshing on its own, and
+    /// blanking every image. Both are index 0 of their list, and index 0 is
+    /// `i32::default()` -- so a default that is never applied does not look
+    /// like a wrong value, it looks like the first entry, which is exactly how
+    /// "Manual only" came to be what a new install got.
+    #[test]
+    fn a_first_run_is_set_up_to_work_before_anyone_configures_it() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let paths = temp_paths(&dir);
+
+        // The settings screen's read, with no account file to read.
+        let mut s = Settings::default();
+        s.load_from(&paths);
+        assert_eq!(s.mediaPolicy, MEDIA_ASK, "images: ask each site");
+        assert_eq!(
+            sync_interval_minutes_for(s.syncIntervalIndex),
+            Some(60),
+            "sync: hourly"
+        );
+        assert_eq!(s.markReadDelayIndex, MARK_READ_DEFAULT_INDEX);
+
+        // And what the setup dialog stores. It shows none of these controls,
+        // so the account it writes carries whatever this object holds -- which
+        // before `reload` is zero for every one of them.
+        //
+        // The discard port, not an unroutable address: saving builds a real
+        // worker, and hourly means it has a sync due. Port 9 refuses at once,
+        // where 10.77.0.1 would hold the thread for the connect timeout and
+        // the test binary cannot exit until it lets go.
+        s.serverUrl = QString::from("http://127.0.0.1:9/");
+        s.apiKey = QString::from("k");
+        s.save_to(&paths);
+        let stored = worker::load_account(&paths.account).expect("the account file");
+        assert_eq!(stored.media_policy, MEDIA_ASK);
+        assert_eq!(stored.sync_interval_index, SYNC_INTERVAL_DEFAULT_INDEX);
+        assert_eq!(stored.mark_read_delay_index, MARK_READ_DEFAULT_INDEX);
+    }
 
     /// A QML-invoked method emits its signal LAST, and touches `self` no more.
     ///

@@ -100,7 +100,7 @@ Page {
                 textFormat: Text.PlainText
                 font.pixelSize: Theme.fontSizeExtraSmall
                 color: Theme.secondaryColor
-                text: qsTr("Create a key in Miniflux under Settings → API Keys. A key can be revoked for this device alone.")
+                text: qsTr("Create a key in Miniflux under Settings → API Keys.")
             }
 
             Button {
@@ -177,9 +177,7 @@ Page {
                 textFormat: Text.PlainText
                 font.pixelSize: Theme.fontSizeExtraSmall
                 color: Theme.secondaryColor
-                // The actual fix is a server setting, and saying so is more
-                // useful than silently degrading.
-                text: qsTr("Miniflux proxies plain-http images only by default, so most images arrive unproxied. Loading them directly tells those sites your IP address and when you read. Ask your server administrator to set MEDIA_PROXY_MODE=all for full protection.")
+                text: qsTr("Miniflux proxies plain-http images only by default, so most images arrive unproxied. Loading them directly tells those sites your IP address and when you read.")
             }
 
             SectionHeader { text: qsTr("Synchronisation") }

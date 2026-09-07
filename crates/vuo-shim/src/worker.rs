@@ -1035,7 +1035,7 @@ pub struct Account {
     #[serde(default = "default_media_policy")]
     pub media_policy: i32,
     /// Index into `settings::SYNC_INTERVALS_MINUTES`.
-    #[serde(default)]
+    #[serde(default = "default_sync_interval_index")]
     pub sync_interval_index: i32,
     #[serde(default)]
     pub wifi_only: bool,
@@ -1047,7 +1047,12 @@ pub struct Account {
 /// Ask, not Strict. On a stock Miniflux `MEDIA_PROXY_MODE` is `http-only`, so
 /// most images arrive un-proxied and Strict would blank them.
 fn default_media_policy() -> i32 {
-    1
+    crate::settings::MEDIA_ASK
+}
+
+/// Hourly, not "Manual only". See `settings::SYNC_INTERVAL_DEFAULT_INDEX`.
+fn default_sync_interval_index() -> i32 {
+    crate::settings::SYNC_INTERVAL_DEFAULT_INDEX
 }
 
 /// After 5 seconds. An account file written before this setting existed gets
@@ -1063,7 +1068,7 @@ impl Default for Account {
             token: String::new(),
             use_custom_ca: false,
             media_policy: default_media_policy(),
-            sync_interval_index: 0,
+            sync_interval_index: default_sync_interval_index(),
             wifi_only: false,
             mark_read_delay_index: default_mark_read_delay_index(),
         }

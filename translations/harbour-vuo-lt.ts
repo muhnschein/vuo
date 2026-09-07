@@ -1,27 +1,27 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE TS>
-<TS version="2.1" language="de" sourcelanguage="en">
+<TS version="2.1" language="lt" sourcelanguage="en">
 <context>
     <name>AddFeedPage</name>
     <message>
         <location filename="../qml/pages/AddFeedPage.qml" line="19"/>
         <source>Subscribe</source>
-        <translation>Abonnieren</translation>
+        <translation>Prenumeruoti</translation>
     </message>
     <message>
         <location filename="../qml/pages/AddFeedPage.qml" line="23"/>
         <source>Feed or site address</source>
-        <translation>Feed- oder Seitenadresse</translation>
+        <translation>Srauto arba svetainės adresas</translation>
     </message>
     <message>
         <location filename="../qml/pages/AddFeedPage.qml" line="24"/>
         <source>https://example.com/feed.xml</source>
-        <translation>https://beispiel.de/feed.xml</translation>
+        <translation>https://pavyzdys.lt/srautas.xml</translation>
     </message>
     <message>
         <location filename="../qml/pages/AddFeedPage.qml" line="42"/>
         <source>Your server discovers the feed and fetches it. Vuo never downloads feeds itself.</source>
-        <translation>Ihr Server findet den Feed und ruft ihn ab. Vuo lädt Feeds niemals selbst herunter.</translation>
+        <translation>Jūsų serveris randa srautą ir jį atsisiunčia. Vuo pats niekada neatsisiunčia srautų.</translation>
     </message>
 </context>
 <context>
@@ -29,100 +29,101 @@
     <message>
         <location filename="../qml/pages/ArticlePage.qml" line="118"/>
         <source>Article</source>
-        <translation>Artikel</translation>
+        <translation>Straipsnis</translation>
     </message>
     <message>
         <location filename="../qml/pages/ArticlePage.qml" line="139"/>
         <source>Read</source>
-        <translation>Gelesen</translation>
+        <translation>Perskaityta</translation>
     </message>
     <message>
         <location filename="../qml/pages/ArticlePage.qml" line="139"/>
         <source>Unread</source>
-        <translation>Ungelesen</translation>
+        <translation>Neskaityti</translation>
     </message>
     <message>
         <location filename="../qml/pages/ArticlePage.qml" line="146"/>
         <source>★ Favourite</source>
-        <translation>★ Favorit</translation>
+        <translation>★ Mėgstamas</translation>
     </message>
     <message numerus="yes">
         <location filename="../qml/pages/ArticlePage.qml" line="161"/>
         <source>%n image(s) are not proxied by your server and were not loaded.</source>
         <translation>
-            <numerusform>%n Bild wird von Ihrem Server nicht weitergeleitet und wurde nicht geladen.</numerusform>
-            <numerusform>%n Bilder werden von Ihrem Server nicht weitergeleitet und wurden nicht geladen.</numerusform>
+            <numerusform>%n paveikslas neina per jūsų serverį ir nebuvo įkeltas.</numerusform>
+            <numerusform>%n paveikslai neina per jūsų serverį ir nebuvo įkelti.</numerusform>
+            <numerusform>%n paveikslų neina per jūsų serverį ir nebuvo įkelta.</numerusform>
         </translation>
     </message>
     <message>
         <location filename="../qml/pages/ArticlePage.qml" line="176"/>
         <source>This article was too large to display in full.</source>
-        <translation>Dieser Artikel war zu groß, um vollständig angezeigt zu werden.</translation>
+        <translation>Straipsnis buvo per didelis, kad būtų parodytas visas.</translation>
     </message>
     <message>
         <location filename="../qml/pages/ArticlePage.qml" line="181"/>
         <source>Mark as unread</source>
-        <translation>Als ungelesen markieren</translation>
+        <translation>Žymėti neskaitytu</translation>
     </message>
     <message>
         <location filename="../qml/pages/ArticlePage.qml" line="181"/>
         <source>Mark as read</source>
-        <translation>Als gelesen markieren</translation>
+        <translation>Žymėti skaitytu</translation>
     </message>
     <message>
         <location filename="../qml/pages/ArticlePage.qml" line="190"/>
         <source>Remove favourite</source>
-        <translation>Favorit entfernen</translation>
+        <translation>Šalinti iš mėgstamų</translation>
     </message>
     <message>
         <location filename="../qml/pages/ArticlePage.qml" line="191"/>
         <source>Add favourite</source>
-        <translation>Zu Favoriten hinzufügen</translation>
+        <translation>Pridėti prie mėgstamų</translation>
     </message>
     <message>
         <location filename="../qml/pages/ArticlePage.qml" line="195"/>
         <source>Open in browser</source>
-        <translation>Im Browser öffnen</translation>
+        <translation>Atverti naršyklėje</translation>
     </message>
     <message>
         <location filename="../qml/pages/ArticlePage.qml" line="207"/>
         <source>Fetch original content</source>
-        <translation>Originalinhalt abrufen</translation>
+        <translation>Gauti pirminį turinį</translation>
     </message>
     <message>
         <location filename="../qml/pages/ArticlePage.qml" line="215"/>
         <source>Asking the server for the original article…</source>
-        <translation>Server wird nach dem Originalartikel gefragt …</translation>
+        <translation>Prašoma serverio pirminio straipsnio…</translation>
     </message>
     <message>
         <location filename="../qml/pages/ArticlePage.qml" line="354"/>
         <source>Tap to load images from %1</source>
-        <translation>Tippen, um Bilder von %1 zu laden</translation>
+        <translation>Palieskite, kad įkeltumėte paveikslus iš %1</translation>
     </message>
     <message>
         <location filename="../qml/pages/ArticlePage.qml" line="448"/>
         <source>Loaded the original article.</source>
-        <translation>Originalartikel geladen.</translation>
+        <translation>Pirminis straipsnis įkeltas.</translation>
     </message>
     <message>
         <location filename="../qml/pages/ArticlePage.qml" line="452"/>
         <source>The server could not extract the original article.</source>
-        <translation>Der Server konnte den Originalartikel nicht extrahieren.</translation>
+        <translation>Serveriui nepavyko išgauti pirminio straipsnio.</translation>
     </message>
     <message>
         <location filename="../qml/pages/ArticlePage.qml" line="455"/>
         <source>This feed already carries the full article.</source>
-        <translation>Dieser Feed enthält bereits den vollständigen Artikel.</translation>
+        <translation>Šiame sraute jau yra visas straipsnis.</translation>
     </message>
     <message>
         <location filename="../qml/pages/ArticlePage.qml" line="457"/>
         <source>The server rejected the API key.</source>
-        <translation>Der Server hat den API-Schlüssel abgelehnt.</translation>
+        <translation>Serveris atmetė API raktą.</translation>
     </message>
     <message>
         <location filename="../qml/pages/ArticlePage.qml" line="461"/>
         <source>Could not fetch the original article: %1</source>
-        <translation>Originalartikel konnte nicht abgerufen werden: %1</translation>
+        <translation>Nepavyko gauti pirminio straipsnio: %1</translation>
     </message>
 </context>
 <context>
@@ -130,22 +131,22 @@
     <message>
         <location filename="../qml/cover/CoverPage.qml" line="156"/>
         <source>Sign-in failed</source>
-        <translation>Anmeldung fehlgeschlagen</translation>
+        <translation>Nepavyko prisijungti</translation>
     </message>
     <message>
         <location filename="../qml/cover/CoverPage.qml" line="156"/>
         <source>Refresh failed</source>
-        <translation>Aktualisierung fehlgeschlagen</translation>
+        <translation>Nepavyko atnaujinti</translation>
     </message>
     <message>
         <location filename="../qml/cover/CoverPage.qml" line="157"/>
         <source>Refreshing</source>
-        <translation>Wird aktualisiert</translation>
+        <translation>Atnaujinama</translation>
     </message>
     <message>
         <location filename="../qml/cover/CoverPage.qml" line="157"/>
         <source>Unread</source>
-        <translation>Ungelesen</translation>
+        <translation>Neskaityti</translation>
     </message>
 </context>
 <context>
@@ -153,48 +154,48 @@
     <message>
         <location filename="../qml/pages/EditFeedPage.qml" line="100"/>
         <source>Could not save: %1</source>
-        <translation>Speichern fehlgeschlagen: %1</translation>
+        <translation>Nepavyko įrašyti: %1</translation>
     </message>
     <message>
         <location filename="../qml/pages/EditFeedPage.qml" line="112"/>
         <source>Feed settings</source>
-        <translation>Feed-Einstellungen</translation>
+        <translation>Srauto nustatymai</translation>
     </message>
     <message>
         <location filename="../qml/pages/EditFeedPage.qml" line="117"/>
         <location filename="../qml/pages/EditFeedPage.qml" line="118"/>
         <source>Name</source>
-        <translation>Name</translation>
+        <translation>Pavadinimas</translation>
     </message>
     <message>
         <location filename="../qml/pages/EditFeedPage.qml" line="138"/>
         <source>Fetch original content</source>
-        <translation>Originalinhalt abrufen</translation>
+        <translation>Gauti pirminį turinį</translation>
     </message>
     <message>
         <location filename="../qml/pages/EditFeedPage.qml" line="139"/>
         <source>The server scrapes each article&apos;s own page instead of using what the feed provides.</source>
-        <translation>Der Server ruft die Originalseite jedes Artikels ab, statt den Inhalt des Feeds zu verwenden.</translation>
+        <translation>Serveris skaito kiekvieno straipsnio puslapį, o ne tai, ką pateikia srautas.</translation>
     </message>
     <message>
         <location filename="../qml/pages/EditFeedPage.qml" line="149"/>
         <source>Hide from unread</source>
-        <translation>Aus „Ungelesen“ ausblenden</translation>
+        <translation>Slėpti iš neskaitytų</translation>
     </message>
     <message>
         <location filename="../qml/pages/EditFeedPage.qml" line="150"/>
         <source>Keep this feed&apos;s articles out of the Unread and All lists. The feed itself still shows them.</source>
-        <translation>Artikel dieses Feeds aus „Ungelesen“ und „Alle“ heraushalten. Im Feed selbst bleiben sie sichtbar.</translation>
+        <translation>Nerodyti šio srauto straipsnių sąrašuose Neskaityti ir Visi. Pats srautas juos vis tiek rodo.</translation>
     </message>
     <message>
         <location filename="../qml/pages/EditFeedPage.qml" line="161"/>
         <source>Pause updates</source>
-        <translation>Aktualisierung pausieren</translation>
+        <translation>Pristabdyti atnaujinimus</translation>
     </message>
     <message>
         <location filename="../qml/pages/EditFeedPage.qml" line="162"/>
         <source>The server stops refreshing this feed.</source>
-        <translation>Der Server aktualisiert diesen Feed nicht mehr.</translation>
+        <translation>Serveris nustoja atnaujinti šį srautą.</translation>
     </message>
 </context>
 <context>
@@ -203,155 +204,159 @@
         <location filename="../qml/pages/EntryListPage.qml" line="11"/>
         <location filename="../qml/pages/EntryListPage.qml" line="167"/>
         <source>Unread</source>
-        <translation>Ungelesen</translation>
+        <translation>Neskaityti</translation>
     </message>
     <message>
         <location filename="../qml/pages/EntryListPage.qml" line="167"/>
         <source>Favourites</source>
-        <translation>Favoriten</translation>
+        <translation>Mėgstami</translation>
     </message>
     <message>
         <location filename="../qml/pages/EntryListPage.qml" line="167"/>
         <source>All</source>
-        <translation>Alle</translation>
+        <translation>Visi</translation>
     </message>
     <message>
         <location filename="../qml/pages/EntryListPage.qml" line="317"/>
         <source>The server rejected the API key.</source>
-        <translation>Der Server hat den API-Schlüssel abgelehnt.</translation>
+        <translation>Serveris atmetė API raktą.</translation>
     </message>
     <message>
         <location filename="../qml/pages/EntryListPage.qml" line="318"/>
         <source>Open settings</source>
-        <translation>Einstellungen öffnen</translation>
+        <translation>Atverti nustatymus</translation>
     </message>
     <message>
         <location filename="../qml/pages/EntryListPage.qml" line="320"/>
         <source>Refresh failed: %1</source>
-        <translation>Aktualisierung fehlgeschlagen: %1</translation>
+        <translation>Nepavyko atnaujinti: %1</translation>
     </message>
 </context>
 <context>
     <name>EntryListView</name>
     <message numerus="yes">
+        <location filename="../qml/components/EntryListView.qml" line="189"/>
+        <source>%n selected</source>
+        <translation>
+            <numerusform>%n pažymėtas</numerusform>
+            <numerusform>%n pažymėti</numerusform>
+            <numerusform>%n pažymėta</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
         <location filename="../qml/components/EntryListView.qml" line="191"/>
         <source>%n article(s)</source>
         <translation>
-            <numerusform>%n Artikel</numerusform>
-            <numerusform>%n Artikel</numerusform>
+            <numerusform>%n straipsnis</numerusform>
+            <numerusform>%n straipsniai</numerusform>
+            <numerusform>%n straipsnių</numerusform>
         </translation>
     </message>
     <message>
         <location filename="../qml/components/EntryListView.qml" line="246"/>
         <source>Select all</source>
-        <translation>Alle auswählen</translation>
+        <translation>Žymėti visus</translation>
     </message>
     <message>
         <location filename="../qml/components/EntryListView.qml" line="247"/>
         <source>Deselect all</source>
-        <translation>Auswahl aufheben</translation>
+        <translation>Nužymėti visus</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="252"/>
+        <location filename="../qml/components/EntryListView.qml" line="604"/>
+        <source>Mark as unread</source>
+        <translation>Žymėti neskaitytu</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="257"/>
+        <location filename="../qml/components/EntryListView.qml" line="604"/>
+        <source>Mark as read</source>
+        <translation>Žymėti skaitytu</translation>
     </message>
     <message>
         <location filename="../qml/components/EntryListView.qml" line="264"/>
         <source>Settings</source>
-        <translation>Einstellungen</translation>
+        <translation>Nustatymai</translation>
     </message>
     <message>
         <location filename="../qml/components/EntryListView.qml" line="269"/>
         <source>Feeds</source>
-        <translation>Feeds</translation>
+        <translation>Srautai</translation>
     </message>
     <message>
         <location filename="../qml/components/EntryListView.qml" line="284"/>
         <location filename="../qml/components/EntryListView.qml" line="291"/>
         <source>Select articles</source>
-        <translation>Artikel auswählen</translation>
+        <translation>Žymėti straipsnius</translation>
     </message>
     <message>
         <location filename="../qml/components/EntryListView.qml" line="296"/>
         <source>Mark all as read</source>
-        <translation>Alle als gelesen markieren</translation>
+        <translation>Žymėti visus skaitytais</translation>
     </message>
     <message>
         <location filename="../qml/components/EntryListView.qml" line="315"/>
         <source>Marking all as read</source>
-        <translation>Alle werden als gelesen markiert</translation>
+        <translation>Žymima visus skaitytais</translation>
     </message>
     <message>
         <location filename="../qml/components/EntryListView.qml" line="322"/>
         <source>Refresh</source>
-        <translation>Aktualisieren</translation>
+        <translation>Atnaujinti</translation>
     </message>
     <message>
         <location filename="../qml/components/EntryListView.qml" line="366"/>
         <source>No favourites</source>
-        <translation>Keine Favoriten</translation>
+        <translation>Mėgstamų nėra</translation>
     </message>
     <message>
         <location filename="../qml/components/EntryListView.qml" line="367"/>
         <source>Nothing to read</source>
-        <translation>Nichts zu lesen</translation>
+        <translation>Nėra ką skaityti</translation>
     </message>
     <message>
         <location filename="../qml/components/EntryListView.qml" line="369"/>
         <source>Star an article to keep it here</source>
-        <translation>Artikel favorisieren, um ihn hier zu behalten</translation>
+        <translation>Pridėkite straipsnį prie mėgstamų, kad liktų čia</translation>
     </message>
     <message>
         <location filename="../qml/components/EntryListView.qml" line="370"/>
         <source>Pull down to refresh</source>
-        <translation>Zum Aktualisieren herunterziehen</translation>
+        <translation>Patraukite žemyn, kad atnaujintumėte</translation>
     </message>
     <message numerus="yes">
         <location filename="../qml/components/EntryListView.qml" line="525"/>
         <source>%n min read</source>
         <translation>
-            <numerusform>%n Min. Lesezeit</numerusform>
-            <numerusform>%n Min. Lesezeit</numerusform>
+            <numerusform>%n min skaitymo</numerusform>
+            <numerusform>%n min skaitymo</numerusform>
+            <numerusform>%n min skaitymo</numerusform>
         </translation>
     </message>
     <message numerus="yes">
         <location filename="../qml/components/EntryListView.qml" line="526"/>
         <source>%n min</source>
         <translation>
-            <numerusform>%n Min.</numerusform>
-            <numerusform>%n Min.</numerusform>
+            <numerusform>%n min</numerusform>
+            <numerusform>%n min</numerusform>
+            <numerusform>%n min</numerusform>
         </translation>
-    </message>
-    <message>
-        <location filename="../qml/components/EntryListView.qml" line="257"/>
-        <location filename="../qml/components/EntryListView.qml" line="604"/>
-        <source>Mark as read</source>
-        <translation>Als gelesen markieren</translation>
-    </message>
-    <message numerus="yes">
-        <location filename="../qml/components/EntryListView.qml" line="189"/>
-        <source>%n selected</source>
-        <translation>
-            <numerusform>%n ausgewählt</numerusform>
-            <numerusform>%n ausgewählt</numerusform>
-        </translation>
-    </message>
-    <message>
-        <location filename="../qml/components/EntryListView.qml" line="252"/>
-        <location filename="../qml/components/EntryListView.qml" line="604"/>
-        <source>Mark as unread</source>
-        <translation>Als ungelesen markieren</translation>
     </message>
     <message>
         <location filename="../qml/components/EntryListView.qml" line="608"/>
         <source>Remove favourite</source>
-        <translation>Favorit entfernen</translation>
+        <translation>Šalinti iš mėgstamų</translation>
     </message>
     <message>
         <location filename="../qml/components/EntryListView.qml" line="608"/>
         <source>Add favourite</source>
-        <translation>Zu Favoriten hinzufügen</translation>
+        <translation>Pridėti prie mėgstamų</translation>
     </message>
     <message>
         <location filename="../qml/components/EntryListView.qml" line="612"/>
         <source>Open in browser</source>
-        <translation>Im Browser öffnen</translation>
+        <translation>Atverti naršyklėje</translation>
     </message>
 </context>
 <context>
@@ -359,47 +364,47 @@
     <message>
         <location filename="../qml/pages/FeedListPage.qml" line="35"/>
         <source>Feeds</source>
-        <translation>Feeds</translation>
+        <translation>Srautai</translation>
     </message>
     <message>
         <location filename="../qml/pages/FeedListPage.qml" line="39"/>
         <source>Add subscription</source>
-        <translation>Abonnement hinzufügen</translation>
+        <translation>Pridėti prenumeratą</translation>
     </message>
     <message>
         <location filename="../qml/pages/FeedListPage.qml" line="47"/>
         <source>No feeds</source>
-        <translation>Keine Feeds</translation>
+        <translation>Srautų nėra</translation>
     </message>
     <message>
         <location filename="../qml/pages/FeedListPage.qml" line="48"/>
         <source>Subscribe from the pulley menu</source>
-        <translation>Über das Pulley-Menü abonnieren</translation>
+        <translation>Prenumeruokite iš ištraukiamo meniu</translation>
     </message>
     <message>
         <location filename="../qml/pages/FeedListPage.qml" line="146"/>
         <source>Feed</source>
-        <translation>Feed</translation>
+        <translation>Srautas</translation>
     </message>
     <message>
         <location filename="../qml/pages/FeedListPage.qml" line="154"/>
         <source>Feed settings</source>
-        <translation>Feed-Einstellungen</translation>
+        <translation>Srauto nustatymai</translation>
     </message>
     <message>
         <location filename="../qml/pages/FeedListPage.qml" line="169"/>
         <source>Mark feed as read</source>
-        <translation>Feed als gelesen markieren</translation>
+        <translation>Žymėti srautą skaitytu</translation>
     </message>
     <message>
         <location filename="../qml/pages/FeedListPage.qml" line="173"/>
         <source>Unsubscribe</source>
-        <translation>Abbestellen</translation>
+        <translation>Atsisakyti prenumeratos</translation>
     </message>
     <message>
         <location filename="../qml/pages/FeedListPage.qml" line="174"/>
         <source>Unsubscribing</source>
-        <translation>Wird abbestellt</translation>
+        <translation>Atsisakoma prenumeratos</translation>
     </message>
 </context>
 <context>
@@ -407,12 +412,12 @@
     <message>
         <location filename="../qml/pages/OnboardingPage.qml" line="72"/>
         <source>Focus on what matters.</source>
-        <translation>Fokus auf das Wesentliche.</translation>
+        <translation>Susitelkite į tai, kas svarbu.</translation>
     </message>
     <message>
         <location filename="../qml/pages/OnboardingPage.qml" line="82"/>
         <source>Continue</source>
-        <translation>Weiter</translation>
+        <translation>Toliau</translation>
     </message>
 </context>
 <context>
@@ -420,184 +425,185 @@
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="70"/>
         <source>Settings</source>
-        <translation>Einstellungen</translation>
+        <translation>Nustatymai</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="72"/>
         <source>Account</source>
-        <translation>Konto</translation>
+        <translation>Paskyra</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="77"/>
         <source>Server address</source>
-        <translation>Serveradresse</translation>
+        <translation>Serverio adresas</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="78"/>
         <source>https://miniflux.example.com</source>
-        <translation>https://miniflux.beispiel.de</translation>
+        <translation>https://miniflux.pavyzdys.lt</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="86"/>
         <source>API key</source>
-        <translation>API-Schlüssel</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="108"/>
-        <source>Test connection</source>
-        <translation>Verbindung testen</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="129"/>
-        <source>Connected as %1</source>
-        <translation>Verbunden als %1</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="130"/>
-        <source>Test failed: %1</source>
-        <translation>Test fehlgeschlagen: %1</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="133"/>
-        <source>Reading</source>
-        <translation>Lesen</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="138"/>
-        <source>Mark as read when opened</source>
-        <translation>Beim Öffnen als gelesen markieren</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="140"/>
-        <source>Never</source>
-        <translation>Nie</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="141"/>
-        <source>Immediately</source>
-        <translation>Sofort</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="142"/>
-        <source>After 5 seconds</source>
-        <translation>Nach 5 Sekunden</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="143"/>
-        <source>After 15 seconds</source>
-        <translation>Nach 15 Sekunden</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="144"/>
-        <source>After 30 seconds</source>
-        <translation>Nach 30 Sekunden</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="156"/>
-        <source>The delay counts only while the article is on screen. Marking an article read or unread yourself always wins.</source>
-        <translation>Die Verzögerung läuft nur, solange der Artikel angezeigt wird. Markieren Sie einen Artikel selbst, hat das immer Vorrang.</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="159"/>
-        <source>Images</source>
-        <translation>Bilder</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="164"/>
-        <source>Images not proxied by your server</source>
-        <translation>Bilder, die Ihr Server nicht weiterleitet</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="166"/>
-        <source>Never load</source>
-        <translation>Nie laden</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="167"/>
-        <source>Ask each site</source>
-        <translation>Pro Website fragen</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="168"/>
-        <source>Always load</source>
-        <translation>Immer laden</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="183"/>
-        <source>Synchronisation</source>
-        <translation>Synchronisation</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="191"/>
-        <source>Sync with server</source>
-        <translation>Abgleich mit dem Server</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="233"/>
-        <source>For a self-hosted server with a private certificate authority. Place the certificate at ~/.local/share/harbour-vuo/harbour-vuo/ca.pem. Certificate verification is never disabled, and there is no option to disable it.</source>
-        <translation>Für einen selbst gehosteten Server mit eigener Zertifizierungsstelle. Legen Sie das Zertifikat unter ~/.local/share/harbour-vuo/harbour-vuo/ca.pem ab. Die Zertifikatsprüfung wird nie abgeschaltet, und es gibt keine Option dafür.</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="193"/>
-        <source>Manual only</source>
-        <translation>Nur manuell</translation>
+        <translation>API raktas</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="103"/>
         <source>Create a key in Miniflux under Settings → API Keys.</source>
-        <translation>Erstellen Sie einen Schlüssel in Miniflux unter Einstellungen → API-Schlüssel.</translation>
+        <translation>Sukurkite raktą Miniflux skiltyje Settings → API Keys.</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="108"/>
+        <source>Test connection</source>
+        <translation>Tikrinti ryšį</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="129"/>
+        <source>Connected as %1</source>
+        <translation>Prisijungta kaip %1</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="130"/>
+        <source>Test failed: %1</source>
+        <translation>Patikra nepavyko: %1</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="133"/>
+        <source>Reading</source>
+        <translation>Skaitymas</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="138"/>
+        <source>Mark as read when opened</source>
+        <translation>Atvėrus žymėti skaitytu</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="140"/>
+        <source>Never</source>
+        <translation>Niekada</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="141"/>
+        <source>Immediately</source>
+        <translation>Iš karto</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="142"/>
+        <source>After 5 seconds</source>
+        <translation>Po 5 sekundžių</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="143"/>
+        <source>After 15 seconds</source>
+        <translation>Po 15 sekundžių</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="144"/>
+        <source>After 30 seconds</source>
+        <translation>Po 30 sekundžių</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="156"/>
+        <source>The delay counts only while the article is on screen. Marking an article read or unread yourself always wins.</source>
+        <translation>Delsa skaičiuojama tik kol straipsnis yra ekrane. Jūsų pačių pažymėjimas skaitytu ar neskaitytu visada svarbesnis.</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="159"/>
+        <source>Images</source>
+        <translation>Paveikslai</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="164"/>
+        <source>Images not proxied by your server</source>
+        <translation>Paveikslai ne per jūsų serverį</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="166"/>
+        <source>Never load</source>
+        <translation>Niekada neįkelti</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="167"/>
+        <source>Ask each site</source>
+        <translation>Klausti dėl kiekvienos svetainės</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="168"/>
+        <source>Always load</source>
+        <translation>Visada įkelti</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="180"/>
         <source>Miniflux proxies plain-http images only by default, so most images arrive unproxied. Loading them directly tells those sites your IP address and when you read.</source>
-        <translation>Miniflux leitet standardmäßig nur einfache HTTP-Bilder weiter, daher kommen die meisten Bilder ungeschützt an. Sie direkt zu laden verrät diesen Websites Ihre IP-Adresse und wann Sie lesen.</translation>
+        <translation>Numatytai Miniflux tarpininkauja tik paprasto HTTP paveikslams, tad dauguma ateina tiesiogiai. Įkeliant juos tiesiogiai toms svetainėms atskleidžiamas jūsų IP adresas ir skaitymo laikas.</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="183"/>
+        <source>Synchronisation</source>
+        <translation>Sinchronizavimas</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="191"/>
+        <source>Sync with server</source>
+        <translation>Sinchronizuoti su serveriu</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="193"/>
+        <source>Manual only</source>
+        <translation>Tik rankiniu būdu</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="194"/>
         <source>Every 15 minutes</source>
-        <translation>Alle 15 Minuten</translation>
+        <translation>Kas 15 minučių</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="195"/>
         <source>Every 30 minutes</source>
-        <translation>Alle 30 Minuten</translation>
+        <translation>Kas 30 minučių</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="196"/>
         <source>Hourly</source>
-        <translation>Stündlich</translation>
+        <translation>Kas valandą</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="197"/>
         <source>Every 6 hours</source>
-        <translation>Alle 6 Stunden</translation>
+        <translation>Kas 6 valandas</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="211"/>
         <source>How often Vuo fetches from your Miniflux server while it is open or on the cover. How often the server itself checks your feeds is set on the server, not here.</source>
-        <translation>Wie oft Vuo von Ihrem Miniflux-Server abruft, solange die App geöffnet oder auf dem Cover ist. Wie oft der Server selbst Ihre Feeds prüft, wird auf dem Server eingestellt, nicht hier.</translation>
+        <translation>Kaip dažnai Vuo kreipiasi į jūsų Miniflux serverį, kol yra atverta ar viršelyje. Kaip dažnai pats serveris tikrina srautus, nustatoma serveryje, ne čia.</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="222"/>
         <source>Advanced</source>
-        <translation>Erweitert</translation>
+        <translation>Sudėtingesni</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="226"/>
         <source>Use a custom CA certificate</source>
-        <translation>Eigenes CA-Zertifikat verwenden</translation>
+        <translation>Naudoti savo LĮ liudijimą</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="233"/>
+        <source>For a self-hosted server with a private certificate authority. Place the certificate at ~/.local/share/harbour-vuo/harbour-vuo/ca.pem. Certificate verification is never disabled, and there is no option to disable it.</source>
+        <translation>Savo serveriui su privačia liudijimų įstaiga. Padėkite liudijimą į ~/.local/share/harbour-vuo/harbour-vuo/ca.pem. Liudijimų tikrinimas niekada neišjungiamas, ir tam nėra jokio nustatymo.</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="234"/>
         <source>Only applies to an https:// server. This one is not encrypted by TLS, so no certificate is used.</source>
-        <translation>Gilt nur für einen https://-Server. Dieser ist nicht per TLS verschlüsselt, daher wird kein Zertifikat verwendet.</translation>
+        <translation>Taikoma tik https:// serveriui. Šis nėra šifruotas TLS, tad liudijimas nenaudojamas.</translation>
     </message>
     <message numerus="yes">
         <location filename="../qml/pages/SettingsPage.qml" line="246"/>
         <source>%n change(s) waiting to be sent to the server.</source>
         <translation>
-            <numerusform>%n Änderung wartet auf die Übertragung zum Server.</numerusform>
-            <numerusform>%n Änderungen warten auf die Übertragung zum Server.</numerusform>
+            <numerusform>%n pakeitimas laukia išsiuntimo į serverį.</numerusform>
+            <numerusform>%n pakeitimai laukia išsiuntimo į serverį.</numerusform>
+            <numerusform>%n pakeitimų laukia išsiuntimo į serverį.</numerusform>
         </translation>
     </message>
 </context>
@@ -606,52 +612,52 @@
     <message>
         <location filename="../qml/pages/SetupDialog.qml" line="101"/>
         <source>Your Miniflux server</source>
-        <translation>Ihr Miniflux-Server</translation>
+        <translation>Jūsų Miniflux serveris</translation>
     </message>
     <message>
         <location filename="../qml/pages/SetupDialog.qml" line="102"/>
         <source>Start reading</source>
-        <translation>Lesen beginnen</translation>
+        <translation>Pradėti skaityti</translation>
     </message>
     <message>
         <location filename="../qml/pages/SetupDialog.qml" line="112"/>
         <source>Vuo reads from your own Miniflux instance. It never fetches feeds itself.</source>
-        <translation>Vuo liest von Ihrer eigenen Miniflux-Instanz. Feeds ruft es niemals selbst ab.</translation>
+        <translation>Vuo skaito iš jūsų pačių Miniflux serverio. Srautų jis niekada neatsisiunčia pats.</translation>
     </message>
     <message>
         <location filename="../qml/pages/SetupDialog.qml" line="118"/>
         <source>Server address</source>
-        <translation>Serveradresse</translation>
+        <translation>Serverio adresas</translation>
     </message>
     <message>
         <location filename="../qml/pages/SetupDialog.qml" line="119"/>
         <source>https://miniflux.example.com</source>
-        <translation>https://miniflux.beispiel.de</translation>
+        <translation>https://miniflux.pavyzdys.lt</translation>
     </message>
     <message>
         <location filename="../qml/pages/SetupDialog.qml" line="126"/>
         <source>API key</source>
-        <translation>API-Schlüssel</translation>
+        <translation>API raktas</translation>
     </message>
     <message>
         <location filename="../qml/pages/SetupDialog.qml" line="142"/>
         <source>Create a key in Miniflux under Settings → API Keys.</source>
-        <translation>Erstellen Sie einen Schlüssel in Miniflux unter Einstellungen → API-Schlüssel.</translation>
+        <translation>Sukurkite raktą Miniflux skiltyje Settings → API Keys.</translation>
     </message>
     <message>
         <location filename="../qml/pages/SetupDialog.qml" line="151"/>
         <source>Test connection</source>
-        <translation>Verbindung testen</translation>
+        <translation>Tikrinti ryšį</translation>
     </message>
     <message>
         <location filename="../qml/pages/SetupDialog.qml" line="175"/>
         <source>Connected as %1</source>
-        <translation>Verbunden als %1</translation>
+        <translation>Prisijungta kaip %1</translation>
     </message>
     <message>
         <location filename="../qml/pages/SetupDialog.qml" line="176"/>
         <source>Test failed: %1</source>
-        <translation>Test fehlgeschlagen: %1</translation>
+        <translation>Patikra nepavyko: %1</translation>
     </message>
 </context>
 <context>
@@ -660,17 +666,17 @@
         <location filename="../qml/pages/SitePage.qml" line="47"/>
         <location filename="../qml/pages/SitePage.qml" line="58"/>
         <source>Website</source>
-        <translation>Webseite</translation>
+        <translation>Svetainė</translation>
     </message>
     <message>
         <location filename="../qml/pages/SitePage.qml" line="68"/>
         <source>Back</source>
-        <translation>Zurück</translation>
+        <translation>Atgal</translation>
     </message>
     <message>
         <location filename="../qml/pages/SitePage.qml" line="73"/>
         <source>Open in browser</source>
-        <translation>Im Browser öffnen</translation>
+        <translation>Atverti naršyklėje</translation>
     </message>
 </context>
 </TS>

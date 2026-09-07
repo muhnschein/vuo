@@ -444,6 +444,12 @@ mod tests {
             &Account {
                 server_url: server.to_owned(),
                 token: "k".to_owned(),
+                // "Manual only", against the real default of hourly. These
+                // tests build REAL workers against an address nothing answers
+                // on, and an automatic sync would have each of them dial it
+                // and sit out the connect timeout before the test binary could
+                // exit. §8.1: the checks touch no network.
+                sync_interval_index: 0,
                 ..Account::default()
             },
         )
