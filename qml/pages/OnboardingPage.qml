@@ -7,27 +7,26 @@ import "../components"
  * the page, and in the middle the app's name, a line about it, and the one
  * thing to do -- go and set up the Miniflux instance.
  *
- * Shown by the root window while no account is stored, and replaced with the
- * entry list the moment one is: coming back from Settings with a server and
- * a key saved is what finishes it (see `finished`). No skip and no dismiss,
- * since there is nothing to show without a server.
+ * Shown by the root window while no account is stored. Continue hands over to
+ * SetupDialog, which is where the flow ends: setup moves forward the whole
+ * way, and this page steps aside for it rather than waiting underneath.
+ *
+ * It used to wait underneath, watching its own `status` to notice the user
+ * coming back from Settings with an account saved, and then navigating
+ * forward from inside that handler. Qt reported that as a binding loop on
+ * `status`; the user saw the welcome screen flash past on the way to the
+ * article list. Backward navigation cannot mean "done" without reading as a
+ * glitch, so setup is accepted rather than swiped away from.
+ *
+ * No skip and no dismiss, since there is nothing to show without a server.
  */
 Page {
     id: page
 
-    /// The root window's Settings object, asked whether an account exists.
-    property var account: null
-
-    /// Raised once an account is stored: the root window takes it from here.
-    signal finished()
+    /// The user is ready to set an account up. The root window takes it on.
+    signal continued()
 
     allowedOrientations: Orientation.All
-
-    // On the way back from Settings, most likely -- and if a server and a key
-    // were saved there, this page has done its job.
-    onStatusChanged: if (status === PageStatus.Active && page.account && page.account.configured) {
-        page.finished()
-    }
 
     // The cover's texture, at a page's density: the same pattern, painted
     // much finer, which is the whole of the difference between the two
@@ -81,7 +80,7 @@ Page {
             objectName: "continueButton"
             anchors.horizontalCenter: parent.horizontalCenter
             text: qsTr("Continue")
-            onClicked: pageStack.push(Qt.resolvedUrl("SettingsPage.qml"))
+            onClicked: page.continued()
         }
     }
 }

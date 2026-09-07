@@ -602,6 +602,59 @@
     </message>
 </context>
 <context>
+    <name>SetupDialog</name>
+    <message>
+        <location filename="../qml/pages/SetupDialog.qml" line="93"/>
+        <source>Your Miniflux server</source>
+        <translation>Ihr Miniflux-Server</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SetupDialog.qml" line="94"/>
+        <source>Start reading</source>
+        <translation>Lesen beginnen</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SetupDialog.qml" line="104"/>
+        <source>Vuo reads from your own Miniflux instance. It never fetches feeds itself.</source>
+        <translation>Vuo liest von Ihrer eigenen Miniflux-Instanz. Feeds ruft es niemals selbst ab.</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SetupDialog.qml" line="110"/>
+        <source>Server address</source>
+        <translation>Serveradresse</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SetupDialog.qml" line="111"/>
+        <source>https://miniflux.example.com</source>
+        <translation>https://miniflux.beispiel.de</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SetupDialog.qml" line="118"/>
+        <source>API key</source>
+        <translation>API-Schlüssel</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SetupDialog.qml" line="134"/>
+        <source>Create a key in Miniflux under Settings → API Keys. A key can be revoked for this device alone.</source>
+        <translation>Erstellen Sie einen Schlüssel in Miniflux unter Einstellungen → API-Schlüssel. Ein Schlüssel kann für dieses Gerät einzeln widerrufen werden.</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SetupDialog.qml" line="143"/>
+        <source>Test connection</source>
+        <translation>Verbindung testen</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SetupDialog.qml" line="167"/>
+        <source>Connected as %1</source>
+        <translation>Verbunden als %1</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SetupDialog.qml" line="168"/>
+        <source>Test failed: %1</source>
+        <translation>Test fehlgeschlagen: %1</translation>
+    </message>
+</context>
+<context>
     <name>SitePage</name>
     <message>
         <location filename="../qml/pages/SitePage.qml" line="47"/>

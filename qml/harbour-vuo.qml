@@ -120,25 +120,33 @@ ApplicationWindow {
     }
 
     // A fresh install opens on the onboarding page instead of an empty list,
-    // and moves to the list once an account has been saved.
+    // and moves through setup to the list. Every step REPLACES the one before
+    // it, so the stack is one page deep the whole way and the article list
+    // ends up as the app's root: a welcome screen left underneath would be
+    // what a swipe back from the list landed on ever after.
     Component {
         id: onboarding
 
         OnboardingPage {
-            account: accountSettings
-            onFinished: app.showEntries()
+            onContinued: pageStack.replace(setup)
+        }
+    }
+
+    Component {
+        id: setup
+
+        SetupDialog {
+            // Accepting navigates here itself, as part of the accept: nothing
+            // in this flow navigates from a signal handler any more.
+            acceptDestination: entryList
+            // A mirror that has just been given a server has nothing in it
+            // yet, and the pulley's Refresh should not be the first thing a
+            // new user has to find.
+            onConfigured: entries.requestSync()
         }
     }
 
     initialPage: accountSettings.configured ? entryList : onboarding
-
-    /// Swap the onboarding page for the entry list, and fetch: a mirror that
-    /// has just been given a server has nothing in it yet, and the pulley's
-    /// Refresh should not be the first thing a new user has to find.
-    function showEntries() {
-        pageStack.replace(entryList)
-        entries.requestSync()
-    }
 
     // The cover is a separate Component so its bindings can reach the models
     // -- the unread count and the feeds it draws -- which a bare URL cover
