@@ -280,6 +280,12 @@ impl Worker {
         let handle = thread::Builder::new()
             .name("vuo-sync".to_owned())
             .spawn(move || {
+                // First statement in the thread, and the parent logs one the
+                // instant `spawn` returns. Which of the two arrives -- or
+                // neither -- is what says whether a death here belongs to the
+                // Qt thread or to this one; nothing else distinguishes them
+                // once the process is gone. See docs/testing.md.
+                tracing::info!("the sync worker thread is running");
                 let runtime = match tokio::runtime::Builder::new_current_thread()
                     .enable_all()
                     .build()
@@ -292,6 +298,7 @@ impl Worker {
                         return;
                     }
                 };
+                tracing::info!("the sync runtime is up");
 
                 // Beside the database, as `AppPaths::under` lays it out; the
                 // worker is handed only the database's path.
@@ -305,6 +312,7 @@ impl Worker {
                         return;
                     }
                 };
+                tracing::info!("the worker has opened the mirror");
 
                 let client = match Transport::new(server, token, &config) {
                     Ok(t) => MinifluxClient::new(t),
@@ -715,6 +723,13 @@ impl Worker {
                 }
             })
             .ok();
+        // A failed spawn is `None` and no panic, so say which happened: a
+        // worker that was never created behaves exactly like one that died.
+        if handle.is_some() {
+            tracing::info!("the sync worker thread is spawned");
+        } else {
+            tracing::warn!("the sync worker thread could not be created");
+        }
 
         Worker { tx, handle }
     }

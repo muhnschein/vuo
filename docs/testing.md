@@ -153,17 +153,28 @@ saving the account
 the account file is written
 opening the mirror
 starting the sync worker
+the sync worker thread is spawned
 the application context is built
 the application context is installed
 the settings screen has published the saved account
 the test is queued for the worker
 the settings screen has finished the test
-the sync worker is ready            # the worker thread, in parallel
+the sync worker thread is running   # the worker thread, from here in parallel
+the sync runtime is up
+the worker has opened the mirror
+the sync worker is ready
 asking the server who we are
 ```
 
 Whichever line is missing bounds the fault to the statements between it and
-the one before it. Run the app from a terminal so the lines are on screen:
+the one before it. The pair either side of the thread start is deliberate:
+"the sync worker thread is spawned" is the Qt thread's, logged the instant
+`spawn` returns, and "the sync worker thread is running" is the worker's own
+first statement. Once the process is gone there is nothing else to say which
+thread it died on, and the two interleave by a few microseconds, so read them
+as a pair rather than as an order.
+
+Run the app from a terminal so the lines are on screen:
 
 ```sh
 sailjail /usr/bin/harbour-vuo       # add VUO_LOG=debug for the HTTP stack too
