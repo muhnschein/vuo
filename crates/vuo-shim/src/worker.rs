@@ -44,7 +44,6 @@ use vuo_core::sync::{self, SyncOptions};
 ///
 /// Handed over by [`Command::Configure`] rather than captured when the thread
 /// starts, because the thread now starts before there is an account to capture.
-#[derive(Debug)]
 pub struct WorkerAccount {
     /// The mirror. The worker opens its own connection to it; the Qt thread
     /// has a second one, and WAL is what makes that safe.
@@ -52,6 +51,23 @@ pub struct WorkerAccount {
     pub server: url::Url,
     pub token: ApiToken,
     pub transport: TransportConfig,
+}
+
+impl std::fmt::Debug for WorkerAccount {
+    /// Opaque, for the reason [`ApiToken`] is.
+    ///
+    /// The token redacts itself, but nothing else here does, and a DERIVED
+    /// `Debug` on this struct puts all of it in any log line that formats a
+    /// `Command`. The server is a `Url` and prints whatever userinfo it
+    /// carries -- `https://user:pass@host/` is a thing people paste into an
+    /// address field, and §9.1 keeps it out of the settings screen's error
+    /// text for exactly that reason. A log line is read by more people than an
+    /// error label: it goes to journald, and into bug reports. The mirror's
+    /// path is under the user's home directory, and the transport config
+    /// carries a whole CA certificate.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("WorkerAccount { .. }")
+    }
 }
 
 /// What the UI can ask the worker to do.
@@ -102,6 +118,30 @@ pub enum Command {
         minutes: Option<i64>,
     },
     Shutdown,
+}
+
+impl Command {
+    /// A fixed name, for logs.
+    ///
+    /// Never `{:?}` a `Command` into a log line. `Configure` carries the
+    /// account, and while `WorkerAccount` is opaque above, a variant added
+    /// later would not be -- and the thing being logged here is which command
+    /// arrived, which is a word, not a payload.
+    #[must_use]
+    pub fn name(&self) -> &'static str {
+        match self {
+            Command::Sync => "Sync",
+            Command::FlushOutbox => "FlushOutbox",
+            Command::Subscribe { .. } => "Subscribe",
+            Command::Unsubscribe { .. } => "Unsubscribe",
+            Command::UpdateFeed { .. } => "UpdateFeed",
+            Command::FetchOriginal { .. } => "FetchOriginal",
+            Command::TestConnection => "TestConnection",
+            Command::Configure(_) => "Configure",
+            Command::SetSyncInterval { .. } => "SetSyncInterval",
+            Command::Shutdown => "Shutdown",
+        }
+    }
 }
 
 /// What the worker reports back.
@@ -456,7 +496,10 @@ impl Worker {
                     // exists, and a context is only built once an account has
                     // been handed over.
                     let (Some(db), Some(client)) = (db.as_mut(), client.as_ref()) else {
-                        tracing::warn!(?command, "no account is configured; dropping the command");
+                        tracing::warn!(
+                            command = command.name(),
+                            "no account is configured; dropping the command"
+                        );
                         continue;
                     };
 
@@ -1170,6 +1213,39 @@ pub fn transport_config_for(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// §the API key is not written anywhere but the account file.
+    ///
+    /// `Command` derives `Debug`, and one arm of it carries the whole account.
+    /// A log line reaches journald and travels in bug reports, so what a
+    /// `{:?}` on a command prints is a disclosure question, not a formatting
+    /// one. `ApiToken` redacts itself; the SERVER is a `Url` and prints its
+    /// userinfo, which is how `https://user:pass@host/` gets into a log from a
+    /// field the user pasted it into.
+    #[test]
+    fn a_command_never_prints_the_account_it_carries() {
+        let account = WorkerAccount {
+            database: PathBuf::from("/home/defaultuser/.local/share/harbour-vuo/vuo.sqlite"),
+            server: url::Url::parse("https://alice:hunter2@miniflux.example/").expect("url"),
+            token: ApiToken::new("s3cr3t-key"),
+            transport: TransportConfig::default(),
+        };
+        let printed = format!("{:?}", Command::Configure(Box::new(account)));
+        for secret in [
+            "hunter2",
+            "alice",
+            "miniflux.example",
+            "s3cr3t-key",
+            "defaultuser",
+        ] {
+            assert!(
+                !printed.contains(secret),
+                "{secret:?} reached a log line: {printed}"
+            );
+        }
+        // And the name a log line SHOULD carry is still there.
+        assert_eq!(Command::TestConnection.name(), "TestConnection");
+    }
 
     /// §the worker syncs on its own, on the interval the user chose.
     ///
