@@ -20,7 +20,7 @@
 
 Name:       harbour-vuo
 Summary:    Miniflux feed reader for SailfishOS
-Version:    0.1.0
+Version:    1.0.0
 # `--define "vuo_release N"` (scripts/cross-rpm.sh, from VUO_RELEASE) stamps a
 # CI build so each one installs as an upgrade of the last; the tree keeps 1.
 Release:    %{?vuo_release}%{!?vuo_release:1}
@@ -98,5 +98,8 @@ install -D -m 644 %{_sourcedir}/LICENSE \
 %{_datadir}/icons/hicolor/*/apps/harbour-vuo.png
 
 %changelog
+* Mon Sep 07 2026 Vuo contributors <noreply@example.invalid> - 1.0.0-1
+- First release.
+
 * Sat Aug 29 2026 Vuo contributors <noreply@example.invalid> - 0.1.0-1
 - Cross-built test package: rebuild the app context when an account is saved.

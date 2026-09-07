@@ -23,7 +23,7 @@
 
 Name:       harbour-vuo
 Summary:    Miniflux feed reader for SailfishOS
-Version:    0.1.0
+Version:    1.0.0
 Release:    1
 License:    GPL-3.0-or-later
 Group:      Applications/Internet
@@ -219,5 +219,8 @@ install -Dm 644 LICENSE %{buildroot}%{_datadir}/harbour-vuo/LICENSE
 %{_datadir}/icons/hicolor/*/apps/harbour-vuo.png
 
 %changelog
+* Mon Sep 07 2026 Vuo contributors <noreply@example.invalid> - 1.0.0-1
+- First release.
+
 * Fri Aug 28 2026 Vuo contributors <noreply@example.invalid> - 0.1.0-1
 - Initial packaging.

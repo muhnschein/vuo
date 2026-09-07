@@ -21,7 +21,7 @@ members = ["crates/vuo-core", "crates/vuo-shim", "crates/harbour-vuo"]
 default-members = ["crates/vuo-core"]
 
 [workspace.package]
-version = "0.1.0"
+version = "1.0.0"
 edition = "2021"
 # The SailfishOS SDK ships an older Rust than current stable. Every crate in
 # the workspace pins the same floor, and `make msrv` re-checks against it so a
