@@ -46,6 +46,17 @@ fn main() {
 
     vuo_shim::register_qml_types();
 
+    // The sync worker's thread, before anything else and whether or not there
+    // is an account for it to serve yet.
+    //
+    // Not an optimisation. Creating this thread later — from the QML tap that
+    // saves a first account — kills the process on a Jolla Phone 2026, with no
+    // panic and no diagnostic. Started here, while the process is still a
+    // handful of threads and Wayland and the GPU stack have not been loaded,
+    // it costs a parked thread and is handed its account by a channel send
+    // when the user configures one. See `vuo_shim::context::start_worker`.
+    vuo_shim::context::start_worker();
+
     // Install the shared context before any QML loads: QML constructs the
     // models itself, so they resolve their database and worker through the
     // Qt-thread global rather than through a constructor.

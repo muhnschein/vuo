@@ -1274,17 +1274,8 @@ mod row_decoration_tests {
         })
         .expect("seed");
 
-        let signal = std::sync::Arc::new(crate::context::SyncSignal::default());
         let instance = url::Url::parse("https://miniflux.example/").expect("url");
-        let worker = crate::worker::Worker::spawn(
-            path.clone(),
-            instance.clone(),
-            vuo_core::redact::ApiToken::new("t"),
-            vuo_core::api::TransportConfig::default(),
-            std::sync::Arc::clone(&signal),
-            |_| {},
-        );
-        let ctx = AppContext::new(db, worker, instance, signal, 0);
+        let ctx = crate::context::context_for_test(db, instance);
         (dir, ctx)
     }
 

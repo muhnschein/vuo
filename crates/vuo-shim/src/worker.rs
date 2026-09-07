@@ -40,6 +40,20 @@ use vuo_core::model::{EntryId, EntryStatus};
 use vuo_core::redact::ApiToken;
 use vuo_core::sync::{self, SyncOptions};
 
+/// Everything the worker needs in order to serve one account.
+///
+/// Handed over by [`Command::Configure`] rather than captured when the thread
+/// starts, because the thread now starts before there is an account to capture.
+#[derive(Debug)]
+pub struct WorkerAccount {
+    /// The mirror. The worker opens its own connection to it; the Qt thread
+    /// has a second one, and WAL is what makes that safe.
+    pub database: PathBuf,
+    pub server: url::Url,
+    pub token: ApiToken,
+    pub transport: TransportConfig,
+}
+
 /// What the UI can ask the worker to do.
 ///
 /// Only operations that genuinely need the network are here. Local mutations
@@ -73,6 +87,12 @@ pub enum Command {
     },
     /// Verify the configured credentials, for the settings screen.
     TestConnection,
+    /// Serve this account from now on, in place of whatever came before.
+    ///
+    /// Boxed because it is much the largest thing a `Command` can carry, and
+    /// every other variant would otherwise be padded out to its size in the
+    /// channel.
+    Configure(Box<WorkerAccount>),
     /// How often the worker is to sync on its own, in minutes; `None` for
     /// "Manual only". Sent when the context is built and whenever Settings
     /// is saved. The worker schedules its next sync from the last one it
@@ -259,7 +279,23 @@ impl std::fmt::Debug for Worker {
 }
 
 impl Worker {
-    /// Spawn the worker.
+    /// Start the worker thread, with no account yet.
+    ///
+    /// **Called once, at start-up, before the UI exists** -- see
+    /// [`crate::context::start_worker`]. It used to be called from wherever an
+    /// account first appeared, which on a first run is a QML tap, and creating
+    /// a thread there killed the process outright on a Jolla Phone 2026: the
+    /// last thing logged was the line before `thread::Builder::spawn`, and
+    /// neither the parent's next line nor the thread's first one ever
+    /// arrived. The same call from `main` works on every launch. So the thread
+    /// is created while the process is still small and single-purpose, and an
+    /// account reaches it afterwards as [`Command::Configure`] -- which is a
+    /// channel send, and cannot fail that way.
+    ///
+    /// It also removes the churn that went with rebuilding: changing the
+    /// server used to retire one thread and start another, leaving the retired
+    /// one detached and mid-request. One thread now serves each account in
+    /// turn.
     ///
     /// `on_event` is invoked **on the worker thread**. It must not touch a
     /// `QObject`: results the UI has to see travel by
@@ -268,10 +304,6 @@ impl Worker {
     /// it with `qmetaobject::queued_callback` first, and then owes the event
     /// loop that primitive requires.
     pub fn spawn(
-        db_path: PathBuf,
-        server: url::Url,
-        token: ApiToken,
-        config: TransportConfig,
         signal: std::sync::Arc<crate::context::SyncSignal>,
         on_event: impl Fn(Event) + Send + 'static,
     ) -> Self {
@@ -300,34 +332,17 @@ impl Worker {
                 };
                 tracing::info!("the sync runtime is up");
 
-                // Beside the database, as `AppPaths::under` lays it out; the
-                // worker is handed only the database's path.
-                let last_sync = db_path.with_file_name("last-sync");
-                let mut db = match Database::open(&db_path) {
-                    Ok(db) => db,
-                    Err(e) => {
-                        on_event(Event::SyncFailed {
-                            message: e.to_string(),
-                        });
-                        return;
-                    }
-                };
-                tracing::info!("the worker has opened the mirror");
-
-                let client = match Transport::new(server, token, &config) {
-                    Ok(t) => MinifluxClient::new(t),
-                    Err(e) => {
-                        on_event(Event::SyncFailed {
-                            message: e.to_string(),
-                        });
-                        return;
-                    }
-                };
-                // Paired with the "starting the sync worker" line the Qt thread
-                // logs: between the two lies a thread start, a second open of
-                // the mirror and the whole TLS client, none of which reports
-                // anything of its own on the way through.
-                tracing::info!("the sync worker is ready");
+                // The account being served, or `None` until one is given.
+                //
+                // A fresh install reaches this point with nothing configured
+                // at all, and that is an ordinary state, not a failure: the
+                // thread waits here rather than exiting, so that the account
+                // the user is about to type does not need a thread created for
+                // it. `last_sync` sits beside the mirror, as `AppPaths::under`
+                // lays it out.
+                let mut db: Option<Database> = None;
+                let mut client: Option<MinifluxClient> = None;
+                let mut last_sync = PathBuf::new();
 
                 // The worker's own sync, on the interval the user chose.
                 //
@@ -340,7 +355,12 @@ impl Worker {
                 let mut interval: Option<i64> = None;
                 let mut next_sync: Option<std::time::Instant> = None;
                 loop {
-                    let command = match next_sync {
+                    // Only an account being served has a sync that can fall
+                    // due. Without this filter, an interval set before an
+                    // account arrives makes every wait expire immediately and
+                    // the loop spins.
+                    let due = next_sync.filter(|_| client.is_some());
+                    let command = match due {
                         Some(at) => {
                             let wait = at.saturating_duration_since(std::time::Instant::now());
                             match rx.recv_timeout(wait) {
@@ -362,13 +382,83 @@ impl Worker {
                     // Shutdown is handled above the guard: there is no spinner
                     // to clear for it, and draining whatever is queued behind
                     // it matters more. A `Sync` sitting in the queue when the
-                    // context is retired would otherwise leave `running` set
-                    // with nothing left alive to clear it.
+                    // worker is told to stop would otherwise leave `running`
+                    // set with nothing left alive to clear it.
                     if matches!(command, Command::Shutdown) {
                         while rx.try_recv().is_ok() {}
                         signal.set_running(false);
                         break;
                     }
+
+                    // The two commands that do not need an account, taken
+                    // before the guard because neither touches the mirror and
+                    // neither owns the spinner. Both `continue`, so the value
+                    // they move out of `command` is not wanted below.
+                    match command {
+                        Command::Configure(account) => {
+                            last_sync = account.database.with_file_name("last-sync");
+                            // Both of these are reported and then left as
+                            // `None`: an account that cannot be opened or
+                            // whose transport will not build is a dead one,
+                            // and serving the PREVIOUS account's data under
+                            // the new account's name would be worse than
+                            // serving nothing.
+                            db = match Database::open(&account.database) {
+                                Ok(db) => {
+                                    tracing::info!("the worker has opened the mirror");
+                                    Some(db)
+                                }
+                                Err(e) => {
+                                    on_event(Event::SyncFailed {
+                                        message: e.to_string(),
+                                    });
+                                    None
+                                }
+                            };
+                            let WorkerAccount {
+                                server,
+                                token,
+                                transport,
+                                ..
+                            } = *account;
+                            client = match Transport::new(server, token, &transport) {
+                                Ok(t) => {
+                                    tracing::info!("the sync worker is ready");
+                                    Some(MinifluxClient::new(t))
+                                }
+                                Err(e) => {
+                                    on_event(Event::SyncFailed {
+                                        message: e.to_string(),
+                                    });
+                                    None
+                                }
+                            };
+                            // The stamp belongs to the account, so the first
+                            // sync of a new one is scheduled from ITS history.
+                            next_sync =
+                                next_sync_delay(interval, read_sync_time(&last_sync), chrono_now())
+                                    .map(|delay| std::time::Instant::now() + delay);
+                            continue;
+                        }
+                        Command::SetSyncInterval { minutes } => {
+                            interval = minutes;
+                            next_sync =
+                                next_sync_delay(interval, read_sync_time(&last_sync), chrono_now())
+                                    .map(|delay| std::time::Instant::now() + delay);
+                            continue;
+                        }
+                        _ => {}
+                    }
+
+                    // Everything else needs an account. Before there is one
+                    // there is nothing to answer with, and dropping the
+                    // command is right: the UI cannot send one until a context
+                    // exists, and a context is only built once an account has
+                    // been handed over.
+                    let (Some(db), Some(client)) = (db.as_mut(), client.as_ref()) else {
+                        tracing::warn!(?command, "no account is configured; dropping the command");
+                        continue;
+                    };
 
                     // See CommandGuard: clearing the spinner is structural, so
                     // an arm that returns early -- or one added later -- cannot
@@ -379,18 +469,14 @@ impl Worker {
                         clears_spinner: matches!(command, Command::Sync),
                     };
                     match command {
-                        // Handled above, before the guard.
-                        Command::Shutdown => break,
-                        Command::SetSyncInterval { minutes } => {
-                            interval = minutes;
-                            next_sync =
-                                next_sync_delay(interval, read_sync_time(&last_sync), chrono_now())
-                                    .map(|delay| std::time::Instant::now() + delay);
-                        }
+                        // All three are handled above, before the guard.
+                        Command::Shutdown
+                        | Command::Configure(_)
+                        | Command::SetSyncInterval { .. } => {}
                         Command::Sync => {
                             on_event(Event::SyncStarted);
                             let options = SyncOptions::default();
-                            match runtime.block_on(sync::sync(&mut db, &client, options)) {
+                            match runtime.block_on(sync::sync(db, client, options)) {
                                 Ok(report) if report.replay.auth_failed => {
                                     guard.changed = true;
                                     signal.post(Notice::SyncFailed {
@@ -453,8 +539,8 @@ impl Worker {
                                     // Pull immediately so the new feed's entries
                                     // appear without waiting for the next timer.
                                     let _ = runtime.block_on(sync::sync(
-                                        &mut db,
-                                        &client,
+                                        db,
+                                        client,
                                         SyncOptions::default(),
                                     ));
                                     guard.changed = true;
@@ -677,7 +763,7 @@ impl Worker {
                             }
                         }
                         Command::FlushOutbox => {
-                            match runtime.block_on(sync::replay::flush(&mut db, &client)) {
+                            match runtime.block_on(sync::replay::flush(db, client)) {
                                 Ok(outcome) if outcome.auth_failed => {
                                     signal.post(Notice::SyncFailed {
                                         auth: true,
@@ -743,22 +829,6 @@ impl Worker {
     #[must_use]
     pub fn sender(&self) -> mpsc::Sender<Command> {
         self.tx.clone()
-    }
-
-    /// Tell the worker to stop, without waiting for it to finish.
-    ///
-    /// [`Drop`] joins, which is what process shutdown wants: the thread must
-    /// not outlive the process's use of the mirror. Replacing a live context
-    /// is the other case, and there a join is a hazard — it runs on the Qt
-    /// thread, and a worker in the middle of a request holds its thread until
-    /// the network times out, so the UI would freeze for exactly that long.
-    /// Dropping the join handle detaches instead: the thread still receives
-    /// `Shutdown` and still winds down, it is simply not waited for.
-    pub fn retire(&mut self) {
-        let _ = self.tx.send(Command::Shutdown);
-        // Dropping a `JoinHandle` detaches the thread; it does not stop it.
-        // The `Shutdown` above is what stops it.
-        let _ = self.handle.take();
     }
 }
 
