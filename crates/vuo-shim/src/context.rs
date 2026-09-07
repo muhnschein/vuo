@@ -43,15 +43,17 @@ pub struct AppContext {
     /// a context outlives the credentials it was built from. This is how a
     /// save decides whether the running worker is still the right one.
     fingerprint: u64,
-    /// Owned here so the worker thread lives exactly as long as the context
-    /// that talks to it. Dropping the context sends Shutdown and joins the
-    /// thread; the alternative — leaking the handle with `mem::forget` — would
-    /// mean the thread is never told to stop and never joined.
-    ///
-    /// `Option`, because a context that is being *replaced* rather than shut
-    /// down retires its worker instead of joining it. See
-    /// [`AppContext::retire`].
-    worker: RefCell<Option<Worker>>,
+}
+
+/// The one worker thread, and the signal it publishes through.
+///
+/// Both are process-wide and outlive any single account. The signal in
+/// particular: models compare the generation they last saw against the one
+/// they read, so a signal that were replaced along with the account could hand
+/// a model a generation lower than the one it has already spent.
+struct SharedWorker {
+    worker: Worker,
+    signal: std::sync::Arc<SyncSignal>,
 }
 
 impl std::fmt::Debug for AppContext {
@@ -62,23 +64,23 @@ impl std::fmt::Debug for AppContext {
 
 impl AppContext {
     #[must_use]
-    pub fn new(
-        db: Database,
-        worker: Worker,
-        instance: url::Url,
-        signal: std::sync::Arc<SyncSignal>,
-        fingerprint: u64,
-    ) -> Rc<Self> {
-        let commands = worker.sender();
+    /// A context for one account, talking to the one worker thread.
+    ///
+    /// The worker is NOT owned here, which is the change that matters: it is a
+    /// single thread, created at start-up by [`start_worker`] and handed each
+    /// account in turn. A context that owned one had to retire it when the
+    /// account changed, which detached a thread mid-request and started
+    /// another — and starting another is exactly what a device will not
+    /// tolerate once the UI is up. See [`Worker::spawn`].
+    fn new(db: Database, instance: url::Url, worker: &SharedWorker, fingerprint: u64) -> Rc<Self> {
         Rc::new(AppContext {
             db: Rc::new(RefCell::new(db)),
-            commands,
+            commands: worker.worker.sender(),
             instance,
             media_policy: std::cell::Cell::new(crate::settings::MEDIA_ASK),
             mark_read_delay_index: std::cell::Cell::new(crate::settings::MARK_READ_DEFAULT_INDEX),
-            signal,
+            signal: std::sync::Arc::clone(&worker.signal),
             fingerprint,
-            worker: RefCell::new(Some(worker)),
         })
     }
 
@@ -86,24 +88,6 @@ impl AppContext {
     #[must_use]
     pub fn fingerprint(&self) -> u64 {
         self.fingerprint
-    }
-
-    /// Tell the worker to stop, without waiting for it.
-    ///
-    /// `Drop` joins, which is what process shutdown wants. Replacing a live
-    /// context is the other case, and there a join is a hazard: it runs on the
-    /// Qt thread, and a worker in the middle of a request holds its thread
-    /// until the network times out — so the join would freeze the UI for
-    /// exactly that long. Retiring drops the join handle instead. The thread
-    /// still receives `Shutdown` and still winds down; it is simply not waited
-    /// for, and the mirror tolerates the overlap (WAL, a 5-second busy
-    /// timeout, and a second *process* already writes it on the sync timer).
-    pub fn retire(&self) {
-        if let Ok(mut slot) = self.worker.try_borrow_mut() {
-            if let Some(mut worker) = slot.take() {
-                worker.retire();
-            }
-        }
     }
 
     #[must_use]
@@ -186,6 +170,46 @@ thread_local! {
     static CURRENT: RefCell<Option<Rc<AppContext>>> = const { RefCell::new(None) };
 }
 
+thread_local! {
+    /// The one worker thread. See [`start_worker`].
+    static WORKER: RefCell<Option<Rc<SharedWorker>>> = const { RefCell::new(None) };
+}
+
+/// Start the worker thread. Called from `main`, before the UI.
+///
+/// Timing is the whole point, so this is a separate call rather than something
+/// the first context does on its way past. Creating the thread from the Qt
+/// thread, once Wayland and the GPU stack have been dlopened, kills the
+/// process on a Jolla Phone 2026 — no panic, no Rust diagnostic, just a signal
+/// — and a first run reaches that path from a QML tap, because there is no
+/// account to build a context from until the user has typed one. Created here
+/// the thread costs nothing while it waits, and the account reaches it later
+/// as a channel send. See [`Worker::spawn`] and docs/testing.md.
+pub fn start_worker() {
+    let _ = shared_worker();
+}
+
+/// The worker, starting it if this is the first ask.
+///
+/// The lazy path exists for tests, which have no `main` to have called
+/// [`start_worker`]. On a device it is always already there.
+fn shared_worker() -> Option<Rc<SharedWorker>> {
+    let existing = WORKER.with(|w| w.try_borrow().ok().and_then(|slot| slot.clone()));
+    if existing.is_some() {
+        return existing;
+    }
+
+    let signal = std::sync::Arc::new(SyncSignal::default());
+    let worker = Worker::spawn(std::sync::Arc::clone(&signal), log_event);
+    let shared = Rc::new(SharedWorker { worker, signal });
+    WORKER.with(|w| {
+        if let Ok(mut slot) = w.try_borrow_mut() {
+            *slot = Some(Rc::clone(&shared));
+        }
+    });
+    Some(shared)
+}
+
 /// Install the application context, replacing any already installed.
 ///
 /// From the Qt thread only. Prefer [`refresh`], which decides whether a
@@ -252,44 +276,39 @@ fn log_event(event: Event) {
 const NOT_A_URL: &str =
     "the server address is not a URL. It needs a scheme, as in https://miniflux.example.com/";
 
-/// Build a context for the account stored at `paths`.
+/// Build a context for `account`, without installing it; [`refresh`] does that.
 ///
-/// Nothing is installed here; [`refresh`] does that. Split out so the whole
-/// path — account file to running worker — can be exercised without a Qt event
-/// loop. It used to live in the application binary, which has no tests at all
-/// and is not even built by most of `make check`, and that is precisely why the
-/// defect below survived to a device.
-pub fn build(
-    paths: &AppPaths,
-    on_event: impl Fn(Event) + Send + 'static,
-) -> vuo_core::Result<Rc<AppContext>> {
-    let account = crate::worker::load_account(&paths.account)?;
-    build_from(paths, account, on_event)
-}
-
-fn build_from(
-    paths: &AppPaths,
-    account: Account,
-    on_event: impl Fn(Event) + Send + 'static,
-) -> vuo_core::Result<Rc<AppContext>> {
+/// It used to live in the application binary, which has no tests at all and is
+/// not even built by most of `make check`, and that is precisely why the
+/// first-run defect it now carries the fix for survived to a device.
+fn build_from(paths: &AppPaths, account: Account) -> vuo_core::Result<Rc<AppContext>> {
     let server = url::Url::parse(&account.server_url)
         .map_err(|_| vuo_core::Error::Config(NOT_A_URL.to_owned()))?;
     let config = crate::worker::transport_config_for(paths, &account)?;
+    // The steps below are logged one by one on purpose. Building the context
+    // is the only part of Vuo that runs BOTH at start-up and again from inside
+    // a QML tap, and the second of those has been seen to end a device process
+    // with a signal rather than an error -- which leaves no Rust diagnostic at
+    // all, only a last line reached. See docs/testing.md.
+    tracing::info!("opening the mirror");
     let db = Database::open(&paths.database)?;
     let fingerprint = fingerprint(&account);
     let sync_interval = crate::settings::sync_interval_minutes_for(account.sync_interval_index);
 
-    let signal = std::sync::Arc::new(SyncSignal::default());
-    let worker = Worker::spawn(
-        paths.database.clone(),
-        server.clone(),
-        vuo_core::redact::ApiToken::new(account.token),
-        config,
-        std::sync::Arc::clone(&signal),
-        on_event,
-    );
+    let worker = shared_worker().ok_or_else(|| {
+        vuo_core::Error::Config("the sync worker thread is not running".to_owned())
+    })?;
+    tracing::info!("handing the account to the sync worker");
+    worker
+        .worker
+        .send(Command::Configure(Box::new(crate::worker::WorkerAccount {
+            database: paths.database.clone(),
+            server: server.clone(),
+            token: vuo_core::redact::ApiToken::new(account.token),
+            transport: config,
+        })));
 
-    let ctx = AppContext::new(db, worker, server, signal, fingerprint);
+    let ctx = AppContext::new(db, server, &worker, fingerprint);
     // Seed the Images setting from the stored account, so the first article
     // opened after this honours it rather than falling back to Ask.
     ctx.set_media_policy(account.media_policy);
@@ -299,6 +318,7 @@ fn build_from(
     ctx.send(Command::SetSyncInterval {
         minutes: sync_interval,
     });
+    tracing::info!("the application context is built");
     Ok(ctx)
 }
 
@@ -324,13 +344,25 @@ pub fn refresh(paths: &AppPaths) -> vuo_core::Result<Rc<AppContext>> {
         if existing.fingerprint() == wanted {
             return Ok(existing);
         }
-        // Told to stop, but not waited for: a join here runs on the Qt thread.
-        existing.retire();
+        tracing::info!("the stored account changed");
     }
 
-    let ctx = build_from(paths, account, log_event)?;
+    let ctx = build_from(paths, account)?;
     install(Rc::clone(&ctx));
+    tracing::info!("the application context is installed");
     Ok(ctx)
+}
+
+/// A context over `db` and `instance`, against the shared worker.
+///
+/// For tests in this crate. Each of them used to build a worker by hand,
+/// naming its constructor and every argument, so a change to how the worker
+/// starts was a change to four unrelated test modules -- and none of them
+/// cares which account it is serving, since nothing in them reaches a network.
+#[cfg(test)]
+pub(crate) fn context_for_test(db: Database, instance: url::Url) -> Rc<AppContext> {
+    let worker = shared_worker().expect("the worker thread starts");
+    AppContext::new(db, instance, &worker, 0)
 }
 
 /// [`refresh`] against the standard locations.
@@ -360,27 +392,12 @@ mod tests {
         assert!(current().is_none());
     }
 
-    /// A context over a temp mirror and a worker pointed at an origin nothing
-    /// answers on. Nothing here makes a request; the worker exists because
-    /// `AppContext` owns it.
+    /// A context over a temp mirror, pointed at an origin nothing answers on.
     fn test_context(dir: &tempfile::TempDir) -> Rc<AppContext> {
-        let db_path = dir.path().join("mirror.sqlite");
-        let db = Database::open(&db_path).expect("mirror");
-        let signal = std::sync::Arc::new(SyncSignal::default());
-        let worker = crate::worker::Worker::spawn(
-            db_path,
-            url::Url::parse("https://unreachable.invalid/").expect("url"),
-            vuo_core::redact::ApiToken::new("t"),
-            vuo_core::api::TransportConfig::default(),
-            std::sync::Arc::clone(&signal),
-            |_event| {},
-        );
-        AppContext::new(
+        let db = Database::open(&dir.path().join("mirror.sqlite")).expect("mirror");
+        context_for_test(
             db,
-            worker,
             url::Url::parse("https://unreachable.invalid/").expect("url"),
-            signal,
-            0,
         )
     }
 
@@ -427,6 +444,12 @@ mod tests {
             &Account {
                 server_url: server.to_owned(),
                 token: "k".to_owned(),
+                // "Manual only", against the real default of hourly. These
+                // tests build REAL workers against an address nothing answers
+                // on, and an automatic sync would have each of them dial it
+                // and sit out the connect timeout before the test binary could
+                // exit. §8.1: the checks touch no network.
+                sync_interval_index: 0,
                 ..Account::default()
             },
         )
@@ -478,18 +501,32 @@ mod tests {
     }
 
     #[test]
-    fn a_retired_worker_is_not_waited_for() {
-        // `retire` is what makes replacing a context safe on the Qt thread: a
-        // join there blocks the UI until an in-flight request times out. It
-        // must still stop the worker.
+    fn changing_the_account_does_not_start_a_second_worker() {
+        // The thread is created once, at start-up, and given each account in
+        // turn. Creating one later kills the process on a device -- see
+        // `Worker::spawn` -- and "the user edited the server address" must
+        // therefore not be a route back to `thread::Builder::spawn`.
+        //
+        // It used to be exactly that: replacing a context retired one thread
+        // and started another. The test that stood here checked the retiring
+        // half of it, which is the behaviour this replaces.
         let dir = tempfile::tempdir().expect("tempdir");
-        let ctx = refresh(&account_at(&dir, "http://10.77.0.1:8083/")).expect("a context");
+        let first = refresh(&account_at(&dir, "http://10.77.0.1:8083/")).expect("a context");
+        let worker = shared_worker().expect("a worker");
 
-        ctx.retire();
-        // The channel's receiver is dropped when the worker thread ends, so
-        // this settles rather than hanging either way; what matters is that
-        // `retire` itself returned without waiting for the thread.
-        ctx.retire();
+        let second = refresh(&account_at(&dir, "http://10.77.0.2:8083/")).expect("a context");
+        assert!(
+            !Rc::ptr_eq(&first, &second),
+            "a changed account is a different context"
+        );
+        assert!(
+            Rc::ptr_eq(&worker, &shared_worker().expect("a worker")),
+            "but the same worker thread, handed the new account"
+        );
+        assert!(
+            second.send(Command::TestConnection),
+            "and it is still listening"
+        );
     }
 
     #[test]

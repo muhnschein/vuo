@@ -42,7 +42,7 @@ endif
 
 .PHONY: all check fmt fmt-check clippy test qmllint qml-load shim deny \
         fuzz-check packaging harbour msrv fuzz-quick live-test vendor-check \
-        textart rpm vendor clean help
+        textart icons rpm vendor clean help
 
 all: check
 
@@ -194,6 +194,12 @@ live-test:
 ## Needs a QML runtime and a display (or xvfb); the results are committed.
 textart:
 	scripts/render-textart.sh
+
+## icons: re-render the four Harbour icon sizes from icons/harbour-vuo.svg.
+## Needs rsvg-convert; the results are committed, because the packaging path
+## has no SVG renderer.
+icons:
+	scripts/render-icons.sh
 
 ## rpm: build a device RPM. Needs the SailfishOS SDK (Docker build engine).
 rpm:

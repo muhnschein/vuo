@@ -23,7 +23,7 @@
 
 Name:       harbour-vuo
 Summary:    Miniflux feed reader for SailfishOS
-Version:    0.1.0
+Version:    1.0.0
 Release:    1
 License:    GPL-3.0-or-later
 Group:      Applications/Internet
@@ -36,7 +36,6 @@ Source2:    vendor.toml
 %endif
 
 Requires:   sailfishsilica-qt5 >= 0.10.9
-Requires:   nemo-qml-plugin-notifications-qt5
 # Sailfish.WebView, for the site page attached to the right of an article.
 # Ships with the OS since 3.1; this only states the dependency.
 Requires:   sailfish-components-webview-qt5
@@ -179,7 +178,10 @@ cargo build $jobs_opt \
     --features sailfishapp \
     $OFFLINE
 
-lrelease -idbased translations/*.ts || :
+# NOT -idbased, which the Sailfish app template uses: that keys messages by
+# `qtTrId` ids, and Vuo's strings are `qsTr`, keyed by context and source. With
+# -idbased every lookup misses and the app is English in every locale.
+lrelease translations/*.ts || :
 
 %install
 install -D %{targetdir}/harbour-vuo %{buildroot}%{_bindir}/harbour-vuo
@@ -217,5 +219,8 @@ install -Dm 644 LICENSE %{buildroot}%{_datadir}/harbour-vuo/LICENSE
 %{_datadir}/icons/hicolor/*/apps/harbour-vuo.png
 
 %changelog
+* Mon Sep 07 2026 Vuo contributors <noreply@example.invalid> - 1.0.0-1
+- First release.
+
 * Fri Aug 28 2026 Vuo contributors <noreply@example.invalid> - 0.1.0-1
 - Initial packaging.

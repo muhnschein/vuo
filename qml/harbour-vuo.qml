@@ -60,7 +60,14 @@ ApplicationWindow {
     // Asked one thing here: whether an account is stored at all. That
     // decides the first page, and it is read from the file on every access,
     // so it is right before anything has been loaded.
-    Settings { id: account }
+    //
+    // NOT `id: account`. OnboardingPage declares `property var account`, and a
+    // binding is resolved against the object's own properties before the ids
+    // around it -- so `account: account` in the Component below bound that
+    // property to itself. Qt called it a binding loop and left it null, which
+    // it did on a device while every check in the build passed. The id has to
+    // be a name no page declares.
+    Settings { id: accountSettings }
 
     // Models observe SQLite, and the worker writes to SQLite from another
     // thread. This is how they find out. A poll rather than a signal because
@@ -113,25 +120,33 @@ ApplicationWindow {
     }
 
     // A fresh install opens on the onboarding page instead of an empty list,
-    // and moves to the list once an account has been saved.
+    // and moves through setup to the list. Every step REPLACES the one before
+    // it, so the stack is one page deep the whole way and the article list
+    // ends up as the app's root: a welcome screen left underneath would be
+    // what a swipe back from the list landed on ever after.
     Component {
         id: onboarding
 
         OnboardingPage {
-            account: account
-            onFinished: app.showEntries()
+            onContinued: pageStack.replace(setup)
         }
     }
 
-    initialPage: account.configured ? entryList : onboarding
+    Component {
+        id: setup
 
-    /// Swap the onboarding page for the entry list, and fetch: a mirror that
-    /// has just been given a server has nothing in it yet, and the pulley's
-    /// Refresh should not be the first thing a new user has to find.
-    function showEntries() {
-        pageStack.replace(entryList)
-        entries.requestSync()
+        SetupDialog {
+            // Accepting navigates here itself, as part of the accept: nothing
+            // in this flow navigates from a signal handler any more.
+            acceptDestination: entryList
+            // A mirror that has just been given a server has nothing in it
+            // yet, and the pulley's Refresh should not be the first thing a
+            // new user has to find.
+            onConfigured: entries.requestSync()
+        }
     }
+
+    initialPage: accountSettings.configured ? entryList : onboarding
 
     // The cover is a separate Component so its bindings can reach the models
     // -- the unread count and the feeds it draws -- which a bare URL cover

@@ -633,17 +633,8 @@ mod tests {
 
         let dir = tempfile::tempdir().expect("tempdir");
         let db = vuo_core::db::Database::open(&dir.path().join("m.sqlite")).expect("mirror");
-        let signal = std::sync::Arc::new(crate::context::SyncSignal::default());
         let instance = url::Url::parse("https://miniflux.example/").expect("url");
-        let worker = crate::worker::Worker::spawn(
-            dir.path().join("m.sqlite"),
-            instance.clone(),
-            vuo_core::redact::ApiToken::new("t"),
-            vuo_core::api::TransportConfig::default(),
-            std::sync::Arc::clone(&signal),
-            |_| {},
-        );
-        let ctx = AppContext::new(db, worker, instance, signal, 0);
+        let ctx = crate::context::context_for_test(db, instance);
         let model = ArticleModel::default();
 
         for (setting, expected) in [
@@ -728,17 +719,8 @@ mod tests {
         })
         .expect("seed");
 
-        let signal = std::sync::Arc::new(crate::context::SyncSignal::default());
         let instance = url::Url::parse("https://miniflux.example/").expect("url");
-        let worker = crate::worker::Worker::spawn(
-            path,
-            instance.clone(),
-            vuo_core::redact::ApiToken::new("t"),
-            vuo_core::api::TransportConfig::default(),
-            std::sync::Arc::clone(&signal),
-            |_| {},
-        );
-        let ctx = AppContext::new(db, worker, instance, signal, 0);
+        let ctx = crate::context::context_for_test(db, instance);
         crate::context::install(std::rc::Rc::clone(&ctx));
 
         let mut model = ArticleModel::default();

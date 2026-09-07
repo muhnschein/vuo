@@ -31,6 +31,17 @@ pub const MEDIA_ALLOW: i32 = 2;
 /// Background refresh intervals, in minutes. Index 0 is "manual only".
 pub const SYNC_INTERVALS_MINUTES: [i64; 5] = [0, 15, 30, 60, 360];
 
+/// A new install syncs hourly.
+///
+/// "Manual only" was the default by accident rather than by choice: it is
+/// index 0, and index 0 is what `i32::default()` gives. So every new install
+/// was a reader that never refreshed until the user found the pulley menu --
+/// the one behaviour a feed reader must not have out of the box. Hourly is
+/// the compromise this settles on: often enough that the list is worth
+/// opening, rare enough to be invisible on a phone's battery and on a
+/// self-hosted server.
+pub const SYNC_INTERVAL_DEFAULT_INDEX: i32 = 3;
+
 /// When an opened article is marked read. Index 0 is "never".
 ///
 /// "Never" sits at index 0 on purpose: `i32::default()` is 0, so any future
@@ -151,23 +162,26 @@ impl Settings {
     /// Vuo is actually configured it took the loaded branch and passed with the
     /// default flipped.
     pub fn load_from(&mut self, paths: &AppPaths) {
-        if let Ok(account) = worker::load_account(&paths.account) {
-            self.serverUrl = QString::from(account.server_url);
-            // The key is loaded so the field is not blank when the user opens
-            // settings to change something else. It is displayed with
-            // echoMode: Password.
-            self.apiKey = QString::from(account.token);
-            self.useCustomCa = account.use_custom_ca;
-            self.mediaPolicy = account.media_policy;
-            self.syncIntervalIndex = account.sync_interval_index;
-            self.wifiOnly = account.wifi_only;
-            self.markReadDelayIndex = account.mark_read_delay_index;
-            return;
-        }
-        // First run: default to Ask rather than Strict, because on a stock
-        // Miniflux most images are un-proxied and Strict would blank them.
-        self.mediaPolicy = MEDIA_ASK;
-        self.markReadDelayIndex = MARK_READ_DEFAULT_INDEX;
+        // A first run gets `Account::default()`, which is the one place the
+        // out-of-the-box settings live -- and the same values serde fills in
+        // for a field an older account file does not carry.
+        //
+        // This branch used to write its own list of defaults, and the two
+        // drifted: a first run left the sync interval at `i32::default()`,
+        // which is "Manual only", while an account file merely MISSING the
+        // field was given the real default. A new install therefore never
+        // refreshed on its own.
+        let account = worker::load_account(&paths.account).unwrap_or_default();
+        self.serverUrl = QString::from(account.server_url);
+        // The key is loaded so the field is not blank when the user opens
+        // settings to change something else. It is displayed with
+        // echoMode: Password.
+        self.apiKey = QString::from(account.token);
+        self.useCustomCa = account.use_custom_ca;
+        self.mediaPolicy = account.media_policy;
+        self.syncIntervalIndex = account.sync_interval_index;
+        self.wifiOnly = account.wifi_only;
+        self.markReadDelayIndex = account.mark_read_delay_index;
     }
 
     fn is_configured(&self) -> bool {
@@ -207,6 +221,30 @@ impl Settings {
     /// rather than the settings screen: dropping three fields from this copy
     /// left it green.
     pub fn save_to(&mut self, paths: &AppPaths) {
+        self.store(paths);
+        // Last, with nothing after it. See `store`.
+        self.changed();
+    }
+
+    /// Write the account and make the running app match it. Emits nothing.
+    ///
+    /// Split from [`Settings::save_to`] so that `changed()` is emitted ONCE,
+    /// by whichever QML-invoked method is outermost, as its final act.
+    ///
+    /// That is not tidiness. `qmetaobject` dispatches every QML call by
+    /// building a fresh `&mut Self` from a raw pointer -- deliberately, so
+    /// that re-entrant calls work at all -- so emitting a signal part-way
+    /// through a `&mut self` method hands QML an object Rust still holds
+    /// exclusively. Every binding that reads `settings.pendingActions` (and
+    /// `configured`, which flips on the very first save) re-evaluates inside
+    /// that emit, and each one is a second live `&mut Settings` over the same
+    /// memory while this call's own is outstanding. `save_to` used to emit and
+    /// then RETURN INTO `test_connection_with`, which goes on to read and write
+    /// `self` -- so the aliasing window covered the rest of the tap, under
+    /// `lto = true, opt-level = "z"`, where the compiler is entitled to assume
+    /// it cannot happen.
+    fn store(&mut self, paths: &AppPaths) {
+        tracing::info!("saving the account");
         let account = Account {
             server_url: self.serverUrl.to_string().trim().to_owned(),
             token: self.apiKey.to_string().trim().to_owned(),
@@ -230,6 +268,7 @@ impl Settings {
             self.local_notice = Some((false, e.to_string()));
             return;
         }
+        tracing::info!("the account file is written");
 
         // Make the running app match what was just written.
         //
@@ -264,7 +303,7 @@ impl Settings {
                 minutes: sync_interval_minutes_for(self.syncIntervalIndex),
             });
         }
-        self.changed();
+        tracing::info!("the settings screen has published the saved account");
     }
 
     fn testConnection(&mut self) {
@@ -293,9 +332,19 @@ impl Settings {
         // not yet drained, since the page polls every 400ms -- would otherwise
         // be read as this tap's, and would short-circuit the check below.
         self.local_notice = None;
-        self.save_to(paths);
+        tracing::info!("testing the connection");
+        // `store` rather than `save_to`: the emit belongs at the end of this
+        // method, not in the middle of it. See `store`.
+        self.store(paths);
+        self.ask_the_worker();
+        // Last, with nothing after it. The line below reads no `self`.
+        self.changed();
+        tracing::info!("the settings screen has finished the test");
+    }
 
-        // `save_to` refreshes the context, so by here there is one unless the
+    /// Send the test, or record why it could not be sent. Emits nothing.
+    fn ask_the_worker(&mut self) {
+        // `store` refreshes the context, so by here there is one unless the
         // account could not be written or does not describe a usable
         // configuration -- in which case it left the reason here, and that
         // reason is better than anything this could add.
@@ -304,7 +353,7 @@ impl Settings {
         }
 
         let Some(ctx) = self.ctx.clone().or_else(crate::context::current) else {
-            // `save_to` returns early, without writing, when either field is
+            // `store` returns early, without writing, when either field is
             // blank -- so this is what an empty form reaches.
             self.local_notice = Some((
                 false,
@@ -313,7 +362,9 @@ impl Settings {
             return;
         };
 
-        if !ctx.send(Command::TestConnection) {
+        if ctx.send(Command::TestConnection) {
+            tracing::info!("the test is queued for the worker");
+        } else {
             // The worker stops itself if the mirror or the HTTP client could
             // not be built, and a send into its closed channel is silent.
             self.local_notice = Some((
@@ -399,6 +450,107 @@ pub fn sync_interval_minutes_for(index: i32) -> Option<i64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// §what a new install is set to before anyone has chosen anything.
+    ///
+    /// Two of these are the difference between a reader that works out of the
+    /// box and one that looks broken: never refreshing on its own, and
+    /// blanking every image. Both are index 0 of their list, and index 0 is
+    /// `i32::default()` -- so a default that is never applied does not look
+    /// like a wrong value, it looks like the first entry, which is exactly how
+    /// "Manual only" came to be what a new install got.
+    #[test]
+    fn a_first_run_is_set_up_to_work_before_anyone_configures_it() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let paths = temp_paths(&dir);
+
+        // The settings screen's read, with no account file to read.
+        let mut s = Settings::default();
+        s.load_from(&paths);
+        assert_eq!(s.mediaPolicy, MEDIA_ASK, "images: ask each site");
+        assert_eq!(
+            sync_interval_minutes_for(s.syncIntervalIndex),
+            Some(60),
+            "sync: hourly"
+        );
+        assert_eq!(s.markReadDelayIndex, MARK_READ_DEFAULT_INDEX);
+
+        // And what the setup dialog stores. It shows none of these controls,
+        // so the account it writes carries whatever this object holds -- which
+        // before `reload` is zero for every one of them.
+        //
+        // The discard port, not an unroutable address: saving builds a real
+        // worker, and hourly means it has a sync due. Port 9 refuses at once,
+        // where 10.77.0.1 would hold the thread for the connect timeout and
+        // the test binary cannot exit until it lets go.
+        s.serverUrl = QString::from("http://127.0.0.1:9/");
+        s.apiKey = QString::from("k");
+        s.save_to(&paths);
+        let stored = worker::load_account(&paths.account).expect("the account file");
+        assert_eq!(stored.media_policy, MEDIA_ASK);
+        assert_eq!(stored.sync_interval_index, SYNC_INTERVAL_DEFAULT_INDEX);
+        assert_eq!(stored.mark_read_delay_index, MARK_READ_DEFAULT_INDEX);
+    }
+
+    /// A QML-invoked method emits its signal LAST, and touches `self` no more.
+    ///
+    /// `qmetaobject` dispatches every QML call by building a fresh `&mut Self`
+    /// from a raw pointer, on purpose -- the generated code carries a FIXME
+    /// saying it skips `RefCell::borrow_mut` so that re-entrant calls work at
+    /// all. So an emitted signal is not a message posted for later: it runs
+    /// QML synchronously, and every binding that reads a property of THIS
+    /// object comes straight back through that dispatch as a second live
+    /// `&mut Settings` over the same memory. That is aliasing the compiler is
+    /// entitled to assume away, and the device package is built with
+    /// `lto = true, opt-level = "z"`, where it will.
+    ///
+    /// Emitting is still necessary -- it is how QML hears about anything -- so
+    /// the rule is not "never emit" but "emit once, at the end, and be
+    /// finished with `self`". `save_to` used to emit and then RETURN INTO
+    /// `test_connection_with`, which goes on to read and write `self`: the
+    /// aliasing window covered the rest of the tap.
+    ///
+    /// Read from the source because there is nothing at runtime to assert on.
+    #[test]
+    fn a_method_that_emits_is_finished_with_itself() {
+        const SOURCE: &str = include_str!("settings.rs");
+        const EMIT: &str = "self.changed()";
+
+        // The methods QML enters. Each must emit exactly once, last.
+        for signature in ["fn save_to(", "fn test_connection_with(", "fn reload("] {
+            let body = method_body(SOURCE, signature);
+            let emit = body
+                .rfind(EMIT)
+                .unwrap_or_else(|| panic!("{signature} no longer emits `changed`"));
+            let after = &body[emit + EMIT.len()..];
+            assert!(
+                !after.contains("self."),
+                "{signature} goes on using `self` after emitting:{after}"
+            );
+        }
+
+        // And the helpers they are split into emit nothing at all, or the
+        // split bought nothing.
+        for signature in ["fn store(", "fn ask_the_worker("] {
+            let body = method_body(SOURCE, signature);
+            assert!(
+                !body.contains(EMIT),
+                "{signature} exists so that the emit can be someone else's last act"
+            );
+        }
+    }
+
+    /// The text of one method, from its signature to its closing brace.
+    fn method_body<'a>(source: &'a str, signature: &str) -> &'a str {
+        let start = source
+            .find(signature)
+            .unwrap_or_else(|| panic!("{signature} is gone; the rule it carries is not"));
+        let rest = &source[start..];
+        let end = rest
+            .find("\n    }\n")
+            .unwrap_or_else(|| panic!("{signature} has no closing brace at method indent"));
+        &rest[..end]
+    }
 
     fn temp_paths(dir: &tempfile::TempDir) -> AppPaths {
         let base = dir.path().join("harbour-vuo");

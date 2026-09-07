@@ -224,6 +224,78 @@ fn a_feed_view_is_never_given_a_tabs_model() {
     );
 }
 
+/// §no property is bound to itself.
+///
+/// `account: account` inside an `OnboardingPage { }` does not mean "the id
+/// called account". A binding is resolved against the object's OWN properties
+/// first, and OnboardingPage declares `property var account` -- so the name on
+/// the right is the name on the left, and Qt reports a binding loop and leaves
+/// the property at its default. Everything that reads it then quietly does
+/// nothing.
+///
+/// This shipped. It was in a device log as
+/// `QML OnboardingPage: Binding loop detected for property "account"`, and
+/// nothing in the build had seen it: `qml_loads.rs` already fails on that
+/// exact warning, but only for bindings it evaluates, and a `Component { }`
+/// inside a file is not instantiated by creating that file's root object.
+/// Reading the source catches it whether or not anything instantiates it.
+///
+/// A `key: value` pair inside a call's arguments -- `pageStack.push(url, {
+/// hideGlobally: hideGlobally })` -- is the opposite: there the left name is
+/// the property being set on the pushed page and the right one is a role in
+/// scope, which is exactly right. Those sit inside parentheses; a property
+/// binding in an object declaration does not. That is the whole difference,
+/// and it is what the depth count below is for.
+#[test]
+fn no_property_is_bound_to_itself() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(2)
+        .expect("the workspace root");
+
+    let mut files = Vec::new();
+    qml_files(&root.join("qml"), &mut files);
+    files.sort();
+    assert!(!files.is_empty(), "no QML found");
+
+    let mut found: Vec<String> = Vec::new();
+    for file in &files {
+        let source = std::fs::read_to_string(file).expect("read qml");
+        // Parens inside a string or a comment are not nesting.
+        let source = strip_strings_and_comments(&source);
+        let mut depth: i32 = 0;
+        for (lineno, line) in source.lines().enumerate() {
+            if depth == 0 {
+                if let Some((left, right)) = line.split_once(':') {
+                    let left = left.trim();
+                    let right = right.trim().trim_end_matches(',');
+                    if !left.is_empty()
+                        && left == right
+                        && left.chars().all(|c| c.is_alphanumeric() || c == '_')
+                        && left.chars().next().is_some_and(char::is_alphabetic)
+                    {
+                        found.push(format!(
+                            "{}:{} — `{left}: {right}` binds a property to itself",
+                            file.strip_prefix(root).unwrap_or(file).display(),
+                            lineno + 1
+                        ));
+                    }
+                }
+            }
+            depth += line.chars().filter(|c| *c == '(').count() as i32;
+            depth -= line.chars().filter(|c| *c == ')').count() as i32;
+            depth = depth.max(0);
+        }
+    }
+
+    assert!(
+        found.is_empty(),
+        "a binding whose value is its own name is a loop, not a reference to \
+         an id of that name; rename one of the two:\n{}",
+        found.join("\n")
+    );
+}
+
 /// Role names exposed through `role_names()`, which delegates see as
 /// context properties rather than as members of the model.
 fn declared_roles(root: &Path) -> BTreeSet<String> {

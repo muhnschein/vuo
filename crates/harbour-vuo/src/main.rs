@@ -25,14 +25,37 @@
 use qmetaobject::*;
 
 fn main() {
+    // `vuo_shim=info` is in the default on purpose, not only under `VUO_LOG`.
+    //
+    // The shim logs a bare handful of lines a session, and they are the ones
+    // that matter when something goes wrong where no Rust diagnostic can
+    // follow it: opening the mirror, starting the sync worker, installing the
+    // context. A device process that dies on a signal prints no backtrace and
+    // no panic message — the binary is stripped — so the last line reached is
+    // the whole of the evidence, and a user reproducing a crash should not
+    // have to know an environment variable to produce it.
     tracing_subscriber::fmt()
         .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_env("VUO_LOG")
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn,vuo_core=info")),
+            tracing_subscriber::EnvFilter::try_from_env("VUO_LOG").unwrap_or_else(|_| {
+                tracing_subscriber::EnvFilter::new(
+                    "warn,vuo_core=info,vuo_shim=info,harbour_vuo=info",
+                )
+            }),
         )
         .init();
 
     vuo_shim::register_qml_types();
+
+    // The sync worker's thread, before anything else and whether or not there
+    // is an account for it to serve yet.
+    //
+    // Not an optimisation. Creating this thread later — from the QML tap that
+    // saves a first account — kills the process on a Jolla Phone 2026, with no
+    // panic and no diagnostic. Started here, while the process is still a
+    // handful of threads and Wayland and the GPU stack have not been loaded,
+    // it costs a parked thread and is handed its account by a channel send
+    // when the user configures one. See `vuo_shim::context::start_worker`.
+    vuo_shim::context::start_worker();
 
     // Install the shared context before any QML loads: QML constructs the
     // models itself, so they resolve their database and worker through the

@@ -126,3 +126,69 @@ names the assumption it protects. That is what makes it worth running against
 an ephemeral server weekly: cursor semantics and mutation idempotency are
 contract questions about someone else's software, and the alternative to
 checking them is finding out by regression.
+
+### A crash that only happens on a device
+
+`make check` runs the QML in a real engine, and the shim's tests drive the
+settings screen's save-and-test path against a temporary home directory. Both
+are worth having, and neither reproduces a fault that needs a phone: Sailfish's
+Qt, libhybris, Sailjail, and an `aarch64` binary built at `opt-level = "z"` with
+fat LTO are all outside what a laptop can stand in for.
+
+When the process dies on a **signal** rather than an error, there is nothing
+else to read. The device package is stripped, so a backtrace names no
+functions; `panic = "abort"` means a Rust panic would at least print its
+message first, so a silent death (`echo $?` → 139, `SIGSEGV`) is *not* a panic
+and no Rust diagnostic is coming. `/proc/sys/kernel/core_pattern` is
+`|/bin/false` on a stock device, so there is no core either. The only evidence
+is the last line the process managed to log.
+
+That is why the shim logs at `info` **by default**, not only under `VUO_LOG`,
+and why the account path is narrated step by step. It is how the one fault this
+found was found: creating a thread from the Qt thread, once Wayland and the GPU
+stack were up, killed the process outright — the line before
+`thread::Builder::spawn` was the last thing printed, and neither the parent's
+next line nor the new thread's first one ever arrived. That is why the sync
+worker's thread is now created in `main`, before the UI, and handed its account
+by a channel send afterwards. **A thread created after start-up is a hazard on
+this platform**; if another one is ever needed, start it there too.
+
+Run the app from a terminal so the lines are on screen:
+
+```sh
+rm -rf ~/.local/share/harbour-vuo ~/.cache/harbour-vuo   # a genuine first run
+sailjail /usr/bin/harbour-vuo ; echo $?                  # 139 SIGSEGV, 134 abort, 137 OOM
+```
+
+Every launch starts the worker, whether or not there is an account:
+
+```
+the sync worker thread is spawned    # the Qt thread, as `spawn` returns
+the sync worker thread is running    # the worker thread's own first statement
+the sync runtime is up
+```
+
+Those two are a deliberate pair. Once the process is gone, nothing else says
+which thread it died on, and they interleave by a few microseconds — so read
+them as a pair rather than as an order. Saving an account then reads:
+
+```
+saving the account
+the account file is written
+opening the mirror
+handing the account to the sync worker
+the application context is built
+the application context is installed
+the settings screen has published the saved account
+the test is queued for the worker            # only from the Test button
+the settings screen has finished the test
+the worker has opened the mirror             # the worker thread, in parallel
+the sync worker is ready
+asking the server who we are
+```
+
+Whichever line is missing bounds the fault to the statements between it and the
+one before it. One test costs nothing and separates the two halves: fill in the
+server and the key and **swipe back instead of tapping Test connection**. The
+page saves on destruction, so that runs everything up to and including handing
+the account over, and none of the network round trip.

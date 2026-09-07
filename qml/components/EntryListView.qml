@@ -216,6 +216,28 @@ SilicaListView {
     }
 
     PullDownMenu {
+        id: pulley
+
+        /// Set by Refresh, acted on once this menu is off the screen.
+        property bool refreshPending: false
+
+        // Refreshing resets the model, and a reset re-lays out the very view
+        // this menu is drawn inside. Done from the tap, that lands while the
+        // menu is still animating shut and interrupts it half way: reported
+        // from a device as the menu springing fully open, refreshing, and only
+        // then letting the list back. So the tap ARMS the refresh and this
+        // runs it once the menu is actually gone.
+        //
+        // Refresh is the only item here that needed it. Every other one
+        // pushes a page or opens a remorse popup, and neither of those touches
+        // this view -- which is why it was the only one that looked wrong.
+        onActiveChanged: {
+            if (!pulley.active && pulley.refreshPending) {
+                pulley.refreshPending = false
+                listView.entryModel.requestSync()
+            }
+        }
+
         // ------------------------------------------------ selection mode
         // What to do with the selection. Nothing here is destructive, so
         // no remorse: a row marked read by mistake is one tap from unread.
@@ -298,10 +320,12 @@ SilicaListView {
         MenuItem {
             visible: !listView.selecting
             text: qsTr("Refresh")
-            // Asks the worker for a network sync. `refresh()` alone only
-            // re-reads the local mirror, so on its own the pulley menu
-            // never actually talked to the server.
-            onClicked: listView.entryModel.requestSync()
+            // Armed here, run when the menu has closed: see
+            // `pulley.onActiveChanged`. `requestSync` asks the worker for a
+            // network sync -- `refresh()` alone only re-reads the local
+            // mirror, so on its own the pulley menu never actually talked to
+            // the server.
+            onClicked: pulley.refreshPending = true
         }
     }
 

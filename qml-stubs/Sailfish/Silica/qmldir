@@ -15,6 +15,7 @@ Orientation 1.0 Orientation.qml
 TruncationMode 1.0 TruncationMode.qml
 BusyIndicatorSize 1.0 BusyIndicatorSize.qml
 PageStatus 1.0 PageStatus.qml
+PageStackAction 1.0 PageStackAction.qml
 
 ApplicationWindow 1.0 ApplicationWindow.qml
 Page 1.0 Page.qml

@@ -20,7 +20,7 @@
 
 Name:       harbour-vuo
 Summary:    Miniflux feed reader for SailfishOS
-Version:    0.1.0
+Version:    1.0.0
 # `--define "vuo_release N"` (scripts/cross-rpm.sh, from VUO_RELEASE) stamps a
 # CI build so each one installs as an upgrade of the last; the tree keeps 1.
 Release:    %{?vuo_release}%{!?vuo_release:1}
@@ -30,15 +30,21 @@ URL:        https://github.com/muhnschein/vuo
 BuildArch:  aarch64
 
 Requires:   sailfishsilica-qt5 >= 0.10.9
-Requires:   nemo-qml-plugin-notifications-qt5
 # Sailfish.WebView, for the site page attached to the right of an article.
 Requires:   sailfish-components-webview-qt5
 
-# The binary's real needs are already known and verified from its ELF header
-# (Qt5 Core/Gui/Widgets/Quick/Qml, libsailfishapp.so.1, glibc <= 2.30). Letting
-# a non-Sailfish rpmbuild generate them instead produces Provides/Requires
-# strings the phone's rpmdb does not recognise, and the install fails on
-# dependencies that are in fact present.
+# The two Requires above are PACKAGE-level and deliberately so.
+#
+# The binary's real needs are known and checked from its ELF header on every
+# build (scripts/check-linked-libs.sh), and everything it links comes with the
+# two packages named above. Letting a non-Sailfish rpmbuild generate soname
+# requires instead was tried and produces Provides/Requires strings the phone's
+# rpmdb does not recognise -- the install then fails on dependencies that are
+# in fact present, which is a worse failure than having none.
+#
+# rpm/harbour-vuo.spec, which builds under sb2 with Sailfish's own rpm, leaves
+# the generator ON. That is the right arrangement for each: the SDK's rpm gets
+# the strings right, Ubuntu's does not.
 AutoReqProv: no
 
 %description
@@ -92,5 +98,8 @@ install -D -m 644 %{_sourcedir}/LICENSE \
 %{_datadir}/icons/hicolor/*/apps/harbour-vuo.png
 
 %changelog
+* Mon Sep 07 2026 Vuo contributors <noreply@example.invalid> - 1.0.0-1
+- First release.
+
 * Sat Aug 29 2026 Vuo contributors <noreply@example.invalid> - 0.1.0-1
 - Cross-built test package: rebuild the app context when an account is saved.
