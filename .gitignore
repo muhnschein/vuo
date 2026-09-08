@@ -18,6 +18,10 @@
 # and the rendered store/cover.png is what is tracked.
 /.fonts/
 
+# SonarQube scanner working directory (see sonar-project.properties). The
+# reports it reads are written under target/, which is ignored above.
+/.scannerwork/
+
 # insta snapshot review leftovers
 *.snap.new
 

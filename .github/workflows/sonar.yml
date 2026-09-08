@@ -1,0 +1,110 @@
+# SonarQube Cloud analysis.
+#
+# Kept out of ci.yml on purpose. ci.yml is the GATE -- it installs dependencies
+# and calls `make check`, and §8's rule is that a contributor's green `make
+# check` is a green CI. This workflow is a REPORT: it cannot fail a change on
+# its own findings, and the quality gate it publishes is advice, not intake.
+# Folding it into the gate job would quietly make a hosted service part of the
+# rule that says a laptop is enough.
+#
+# The two inputs Sonar imports -- clippy diagnostics and coverage -- are
+# produced by `make sonar-reports`, so what runs here can be run at home. See
+# sonar-project.properties for why the scanner does not produce them itself.
+
+name: SonarQube
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+
+# Nothing here writes. SonarQube Cloud decorates pull requests through its own
+# GitHub App, not through this token.
+permissions:
+  contents: read
+
+concurrency:
+  group: sonar-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  sonar:
+    name: SonarQube Cloud
+    runs-on: ubuntu-latest
+    # A pull request from a fork gets no secrets, so SONAR_TOKEN would be
+    # empty and the scan would fail on every such PR with an authentication
+    # error that looks like a broken setup. Skip it instead; the analysis of
+    # the merge lands when the branch reaches main.
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          # Sonar reads git blame to decide what counts as new code. A shallow
+          # clone leaves every line looking as though it landed in this commit.
+          fetch-depth: 0
+
+      - name: Install Qt
+        run: |
+          sudo apt-get update
+          # Same set as ci.yml: the -dev packages omit the QtQuick runtime
+          # plugin, and the shim's tests instantiate QtQuick items.
+          sudo apt-get install -y --no-install-recommends \
+            qtbase5-dev \
+            qtdeclarative5-dev \
+            qtdeclarative5-dev-tools \
+            qml-module-qtquick2
+
+      # Every action here is pinned to a full commit SHA, the version it
+      # resolved to named beside it. A tag is a moving pointer the action's
+      # owner -- or whoever compromises them -- can re-aim at a different
+      # commit, which is how tj-actions/changed-files became CVE-2025-30066;
+      # a SHA cannot be re-aimed. SonarQube flags the unpinned form as S7637,
+      # and it is right to: this job holds SONAR_TOKEN.
+      #
+      # `toolchain` is passed explicitly because dtolnay/rust-toolchain takes
+      # it from the REF NAME it was called with, and a SHA has no name. The
+      # pinned commit is the head of the action's `stable` branch, whose
+      # action.yml defaults to the same value -- the explicit input is what
+      # keeps that readable.
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          toolchain: stable
+          components: clippy, llvm-tools-preview
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@d438492cf8a250514fa2d34b30bc3c0dc37c65ff # v2.87.8
+        with:
+          tool: cargo-llvm-cov
+
+      - name: make sonar-reports
+        run: make sonar-reports
+
+      # One version, in Cargo.toml. scripts/check-packaging.sh already fails a
+      # build where the spec file disagrees with it; this keeps SonarQube from
+      # becoming a third copy to forget.
+      - name: Read the workspace version
+        id: version
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "analysing version $version"
+
+      - name: SonarQube Scan
+        uses: SonarSource/sonarqube-scan-action@7006c4492b2e0ee0f816d36501671557c97f5995 # v8.1.0
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          # SONAR_HOST_URL is not set: unset means SonarQube Cloud, and a
+          # self-hosted Server is what needs it.
+          args: >
+            -Dsonar.projectVersion=${{ steps.version.outputs.version }}
