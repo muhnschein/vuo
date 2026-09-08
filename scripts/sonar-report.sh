@@ -27,7 +27,7 @@ set -euo pipefail
 # SonarQube's own shell analyser cannot parse them -- it reported "Syntax
 # error at 121:63" on the first version of this file and then analysed none
 # of it. A script that turns off the checker it ships beside is not clever.
-if [ "$#" -ge 1 ]; then
+if [[ "$#" -ge 1 ]]; then
     TASK_FILE=$1
 else
     TASK_FILE=.scannerwork/report-task.txt
@@ -38,7 +38,7 @@ fi
 SONAR_TOKEN=$(printenv SONAR_TOKEN || true)
 SUMMARY=$(printenv GITHUB_STEP_SUMMARY || true)
 
-if [ ! -f "$TASK_FILE" ]; then
+if [[ ! -f "$TASK_FILE" ]]; then
     echo "no $TASK_FILE -- the scanner did not get as far as uploading" >&2
     exit 1
 fi
@@ -56,12 +56,12 @@ DASHBOARD=$(field dashboardUrl)
 # Which slice was analysed. Taken from the dashboard URL the scanner wrote
 # rather than passed in, so this cannot disagree with what was uploaded.
 SCOPE=$(printf '%s' "$DASHBOARD" | sed -n 's/.*[?&]\(pullRequest=[^&]*\).*/\1/p')
-if [ -z "$SCOPE" ]; then
+if [[ -z "$SCOPE" ]]; then
     SCOPE=$(printf '%s' "$DASHBOARD" | sed -n 's/.*[?&]\(branch=[^&]*\).*/\1/p')
 fi
 SCOPE_Q=""
 SCOPE_LABEL="default branch"
-if [ -n "$SCOPE" ]; then
+if [[ -n "$SCOPE" ]]; then
     SCOPE_Q="$SCOPE&"
     SCOPE_LABEL=$SCOPE
 fi
@@ -82,17 +82,17 @@ code=""
 fetch() {
     local url=$1
     local auth=$2
-    if [ -n "$auth" ]; then
+    if [[ -n "$auth" ]]; then
         code=$(curl -sS --max-time 30 -u "$auth:" -o "$BODY" -w '%{http_code}' "$url") || return 1
     else
         code=$(curl -sS --max-time 30 -o "$BODY" -w '%{http_code}' "$url") || return 1
     fi
-    [ "$code" = "200" ]
+    [[ "$code" = "200" ]]
 }
 
 api() {
     local url=$1
-    if [ -n "$SONAR_TOKEN" ] && fetch "$url" "$SONAR_TOKEN"; then
+    if [[ -n "$SONAR_TOKEN" ]] && fetch "$url" "$SONAR_TOKEN"; then
         return 0
     fi
     if fetch "$url" ""; then
@@ -120,11 +120,11 @@ for _ in $(seq 60); do
     if api "$TASK_URL"; then
         misses=0
         status=$(jq -r '.task.status // "?"' "$BODY")
-        if [ "$status" = "SUCCESS" ]; then
+        if [[ "$status" = "SUCCESS" ]]; then
             analysis=$(jq -r '.task.analysisId // ""' "$BODY")
             break
         fi
-        if [ "$status" = "FAILED" ] || [ "$status" = "CANCELED" ]; then
+        if [[ "$status" = "FAILED" ]] || [[ "$status" = "CANCELED" ]]; then
             break
         fi
     else
@@ -132,7 +132,7 @@ for _ in $(seq 60); do
         # answer is not a verdict -- but a permanent one must not cost five
         # minutes of runner time either.
         misses=$((misses + 1))
-        if [ "$misses" -ge 5 ]; then
+        if [[ "$misses" -ge 5 ]]; then
             echo "the compute task cannot be read; giving up" >&2
             break
         fi
@@ -140,8 +140,8 @@ for _ in $(seq 60); do
     sleep 5
 done
 
-if [ "$status" != "SUCCESS" ]; then
-    if [ -z "$status" ]; then
+if [[ "$status" != "SUCCESS" ]]; then
+    if [[ -z "$status" ]]; then
         status=unknown
     fi
     echo "the server did not finish processing the report (status: $status)" >&2
@@ -196,7 +196,7 @@ if api "$SERVER/api/issues/search?componentKeys=$KEY&${SCOPE_Q}resolved=false&ps
     {
         echo "### Open issues: $total"
         echo
-        if [ "$total" = "0" ]; then
+        if [[ "$total" = "0" ]]; then
             echo "None."
         else
             echo '```'
@@ -204,7 +204,7 @@ if api "$SERVER/api/issues/search?componentKeys=$KEY&${SCOPE_Q}resolved=false&ps
                 (.issues // [])[]
                 | "\(.severity // (.impacts[0].severity? // "?"))  \(.rule)  \(.component | sub("^[^:]*:";""))\(if .line then ":\(.line)" else "" end)  \(.message)"
             ' "$BODY"
-            if [ "$total" -gt 100 ]; then
+            if [[ "$total" -gt 100 ]]; then
                 echo "... $((total - 100)) more not listed"
             fi
             echo '```'
@@ -216,6 +216,6 @@ fi
 echo "$DASHBOARD" >>"$out"
 
 cat "$out"
-if [ -n "$SUMMARY" ]; then
+if [[ -n "$SUMMARY" ]]; then
     cat "$out" >>"$SUMMARY"
 fi

@@ -22,7 +22,7 @@ BIN="target/$TRIPLE/release/harbour-vuo"
 # feature bugs. Cargo makes the no-op case cheap; the guard did not make the
 # wrong case detectable.
 "$ROOT/scripts/cross-build.sh" "$@"
-[ -f "$BIN" ] || { echo "cross-build.sh produced no $BIN" >&2; exit 1; }
+[[ -f "$BIN" ]] || { echo "cross-build.sh produced no $BIN" >&2; exit 1; }
 
 command -v rpmbuild >/dev/null || { echo "rpmbuild not found" >&2; exit 127; }
 
@@ -36,7 +36,7 @@ mkdir -p "$TOP"/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
 # not installed here, and a .qm built by a newer Qt is not guaranteed readable
 # by the device's Qt 5.6 anyway. The SDK ships the matching one.
 SR_TR="$ROOTFS/srv/mer/targets/SailfishOS-${SDK_VERSION:-5.0.0.43}-aarch64"
-if [ -x "$SR_TR/usr/lib64/qt5/bin/lrelease" ] && ls translations/*.ts >/dev/null 2>&1; then
+if [[ -x "$SR_TR/usr/lib64/qt5/bin/lrelease" ]] && ls translations/*.ts >/dev/null 2>&1; then
     echo "== compiling translations =="
     qemu-aarch64-static -L "$SR_TR" \
         -E LD_LIBRARY_PATH="$SR_TR/usr/lib64:$SR_TR/lib64" \

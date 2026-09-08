@@ -16,12 +16,12 @@ bad() { echo "FAIL: $*" >&2; fail=1; }
 echo "== packaging checks =="
 
 SPEC=rpm/harbour-vuo.spec
-[ -f "$SPEC" ] || { bad "$SPEC is missing"; exit 1; }
+[[ -f "$SPEC" ]] || { bad "$SPEC is missing"; exit 1; }
 
 # 1. The spec's version must match the workspace's.
 spec_version=$(sed -n 's/^Version:[[:space:]]*//p' "$SPEC" | head -1)
 cargo_version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
-if [ "$spec_version" != "$cargo_version" ]; then
+if [[ "$spec_version" != "$cargo_version" ]]; then
     bad "version drift: spec says $spec_version, Cargo.toml says $cargo_version"
 else
     note "version $spec_version matches Cargo.toml"
@@ -44,12 +44,12 @@ installed=$(
         | grep -v '^%' \
         | sort -u
 )
-[ -n "$installed" ] || bad "no install lines found in $SPEC; check #2 would be vacuous"
+[[ -n "$installed" ]] || bad "no install lines found in $SPEC; check #2 would be vacuous"
 
 resolutions=$(sed -n 's/^for RES in \(.*\); do/\1/p' "$SPEC" | head -1)
 checked=0
 while IFS= read -r f; do
-    [ -n "$f" ] || continue
+    [[ -n "$f" ]] || continue
     case "$f" in
         *'*'*) continue ;;                  # a guarded glob, e.g. translations/*.qm
         *'{}'*) continue ;;                 # find -exec placeholder; the sweep below covers qml/
@@ -57,22 +57,22 @@ while IFS= read -r f; do
             for res in $resolutions; do
                 target=${f//\$\{RES\}/$res}
                 checked=$((checked + 1))
-                [ -e "$target" ] || bad "the spec installs $target, which does not exist"
+                [[ -e "$target" ]] || bad "the spec installs $target, which does not exist"
             done
             continue
             ;;
     esac
     checked=$((checked + 1))
-    [ -e "$f" ] || bad "the spec installs $f, which does not exist"
+    [[ -e "$f" ]] || bad "the spec installs $f, which does not exist"
 done <<< "$installed"
 
 # desktop-file-install and the `find ./qml` sweep are not `install -D` lines.
 for f in harbour-vuo.desktop qml/harbour-vuo.qml LICENSE; do
     checked=$((checked + 1))
-    [ -e "$f" ] || bad "the spec installs $f, which does not exist"
+    [[ -e "$f" ]] || bad "the spec installs $f, which does not exist"
 done
 
-[ "$checked" -ge 7 ] || bad "check #2 only examined $checked files; the spec parse must have failed"
+[[ "$checked" -ge 7 ]] || bad "check #2 only examined $checked files; the spec parse must have failed"
 note "every file the spec installs is present ($checked checked, derived from the spec)"
 
 # 3. The desktop entry must validate.
@@ -96,7 +96,7 @@ build_line=$(
         | grep -E '(^|[^[:alnum:]_])cargo build' \
         | head -1
 )
-if [ -z "$build_line" ]; then
+if [[ -z "$build_line" ]]; then
     bad "the spec has no cargo build line"
 else
     case "$build_line" in
@@ -125,26 +125,26 @@ fi
 missing_qm=""
 drifted=""
 reference=$(grep -c "<message" translations/harbour-vuo-en.ts 2>/dev/null || echo 0)
-if [ "$reference" -eq 0 ]; then
+if [[ "$reference" -eq 0 ]]; then
     bad "translations/harbour-vuo-en.ts is missing; it is the reference catalogue"
 else
     for ts in translations/*.ts; do
-        [ -f "${ts%.ts}.qm" ] || missing_qm="$missing_qm ${ts##*/}"
+        [[ -f "${ts%.ts}.qm" ]] || missing_qm="$missing_qm ${ts##*/}"
         n=$(grep -c "<message" "$ts")
-        [ "$n" -eq "$reference" ] || drifted="$drifted ${ts##*/}($n)"
+        [[ "$n" -eq "$reference" ]] || drifted="$drifted ${ts##*/}($n)"
     done
-    [ -z "$missing_qm" ] || bad "no compiled .qm for:$missing_qm -- run lrelease translations/*.ts"
-    [ -z "$drifted" ] || bad "these catalogues disagree with English ($reference messages):$drifted -- run lupdate over all of them"
-    if [ -z "$missing_qm" ] && [ -z "$drifted" ]; then
+    [[ -z "$missing_qm" ]] || bad "no compiled .qm for:$missing_qm -- run lrelease translations/*.ts"
+    [[ -z "$drifted" ]] || bad "these catalogues disagree with English ($reference messages):$drifted -- run lupdate over all of them"
+    if [[ -z "$missing_qm" ]] && [[ -z "$drifted" ]]; then
         note "$(ls translations/*.ts | wc -l | tr -d ' ') translations, all compiled and all carrying $reference messages"
     fi
 fi
 
 # 6. Cargo.lock must be committed: OBS builds --locked and offline.
-[ -f Cargo.lock ] || bad "Cargo.lock must be committed for reproducible offline builds"
+[[ -f Cargo.lock ]] || bad "Cargo.lock must be committed for reproducible offline builds"
 note "Cargo.lock is present"
 
-if [ "$fail" -ne 0 ]; then
+if [[ "$fail" -ne 0 ]]; then
     echo "packaging checks FAILED" >&2
     exit 1
 fi

@@ -18,7 +18,7 @@ ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 QMLSCENE=${QMLSCENE:-$(command -v qmlscene || true)}
-if [ -z "$QMLSCENE" ] || [ ! -x "$QMLSCENE" ]; then
+if [[ -z "$QMLSCENE" ]] || [[ ! -x "$QMLSCENE" ]]; then
     echo "qmlscene not found. Install qtdeclarative5-dev-tools (Debian) or set QMLSCENE." >&2
     exit 1
 fi
@@ -26,7 +26,7 @@ fi
 FONT_DIR=${VUO_FONT_DIR:-"$ROOT/.fonts"}
 LIGHT="$FONT_DIR/FiraSans-Light.ttf"
 BOOK="$FONT_DIR/FiraSans-Regular.ttf"
-if [ ! -f "$LIGHT" ] || [ ! -f "$BOOK" ]; then
+if [[ ! -f "$LIGHT" ]] || [[ ! -f "$BOOK" ]]; then
     echo "== fetching Fira Sans (SIL OFL) into $FONT_DIR =="
     mkdir -p "$FONT_DIR"
     # Resolved through the CSS API rather than hardcoding a versioned path,
@@ -35,7 +35,7 @@ if [ ! -f "$LIGHT" ] || [ ! -f "$BOOK" ]; then
         echo "could not reach Google Fonts; set VUO_FONT_DIR to a directory holding the two files." >&2
         exit 1; }
     mapfile -t urls < <(grep -oE "https://fonts.gstatic.com/[^)]*" <<< "$css")
-    [ "${#urls[@]}" -ge 2 ] || { echo "the font CSS named ${#urls[@]} files, expected 2" >&2; exit 1; }
+    [[ "${#urls[@]}" -ge 2 ]] || { echo "the font CSS named ${#urls[@]} files, expected 2" >&2; exit 1; }
     curl -sSfL "${urls[0]}" -o "$LIGHT"
     curl -sSfL "${urls[1]}" -o "$BOOK"
 fi
@@ -47,17 +47,17 @@ cp "$LIGHT" "$work/FiraSans-Light.ttf"
 cp "$BOOK" "$work/FiraSans-Regular.ttf"
 
 echo "== painting the cover =="
-if command -v xvfb-run >/dev/null 2>&1 && [ -z "${DISPLAY:-}" ]; then
+if command -v xvfb-run >/dev/null 2>&1 && [[ -z "${DISPLAY:-}" ]]; then
     ( cd "$work" && xvfb-run -a -s "-screen 0 1400x1000x24" \
         env QT_QPA_PLATFORM=xcb "$QMLSCENE" -I "$ROOT/qml-stubs" store-cover.qml )
-elif [ -n "${DISPLAY:-}" ]; then
+elif [[ -n "${DISPLAY:-}" ]]; then
     ( cd "$work" && QT_QPA_PLATFORM=xcb "$QMLSCENE" -I "$ROOT/qml-stubs" store-cover.qml )
 else
     echo "no DISPLAY and no xvfb-run: install xvfb, or run this on a desktop." >&2
     exit 1
 fi
 
-[ -f "$work/cover.png" ] || { echo "the painter wrote nothing; see the output above." >&2; exit 1; }
+[[ -f "$work/cover.png" ]] || { echo "the painter wrote nothing; see the output above." >&2; exit 1; }
 mkdir -p store
 cp "$work/cover.png" store/cover.png
 echo "  wrote store/cover.png ($(du -h store/cover.png | cut -f1)); commit it."

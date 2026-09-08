@@ -62,6 +62,13 @@ numbers sit beside the commit that earned them, readable without an account.
 It waits for the server to finish processing first: asking too early returns
 the PREVIOUS run's numbers, which is worse than none, because they look right.
 
+Where Sonar's rules and this repository's habits disagree, **Sonar wins**.
+That is a decision, not a default: the shell scripts use `[[` rather than `[`
+because `shelldre:S7688` asked for it, and `scripts/sonar-report.sh` avoids
+`${VAR:+...}` because Sonar's shell parser cannot read it. The one exception
+is `scripts/fuzz-seed.sh`, which is `#!/bin/sh`: `[[` is a bash keyword, and a
+rule cannot be followed into a syntax error.
+
 Two things worth knowing before reading a report. Imported clippy findings
 arrive as **external issues**: they do count toward the quality gate, but the
 rules raising them cannot be switched off in a Sonar quality profile — clippy's

@@ -24,15 +24,15 @@ SDK_VERSION="${SDK_VERSION:-5.0.0.43}"
 TRIPLE=aarch64-unknown-linux-gnu
 
 SR="$ROOTFS/srv/mer/targets/SailfishOS-${SDK_VERSION}-${ARCH}"
-[ -d "$SR" ] || { echo "no target sysroot at $SR" >&2; exit 1; }
+[[ -d "$SR" ]] || { echo "no target sysroot at $SR" >&2; exit 1; }
 
 # GCC resolves cc1, its specs and its libexec against its own absolute install
 # prefix, so it has to be reachable at /opt/cross rather than in place.
-if [ ! -e /opt/cross ]; then
+if [[ ! -e /opt/cross ]]; then
     ln -sfn "$ROOTFS/opt/cross" /opt/cross
 fi
 CROSS=/opt/cross/bin/aarch64-meego-linux-gnu
-[ -x "$CROSS-gcc" ] || { echo "no cross gcc at $CROSS-gcc" >&2; exit 1; }
+[[ -x "$CROSS-gcc" ]] || { echo "no cross gcc at $CROSS-gcc" >&2; exit 1; }
 
 # GCC invokes plain `as` and `ld`; without -B it finds the host's x86 binutils
 # on PATH and dies with "as: unrecognized option '-EL'".
@@ -117,7 +117,7 @@ soft=0
 case "$hdr" in *GNU_RELRO*) echo "   ok       RELRO" ;; *) echo "   MISSING  RELRO"; soft=1 ;; esac
 case "$dyn" in *BIND_NOW*|*"Flags: NOW"*) echo "   ok       BIND_NOW" ;; *) echo "   MISSING  BIND_NOW"; soft=1 ;; esac
 case "$(file -b "$BIN")" in *"pie executable"*) echo "   ok       PIE" ;; *) echo "   MISSING  PIE"; soft=1 ;; esac
-[ "$soft" -eq 0 ] || echo "WARNING: the binary is built softer than an SDK build would be." >&2
+[[ "$soft" -eq 0 ]] || echo "WARNING: the binary is built softer than an SDK build would be." >&2
 
 echo "-- shared libraries, against Harbour's allowed list --"
 if "$ROOT/scripts/check-linked-libs.sh" "$BIN" "$BINDIR/readelf"; then

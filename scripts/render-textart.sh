@@ -16,7 +16,7 @@ ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 QMLSCENE=${QMLSCENE:-$(command -v qmlscene || true)}
-if [ -z "$QMLSCENE" ] || [ ! -x "$QMLSCENE" ]; then
+if [[ -z "$QMLSCENE" ]] || [[ ! -x "$QMLSCENE" ]]; then
     echo "qmlscene not found. Install qtdeclarative5-dev-tools (Debian) or set QMLSCENE." >&2
     exit 1
 fi
@@ -35,10 +35,10 @@ trap 'rm -rf "$work"' EXIT
 cp tools/textart/*.qml "$work/"
 
 echo "== painting the masters =="
-if command -v xvfb-run >/dev/null 2>&1 && [ -z "${DISPLAY:-}" ]; then
+if command -v xvfb-run >/dev/null 2>&1 && [[ -z "${DISPLAY:-}" ]]; then
     ( cd "$work" && xvfb-run -a -s "-screen 0 1400x1000x24" \
         env QT_QPA_PLATFORM=xcb "$QMLSCENE" -I "$ROOT/qml-stubs" render.qml )
-elif [ -n "${DISPLAY:-}" ]; then
+elif [[ -n "${DISPLAY:-}" ]]; then
     ( cd "$work" && QT_QPA_PLATFORM=xcb "$QMLSCENE" -I "$ROOT/qml-stubs" render.qml )
 else
     echo "no DISPLAY and no xvfb-run: install xvfb, or run this on a desktop." >&2
@@ -64,7 +64,7 @@ echo "== reducing them to masks =="
 mkdir -p qml/art
 shopt -s nullglob
 painted=("$work"/*.png)
-if [ ${#painted[@]} -eq 0 ]; then
+if [[ ${#painted[@]} -eq 0 ]]; then
     echo "the painter wrote nothing; see the output above." >&2
     exit 1
 fi

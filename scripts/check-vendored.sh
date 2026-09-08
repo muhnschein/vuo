@@ -22,17 +22,17 @@ PATCH_FILE="$ROOT/third_party/qmetaobject.patch"
 
 echo "== vendored qmetaobject =="
 
-[ -d "$VENDORED" ] || { echo "FAIL: $VENDORED is missing" >&2; exit 1; }
-[ -f "$PATCH_FILE" ] || { echo "FAIL: $PATCH_FILE is missing" >&2; exit 1; }
+[[ -d "$VENDORED" ]] || { echo "FAIL: $VENDORED is missing" >&2; exit 1; }
+[[ -f "$PATCH_FILE" ]] || { echo "FAIL: $PATCH_FILE is missing" >&2; exit 1; }
 
 # The version to compare against is the one cargo is told to replace.
 version=$(sed -n 's/^version = "\(.*\)"/\1/p' "$VENDORED/Cargo.toml" | head -1)
-[ -n "$version" ] || { echo "FAIL: no version in the vendored Cargo.toml" >&2; exit 1; }
+[[ -n "$version" ]] || { echo "FAIL: no version in the vendored Cargo.toml" >&2; exit 1; }
 
 if ! command -v curl >/dev/null 2>&1; then
     # A gate that passes without its tool is not a gate. Locally that is a
     # skip; on a runner, where GitHub sets CI, it is a failure.
-    if [ -n "${CI:-}" ]; then
+    if [[ -n "${CI:-}" ]]; then
         echo "FAIL: curl not found; this check proved nothing" >&2
         exit 1
     fi
@@ -48,7 +48,7 @@ curl -sSfL "$url" -o "$work/crate.tar.gz" \
     || { echo "FAIL: could not fetch $url" >&2; exit 1; }
 tar -C "$work" -xzf "$work/crate.tar.gz"
 upstream="$work/qmetaobject-$version"
-[ -d "$upstream" ] || { echo "FAIL: unexpected tarball layout" >&2; exit 1; }
+[[ -d "$upstream" ]] || { echo "FAIL: unexpected tarball layout" >&2; exit 1; }
 
 # The crate's own tests are not vendored. Cargo never builds a dependency's
 # tests, so they are lines that cannot run here -- and CodeQL scans whatever is
