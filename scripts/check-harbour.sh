@@ -51,7 +51,7 @@ path_allowed() {
 checked=0
 for spec in rpm/harbour-vuo.spec rpm/harbour-vuo-cross.spec; do
     while IFS= read -r raw; do
-        [ -n "$raw" ] || continue
+        [[ -n "$raw" ]] || continue
         # Expand the macros the specs actually use. `${RES}` is the icon
         # loop's variable; any size satisfies the icon rule, so one stands in.
         p=$raw
@@ -66,7 +66,7 @@ for spec in rpm/harbour-vuo.spec rpm/harbour-vuo-cross.spec; do
         p=${p%/}
         # `desktop-file-install --dir <dir>` names the DIRECTORY; the file it
         # writes there is the one named on the same line.
-        if [ "$p" = "usr/share/applications" ]; then
+        if [[ "$p" = "usr/share/applications" ]]; then
             p="$p/$(sed 's/#.*//' "$spec" | grep -oE 'desktop-file-install .*' \
                 | grep -oE '[A-Za-z0-9._-]+\.desktop$' | head -1)"
         fi
@@ -82,7 +82,7 @@ for spec in rpm/harbour-vuo.spec rpm/harbour-vuo-cross.spec; do
             | sort -u
     )
 done
-[ "$checked" -ge 8 ] || bad "the path check only examined $checked entries; the spec parse must have failed"
+[[ "$checked" -ge 8 ]] || bad "the path check only examined $checked entries; the spec parse must have failed"
 note "every path the specs install to is one Harbour allows ($checked checked)"
 
 # ------------------------------------------------------------ 2. .desktop
@@ -95,7 +95,7 @@ grep -q "^\[X-Sailjail\]$" "$D" || bad "$D has no [X-Sailjail] section"
 
 # The section's own body: keys, then the two values with a shape.
 sailjail=$(sed '1,/^\[X-Sailjail\]/d;/^\[/,$d' "$D" | grep -E '^[A-Za-z]+=' || true)
-[ -n "$sailjail" ] || bad "$D has an empty [X-Sailjail] section"
+[[ -n "$sailjail" ]] || bad "$D has an empty [X-Sailjail] section"
 while IFS='=' read -r key value; do
     case "$key" in
         Permissions)
@@ -153,7 +153,7 @@ while IFS=$'\t' read -r file target; do
     case "$target" in
         /*) bad "$file: absolute path imports are forbidden" ; continue ;;
     esac
-    [ -d "$(dirname "$file")/$target" ] \
+    [[ -d "$(dirname "$file")/$target" ]] \
         || bad "$file imports '$target', which is not a directory in qml/"
 done < <(grep -rn '^[[:space:]]*import[[:space:]]*"' qml/ \
     | sed -e 's/:[0-9]*:[[:space:]]*import[[:space:]]*"/\t/' -e 's/".*$//')
@@ -163,7 +163,7 @@ note "every QML import is one Harbour allows, and every relative one stays insid
 # rpmvalidation.sh:667 requires all four sizes, each a PNG of exactly that size.
 for size in 86x86 108x108 128x128 172x172; do
     icon="icons/$size/$NAME.png"
-    if [ ! -s "$icon" ]; then
+    if [[ ! -s "$icon" ]]; then
         bad "$icon is missing; Harbour wants all four sizes"
         continue
     fi
@@ -172,7 +172,7 @@ for size in 86x86 108x108 128x128 172x172; do
     set -- $dims
     w=$(( ($1<<24) + ($2<<16) + ($3<<8) + $4 ))
     h=$(( ($5<<24) + ($6<<16) + ($7<<8) + $8 ))
-    [ "${w}x${h}" = "$size" ] || bad "$icon is ${w}x${h}, but must be $size"
+    [[ "${w}x${h}" = "$size" ]] || bad "$icon is ${w}x${h}, but must be $size"
 done
 note "all four icon sizes are present and are PNGs of the right size"
 
@@ -182,17 +182,17 @@ note "all four icon sizes are present and are PNGs of the right size"
 for spec in rpm/harbour-vuo.spec rpm/harbour-vuo-cross.spec; do
     body=$(sed 's/#.*//' "$spec")
     while IFS= read -r banned; do
-        [ -n "$banned" ] && bad "$spec uses '$banned', which Harbour does not allow"
+        [[ -n "$banned" ]] && bad "$spec uses '$banned', which Harbour does not allow"
     done < <(grep -oE '^%(pre|post|preun|postun|pretrans|posttrans|triggerin|triggerun|transfiletriggerin)\b' <<< "$body" || true)
     while IFS= read -r banned; do
-        [ -n "$banned" ] && bad "$spec declares '$banned', which Harbour does not allow"
+        [[ -n "$banned" ]] && bad "$spec declares '$banned', which Harbour does not allow"
     done < <(grep -oE '^(Obsoletes|Conflicts|Recommends|Suggests|Supplements|Enhances):' <<< "$body" || true)
     # `%license` and `%doc` in %files do not name a path -- rpm invents one,
     # under %{_defaultlicensedir} or %{_defaultdocdir}, and both are outside
     # what Harbour allows. They therefore slip past the path check above,
     # which is exactly how the licence text came to be packaged there.
     while IFS= read -r banned; do
-        [ -n "$banned" ] && bad "$spec uses '$banned' in %files; rpm would install it \
+        [[ -n "$banned" ]] && bad "$spec uses '$banned' in %files; rpm would install it \
 outside /usr/share/harbour-vuo, which Harbour rejects"
     done < <(grep -oE '^%(license|doc)\b' <<< "$body" || true)
 done
@@ -208,7 +208,7 @@ else
     note "nothing shipped hardcodes /home/nemo or /home/defaultuser"
 fi
 
-if [ "$fail" -ne 0 ]; then
+if [[ "$fail" -ne 0 ]]; then
     echo "Harbour rule checks FAILED" >&2
     exit 1
 fi

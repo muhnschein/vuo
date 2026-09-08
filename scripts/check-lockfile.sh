@@ -18,7 +18,7 @@ cd "$root"
 
 # --- 1. lockfile format: enforced -------------------------------------------
 version=$(grep -E '^version = [0-9]+$' Cargo.lock | head -1 | tr -cd '0-9')
-if [ "${version:-}" != "3" ]; then
+if [[ "${version:-}" != "3" ]]; then
     echo "FAIL: Cargo.lock is v${version:-unknown}; the SDK's cargo 1.75 reads only v3." >&2
     echo "      Restore it with \`version = 3\`, or re-run the update with an older cargo." >&2
     exit 1
@@ -45,7 +45,7 @@ for p in sorted(m.get("packages", []), key=lambda p: p["name"]):
     if p.get("edition") == "2024":
         print("      " + p["name"] + " " + p["version"])
 ' || true)
-if [ -n "$bad" ]; then
+if [[ -n "$bad" ]]; then
     count=$(printf '%s\n' "$bad" | wc -l)
     echo "  NOTE: $count locked dependencies use edition2024, which cargo $sdk_cargo cannot parse."
     echo "        Vendoring parses every manifest, so these block an SDK build even"

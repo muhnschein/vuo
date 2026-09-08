@@ -17,7 +17,7 @@ set -euo pipefail
 
 BIN="${1:?usage: check-linked-libs.sh <binary> [readelf]}"
 READELF="${2:-readelf}"
-[ -r "$BIN" ] || { echo "FAIL: $BIN is not readable" >&2; exit 1; }
+[[ -r "$BIN" ]] || { echo "FAIL: $BIN is not readable" >&2; exit 1; }
 
 harbour_allows() {
     case "$1" in
@@ -60,7 +60,7 @@ for lib in $("$READELF" -d "$BIN" | sed -n 's/.*Shared library: \[\(.*\)\]/\1/p'
     fi
 done
 
-if [ "$forbidden" -ne 0 ]; then
+if [[ "$forbidden" -ne 0 ]]; then
     echo "FAIL: $forbidden linked libraries are not on Harbour's allowed list." >&2
     echo "The package would install and run on a device, but Harbour will refuse it." >&2
     echo 'See docs/packaging.md, "Harbour readiness".' >&2

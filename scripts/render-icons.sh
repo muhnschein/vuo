@@ -14,7 +14,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 SVG=icons/harbour-vuo.svg
-[ -f "$SVG" ] || { echo "no $SVG" >&2; exit 1; }
+[[ -f "$SVG" ]] || { echo "no $SVG" >&2; exit 1; }
 command -v rsvg-convert >/dev/null || {
     echo "rsvg-convert is missing (apt: librsvg2-bin, brew: librsvg)" >&2
     exit 1
