@@ -136,24 +136,93 @@ fn data_uri(mime: &str, bytes: &[u8]) -> String {
     )
 }
 
-/// Tell the view every row it holds may have been redrawn, WITHOUT resetting
-/// the model.
+/// A list model that re-reads its rows from the mirror wholesale and swaps the
+/// result in.
 ///
-/// The difference is the whole point: `begin_reset_model` re-lays the view out
-/// from scratch and a plain `ListView` comes back at its own top, throwing the
-/// reader wherever they had scrolled to. `dataChanged` leaves the layout --
-/// and so the scroll position -- exactly where it was and only re-reads the
-/// roles.
+/// Both models here work that way, and both have to keep the reader's place
+/// when the re-read finds the list they already hold. That rule is subtle
+/// enough -- and was got wrong for long enough -- to be worth having in
+/// exactly one place; see [`publish_rows`], which is the whole reason this
+/// trait exists.
+trait RowList: QAbstractListModel + Sized {
+    /// `PartialEq` so a row that was re-read unchanged can be told from one
+    /// that actually moved.
+    type Row: PartialEq;
+
+    fn rows_held(&self) -> &[Self::Row];
+    fn rows_held_mut(&mut self) -> &mut Vec<Self::Row>;
+    /// What identifies a row across a reload: the mirror's own key for it.
+    fn row_id(row: &Self::Row) -> i64;
+    /// Emit the model's `countChanged`. A qt_signal is an inherent method
+    /// generated per struct, which is not something a trait can name.
+    fn emit_count_changed(&mut self);
+}
+
+/// Swap a freshly read row set in, resetting the model ONLY when the rows it
+/// holds have actually changed.
 ///
-/// A no-op on an empty model: `row_index` of a row that is not there is not an
-/// index a view can be told about.
-fn announce_rows_changed(model: &mut dyn QAbstractListModel, len: usize) {
-    let Some(last) = len.checked_sub(1).and_then(|n| i32::try_from(n).ok()) else {
-        return;
-    };
-    let first = model.row_index(0);
-    let last = model.row_index(last);
-    model.data_changed(first, last);
+/// `begin_reset_model` re-lays the view out from scratch and a plain
+/// `ListView` comes back at its own top, so a reset throws the reader away
+/// from wherever they had scrolled to. `dataChanged` leaves the layout -- and
+/// so the scroll position -- alone and only re-reads the roles. Every
+/// generation bump used to take the first path, however little the mirror had
+/// actually changed.
+///
+/// The bump that made that unbearable is the reader's own: "Mark as read" from
+/// a row's context menu patches that row at the tap ([`EntryModel::mark_row`])
+/// and sends [`Command::FlushOutbox`]; the worker bumps the generation as soon
+/// as the server confirms the intent, for the settings page's pending count
+/// and nothing either list shows. A second later the poll re-read exactly the
+/// rows it already had, reset the model anyway, and the list jumped back to
+/// the top under the reader's thumb.
+///
+/// Ids in order is the test, NOT equal rows: a row whose STATE changed -- read
+/// or starred on another tab, or by a sync -- is redrawn where it is, which is
+/// what [`EntryModel::mark_row`] already does for a local change. Rows
+/// arriving, leaving or moving is what genuinely makes a different list, and
+/// that still resets.
+///
+/// Returns true when the model was RESET, which is the thing that costs the
+/// reader their place.
+fn publish_rows<M: RowList>(model: &mut M, fresh: Vec<M::Row>) -> bool {
+    let same_rows = model.rows_held().len() == fresh.len()
+        && model
+            .rows_held()
+            .iter()
+            .zip(&fresh)
+            .all(|(held, new)| M::row_id(held) == M::row_id(new));
+
+    if same_rows {
+        // Announced only when something in them moved. The entry delegate's
+        // detail line is rebuilt from font metrics on every `dataChanged`, and
+        // this runs on every bump.
+        let redraw = model.rows_held() != fresh.as_slice();
+        *model.rows_held_mut() = fresh;
+        if redraw {
+            // A no-op on an empty model: `row_index` of a row that is not
+            // there is not an index a view can be told about.
+            if let Some(last) = model
+                .rows_held()
+                .len()
+                .checked_sub(1)
+                .and_then(|n| i32::try_from(n).ok())
+            {
+                let first = model.row_index(0);
+                let last = model.row_index(last);
+                model.data_changed(first, last);
+            }
+        }
+        // Emitted either way: `unreadTotal` is the mirror's, not any one
+        // list's, so it can move while every row on this one stays put.
+        model.emit_count_changed();
+        return false;
+    }
+
+    model.begin_reset_model();
+    *model.rows_held_mut() = fresh;
+    model.end_reset_model();
+    model.emit_count_changed();
+    true
 }
 
 /// Which slice of the mirror a model shows.
@@ -695,50 +764,10 @@ impl EntryModel {
             }
         }
 
-        // The same articles in the same places are PATCHED where they are.
-        // Only a list whose rows have actually moved is reset.
-        //
-        // A reset re-lays the view out and a plain ListView comes back at its
-        // own top, so every generation bump threw the reader to the top of the
-        // list however little the mirror had changed. The bump that made that
-        // unbearable is the reader's own: "Mark as read" from a row's context
-        // menu patches that row at the tap (`mark_row`) and sends
-        // `FlushOutbox`; the worker bumps the generation as soon as the server
-        // confirms the intent, for the settings page's pending count and
-        // nothing this list shows. A second later the poll re-read exactly the
-        // rows it already had, reset the model anyway, and the list jumped
-        // back to the top under the reader's thumb.
-        //
-        // Ids in order is the test, NOT equal rows: a row whose STATE changed
-        // -- read or starred on another tab, or by a sync -- is redrawn where
-        // it is, which is what `mark_row` already does for a local change.
-        let same_rows = self.rows.len() == rows.len()
-            && self
-                .rows
-                .iter()
-                .zip(&rows)
-                .all(|(held, fresh)| held.id == fresh.id);
-        if same_rows {
-            // Only when something in them moved. The delegate's detail line is
-            // rebuilt from font metrics on every `dataChanged`, and this runs
-            // on every bump.
-            let redraw = self.rows != rows;
-            self.rows = rows;
-            if redraw {
-                let len = self.rows.len();
-                announce_rows_changed(self as &mut dyn QAbstractListModel, len);
-            }
-            // Emitted either way: `unreadTotal` is the mirror's, not this
-            // list's, so it can move while every row here stays put.
-            self.countChanged();
-            return false;
-        }
-
-        (self as &mut dyn QAbstractListModel).begin_reset_model();
-        self.rows = rows;
-        (self as &mut dyn QAbstractListModel).end_reset_model();
-        self.countChanged();
-        true
+        // Reset only if these are not the rows the list already holds --
+        // otherwise the reader loses their place for nothing. See
+        // `publish_rows`, which is where that rule lives for both models.
+        publish_rows(self, rows)
     }
 
     /// Rebuild the feed name/icon cache from the mirror.
@@ -800,6 +829,26 @@ impl EntryModel {
     #[must_use]
     pub fn rows(&self) -> &[EntryRow] {
         &self.rows
+    }
+}
+
+impl RowList for EntryModel {
+    type Row = EntryRow;
+
+    fn rows_held(&self) -> &[EntryRow] {
+        &self.rows
+    }
+
+    fn rows_held_mut(&mut self) -> &mut Vec<EntryRow> {
+        &mut self.rows
+    }
+
+    fn row_id(row: &EntryRow) -> i64 {
+        row.id
+    }
+
+    fn emit_count_changed(&mut self) {
+        self.countChanged();
     }
 }
 
@@ -1136,39 +1185,37 @@ impl FeedModel {
             })
             .unwrap_or_default();
 
-        // The same feeds in the same places are patched where they are, for
-        // the reason `EntryModel::reload_keeping` spells out: a reset re-lays
-        // the view out at its top. This list is reloaded on every generation
-        // bump the entry models report, and a feed's unread count moves on
-        // every article the reader finishes -- so without this, reading one
-        // article from a feed scrolled the Feeds page back to the top.
-        let same_rows = self.rows.len() == rows.len()
-            && self
-                .rows
-                .iter()
-                .zip(&rows)
-                .all(|(held, fresh)| held.id == fresh.id);
-        if same_rows {
-            let redraw = self.rows != rows;
-            self.rows = rows;
-            if redraw {
-                let len = self.rows.len();
-                announce_rows_changed(self as &mut dyn QAbstractListModel, len);
-            }
-            self.countChanged();
-            return false;
-        }
-
-        (self as &mut dyn QAbstractListModel).begin_reset_model();
-        self.rows = rows;
-        (self as &mut dyn QAbstractListModel).end_reset_model();
-        self.countChanged();
-        true
+        // Same rule as the entry list, and it matters here for its own
+        // reason: this model reloads on every generation bump the entry
+        // models report, and a feed's unread count moves on every article the
+        // reader finishes -- so without `publish_rows`, reading one article
+        // scrolled the Feeds page back to the top.
+        publish_rows(self, rows)
     }
 
     #[must_use]
     pub fn rows(&self) -> &[FeedRow] {
         &self.rows
+    }
+}
+
+impl RowList for FeedModel {
+    type Row = FeedRow;
+
+    fn rows_held(&self) -> &[FeedRow] {
+        &self.rows
+    }
+
+    fn rows_held_mut(&mut self) -> &mut Vec<FeedRow> {
+        &mut self.rows
+    }
+
+    fn row_id(row: &FeedRow) -> i64 {
+        row.id
+    }
+
+    fn emit_count_changed(&mut self) {
+        self.countChanged();
     }
 }
 
