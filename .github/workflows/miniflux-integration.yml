@@ -64,8 +64,20 @@ jobs:
           - 5432:5432
         env:
           POSTGRES_USER: miniflux
-          POSTGRES_PASSWORD: miniflux
           POSTGRES_DB: miniflux
+          # No password, rather than a password committed to the repository.
+          #
+          # SonarQube raised the connection string below as a disclosed
+          # credential (secrets:S6698), and it was right in form even though
+          # the value guards nothing: the container is ephemeral, bound to the
+          # runner's localhost, and destroyed with the job. It cannot be
+          # randomised either -- `services:` start before any step runs, so
+          # nothing a step generates can reach them.
+          #
+          # `trust` removes the credential instead of hiding it. What it grants
+          # is local, unauthenticated access to a database that exists for one
+          # job and holds nothing but fixtures.
+          POSTGRES_HOST_AUTH_METHOD: trust
         options: >-
           --health-cmd "pg_isready -U miniflux"
           --health-interval 5s
@@ -73,7 +85,7 @@ jobs:
           --health-retries 20
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Remind about digest pinning
         # Deliberately a warning rather than a failure: a job that refuses to
@@ -90,7 +102,7 @@ jobs:
           MINIFLUX_IMAGE: miniflux/miniflux:2.2.13-distroless
         run: |
           docker run -d --name miniflux --network host \
-            -e DATABASE_URL="postgres://miniflux:miniflux@localhost/miniflux?sslmode=disable" \
+            -e DATABASE_URL="postgres://miniflux@localhost/miniflux?sslmode=disable" \
             -e RUN_MIGRATIONS=1 \
             -e CREATE_ADMIN=1 \
             -e ADMIN_USERNAME=vuo \
@@ -130,10 +142,18 @@ jobs:
       - name: Create an API key and seed entries
         id: seed
         run: |
-          token=$(curl -fsS -u vuo:vuo-test-password \
+          # Downloaded to a file and read with jq, rather than piped into
+          # python3. Nothing here ever executed what it downloaded -- the
+          # program was a literal in this file and the response was its stdin
+          # -- but `curl ... | <interpreter>` is the shape of the mistake that
+          # does, and SonarQube flags the shape (githubactions:S8482). It is
+          # the right shape to refuse; this reads as data, and says so.
+          curl -fsS -u vuo:vuo-test-password \
             -X POST http://127.0.0.1:8080/v1/api-keys \
             -H 'Content-Type: application/json' \
-            -d '{"description":"ci"}' | python3 -c 'import sys,json; print(json.load(sys.stdin)["token"])')
+            -d '{"description":"ci"}' -o api-key.json
+          token=$(jq -r '.token' api-key.json)
+          rm -f api-key.json
           echo "::add-mask::$token"
           echo "token=$token" >> "$GITHUB_OUTPUT"
 
@@ -158,9 +178,16 @@ jobs:
           TOKEN: ${{ steps.seed.outputs.token }}
         run: |
           for i in $(seq 1 60); do
-            total=$(curl -fsS -H "X-Auth-Token: $TOKEN" \
-              'http://127.0.0.1:8080/v1/entries?limit=1' \
-              | python3 -c 'import sys,json; print(json.load(sys.stdin).get("total",0))' 2>/dev/null || echo 0)
+            # As above: to a file, then jq. The tolerance matters as much as
+            # the parse -- this polls an instance that is still starting, so a
+            # failed request or unparseable body means "not ready yet", not
+            # "fail the job".
+            total=0
+            if curl -fsS -H "X-Auth-Token: $TOKEN" \
+                'http://127.0.0.1:8080/v1/entries?limit=1' \
+                -o entries.json 2>/dev/null; then
+              total=$(jq -r '.total // 0' entries.json 2>/dev/null || echo 0)
+            fi
             if [ "${total:-0}" -ge 3 ]; then
               echo "instance has $total entries after ${i}s"
               exit 0
@@ -172,8 +199,10 @@ jobs:
           docker logs miniflux || true
           exit 1
 
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
 
       - name: Run the opt-in live tests
         env:

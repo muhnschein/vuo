@@ -71,7 +71,7 @@ const PROBE_QML: &str = r"
 fn cover_url() -> String {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
-        .and_then(|p| p.parent())
+        .and_then(std::path::Path::parent)
         .expect("repository root")
         .to_path_buf();
     format!("file://{}", root.join("qml/cover/CoverPage.qml").display())
@@ -80,7 +80,7 @@ fn cover_url() -> String {
 fn stubs_dir() -> std::path::PathBuf {
     std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
-        .and_then(|p| p.parent())
+        .and_then(std::path::Path::parent)
         .expect("repository root")
         .join("qml-stubs")
 }

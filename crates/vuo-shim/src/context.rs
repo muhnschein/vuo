@@ -381,6 +381,161 @@ pub fn refresh_current() -> Option<Rc<AppContext>> {
     }
 }
 
+/// A counter the worker bumps whenever it changes the mirror.
+///
+/// Deliberately not a callback registry. QML owns the models, so Rust has no
+/// list of live ones to call into, and building one out of `QPointer`s means
+/// cross-thread lifetime rules that cannot be exercised without a device. An
+/// atomic the UI polls has neither problem: the worker thread only ever
+/// increments an integer, and every `QObject` touch stays on the Qt thread
+/// where the poll runs.
+#[derive(Debug, Default)]
+pub struct SyncSignal {
+    generation: std::sync::atomic::AtomicU64,
+    running: std::sync::atomic::AtomicBool,
+    /// Bumped when the USER asks for a fresh list -- the pulley's Refresh, or
+    /// the cover's action -- as opposed to the mirror merely changing.
+    ///
+    /// The distinction is what the entry lists are built on: a row that stops
+    /// matching its list (read, on Unread) stays on screen through any number
+    /// of mirror changes and leaves only when this moves. One counter for
+    /// every model rather than a flag on the one that was pulled, because a
+    /// refresh is asked of the app, not of a tab: pulling on Unread and
+    /// swiping to Favourites should not find an unstarred row still there.
+    refresh_epoch: std::sync::atomic::AtomicU64,
+    /// A one-shot result the UI has to SHOW rather than merely reload for.
+    ///
+    /// The generation counter says "the mirror changed"; it cannot carry the
+    /// server's answer to "test this connection" or the error text from a
+    /// rejected feed URL. Those reached a log line and nothing else, so "Test
+    /// connection" appeared to do nothing whether the credentials were right
+    /// or wrong.
+    notice: std::sync::Mutex<Option<Notice>>,
+    /// The result of the most recent "fetch original content", addressed to
+    /// the entry it was asked for.
+    ///
+    /// Deliberately NOT carried on `generation`. The article model used to
+    /// treat "the generation moved while I am fetching" as "my scrape
+    /// landed", which is only true when nothing else bumps in between --
+    /// and with mark-read-after-N-seconds enabled, something else almost
+    /// always does. The mark-read bump would clear `fetching` and re-read the
+    /// mirror before the scrape had written to it, so the reader saw the old
+    /// body and the menu item looked dead. An addressed slot cannot be stolen
+    /// by an unrelated bump, and cannot be consumed by an article that did not
+    /// ask for it.
+    fetch_outcome: std::sync::Mutex<Option<FetchOutcome>>,
+}
+
+/// How a server-side scrape ended, and for which entry.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FetchOutcome {
+    pub entry_id: i64,
+    /// One of the `FETCH_*` constants in `crate::article`.
+    pub status: i32,
+    /// Foreign text when the server explained a failure; empty otherwise.
+    /// Renders as plain text (§9.3).
+    pub message: String,
+}
+
+/// Something the worker produced that a page must display.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Notice {
+    /// `GET /v1/me` answered. `message` is the username, or the error.
+    ConnectionTested { ok: bool, message: String },
+    /// A subscribe or unsubscribe finished. `message` is the server's error
+    /// text when it failed -- foreign text, so it renders as plain text.
+    SubscriptionChanged { ok: bool, message: String },
+    /// A feed's settings were saved, or were not. `message` is the server's
+    /// error text -- foreign, so plain text.
+    FeedUpdated { ok: bool, message: String },
+    /// A refresh failed. `message` is foreign text; render it as plain text.
+    ///
+    /// `auth` distinguishes "the server rejected the key" from everything
+    /// else, because the two ask different things of the user -- go and fix
+    /// the key, versus try again later. A bool rather than a second variant:
+    /// a variant would duplicate the take-and-re-post plumbing on every page
+    /// that drains this slot, for one bit.
+    ///
+    /// On `auth` the message is deliberately EMPTY. The server's own text for
+    /// a rejected key says nothing a user can act on, and the page supplies a
+    /// fixed translated line instead.
+    SyncFailed { auth: bool, message: String },
+}
+
+impl SyncSignal {
+    /// Called from the worker thread when the mirror changed.
+    pub fn bump(&self) {
+        self.generation
+            .fetch_add(1, std::sync::atomic::Ordering::Release);
+    }
+
+    /// Leave a result for the UI to pick up. Called from the worker thread.
+    ///
+    /// A poisoned lock is ignored rather than unwrapped: §9.5 forbids a panic
+    /// that could unwind into Qt's frames, and a dropped notice costs the user
+    /// a status line, not data.
+    pub fn post(&self, notice: Notice) {
+        if let Ok(mut slot) = self.notice.lock() {
+            *slot = Some(notice);
+        }
+    }
+
+    /// Leave a scrape result for the open article. Called from the worker.
+    pub fn post_fetch_outcome(&self, outcome: FetchOutcome) {
+        if let Ok(mut slot) = self.fetch_outcome.lock() {
+            *slot = Some(outcome);
+        }
+    }
+
+    /// Take the scrape result IF it is addressed to `entry_id`.
+    ///
+    /// A result for a different entry is left in place rather than dropped:
+    /// the user may have opened a second article while the first was
+    /// scraping, and going back should still show what happened.
+    #[must_use]
+    pub fn take_fetch_outcome(&self, entry_id: i64) -> Option<FetchOutcome> {
+        let mut slot = self.fetch_outcome.lock().ok()?;
+        if slot.as_ref().is_some_and(|o| o.entry_id == entry_id) {
+            slot.take()
+        } else {
+            None
+        }
+    }
+
+    /// Take the pending notice, if any. Called from the Qt thread.
+    #[must_use]
+    pub fn take_notice(&self) -> Option<Notice> {
+        self.notice.lock().ok().and_then(|mut slot| slot.take())
+    }
+
+    pub fn set_running(&self, running: bool) {
+        self.running
+            .store(running, std::sync::atomic::Ordering::Release);
+    }
+
+    /// Record that the user asked for a fresh list. Called from the Qt thread.
+    pub fn mark_refreshed(&self) {
+        self.refresh_epoch
+            .fetch_add(1, std::sync::atomic::Ordering::Release);
+    }
+
+    #[must_use]
+    pub fn refresh_epoch(&self) -> u64 {
+        self.refresh_epoch
+            .load(std::sync::atomic::Ordering::Acquire)
+    }
+
+    #[must_use]
+    pub fn generation(&self) -> u64 {
+        self.generation.load(std::sync::atomic::Ordering::Acquire)
+    }
+
+    #[must_use]
+    pub fn is_running(&self) -> bool {
+        self.running.load(std::sync::atomic::Ordering::Acquire)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -560,160 +715,5 @@ mod tests {
         assert!(shared.is_running());
         shared.set_running(false);
         assert!(!shared.is_running());
-    }
-}
-
-/// A counter the worker bumps whenever it changes the mirror.
-///
-/// Deliberately not a callback registry. QML owns the models, so Rust has no
-/// list of live ones to call into, and building one out of `QPointer`s means
-/// cross-thread lifetime rules that cannot be exercised without a device. An
-/// atomic the UI polls has neither problem: the worker thread only ever
-/// increments an integer, and every `QObject` touch stays on the Qt thread
-/// where the poll runs.
-#[derive(Debug, Default)]
-pub struct SyncSignal {
-    generation: std::sync::atomic::AtomicU64,
-    running: std::sync::atomic::AtomicBool,
-    /// Bumped when the USER asks for a fresh list -- the pulley's Refresh, or
-    /// the cover's action -- as opposed to the mirror merely changing.
-    ///
-    /// The distinction is what the entry lists are built on: a row that stops
-    /// matching its list (read, on Unread) stays on screen through any number
-    /// of mirror changes and leaves only when this moves. One counter for
-    /// every model rather than a flag on the one that was pulled, because a
-    /// refresh is asked of the app, not of a tab: pulling on Unread and
-    /// swiping to Favourites should not find an unstarred row still there.
-    refresh_epoch: std::sync::atomic::AtomicU64,
-    /// A one-shot result the UI has to SHOW rather than merely reload for.
-    ///
-    /// The generation counter says "the mirror changed"; it cannot carry the
-    /// server's answer to "test this connection" or the error text from a
-    /// rejected feed URL. Those reached a log line and nothing else, so "Test
-    /// connection" appeared to do nothing whether the credentials were right
-    /// or wrong.
-    notice: std::sync::Mutex<Option<Notice>>,
-    /// The result of the most recent "fetch original content", addressed to
-    /// the entry it was asked for.
-    ///
-    /// Deliberately NOT carried on `generation`. The article model used to
-    /// treat "the generation moved while I am fetching" as "my scrape
-    /// landed", which is only true when nothing else bumps in between --
-    /// and with mark-read-after-N-seconds enabled, something else almost
-    /// always does. The mark-read bump would clear `fetching` and re-read the
-    /// mirror before the scrape had written to it, so the reader saw the old
-    /// body and the menu item looked dead. An addressed slot cannot be stolen
-    /// by an unrelated bump, and cannot be consumed by an article that did not
-    /// ask for it.
-    fetch_outcome: std::sync::Mutex<Option<FetchOutcome>>,
-}
-
-/// How a server-side scrape ended, and for which entry.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FetchOutcome {
-    pub entry_id: i64,
-    /// One of the `FETCH_*` constants in `crate::article`.
-    pub status: i32,
-    /// Foreign text when the server explained a failure; empty otherwise.
-    /// Renders as plain text (§9.3).
-    pub message: String,
-}
-
-/// Something the worker produced that a page must display.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Notice {
-    /// `GET /v1/me` answered. `message` is the username, or the error.
-    ConnectionTested { ok: bool, message: String },
-    /// A subscribe or unsubscribe finished. `message` is the server's error
-    /// text when it failed -- foreign text, so it renders as plain text.
-    SubscriptionChanged { ok: bool, message: String },
-    /// A feed's settings were saved, or were not. `message` is the server's
-    /// error text -- foreign, so plain text.
-    FeedUpdated { ok: bool, message: String },
-    /// A refresh failed. `message` is foreign text; render it as plain text.
-    ///
-    /// `auth` distinguishes "the server rejected the key" from everything
-    /// else, because the two ask different things of the user -- go and fix
-    /// the key, versus try again later. A bool rather than a second variant:
-    /// a variant would duplicate the take-and-re-post plumbing on every page
-    /// that drains this slot, for one bit.
-    ///
-    /// On `auth` the message is deliberately EMPTY. The server's own text for
-    /// a rejected key says nothing a user can act on, and the page supplies a
-    /// fixed translated line instead.
-    SyncFailed { auth: bool, message: String },
-}
-
-impl SyncSignal {
-    /// Called from the worker thread when the mirror changed.
-    pub fn bump(&self) {
-        self.generation
-            .fetch_add(1, std::sync::atomic::Ordering::Release);
-    }
-
-    /// Leave a result for the UI to pick up. Called from the worker thread.
-    ///
-    /// A poisoned lock is ignored rather than unwrapped: §9.5 forbids a panic
-    /// that could unwind into Qt's frames, and a dropped notice costs the user
-    /// a status line, not data.
-    pub fn post(&self, notice: Notice) {
-        if let Ok(mut slot) = self.notice.lock() {
-            *slot = Some(notice);
-        }
-    }
-
-    /// Leave a scrape result for the open article. Called from the worker.
-    pub fn post_fetch_outcome(&self, outcome: FetchOutcome) {
-        if let Ok(mut slot) = self.fetch_outcome.lock() {
-            *slot = Some(outcome);
-        }
-    }
-
-    /// Take the scrape result IF it is addressed to `entry_id`.
-    ///
-    /// A result for a different entry is left in place rather than dropped:
-    /// the user may have opened a second article while the first was
-    /// scraping, and going back should still show what happened.
-    #[must_use]
-    pub fn take_fetch_outcome(&self, entry_id: i64) -> Option<FetchOutcome> {
-        let mut slot = self.fetch_outcome.lock().ok()?;
-        if slot.as_ref().is_some_and(|o| o.entry_id == entry_id) {
-            slot.take()
-        } else {
-            None
-        }
-    }
-
-    /// Take the pending notice, if any. Called from the Qt thread.
-    #[must_use]
-    pub fn take_notice(&self) -> Option<Notice> {
-        self.notice.lock().ok().and_then(|mut slot| slot.take())
-    }
-
-    pub fn set_running(&self, running: bool) {
-        self.running
-            .store(running, std::sync::atomic::Ordering::Release);
-    }
-
-    /// Record that the user asked for a fresh list. Called from the Qt thread.
-    pub fn mark_refreshed(&self) {
-        self.refresh_epoch
-            .fetch_add(1, std::sync::atomic::Ordering::Release);
-    }
-
-    #[must_use]
-    pub fn refresh_epoch(&self) -> u64 {
-        self.refresh_epoch
-            .load(std::sync::atomic::Ordering::Acquire)
-    }
-
-    #[must_use]
-    pub fn generation(&self) -> u64 {
-        self.generation.load(std::sync::atomic::Ordering::Acquire)
-    }
-
-    #[must_use]
-    pub fn is_running(&self) -> bool {
-        self.running.load(std::sync::atomic::Ordering::Acquire)
     }
 }

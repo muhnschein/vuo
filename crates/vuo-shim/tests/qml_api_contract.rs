@@ -327,7 +327,7 @@ fn qml_files(dir: &Path, out: &mut Vec<PathBuf>) {
         let path = entry.path();
         if path.is_dir() {
             qml_files(&path, out);
-        } else if path.extension().and_then(|e| e.to_str()) == Some("qml") {
+        } else if path.extension().and_then(std::ffi::OsStr::to_str) == Some("qml") {
             out.push(path);
         }
     }

@@ -65,7 +65,7 @@ const RUNTIME_FAILURES: &[&str] = &[
 fn repo_root() -> std::path::PathBuf {
     std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
-        .and_then(|p| p.parent())
+        .and_then(std::path::Path::parent)
         .expect("repository root")
         .to_path_buf()
 }
@@ -294,7 +294,7 @@ fn collect_qml(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
         let path = entry.path();
         if path.is_dir() {
             collect_qml(&path, out);
-        } else if path.extension().and_then(|e| e.to_str()) == Some("qml") {
+        } else if path.extension().and_then(std::ffi::OsStr::to_str) == Some("qml") {
             out.push(path);
         }
     }

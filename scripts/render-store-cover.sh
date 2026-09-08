@@ -31,7 +31,11 @@ if [[ ! -f "$LIGHT" ]] || [[ ! -f "$BOOK" ]]; then
     mkdir -p "$FONT_DIR"
     # Resolved through the CSS API rather than hardcoding a versioned path,
     # which Google rotates.
-    css=$(curl -sSfL "https://fonts.googleapis.com/css2?family=Fira+Sans:wght@300;400&display=swap") || {
+    # --proto/--proto-redir: -L follows redirects, and without these a
+    # redirect could walk this fetch down to plain http. §9.1 says TLS is
+    # never given up, and that has to hold for the hop nobody chose.
+    css=$(curl -sSfL --proto '=https' --proto-redir '=https' \
+        "https://fonts.googleapis.com/css2?family=Fira+Sans:wght@300;400&display=swap") || {
         echo "could not reach Google Fonts; set VUO_FONT_DIR to a directory holding the two files." >&2
         exit 1; }
     mapfile -t urls < <(grep -oE "https://fonts.gstatic.com/[^)]*" <<< "$css")

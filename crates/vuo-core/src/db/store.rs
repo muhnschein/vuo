@@ -55,10 +55,14 @@ pub fn name_sort_key(title: &str) -> String {
             // `to_lowercase` already turns 'ß' into itself, not "ss".
             'ß' => key.push_str("ss"),
             'á' | 'à' | 'â' | 'å' | 'ã' => key.push('a'),
-            'é' | 'è' | 'ê' | 'ë' => key.push('e'),
-            'í' | 'ì' | 'î' | 'ï' => key.push('i'),
-            'ó' | 'ò' | 'ô' | 'õ' => key.push('o'),
-            'ú' | 'ù' | 'û' => key.push('u'),
+            // è é ê ë -- contiguous, so a range says it without a gap.
+            'è'..='ë' => key.push('e'),
+            // ì í î ï
+            'ì'..='ï' => key.push('i'),
+            // ò ó ô õ -- ö is handled above, and F6 is outside this range.
+            'ò'..='õ' => key.push('o'),
+            // ù ú û -- ü likewise handled above, at FC.
+            'ù'..='û' => key.push('u'),
             'ç' => key.push('c'),
             'ñ' => key.push('n'),
             other => key.push(other),

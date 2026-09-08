@@ -316,12 +316,10 @@ mod tests {
         let mut stmt = conn
             .prepare("SELECT entry_id, field, value FROM outbox ORDER BY entry_id, field")
             .unwrap();
-        let rows = stmt
-            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+        stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
             .unwrap()
             .collect::<std::result::Result<Vec<_>, _>>()
-            .unwrap();
-        rows
+            .unwrap()
     }
 
     #[test]

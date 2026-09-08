@@ -20,7 +20,8 @@ READELF="${2:-readelf}"
 [[ -r "$BIN" ]] || { echo "FAIL: $BIN is not readable" >&2; exit 1; }
 
 harbour_allows() {
-    case "$1" in
+    local lib=$1
+    case "$lib" in
         libQt5Core.so.5|libQt5Gui.so.5|libQt5Qml.so.5|libQt5Quick.so.5|\
 libQt5Network.so.5|libQt5Concurrent.so.5|libQt5DBus.so.5|libQt5Sql.so.5|\
 libQt5Svg.so.5|libQt5Xml.so.5|libQt5XmlPatterns.so.5|libQt5Multimedia.so.5|\
@@ -44,7 +45,8 @@ libQt5Sensors.so.5|libQt5Positioning.so.5|libQt5WebSockets.so.5|libQt5Location.s
 # problem for the package: the device build names one that is. Ignored by name
 # so a host run reports what it can rather than one false finding.
 host_only() {
-    case "$1" in
+    local lib=$1
+    case "$lib" in
         ld-linux-x86-64.so.2|ld-linux-x86-64.so.*|ld-linux.so.2) return 0 ;;
         *) return 1 ;;
     esac
