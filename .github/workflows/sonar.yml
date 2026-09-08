@@ -62,14 +62,27 @@ jobs:
             qtdeclarative5-dev-tools \
             qml-module-qtquick2
 
-      - uses: dtolnay/rust-toolchain@stable
+      # Every action here is pinned to a full commit SHA, the version it
+      # resolved to named beside it. A tag is a moving pointer the action's
+      # owner -- or whoever compromises them -- can re-aim at a different
+      # commit, which is how tj-actions/changed-files became CVE-2025-30066;
+      # a SHA cannot be re-aimed. SonarQube flags the unpinned form as S7637,
+      # and it is right to: this job holds SONAR_TOKEN.
+      #
+      # `toolchain` is passed explicitly because dtolnay/rust-toolchain takes
+      # it from the REF NAME it was called with, and a SHA has no name. The
+      # pinned commit is the head of the action's `stable` branch, whose
+      # action.yml defaults to the same value -- the explicit input is what
+      # keeps that readable.
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
         with:
+          toolchain: stable
           components: clippy, llvm-tools-preview
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
 
       - name: Install cargo-llvm-cov
-        uses: taiki-e/install-action@v2
+        uses: taiki-e/install-action@d438492cf8a250514fa2d34b30bc3c0dc37c65ff # v2.87.8
         with:
           tool: cargo-llvm-cov
 
