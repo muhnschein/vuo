@@ -43,7 +43,10 @@ if [ ! -f "$TASK_FILE" ]; then
     exit 1
 fi
 
-field() { sed -n "s|^$1=||p" "$TASK_FILE" | head -1; }
+field() {
+    local key=$1
+    sed -n "s|^$key=||p" "$TASK_FILE" | head -1
+}
 
 SERVER=$(field serverUrl)
 KEY=$(field projectKey)
@@ -77,27 +80,33 @@ BODY=$(mktemp)
 # fallback, for a public project where the token lacks browse rights.
 code=""
 fetch() {
-    if [ -n "$2" ]; then
-        code=$(curl -sS --max-time 30 -u "$2:" -o "$BODY" -w '%{http_code}' "$1") || return 1
+    local url=$1
+    local auth=$2
+    if [ -n "$auth" ]; then
+        code=$(curl -sS --max-time 30 -u "$auth:" -o "$BODY" -w '%{http_code}' "$url") || return 1
     else
-        code=$(curl -sS --max-time 30 -o "$BODY" -w '%{http_code}' "$1") || return 1
+        code=$(curl -sS --max-time 30 -o "$BODY" -w '%{http_code}' "$url") || return 1
     fi
     [ "$code" = "200" ]
 }
 
 api() {
-    if [ -n "$SONAR_TOKEN" ] && fetch "$1" "$SONAR_TOKEN"; then
+    local url=$1
+    if [ -n "$SONAR_TOKEN" ] && fetch "$url" "$SONAR_TOKEN"; then
         return 0
     fi
-    if fetch "$1" ""; then
+    if fetch "$url" ""; then
         return 0
     fi
-    echo "  cannot read $1 (HTTP $code)" >&2
+    echo "  cannot read $url (HTTP $code)" >&2
     return 1
 }
 
 # A rating is 1..5 on the wire and A..E everywhere a person reads it.
-letter() { echo "$1" | sed 's/^1.*/A/; s/^2.*/B/; s/^3.*/C/; s/^4.*/D/; s/^5.*/E/'; }
+letter() {
+    local rating=$1
+    echo "$rating" | sed 's/^1.*/A/; s/^2.*/B/; s/^3.*/C/; s/^4.*/D/; s/^5.*/E/'
+}
 
 # ------------------------------------------------------------ wait for it
 #
