@@ -108,3 +108,19 @@ jobs:
           # self-hosted Server is what needs it.
           args: >
             -Dsonar.projectVersion=${{ steps.version.outputs.version }}
+
+      # The scan uploads a report and exits. The server processes it
+      # afterwards, so without this the run finishes knowing nothing about its
+      # own result -- the gate, the ratings and the issue list stay on a
+      # dashboard, where neither the job log nor a reviewer can reach them.
+      #
+      # continue-on-error, and never `sonar.qualitygate.wait`: this reports and
+      # does not gate. A Sonar outage costs a warning here, not a build.
+      - name: What SonarQube made of it
+        if: always()
+        continue-on-error: true
+        env:
+          # Only used if the project is private; the endpoints are readable
+          # without it on a public one. See the script.
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: scripts/sonar-report.sh

@@ -55,6 +55,13 @@ disappearing. (What the report *does* contain today is
 `third_party/qmetaobject`, which is excluded from the analysis, so those are
 dropped on import.)
 
+The results do not stay on the dashboard. `scripts/sonar-report.sh` asks the
+server, from the runner that just fed it, and prints the quality gate, the
+measures and the open issues into the job log and the step summary — so the
+numbers sit beside the commit that earned them, readable without an account.
+It waits for the server to finish processing first: asking too early returns
+the PREVIOUS run's numbers, which is worse than none, because they look right.
+
 Two things worth knowing before reading a report. Imported clippy findings
 arrive as **external issues**: they do count toward the quality gate, but the
 rules raising them cannot be switched off in a Sonar quality profile — clippy's
