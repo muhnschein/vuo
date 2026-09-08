@@ -1,35 +1,30 @@
-# Vuo
+# Vuo 
 
-*A native SailfishOS client for [Miniflux](https://miniflux.app/).*
+![Vuo - Focus on what matters.](store/cover.png)
 
-Vuo (Finnish *vuo*, "flux/flow" — as in *magneettivuo*, magnetic flux) is a
-Silica-native feed reader that syncs against a self-hosted Miniflux instance
-over Miniflux's own REST API.
+[![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=muhnschein_vuo&metric=security_rating)](https://sonarcloud.io/summary/new_code?id=muhnschein_vuo)[![Reliability Rating](https://sonarcloud.io/api/project_badges/measure?project=muhnschein_vuo&metric=reliability_rating)](https://sonarcloud.io/summary/new_code?id=muhnschein_vuo)[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=muhnschein_vuo&metric=coverage)](https://sonarcloud.io/summary/new_code?id=muhnschein_vuo)[![Lines of Code](https://sonarcloud.io/api/project_badges/measure?project=muhnschein_vuo&metric=ncloc)](https://sonarcloud.io/summary/new_code?id=muhnschein_vuo)
 
-No native Sailfish client speaks a Miniflux-compatible protocol today. Sailfish
-users on Miniflux fall back to the web UI in the built-in browser, or to an
-Android client under AppSupport. Vuo exists to close that gap.
+> 🤖 **Vibe-coded:** Much of this project was developed using AI. If that
+> provenance troubles you, use something else. That being said, all the heavy
+> lifting is done by your existing  Miniflux instance.
+>
+> 📱 **Modern SailfishOS-only:** Vuo currently targets the 
+> Jolla Phone 2026 and nothing else. No effort is made to accommodate older
+> targets. [Buy a Jolla Phone 2026](https://commerce.jolla.com/) and support
+> European-made alternatives. 👊🇪🇺🔥
 
-## Thesis
+## Overview
 
-**Do not build a feed reader — build a SailfishOS UI over an existing
-feed-reading server.**
+Vuo is a Silica/QML feed reader that syncs against an existing, self-hosted
+Miniflux instance over Miniflux's own REST API.
 
-Fetching, parsing, sanitisation, deduplication, full-text extraction and
-scheduling all stay on the server. Vuo contributes a Silica presentation layer,
-a local mirror for offline reading, an offline-tolerant write path, and
-packaging. If a feed-format parser is being written here, the server is being
-misused.
+The goal is not to built a feed reader, but to build an Sailfish OS UI for
+an existing (excellent) feed-reading server. Fetching, parsing, sanitisation, 
+deduplication, full-text extraction, and scheduling all stay on the server. 
 
 ## Architecture
 
-The application core is Rust from the first commit. This is a deliberate
-constraint, not an optimisation: the sync engine is the part of the app with
-real invariants — cursors, conflict resolution, an outbox that must not lose or
-double-apply mutations — and it must be testable on a laptop without a phone, a
-server, or a running Qt event loop.
-
-| Crate | Depends on Qt? | What it is |
+| Crate | Qt dependency | What it is |
 | --- | --- | --- |
 | `vuo-core` | no | Miniflux REST client, SQLite mirror, sync engine, HTML→block transform |
 | `vuo-shim` | yes | `qmetaobject-rs` adapters exposing the core to QML as `QObject`s and list models |
@@ -39,8 +34,6 @@ Two properties fall out of the layering and are worth stating explicitly:
 
 - **The local SQLite mirror is the single source of truth for the UI.** The UI
   never waits on the network. Sync writes to SQLite; models observe SQLite.
-  Offline reading is a consequence of the architecture, not a feature bolted on
-  later.
 - **Local mutations go through an outbox.** Marking read, starring and
   mark-all-read are written locally and enqueued, then replayed against the
   server in batches. Replay is idempotent and survives being killed mid-flight.
@@ -68,11 +61,8 @@ VirtualBox engine cannot build Rust):
 scripts/build-rpm.sh aarch64
 ```
 
-## Status
-
-Pre-1.0, under active development. Targets Harbour: one process, sandboxed,
-syncing on its own while it runs.
-
 ## Licence
 
-GPL-3.0-or-later. See [`LICENSE`](LICENSE).
+Licensed GPLv3+, see the [`LICENSE file`](LICENSE) for details.
+
+Copyright © Vuo contributors.
