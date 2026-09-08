@@ -44,7 +44,10 @@ work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
 url="https://static.crates.io/crates/qmetaobject/qmetaobject-$version.crate"
-curl -sSfL "$url" -o "$work/crate.tar.gz" \
+# --proto/--proto-redir: see the note in render-store-cover.sh. This one
+# fetches a crate whose checksum is then verified, but a downgrade would
+# still leak which crate, to whom.
+curl -sSfL --proto '=https' --proto-redir '=https' "$url" -o "$work/crate.tar.gz" \
     || { echo "FAIL: could not fetch $url" >&2; exit 1; }
 tar -C "$work" -xzf "$work/crate.tar.gz"
 upstream="$work/qmetaobject-$version"

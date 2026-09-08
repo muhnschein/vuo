@@ -61,6 +61,8 @@ while IFS= read -r f; do
             done
             continue
             ;;
+        # A plain path, checked immediately after this case.
+        *) ;;
     esac
     checked=$((checked + 1))
     [[ -e "$f" ]] || bad "the spec installs $f, which does not exist"

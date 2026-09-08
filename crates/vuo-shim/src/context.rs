@@ -381,188 +381,6 @@ pub fn refresh_current() -> Option<Rc<AppContext>> {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn there_is_no_context_before_startup() {
-        // Models constructed by QML before install() must degrade, not panic.
-        // (Each test thread has its own slot, so this is not order-dependent.)
-        assert!(current().is_none());
-    }
-
-    /// A context over a temp mirror, pointed at an origin nothing answers on.
-    fn test_context(dir: &tempfile::TempDir) -> Rc<AppContext> {
-        let db = Database::open(&dir.path().join("mirror.sqlite")).expect("mirror");
-        context_for_test(
-            db,
-            url::Url::parse("https://unreachable.invalid/").expect("url"),
-        )
-    }
-
-    #[test]
-    fn a_reentrant_borrow_returns_none_rather_than_panicking() {
-        // §9.5: a panic here unwinds into Qt's C++ frames, which is undefined
-        // behaviour -- so every borrow of the mirror is fallible.
-        //
-        // Nothing exercised that. No test built an `AppContext` at all, so
-        // `read` and `write` were never called, let alone reentrantly:
-        // replacing `try_borrow` with `borrow` left the whole shim suite green
-        // while turning a recoverable `None` into UB.
-        let dir = tempfile::tempdir().expect("tempdir");
-        let ctx = test_context(&dir);
-
-        // A plain borrow succeeds.
-        assert!(ctx.read(|_| ()).is_some());
-        assert!(ctx.write(|_| ()).is_some());
-
-        // A write inside a read, and a read inside a write, are the two ways
-        // this happens for real: a model reading the mirror to build a row and
-        // calling something that writes.
-        let nested_write = ctx.read(|_| ctx.write(|_| ()));
-        assert_eq!(
-            nested_write,
-            Some(None),
-            "a write inside a read must be refused, not panic"
-        );
-        let nested_read = ctx.write(|_| ctx.read(|_| ()));
-        assert_eq!(
-            nested_read,
-            Some(None),
-            "a read inside a write must be refused, not panic"
-        );
-
-        // And the refusal is temporary: the borrow is released afterwards.
-        assert!(ctx.write(|_| ()).is_some());
-    }
-
-    fn account_at(dir: &tempfile::TempDir, server: &str) -> AppPaths {
-        let paths = AppPaths::under(dir.path().join("harbour-vuo"));
-        crate::worker::save_account(
-            &paths.account,
-            &Account {
-                server_url: server.to_owned(),
-                token: "k".to_owned(),
-                // "Manual only", against the real default of hourly. These
-                // tests build REAL workers against an address nothing answers
-                // on, and an automatic sync would have each of them dial it
-                // and sit out the connect timeout before the test binary could
-                // exit. §8.1: the checks touch no network.
-                sync_interval_index: 0,
-                ..Account::default()
-            },
-        )
-        .expect("write the account");
-        paths
-    }
-
-    #[test]
-    fn refresh_installs_a_context_for_a_stored_account() {
-        // The first-run path: `main` builds the context once, before any
-        // account exists, so this is the call that has to work afterwards.
-        let dir = tempfile::tempdir().expect("tempdir");
-        // Plain http, as a WireGuard-only deployment uses. The transport
-        // accepts it; nothing in this path may quietly require TLS.
-        let paths = account_at(&dir, "http://10.77.0.1:8083/");
-        assert!(current().is_none());
-
-        let ctx = refresh(&paths).expect("a stored account must yield a context");
-        assert_eq!(ctx.instance().as_str(), "http://10.77.0.1:8083/");
-        assert!(
-            ctx.send(Command::TestConnection),
-            "the worker must be alive"
-        );
-
-        let installed = current().expect("and it must be installed, not just returned");
-        assert!(Rc::ptr_eq(&ctx, &installed));
-
-        // Idempotent: calling it again for the same account returns the same
-        // context rather than restarting a worker on every save.
-        let again = refresh(&paths).expect("a context");
-        assert!(Rc::ptr_eq(&ctx, &again));
-    }
-
-    #[test]
-    fn refresh_reports_an_address_that_is_not_a_url_rather_than_swallowing_it() {
-        // `10.77.0.1:8083` is the natural thing to type and is not a URL. It
-        // saves fine, so the failure lands here -- and used to land in a log
-        // line at a level the default filter drops, leaving the app with no
-        // worker and the user with no explanation.
-        let dir = tempfile::tempdir().expect("tempdir");
-        let paths = account_at(&dir, "10.77.0.1:8083");
-
-        let e = refresh(&paths).expect_err("that is not a URL");
-        assert!(
-            e.to_string().contains("scheme"),
-            "the message has to name what is missing: {e}"
-        );
-        assert!(current().is_none(), "and nothing half-built is installed");
-    }
-
-    #[test]
-    fn changing_the_account_does_not_start_a_second_worker() {
-        // The thread is created once, at start-up, and given each account in
-        // turn. Creating one later kills the process on a device -- see
-        // `Worker::spawn` -- and "the user edited the server address" must
-        // therefore not be a route back to `thread::Builder::spawn`.
-        //
-        // It used to be exactly that: replacing a context retired one thread
-        // and started another. The test that stood here checked the retiring
-        // half of it, which is the behaviour this replaces.
-        let dir = tempfile::tempdir().expect("tempdir");
-        let first = refresh(&account_at(&dir, "http://10.77.0.1:8083/")).expect("a context");
-        let worker = shared_worker().expect("a worker");
-
-        let second = refresh(&account_at(&dir, "http://10.77.0.2:8083/")).expect("a context");
-        assert!(
-            !Rc::ptr_eq(&first, &second),
-            "a changed account is a different context"
-        );
-        assert!(
-            Rc::ptr_eq(&worker, &shared_worker().expect("a worker")),
-            "but the same worker thread, handed the new account"
-        );
-        assert!(
-            second.send(Command::TestConnection),
-            "and it is still listening"
-        );
-    }
-
-    #[test]
-    fn the_sync_signal_counts_generations() {
-        // The models poll this to decide whether to reload. If `bump` stops
-        // incrementing, the UI never refreshes after a sync and silently shows
-        // stale articles; if the poll stops comparing, every model reloads from
-        // SQLite twice a second forever. Neither direction was tested.
-        let signal = SyncSignal::default();
-        assert_eq!(signal.generation(), 0);
-        signal.bump();
-        assert_eq!(signal.generation(), 1);
-        signal.bump();
-        assert_eq!(signal.generation(), 2, "two bumps must advance by two");
-
-        // And it is observable from another thread, which is the only way it
-        // is ever used: the worker bumps, the Qt thread polls.
-        let shared = std::sync::Arc::new(SyncSignal::default());
-        let writer = std::sync::Arc::clone(&shared);
-        std::thread::spawn(move || {
-            for _ in 0..100 {
-                writer.bump();
-            }
-        })
-        .join()
-        .expect("worker thread");
-        assert_eq!(shared.generation(), 100);
-
-        assert!(!shared.is_running());
-        shared.set_running(true);
-        assert!(shared.is_running());
-        shared.set_running(false);
-        assert!(!shared.is_running());
-    }
-}
-
 /// A counter the worker bumps whenever it changes the mirror.
 ///
 /// Deliberately not a callback registry. QML owns the models, so Rust has no
@@ -715,5 +533,223 @@ impl SyncSignal {
     #[must_use]
     pub fn is_running(&self) -> bool {
         self.running.load(std::sync::atomic::Ordering::Acquire)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn there_is_no_context_before_startup() {
+        // Models constructed by QML before install() must degrade, not panic.
+        // (Each test thread has its own slot, so this is not order-dependent.)
+        assert!(current().is_none());
+    }
+
+    /// A context over a temp mirror, pointed at an origin nothing answers on.
+    fn test_context(dir: &tempfile::TempDir) -> Rc<AppContext> {
+        let db = Database::open(&dir.path().join("mirror.sqlite")).expect("mirror");
+        context_for_test(
+            db,
+            url::Url::parse("https://unreachable.invalid/").expect("url"),
+        )
+    }
+
+    #[test]
+    fn a_reentrant_borrow_returns_none_rather_than_panicking() {
+        // §9.5: a panic here unwinds into Qt's C++ frames, which is undefined
+        // behaviour -- so every borrow of the mirror is fallible.
+        //
+        // Nothing exercised that. No test built an `AppContext` at all, so
+        // `read` and `write` were never called, let alone reentrantly:
+        // replacing `try_borrow` with `borrow` left the whole shim suite green
+        // while turning a recoverable `None` into UB.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let ctx = test_context(&dir);
+
+        // A plain borrow succeeds.
+        assert!(ctx.read(|_| ()).is_some());
+        assert!(ctx.write(|_| ()).is_some());
+
+        // A write inside a read, and a read inside a write, are the two ways
+        // this happens for real: a model reading the mirror to build a row and
+        // calling something that writes.
+        let nested_write = ctx.read(|_| ctx.write(|_| ()));
+        assert_eq!(
+            nested_write,
+            Some(None),
+            "a write inside a read must be refused, not panic"
+        );
+        let nested_read = ctx.write(|_| ctx.read(|_| ()));
+        assert_eq!(
+            nested_read,
+            Some(None),
+            "a read inside a write must be refused, not panic"
+        );
+
+        // And the refusal is temporary: the borrow is released afterwards.
+        assert!(ctx.write(|_| ()).is_some());
+    }
+
+    fn account_at(dir: &tempfile::TempDir, server: &str) -> AppPaths {
+        let paths = AppPaths::under(dir.path().join("harbour-vuo"));
+        crate::worker::save_account(
+            &paths.account,
+            &Account {
+                server_url: server.to_owned(),
+                token: "k".to_owned(),
+                // "Manual only", against the real default of hourly. These
+                // tests build REAL workers against an address nothing answers
+                // on, and an automatic sync would have each of them dial it
+                // and sit out the connect timeout before the test binary could
+                // exit. §8.1: the checks touch no network.
+                sync_interval_index: 0,
+                ..Account::default()
+            },
+        )
+        .expect("write the account");
+        paths
+    }
+
+    #[test]
+    fn refresh_installs_a_context_for_a_stored_account() {
+        // The first-run path: `main` builds the context once, before any
+        // account exists, so this is the call that has to work afterwards.
+        let dir = tempfile::tempdir().expect("tempdir");
+        // Plain http, as a WireGuard-only deployment uses. The transport
+        // accepts it; nothing in this path may quietly require TLS.
+        let paths = account_at(&dir, "http://10.77.0.1:8083/");
+        assert!(current().is_none());
+
+        let ctx = refresh(&paths).expect("a stored account must yield a context");
+        assert_eq!(ctx.instance().as_str(), "http://10.77.0.1:8083/");
+        assert!(
+            ctx.send(Command::TestConnection),
+            "the worker must be alive"
+        );
+
+        let installed = current().expect("and it must be installed, not just returned");
+        assert!(Rc::ptr_eq(&ctx, &installed));
+
+        // Idempotent: calling it again for the same account returns the same
+        // context rather than restarting a worker on every save.
+        let again = refresh(&paths).expect("a context");
+        assert!(Rc::ptr_eq(&ctx, &again));
+    }
+
+    #[test]
+    fn refresh_reports_an_address_that_is_not_a_url_rather_than_swallowing_it() {
+        // `10.77.0.1:8083` is the natural thing to type and is not a URL. It
+        // saves fine, so the failure lands here -- and used to land in a log
+        // line at a level the default filter drops, leaving the app with no
+        // worker and the user with no explanation.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let paths = account_at(&dir, "10.77.0.1:8083");
+
+        let e = refresh(&paths).expect_err("that is not a URL");
+        assert!(
+            e.to_string().contains("scheme"),
+            "the message has to name what is missing: {e}"
+        );
+        assert!(current().is_none(), "and nothing half-built is installed");
+    }
+
+    #[test]
+    fn changing_the_account_does_not_start_a_second_worker() {
+        // The thread is created once, at start-up, and given each account in
+        // turn. Creating one later kills the process on a device -- see
+        // `Worker::spawn` -- and "the user edited the server address" must
+        // therefore not be a route back to `thread::Builder::spawn`.
+        //
+        // It used to be exactly that: replacing a context retired one thread
+        // and started another. The test that stood here checked the retiring
+        // half of it, which is the behaviour this replaces.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let first = refresh(&account_at(&dir, "http://10.77.0.1:8083/")).expect("a context");
+        let worker = shared_worker().expect("a worker");
+
+        let second = refresh(&account_at(&dir, "http://10.77.0.2:8083/")).expect("a context");
+        assert!(
+            !Rc::ptr_eq(&first, &second),
+            "a changed account is a different context"
+        );
+        assert!(
+            Rc::ptr_eq(&worker, &shared_worker().expect("a worker")),
+            "but the same worker thread, handed the new account"
+        );
+        assert!(
+            second.send(Command::TestConnection),
+            "and it is still listening"
+        );
+    }
+
+    /// The rule `take_fetch_outcome` documents, which nothing enforced.
+    ///
+    /// A scrape result addressed to one article must not be consumed by
+    /// another: the user may have opened a second article while the first was
+    /// still fetching, and going back has to still show what happened. The
+    /// slot is also one-shot -- a second take finds nothing -- or a stale
+    /// result would re-appear on every poll.
+    ///
+    /// These two methods came in with the addressed slot and were never
+    /// covered; the module move that put them in a SonarQube diff is what
+    /// surfaced it.
+    #[test]
+    fn a_scrape_result_is_only_taken_by_the_article_that_asked_for_it() {
+        let signal = SyncSignal::default();
+        signal.post_fetch_outcome(FetchOutcome {
+            entry_id: 7,
+            status: crate::article::FETCH_OK,
+            message: String::new(),
+        });
+
+        assert!(
+            signal.take_fetch_outcome(9).is_none(),
+            "an article that did not ask for this result must not consume it"
+        );
+        let taken = signal
+            .take_fetch_outcome(7)
+            .expect("the article it is addressed to takes it");
+        assert_eq!(taken.entry_id, 7);
+        assert_eq!(taken.status, crate::article::FETCH_OK);
+
+        assert!(
+            signal.take_fetch_outcome(7).is_none(),
+            "the slot is one-shot; a stale result must not survive to the next poll"
+        );
+    }
+
+    #[test]
+    fn the_sync_signal_counts_generations() {
+        // The models poll this to decide whether to reload. If `bump` stops
+        // incrementing, the UI never refreshes after a sync and silently shows
+        // stale articles; if the poll stops comparing, every model reloads from
+        // SQLite twice a second forever. Neither direction was tested.
+        let signal = SyncSignal::default();
+        assert_eq!(signal.generation(), 0);
+        signal.bump();
+        assert_eq!(signal.generation(), 1);
+        signal.bump();
+        assert_eq!(signal.generation(), 2, "two bumps must advance by two");
+
+        // And it is observable from another thread, which is the only way it
+        // is ever used: the worker bumps, the Qt thread polls.
+        let shared = std::sync::Arc::new(SyncSignal::default());
+        let writer = std::sync::Arc::clone(&shared);
+        std::thread::spawn(move || {
+            for _ in 0..100 {
+                writer.bump();
+            }
+        })
+        .join()
+        .expect("worker thread");
+        assert_eq!(shared.generation(), 100);
+
+        assert!(!shared.is_running());
+        shared.set_running(true);
+        assert!(shared.is_running());
+        shared.set_running(false);
+        assert!(!shared.is_running());
     }
 }

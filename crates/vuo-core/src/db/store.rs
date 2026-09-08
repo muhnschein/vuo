@@ -55,10 +55,14 @@ pub fn name_sort_key(title: &str) -> String {
             // `to_lowercase` already turns 'ß' into itself, not "ss".
             'ß' => key.push_str("ss"),
             'á' | 'à' | 'â' | 'å' | 'ã' => key.push('a'),
-            'é' | 'è' | 'ê' | 'ë' => key.push('e'),
-            'í' | 'ì' | 'î' | 'ï' => key.push('i'),
-            'ó' | 'ò' | 'ô' | 'õ' => key.push('o'),
-            'ú' | 'ù' | 'û' => key.push('u'),
+            // è é ê ë -- contiguous, so a range says it without a gap.
+            'è'..='ë' => key.push('e'),
+            // ì í î ï
+            'ì'..='ï' => key.push('i'),
+            // ò ó ô õ -- ö is handled above, and F6 is outside this range.
+            'ò'..='õ' => key.push('o'),
+            // ù ú û -- ü likewise handled above, at FC.
+            'ù'..='û' => key.push('u'),
             'ç' => key.push('c'),
             'ñ' => key.push('n'),
             other => key.push(other),
@@ -991,5 +995,54 @@ mod name_sort_tests {
     fn eszett_sorts_as_ss() {
         assert_eq!(name_sort_key("Straße"), "strasse");
         assert_eq!(name_sort_key("STRASSE"), "strasse");
+    }
+
+    /// Every character `name_sort_key` folds, and the ones it must not.
+    ///
+    /// The e/i/o/u rows are written as RANGES -- `'è'..='ë'` and friends --
+    /// which is only correct while each range covers exactly the characters
+    /// the alternation it replaced listed, and nothing else. A range written
+    /// one codepoint too wide would swallow a neighbour, and the neighbours
+    /// here are not spare: `ö` (U+00F6) sits one past `'ò'..='õ'` and `ü`
+    /// (U+00FC) one past `'ù'..='û'`, and both fold differently, above.
+    ///
+    /// So this asserts the gaps as well as the hits. `ð` (U+00F0) falls
+    /// between the i-range and the o-range and must come through untouched;
+    /// `æ` (U+00E6) sits below `ç`, and `ý` (U+00FD) above `ü`.
+    #[test]
+    fn accents_fold_to_their_base_letter_and_stop_where_they_should() {
+        for (accents, base) in [
+            (['á', 'à', 'â', 'å', 'ã'].as_slice(), "a"),
+            (['è', 'é', 'ê', 'ë'].as_slice(), "e"),
+            (['ì', 'í', 'î', 'ï'].as_slice(), "i"),
+            (['ò', 'ó', 'ô', 'õ'].as_slice(), "o"),
+            (['ù', 'ú', 'û'].as_slice(), "u"),
+            (['ç'].as_slice(), "c"),
+            (['ñ'].as_slice(), "n"),
+        ] {
+            for c in accents {
+                assert_eq!(
+                    name_sort_key(&c.to_string()),
+                    base,
+                    "{c} should fold to {base}"
+                );
+            }
+        }
+
+        // The German three keep their DIN 5007-1 answers, which is why no
+        // range may reach them.
+        assert_eq!(name_sort_key("ä"), "a");
+        assert_eq!(name_sort_key("ö"), "o");
+        assert_eq!(name_sort_key("ü"), "u");
+        assert_eq!(name_sort_key("ß"), "ss");
+
+        // And the gaps: nothing folds what no arm names.
+        for untouched in ['æ', 'ð', 'ý', 'þ'] {
+            assert_eq!(
+                name_sort_key(&untouched.to_string()),
+                untouched.to_string(),
+                "{untouched} is not folded by any arm and must come through"
+            );
+        }
     }
 }

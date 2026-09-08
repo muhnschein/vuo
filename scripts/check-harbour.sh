@@ -36,7 +36,8 @@ echo "== Harbour rules =="
 # %{_defaultlicensedir}, which is where rpm's own `%license` puts a file --
 # the reason the licence text is installed into the app's datadir instead.
 path_allowed() {
-    case "$1" in
+    local path=$1
+    case "$path" in
         "usr/bin/$NAME") return 0 ;;
         "usr/share/$NAME"|"usr/share/$NAME"/*) return 0 ;;
         "usr/share/applications/$NAME.desktop") return 0 ;;
@@ -116,6 +117,8 @@ Compatibility|Secrets|Contacts|Accounts) ;;
                 && bad "$D: no OrganizationName component may start with a digit"
             case "$value" in
                 com.jolla|org.sailfishos) bad "$D: OrganizationName '$value' is reserved" ;;
+                # Every other organisation name is the applicant's to choose.
+                *) ;;
             esac
             ;;
         ApplicationName)
@@ -152,6 +155,8 @@ done < <(grep -rhE '^[[:space:]]*import[[:space:]]' qml/ \
 while IFS=$'\t' read -r file target; do
     case "$target" in
         /*) bad "$file: absolute path imports are forbidden" ; continue ;;
+        # A relative import is what this rule wants; it is checked below.
+        *) ;;
     esac
     [[ -d "$(dirname "$file")/$target" ]] \
         || bad "$file imports '$target', which is not a directory in qml/"
