@@ -61,7 +61,10 @@ pub const ROLE_FEED_ICON: i32 = USER_ROLE + 10;
 /// A row as the UI needs it. Deliberately not [`Entry`]: the model holds only
 /// what the list draws, so scrolling a long list does not keep every article
 /// body resident.
-#[derive(Debug, Clone, Default)]
+///
+/// `PartialEq` so a reload can tell a row that actually moved from one it has
+/// just re-read unchanged -- see [`EntryModel::reload`].
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct EntryRow {
     pub id: i64,
     pub feed_id: i64,
@@ -131,6 +134,26 @@ fn data_uri(mime: &str, bytes: &[u8]) -> String {
         mime,
         base64::engine::general_purpose::STANDARD.encode(bytes)
     )
+}
+
+/// Tell the view every row it holds may have been redrawn, WITHOUT resetting
+/// the model.
+///
+/// The difference is the whole point: `begin_reset_model` re-lays the view out
+/// from scratch and a plain `ListView` comes back at its own top, throwing the
+/// reader wherever they had scrolled to. `dataChanged` leaves the layout --
+/// and so the scroll position -- exactly where it was and only re-reads the
+/// roles.
+///
+/// A no-op on an empty model: `row_index` of a row that is not there is not an
+/// index a view can be told about.
+fn announce_rows_changed(model: &mut dyn QAbstractListModel, len: usize) {
+    let Some(last) = len.checked_sub(1).and_then(|n| i32::try_from(n).ok()) else {
+        return;
+    };
+    let first = model.row_index(0);
+    let last = model.row_index(last);
+    model.data_changed(first, last);
 }
 
 /// Which slice of the mirror a model shows.
@@ -469,6 +492,11 @@ impl EntryModel {
             return false;
         }
         self.seen_generation = generation;
+        // `reload`'s own answer -- whether it had to RESET the list -- is
+        // deliberately not this one. The QML polls every model on a tick and
+        // uses what comes back to decide whether the feed list is worth
+        // polling too, and that turns on the MIRROR having moved, not on how
+        // gently this particular list absorbed it.
         self.reload();
         true
     }
@@ -595,22 +623,31 @@ impl EntryModel {
     /// its new articles -- and a kept row the mirror no longer has (the server
     /// deleted it) goes with it.
     ///
-    /// A full reset rather than a diff. For the list sizes a phone actually
-    /// scrolls this is imperceptible, and a wrong `begin_insert_rows` range is
-    /// a crash inside Qt's model machinery rather than a visual glitch — a bad
-    /// trade for a saved millisecond.
-    pub fn reload(&mut self) {
-        self.reload_keeping(true);
+    /// A full reset rather than a diff WHEN THE ROWS THEMSELVES CHANGE. For
+    /// the list sizes a phone actually scrolls that is imperceptible, and a
+    /// wrong `begin_insert_rows` range is a crash inside Qt's model machinery
+    /// rather than a visual glitch — a bad trade for a saved millisecond. A
+    /// reload that finds the same articles in the same places does not reset
+    /// at all; see [`reload_keeping`](Self::reload_keeping).
+    ///
+    /// Returns true when the model was RESET, which is the thing that costs
+    /// the reader their scroll position.
+    pub fn reload(&mut self) -> bool {
+        self.reload_keeping(true)
     }
 
     /// Re-read rows from the mirror and show exactly what matches the scope.
-    fn reload_fresh(&mut self) {
-        self.reload_keeping(false);
+    fn reload_fresh(&mut self) -> bool {
+        self.reload_keeping(false)
     }
 
-    fn reload_keeping(&mut self, keep_shown: bool) {
-        let Some(ctx) = self.context() else { return };
-        let Some(scope) = self.scope else { return };
+    fn reload_keeping(&mut self, keep_shown: bool) -> bool {
+        let Some(ctx) = self.context() else {
+            return false;
+        };
+        let Some(scope) = self.scope else {
+            return false;
+        };
 
         // A manual refresh anywhere -- the pulley on another tab, the cover's
         // action -- starts every list over, not only the one it was pulled
@@ -658,10 +695,50 @@ impl EntryModel {
             }
         }
 
+        // The same articles in the same places are PATCHED where they are.
+        // Only a list whose rows have actually moved is reset.
+        //
+        // A reset re-lays the view out and a plain ListView comes back at its
+        // own top, so every generation bump threw the reader to the top of the
+        // list however little the mirror had changed. The bump that made that
+        // unbearable is the reader's own: "Mark as read" from a row's context
+        // menu patches that row at the tap (`mark_row`) and sends
+        // `FlushOutbox`; the worker bumps the generation as soon as the server
+        // confirms the intent, for the settings page's pending count and
+        // nothing this list shows. A second later the poll re-read exactly the
+        // rows it already had, reset the model anyway, and the list jumped
+        // back to the top under the reader's thumb.
+        //
+        // Ids in order is the test, NOT equal rows: a row whose STATE changed
+        // -- read or starred on another tab, or by a sync -- is redrawn where
+        // it is, which is what `mark_row` already does for a local change.
+        let same_rows = self.rows.len() == rows.len()
+            && self
+                .rows
+                .iter()
+                .zip(&rows)
+                .all(|(held, fresh)| held.id == fresh.id);
+        if same_rows {
+            // Only when something in them moved. The delegate's detail line is
+            // rebuilt from font metrics on every `dataChanged`, and this runs
+            // on every bump.
+            let redraw = self.rows != rows;
+            self.rows = rows;
+            if redraw {
+                let len = self.rows.len();
+                announce_rows_changed(self as &mut dyn QAbstractListModel, len);
+            }
+            // Emitted either way: `unreadTotal` is the mirror's, not this
+            // list's, so it can move while every row here stays put.
+            self.countChanged();
+            return false;
+        }
+
         (self as &mut dyn QAbstractListModel).begin_reset_model();
         self.rows = rows;
         (self as &mut dyn QAbstractListModel).end_reset_model();
         self.countChanged();
+        true
     }
 
     /// Rebuild the feed name/icon cache from the mirror.
@@ -794,7 +871,9 @@ pub const ROLE_FEED_HIDDEN: i32 = USER_ROLE + 7;
 /// `USER_ROLE` independently.
 pub const ROLE_FEED_ICON_URI: i32 = USER_ROLE + 8;
 
-#[derive(Debug, Clone, Default)]
+/// `PartialEq` for the reason [`EntryRow`] has it: a reload that finds the
+/// list it already holds must not reset the model.
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct FeedRow {
     pub id: i64,
     pub title: String,
@@ -1013,8 +1092,13 @@ impl FeedModel {
             .unwrap_or(0)
     }
 
-    pub fn reload(&mut self) {
-        let Some(ctx) = self.context() else { return };
+    /// Re-read the feed list. Returns true when the model was RESET, which is
+    /// what costs the reader their place in the list -- see
+    /// [`EntryModel::reload`], which this mirrors.
+    pub fn reload(&mut self) -> bool {
+        let Some(ctx) = self.context() else {
+            return false;
+        };
         let rows: Vec<FeedRow> = ctx
             .read(|db| {
                 let counts = store::unread_counts_by_feed(db.conn()).unwrap_or_default();
@@ -1052,10 +1136,34 @@ impl FeedModel {
             })
             .unwrap_or_default();
 
+        // The same feeds in the same places are patched where they are, for
+        // the reason `EntryModel::reload_keeping` spells out: a reset re-lays
+        // the view out at its top. This list is reloaded on every generation
+        // bump the entry models report, and a feed's unread count moves on
+        // every article the reader finishes -- so without this, reading one
+        // article from a feed scrolled the Feeds page back to the top.
+        let same_rows = self.rows.len() == rows.len()
+            && self
+                .rows
+                .iter()
+                .zip(&rows)
+                .all(|(held, fresh)| held.id == fresh.id);
+        if same_rows {
+            let redraw = self.rows != rows;
+            self.rows = rows;
+            if redraw {
+                let len = self.rows.len();
+                announce_rows_changed(self as &mut dyn QAbstractListModel, len);
+            }
+            self.countChanged();
+            return false;
+        }
+
         (self as &mut dyn QAbstractListModel).begin_reset_model();
         self.rows = rows;
         (self as &mut dyn QAbstractListModel).end_reset_model();
         self.countChanged();
+        true
     }
 
     #[must_use]
@@ -1445,6 +1553,93 @@ mod row_decoration_tests {
             ids(&model),
             vec![7, 3],
             "a manual refresh is the one thing that takes a read row off Unread"
+        );
+    }
+
+    /// §the list must not move under the reader when nothing on it moved.
+    ///
+    /// Reported from a device: marking an article read from its context menu
+    /// marked it read AND threw the reader back to the top of the list a
+    /// moment later. `setRead` patches the row where it is, so the tap itself
+    /// is fine -- but it also sends `FlushOutbox`, and the worker bumps the
+    /// generation the instant the server confirms that intent, for the
+    /// settings page's pending count and nothing this list shows. The poll
+    /// that saw the bump re-read exactly the rows it already had and reset the
+    /// model anyway; a reset re-lays a plain ListView out at its own top.
+    #[test]
+    fn a_bump_that_leaves_the_rows_alone_does_not_reset_the_list() {
+        let (_dir, ctx) = seeded();
+        put(&ctx, &unread_entry(5));
+
+        let mut model = EntryModel::default();
+        model.attach(std::rc::Rc::clone(&ctx));
+        model.setScope(0, 0);
+        assert_eq!(ids(&model), vec![7, 5], "newest first");
+
+        // The reader marks 5 read from its context menu: patched in place.
+        model.setRead(1, true);
+        assert!(
+            !model.rows().get(1).expect("row 5").unread,
+            "the tap itself shows immediately"
+        );
+
+        // The flush confirms the intent and the worker bumps the generation.
+        // The ENTRIES are untouched by that -- all it deleted is outbox rows
+        // -- so the reload the poll runs finds the list it already holds.
+        ctx.signal().bump();
+        assert!(
+            !model.reload(),
+            "a reload that finds the same articles in the same places must not \
+             reset the model: a reset takes the reader back to the top"
+        );
+        assert_eq!(ids(&model), vec![7, 5], "and it keeps the rows either way");
+
+        // A row read on ANOTHER tab is redrawn where it is, too. It is kept on
+        // Unread until the reader refreshes, so the list is the same list --
+        // one row of it is just in a new state.
+        ctx.write(|db| worker::apply_local_status(db, EntryId(7), EntryStatus::Read))
+            .expect("the mirror")
+            .expect("mark read");
+        assert!(
+            !model.reload(),
+            "a row whose state changed is redrawn, not re-laid out"
+        );
+        assert!(
+            !model.rows().first().expect("row 7").unread,
+            "and it does show its new state"
+        );
+
+        // A row ARRIVING is a different list, and does have to reset.
+        put(&ctx, &unread_entry(3));
+        assert!(
+            model.reload(),
+            "an article arriving changes which rows there are"
+        );
+        assert_eq!(ids(&model), vec![7, 5, 3]);
+    }
+
+    /// The Feeds page is reloaded on every bump the entry models report, and
+    /// an unread count moves on every article the reader finishes -- so the
+    /// same reset would scroll it away just as readily.
+    #[test]
+    fn a_feed_whose_count_moved_is_redrawn_rather_than_re_laid_out() {
+        let (_dir, ctx) = seeded();
+        put(&ctx, &unread_entry(5));
+        let mut feeds = FeedModel::default();
+        feeds.attach(std::rc::Rc::clone(&ctx));
+        let before = feeds.rows().first().expect("the seeded feed").unread;
+
+        ctx.write(|db| worker::apply_local_status(db, EntryId(5), EntryStatus::Read))
+            .expect("the mirror")
+            .expect("mark read");
+        assert!(
+            !feeds.reload(),
+            "the same feeds in the same places must not reset the list"
+        );
+        assert_eq!(
+            feeds.rows().first().expect("the seeded feed").unread,
+            before - 1,
+            "but the count must be redrawn"
         );
     }
 
