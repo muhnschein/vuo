@@ -42,7 +42,7 @@ endif
 
 .PHONY: all check fmt fmt-check clippy test qmllint qml-load shim deny \
         fuzz-check packaging harbour msrv fuzz-quick live-test vendor-check \
-        textart icons rpm vendor clean help
+        sonar-reports textart icons rpm vendor clean help
 
 all: check
 
@@ -161,6 +161,55 @@ deny:
 		echo "CI installs it, so a green local run without it is not a green CI run." >&2; \
 		exit 1; \
 	fi
+
+## sonar-reports: the two files SonarQube Cloud imports -- clippy diagnostics
+## and coverage -- written to target/sonar/. Needs cargo-llvm-cov, so it is an
+## opt-in target rather than part of `check`. See sonar-project.properties.
+sonar-reports:
+	@echo "== reports for SonarQube Cloud =="
+	@command -v cargo-llvm-cov >/dev/null 2>&1 || { \
+		echo "cargo-llvm-cov is not installed. Install it with:" >&2; \
+		echo "    rustup component add llvm-tools-preview" >&2; \
+		echo "    cargo install --locked cargo-llvm-cov" >&2; \
+		exit 1; \
+	}
+	@mkdir -p target/sonar
+	# cargo prints each diagnostic ONCE and caches it afterwards, so on a warm
+	# target/ this writes an EMPTY report -- which SonarQube imports without
+	# complaint as "clippy found nothing". Dropping the three workspace crates
+	# costs a recompile of Vuo's own code and keeps the dependency build.
+	$(CARGO) clean -p vuo-core -p vuo-shim -p harbour-vuo
+	@: > target/sonar/clippy.json
+	@echo "-- clippy (core) --"
+	# Deliberately without `-- -D warnings`, unlike the `clippy` target: this
+	# one reports, and `make check` is the one that refuses. The report is
+	# newline-delimited JSON, so the three runs simply append.
+	$(CARGO) clippy --workspace --exclude vuo-shim --exclude harbour-vuo \
+		--all-targets --message-format=json >> target/sonar/clippy.json
+ifeq ($(HAVE_QT),yes)
+	@echo "-- clippy (shim) --"
+	$(CARGO) clippy -p vuo-shim --all-targets --message-format=json \
+		>> target/sonar/clippy.json
+	@echo "-- clippy (app binary) --"
+	$(CARGO) clippy -p harbour-vuo --all-targets --message-format=json \
+		>> target/sonar/clippy.json
+	@echo "-- coverage (core and shim) --"
+	# harbour-vuo is excluded: it is an entry point with no tests of its own,
+	# and instrumenting it only adds an uncovered main() to the report.
+	# third_party/qmetaobject is excluded for the reason given in
+	# sonar-project.properties -- it is upstream's code, not ours to cover.
+	QT_QPA_PLATFORM=offscreen $(CARGO) llvm-cov --workspace \
+		--exclude harbour-vuo \
+		--ignore-filename-regex '(^|/)third_party/' \
+		--lcov --output-path target/sonar/lcov.info
+else
+	@echo "-- shim and app clippy SKIPPED: no qmake found at $(QMAKE) --"
+	@echo "-- coverage (core only) --"
+	$(CARGO) llvm-cov --workspace --exclude vuo-shim --exclude harbour-vuo \
+		--ignore-filename-regex '(^|/)third_party/' \
+		--lcov --output-path target/sonar/lcov.info
+endif
+	@echo "== wrote target/sonar/clippy.json and target/sonar/lcov.info =="
 
 ## vendor-check: prove third_party/qmetaobject is upstream plus its one patch.
 ## Needs crates.io, so it is an opt-in gate rather than part of `check`.

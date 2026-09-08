@@ -23,6 +23,45 @@ or behind an explicit opt-in gate. There are exactly two gates:
 needs crates.io to prove `third_party/qmetaobject` is upstream plus its one
 patch. See `docs/packaging.md`.
 
+## SonarQube Cloud
+
+A second opinion, published by `.github/workflows/sonar.yml`, and deliberately
+**not** part of the gate. `make check` and `ci.yml` decide what is allowed in;
+Sonar's quality gate is advice. Making a hosted service part of intake would
+break the one rule at the top of this file — that a laptop with no network is
+enough to know whether a change is good.
+
+Two things it reports on are generated locally by `make sonar-reports`, which
+writes `target/sonar/clippy.json` and `target/sonar/lcov.info`:
+
+- **Clippy.** The Sonar Rust analyser can run clippy itself, and does not here.
+  It would invoke cargo at the workspace root, where `vuo-shim` and
+  `harbour-vuo` do not compile without Qt headers, and it knows nothing about
+  the `--exclude` lists that keep the Qt-free crates buildable on a bare
+  runner. `make sonar-reports` runs the same three invocations `make clippy`
+  runs and hands over the JSON.
+- **Coverage,** from `cargo llvm-cov` over `vuo-core` and `vuo-shim`.
+
+`make sonar-reports` runs `cargo clean -p` on the three workspace crates first.
+That is not tidiness: cargo prints each diagnostic once and caches it
+afterwards, so on a warm `target/` the report comes out empty — and an empty
+report is imported without complaint, as *clippy found nothing*.
+
+Expect the clippy report to contain nothing of Vuo's own, and treat that as
+correct rather than broken: `make check` runs clippy with `-D warnings`, so a
+green build has no warnings left to report. It is carried anyway as insurance
+— if that denial is ever relaxed, the findings surface here instead of
+disappearing. (What the report *does* contain today is
+`third_party/qmetaobject`, which is excluded from the analysis, so those are
+dropped on import.)
+
+Two things worth knowing before reading a report. Imported clippy findings
+arrive as **external issues**: they do count toward the quality gate, but the
+rules raising them cannot be switched off in a Sonar quality profile — clippy's
+own configuration is the only place to silence one. And the analyser has no
+idea what QML is: the `qml/` tree is covered by `qmllint` and the QML load
+test, and by nothing here.
+
 ## The parts worth explaining
 
 ### The QML load test
