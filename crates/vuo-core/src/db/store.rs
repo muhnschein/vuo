@@ -303,6 +303,46 @@ pub fn delete_entry(tx: &Transaction<'_>, id: EntryId) -> Result<()> {
     Ok(())
 }
 
+/// Forget read, unfavourited entries published before `cutoff`.
+///
+/// The mirror is a cache of the server, not an archive, but nothing ever
+/// removed anything from it: a phone that had synced for a year held every
+/// article body it had ever seen, and the file only grew. This is the one
+/// thing that shrinks it.
+///
+/// Three kinds of entry are never touched, and each exclusion is load-bearing:
+///
+/// - **Unread.** The reader has not seen it yet. Deleting it would be
+///   indistinguishable from the app losing it.
+/// - **Favourited.** A favourite is the user saying "keep this". A retention
+///   policy that deletes favourites is a bug with a settings page.
+/// - **Anything with a queued intent.** An outbox row is a local change the
+///   server has not confirmed. Deleting the entry under it would drop the
+///   user's own tap -- so a just-read article survives until its `read` has
+///   actually reached the server, and is pruned on some later pass.
+///
+/// An entry the feed gave no date at all is aged from `created_at`, and if it
+/// has neither it is treated as older than any cutoff: a read, unfavourited,
+/// undated article is exactly what this exists to collect.
+///
+/// Safe with respect to sync. The pull is driven by a `changed_after` cursor
+/// which only moves forward, and the reconcile only ever deletes local rows the
+/// server no longer has -- so nothing pruned here comes back on the next pass,
+/// and nothing here makes the reconcile delete something else.
+pub fn prune_entries(tx: &Transaction<'_>, cutoff: i64) -> Result<usize> {
+    // Enclosures follow by `ON DELETE CASCADE`; `foreign_keys` is ON for every
+    // connection this crate opens (see `db::Database::configure`).
+    let removed = tx.execute(
+        "DELETE FROM entries \
+          WHERE status = 'read' \
+            AND starred = 0 \
+            AND COALESCE(published_at, created_at, 0) < ?1 \
+            AND id NOT IN (SELECT entry_id FROM outbox)",
+        [cutoff],
+    )?;
+    Ok(removed)
+}
+
 /// Every entry id Vuo holds locally.
 pub fn local_entry_ids(conn: &rusqlite::Connection) -> Result<Vec<EntryId>> {
     let mut stmt = conn.prepare("SELECT id FROM entries")?;
@@ -876,6 +916,97 @@ mod tests {
 
     fn ids_of(entries: &[EntryId]) -> Vec<i64> {
         entries.iter().map(|id| id.get()).collect()
+    }
+
+    /// §retention drops what the reader is done with, and nothing else.
+    ///
+    /// The mirror grew forever: nothing removed anything from it except a
+    /// server-side deletion, so a phone that had read a year of feeds still
+    /// held every body it had ever seen. This is the only thing that shrinks
+    /// it, which makes exactly what it REFUSES to touch the interesting half.
+    #[test]
+    fn retention_keeps_the_unread_the_favourites_and_the_unsent() {
+        let mut db = populated();
+
+        // A queued intent on entry 6, which is otherwise the oldest thing a
+        // wide cutoff would take: its `read` has not reached the server, and
+        // deleting the row under it would drop the reader's own tap.
+        db.with_tx(|tx| {
+            outbox::queue(
+                tx,
+                EntryId(6),
+                outbox::DesiredValue::Status(EntryStatus::Read),
+                1_000,
+            )
+        })
+        .expect("queue");
+
+        // Past every entry in the fixture, so only the exclusions decide.
+        let pruned = db.with_tx(|tx| prune_entries(tx, 10_000)).expect("prune");
+        assert_eq!(pruned, 1, "only entry 4 is read, unfavourited and settled");
+
+        let mut left = ids_of(&local_entry_ids(db.conn()).expect("ids"));
+        left.sort_unstable();
+        assert_eq!(
+            left,
+            vec![1, 2, 3, 5, 6],
+            "unread (1, 3, 5), favourited (2) and unflushed (6) all survive"
+        );
+    }
+
+    /// §retention is a window, not a purge.
+    #[test]
+    fn retention_only_reaches_past_the_cutoff() {
+        let mut db = populated();
+
+        // Entry 4 is published at 400 and entry 6 at 600; both are read and
+        // unfavourited. A cutoff between them must take exactly one.
+        let pruned = db.with_tx(|tx| prune_entries(tx, 500)).expect("prune");
+        assert_eq!(pruned, 1);
+        let mut left = ids_of(&local_entry_ids(db.conn()).expect("ids"));
+        left.sort_unstable();
+        assert_eq!(
+            left,
+            vec![1, 2, 3, 5, 6],
+            "the article inside the window stays"
+        );
+
+        // And nothing at all when the window covers everything.
+        let pruned = db.with_tx(|tx| prune_entries(tx, 0)).expect("prune");
+        assert_eq!(pruned, 0);
+    }
+
+    /// §an enclosure does not outlive the entry retention dropped.
+    ///
+    /// The FK says `ON DELETE CASCADE` and `foreign_keys` is ON, so this is
+    /// the pragma being load-bearing rather than decorative -- which is what
+    /// `db::tests::foreign_keys_are_enforced` exists to protect from the other
+    /// side.
+    #[test]
+    fn retention_takes_the_enclosures_with_it() {
+        let mut db = populated();
+        db.with_tx(|tx| {
+            let mut e = entry_at(4, 11, EntryStatus::Read, false, 400);
+            e.enclosures = vec![Enclosure {
+                id: 99,
+                entry_id: EntryId(4),
+                url: crate::content::MediaUrl::parse("https://example.test/a.mp3"),
+                mime_type: "audio/mpeg".to_owned(),
+                size: 1,
+            }];
+            upsert_entry(tx, &e, 2)
+        })
+        .expect("enclosure");
+
+        let count = |db: &Database| -> i64 {
+            db.conn()
+                .query_row("SELECT COUNT(*) FROM enclosures", [], |r| r.get(0))
+                .expect("count")
+        };
+        assert_eq!(count(&db), 1, "the fixture must have one to lose");
+
+        db.with_tx(|tx| prune_entries(tx, 10_000)).expect("prune");
+        assert_eq!(count(&db), 0, "the enclosure went with its entry");
     }
 
     #[test]

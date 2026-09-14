@@ -27,27 +27,27 @@
 <context>
     <name>ArticlePage</name>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="118"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="126"/>
         <source>Article</source>
         <translation>নিবন্ধ</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="139"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="147"/>
         <source>Read</source>
         <translation>পঠিত</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="139"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="147"/>
         <source>Unread</source>
         <translation>অপঠিত</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="146"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="154"/>
         <source>★ Favourite</source>
         <translation>★ প্রিয়</translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/pages/ArticlePage.qml" line="161"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="169"/>
         <source>%n image(s) are not proxied by your server and were not loaded.</source>
         <translation>
             <numerusform>%n টি ছবি আপনার সার্ভারের মধ্য দিয়ে আসে না, তাই লোড হয়নি।</numerusform>
@@ -55,72 +55,72 @@
         </translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="176"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="184"/>
         <source>This article was too large to display in full.</source>
         <translation>নিবন্ধটি পুরোপুরি দেখানোর মতো বড় ছিল।</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="181"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="189"/>
         <source>Mark as unread</source>
         <translation>অপঠিত হিসেবে চিহ্নিত করুন</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="181"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="189"/>
         <source>Mark as read</source>
         <translation>পঠিত হিসেবে চিহ্নিত করুন</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="190"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="198"/>
         <source>Remove favourite</source>
         <translation>প্রিয় থেকে সরান</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="191"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="199"/>
         <source>Add favourite</source>
         <translation>প্রিয়তে যোগ করুন</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="195"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="203"/>
         <source>Open in browser</source>
         <translation>ব্রাউজারে খুলুন</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="207"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="215"/>
         <source>Fetch original content</source>
         <translation>মূল লেখা আনুন</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="215"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="223"/>
         <source>Asking the server for the original article…</source>
         <translation>সার্ভারের কাছে মূল নিবন্ধ চাওয়া হচ্ছে…</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="354"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="362"/>
         <source>Tap to load images from %1</source>
         <translation>%1 থেকে ছবি লোড করতে ট্যাপ করুন</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="448"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="472"/>
         <source>Loaded the original article.</source>
         <translation>মূল নিবন্ধ লোড হয়েছে।</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="452"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="476"/>
         <source>The server could not extract the original article.</source>
         <translation>সার্ভার মূল নিবন্ধটি বের করতে পারেনি।</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="455"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="479"/>
         <source>This feed already carries the full article.</source>
         <translation>এই ফিডে পুরো নিবন্ধ আগে থেকেই আছে।</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="457"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="481"/>
         <source>The server rejected the API key.</source>
         <translation>সার্ভার API কী প্রত্যাখ্যান করেছে।</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="461"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="485"/>
         <source>Could not fetch the original article: %1</source>
         <translation>মূল নিবন্ধ আনা গেল না: %1</translation>
     </message>
@@ -418,182 +418,217 @@
 <context>
     <name>SettingsPage</name>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="70"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="71"/>
         <source>Settings</source>
         <translation>সেটিংস</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="72"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="73"/>
         <source>Account</source>
         <translation>অ্যাকাউন্ট</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="77"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="78"/>
         <source>Server address</source>
         <translation>সার্ভারের ঠিকানা</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="78"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="79"/>
         <source>https://miniflux.example.com</source>
         <translation>https://miniflux.udaharan.com</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="86"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="87"/>
         <source>API key</source>
         <translation>API কী</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="103"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="104"/>
         <source>Create a key in Miniflux under Settings → API Keys.</source>
         <translation>Miniflux-এ Settings → API Keys থেকে একটি কী তৈরি করুন।</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="108"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="109"/>
         <source>Test connection</source>
         <translation>সংযোগ পরীক্ষা করুন</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="129"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="130"/>
         <source>Connected as %1</source>
         <translation>%1 হিসেবে যুক্ত</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="130"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="131"/>
         <source>Test failed: %1</source>
         <translation>পরীক্ষা ব্যর্থ: %1</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="133"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="134"/>
         <source>Reading</source>
         <translation>পড়া</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="138"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="139"/>
         <source>Mark as read when opened</source>
         <translation>খোলার সময় পঠিত চিহ্নিত করুন</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="140"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="141"/>
         <source>Never</source>
         <translation>কখনও নয়</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="141"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="142"/>
         <source>Immediately</source>
         <translation>সঙ্গে সঙ্গে</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="142"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="143"/>
         <source>After 5 seconds</source>
         <translation>৫ সেকেন্ড পর</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="143"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="144"/>
         <source>After 15 seconds</source>
         <translation>১৫ সেকেন্ড পর</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="144"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="145"/>
         <source>After 30 seconds</source>
         <translation>৩০ সেকেন্ড পর</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="156"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="157"/>
         <source>The delay counts only while the article is on screen. Marking an article read or unread yourself always wins.</source>
         <translation>নিবন্ধটি পর্দায় থাকলে তবেই সময় গোনা হয়। আপনি নিজে পঠিত বা অপঠিত চিহ্নিত করলে সেটিই সবসময় চলবে।</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="159"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="160"/>
         <source>Images</source>
         <translation>ছবি</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="164"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="165"/>
         <source>Images not proxied by your server</source>
         <translation>আপনার সার্ভারের মধ্য দিয়ে না আসা ছবি</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="166"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="167"/>
         <source>Never load</source>
         <translation>কখনও লোড করবেন না</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="167"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="168"/>
         <source>Ask each site</source>
         <translation>প্রতিটি সাইটের জন্য জিজ্ঞাসা করুন</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="168"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="169"/>
         <source>Always load</source>
         <translation>সবসময় লোড করুন</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="180"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="181"/>
         <source>Miniflux proxies plain-http images only by default, so most images arrive unproxied. Loading them directly tells those sites your IP address and when you read.</source>
         <translation>Miniflux সাধারণত কেবল সাধারণ HTTP-এর ছবি নিজের মধ্য দিয়ে পাঠায়, তাই বেশিরভাগ ছবি সরাসরি আসে। সরাসরি লোড করলে সেই সাইটগুলি আপনার IP ঠিকানা ও পড়ার সময় জেনে যায়।</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="183"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="184"/>
         <source>Synchronisation</source>
         <translation>সমন্বয়</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="191"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="192"/>
         <source>Sync with server</source>
         <translation>সার্ভারের সঙ্গে সমন্বয়</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="193"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="194"/>
         <source>Manual only</source>
         <translation>শুধু হাতে</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="194"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="195"/>
         <source>Every 15 minutes</source>
         <translation>প্রতি ১৫ মিনিটে</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="195"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="196"/>
         <source>Every 30 minutes</source>
         <translation>প্রতি ৩০ মিনিটে</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="196"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="197"/>
         <source>Hourly</source>
         <translation>প্রতি ঘণ্টায়</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="197"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="198"/>
         <source>Every 6 hours</source>
         <translation>প্রতি ৬ ঘণ্টায়</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="211"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="212"/>
         <source>How often Vuo fetches from your Miniflux server while it is open or on the cover. How often the server itself checks your feeds is set on the server, not here.</source>
         <translation>Vuo খোলা থাকলে বা কভারে থাকলে কত ঘনঘন আপনার Miniflux সার্ভার থেকে আনে। সার্ভার নিজে কত ঘনঘন ফিড দেখে, তা সার্ভারেই ঠিক হয়, এখানে নয়।</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="222"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="226"/>
+        <source>Keep read articles</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="228"/>
+        <source>Forever</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="229"/>
+        <source>For a month</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="230"/>
+        <source>For three months</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="231"/>
+        <source>For six months</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="232"/>
+        <source>For a year</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="247"/>
+        <source>Older articles you have already read are removed from this phone at the end of a sync. Favourites, unread articles and anything not yet sent to the server are always kept, and nothing is removed from your Miniflux server.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="258"/>
         <source>Advanced</source>
         <translation>উন্নত</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="226"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="262"/>
         <source>Use a custom CA certificate</source>
         <translation>নিজস্ব CA সার্টিফিকেট ব্যবহার করুন</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="233"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="269"/>
         <source>For a self-hosted server with a private certificate authority. Place the certificate at ~/.local/share/harbour-vuo/harbour-vuo/ca.pem. Certificate verification is never disabled, and there is no option to disable it.</source>
         <translation>ব্যক্তিগত সার্টিফিকেট কর্তৃপক্ষসহ নিজের সার্ভারের জন্য। সার্টিফিকেটটি ~/.local/share/harbour-vuo/harbour-vuo/ca.pem-এ রাখুন। সার্টিফিকেট যাচাই কখনও বন্ধ করা হয় না, এবং বন্ধ করার কোনও বিকল্পও নেই।</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="234"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="270"/>
         <source>Only applies to an https:// server. This one is not encrypted by TLS, so no certificate is used.</source>
         <translation>কেবল https:// সার্ভারের ক্ষেত্রে প্রযোজ্য। এটি TLS দিয়ে এনক্রিপ্ট করা নয়, তাই কোনও সার্টিফিকেট ব্যবহার হয় না।</translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/pages/SettingsPage.qml" line="246"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="282"/>
         <source>%n change(s) waiting to be sent to the server.</source>
         <translation>
             <numerusform>%n টি পরিবর্তন সার্ভারে পাঠানোর অপেক্ষায়।</numerusform>

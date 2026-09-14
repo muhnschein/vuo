@@ -293,7 +293,18 @@ pub async fn diverging_feeds(db: &Database, client: &MinifluxClient) -> Result<V
     for (feed_id, local_count) in &local {
         // A feed absent from the counters response holds zero entries there.
         let server_count = server.get(feed_id).copied().unwrap_or(0);
-        if server_count != *local_count {
+        // ONE DIRECTION, deliberately. This exists to notice entries the
+        // server has dropped, and the only thing it can trigger is a
+        // reconcile, which only ever deletes. Holding FEWER entries than the
+        // server is the opposite problem: the cursor pull is what fills that
+        // in, and a reconcile would do nothing about it at the price of paging
+        // the whole corpus.
+        //
+        // The test used to be `!=`, which made a mirror that deliberately
+        // holds less than the server -- one with a retention policy set, which
+        // is every one of them after `store::prune_entries` runs once -- report
+        // every feed as diverging on every pass, forever.
+        if *local_count > server_count {
             diverging.push(*feed_id);
         }
     }

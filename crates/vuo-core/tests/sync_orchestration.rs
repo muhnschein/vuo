@@ -219,3 +219,69 @@ async fn an_auth_failure_stops_the_pass_rather_than_pulling_anyway() {
         "a stopped pass commits no generation"
     );
 }
+
+/// §the retention window is applied by the pass, and only when it is set.
+///
+/// The mirror is a cache of the server, but nothing ever removed anything from
+/// it: a phone that had read a year of feeds still held every article body it
+/// had ever seen, and the file only grew. This is the step that shrinks it, so
+/// it is also the step that can lose the reader's articles if it runs when it
+/// was not asked to.
+#[tokio::test]
+async fn a_pass_prunes_only_when_a_retention_window_is_set() {
+    // Two locally-held articles the server does not list, both published in
+    // January and read long ago. One is a favourite.
+    async fn seeded() -> Database {
+        let mut db = Database::open_in_memory().expect("mirror");
+        db.with_tx(|tx| {
+            tx.execute("INSERT INTO feeds (id, title) VALUES (1, 'Feed')", [])?;
+            tx.execute(
+                "INSERT INTO entries (id, feed_id, status, starred, published_at)
+                 VALUES (98, 1, 'read', 0, 1767323045), (99, 1, 'read', 1, 1767323045)",
+                [],
+            )?;
+            Ok(())
+        })
+        .expect("seed");
+        db
+    }
+
+    let server = quiet_server().await;
+    let client = client_for(&server);
+
+    // Off by default, which is what every version before this did and what an
+    // install that has never opened Settings still means.
+    let mut db = seeded().await;
+    let report = sync::sync(&mut db, &client, SyncOptions::default())
+        .await
+        .expect("sync");
+    assert_eq!(report.entries_pruned, 0);
+    assert_eq!(
+        store::local_entry_ids(db.conn()).expect("ids").len(),
+        3,
+        "the two seeded articles and the one the pull brought"
+    );
+
+    // And on, with a window that closed months ago.
+    let mut db = seeded().await;
+    let options = SyncOptions {
+        retention_secs: Some(30 * 24 * 60 * 60),
+        ..SyncOptions::default()
+    };
+    let report = sync::sync(&mut db, &client, options).await.expect("sync");
+    assert_eq!(
+        report.entries_pruned, 1,
+        "the read article goes and the favourite stays"
+    );
+    let mut left: Vec<i64> = store::local_entry_ids(db.conn())
+        .expect("ids")
+        .iter()
+        .map(|id| id.get())
+        .collect();
+    left.sort_unstable();
+    assert_eq!(
+        left,
+        vec![1, 99],
+        "entry 1 is unread and entry 99 is a favourite; neither is retention's to take"
+    );
+}

@@ -27,27 +27,27 @@
 <context>
     <name>ArticlePage</name>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="118"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="126"/>
         <source>Article</source>
         <translation>Статья</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="139"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="147"/>
         <source>Read</source>
         <translation>Прочитано</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="139"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="147"/>
         <source>Unread</source>
         <translation>Непрочитанные</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="146"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="154"/>
         <source>★ Favourite</source>
         <translation>★ Избранное</translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/pages/ArticlePage.qml" line="161"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="169"/>
         <source>%n image(s) are not proxied by your server and were not loaded.</source>
         <translation>
             <numerusform>%n изображение не проходит через ваш сервер и не было загружено.</numerusform>
@@ -56,72 +56,72 @@
         </translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="176"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="184"/>
         <source>This article was too large to display in full.</source>
         <translation>Статья слишком велика, чтобы показать её целиком.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="181"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="189"/>
         <source>Mark as unread</source>
         <translation>Отметить непрочитанным</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="181"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="189"/>
         <source>Mark as read</source>
         <translation>Отметить прочитанным</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="190"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="198"/>
         <source>Remove favourite</source>
         <translation>Убрать из избранного</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="191"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="199"/>
         <source>Add favourite</source>
         <translation>Добавить в избранное</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="195"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="203"/>
         <source>Open in browser</source>
         <translation>Открыть в браузере</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="207"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="215"/>
         <source>Fetch original content</source>
         <translation>Загрузить исходную статью</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="215"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="223"/>
         <source>Asking the server for the original article…</source>
         <translation>Запрашиваем у сервера исходную статью…</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="354"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="362"/>
         <source>Tap to load images from %1</source>
         <translation>Нажмите, чтобы загрузить изображения с %1</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="448"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="472"/>
         <source>Loaded the original article.</source>
         <translation>Исходная статья загружена.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="452"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="476"/>
         <source>The server could not extract the original article.</source>
         <translation>Сервер не смог извлечь исходную статью.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="455"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="479"/>
         <source>This feed already carries the full article.</source>
         <translation>Эта лента уже содержит статью целиком.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="457"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="481"/>
         <source>The server rejected the API key.</source>
         <translation>Сервер отклонил ключ API.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="461"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="485"/>
         <source>Could not fetch the original article: %1</source>
         <translation>Не удалось загрузить исходную статью: %1</translation>
     </message>
@@ -423,182 +423,217 @@
 <context>
     <name>SettingsPage</name>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="70"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="71"/>
         <source>Settings</source>
         <translation>Настройки</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="72"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="73"/>
         <source>Account</source>
         <translation>Учётная запись</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="77"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="78"/>
         <source>Server address</source>
         <translation>Адрес сервера</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="78"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="79"/>
         <source>https://miniflux.example.com</source>
         <translation>https://miniflux.primer.ru</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="86"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="87"/>
         <source>API key</source>
         <translation>Ключ API</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="103"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="104"/>
         <source>Create a key in Miniflux under Settings → API Keys.</source>
         <translation>Создайте ключ в Miniflux в разделе Settings → API Keys.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="108"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="109"/>
         <source>Test connection</source>
         <translation>Проверить соединение</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="129"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="130"/>
         <source>Connected as %1</source>
         <translation>Подключено как %1</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="130"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="131"/>
         <source>Test failed: %1</source>
         <translation>Проверка не удалась: %1</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="133"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="134"/>
         <source>Reading</source>
         <translation>Чтение</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="138"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="139"/>
         <source>Mark as read when opened</source>
         <translation>Отмечать прочитанным при открытии</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="140"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="141"/>
         <source>Never</source>
         <translation>Никогда</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="141"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="142"/>
         <source>Immediately</source>
         <translation>Сразу</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="142"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="143"/>
         <source>After 5 seconds</source>
         <translation>Через 5 секунд</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="143"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="144"/>
         <source>After 15 seconds</source>
         <translation>Через 15 секунд</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="144"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="145"/>
         <source>After 30 seconds</source>
         <translation>Через 30 секунд</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="156"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="157"/>
         <source>The delay counts only while the article is on screen. Marking an article read or unread yourself always wins.</source>
         <translation>Задержка идёт, только пока статья на экране. Отметка, поставленная вами вручную, всегда важнее.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="159"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="160"/>
         <source>Images</source>
         <translation>Изображения</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="164"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="165"/>
         <source>Images not proxied by your server</source>
         <translation>Изображения не через ваш сервер</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="166"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="167"/>
         <source>Never load</source>
         <translation>Никогда не загружать</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="167"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="168"/>
         <source>Ask each site</source>
         <translation>Спрашивать для каждого сайта</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="168"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="169"/>
         <source>Always load</source>
         <translation>Всегда загружать</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="180"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="181"/>
         <source>Miniflux proxies plain-http images only by default, so most images arrive unproxied. Loading them directly tells those sites your IP address and when you read.</source>
         <translation>По умолчанию Miniflux проксирует только изображения по обычному HTTP, так что большинство приходит напрямую. Загрузка напрямую сообщает этим сайтам ваш IP-адрес и время чтения.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="183"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="184"/>
         <source>Synchronisation</source>
         <translation>Синхронизация</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="191"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="192"/>
         <source>Sync with server</source>
         <translation>Синхронизация с сервером</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="193"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="194"/>
         <source>Manual only</source>
         <translation>Только вручную</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="194"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="195"/>
         <source>Every 15 minutes</source>
         <translation>Каждые 15 минут</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="195"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="196"/>
         <source>Every 30 minutes</source>
         <translation>Каждые 30 минут</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="196"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="197"/>
         <source>Hourly</source>
         <translation>Каждый час</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="197"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="198"/>
         <source>Every 6 hours</source>
         <translation>Каждые 6 часов</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="211"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="212"/>
         <source>How often Vuo fetches from your Miniflux server while it is open or on the cover. How often the server itself checks your feeds is set on the server, not here.</source>
         <translation>Как часто Vuo обращается к вашему серверу Miniflux, пока открыт или на обложке. Как часто сам сервер проверяет ленты, задаётся на сервере, а не здесь.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="222"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="226"/>
+        <source>Keep read articles</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="228"/>
+        <source>Forever</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="229"/>
+        <source>For a month</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="230"/>
+        <source>For three months</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="231"/>
+        <source>For six months</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="232"/>
+        <source>For a year</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="247"/>
+        <source>Older articles you have already read are removed from this phone at the end of a sync. Favourites, unread articles and anything not yet sent to the server are always kept, and nothing is removed from your Miniflux server.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="258"/>
         <source>Advanced</source>
         <translation>Дополнительно</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="226"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="262"/>
         <source>Use a custom CA certificate</source>
         <translation>Свой сертификат УЦ</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="233"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="269"/>
         <source>For a self-hosted server with a private certificate authority. Place the certificate at ~/.local/share/harbour-vuo/harbour-vuo/ca.pem. Certificate verification is never disabled, and there is no option to disable it.</source>
         <translation>Для собственного сервера с частным удостоверяющим центром. Положите сертификат в ~/.local/share/harbour-vuo/harbour-vuo/ca.pem. Проверка сертификатов никогда не отключается, и такой настройки нет.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="234"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="270"/>
         <source>Only applies to an https:// server. This one is not encrypted by TLS, so no certificate is used.</source>
         <translation>Относится только к серверу https://. Этот не шифруется TLS, поэтому сертификат не используется.</translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/pages/SettingsPage.qml" line="246"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="282"/>
         <source>%n change(s) waiting to be sent to the server.</source>
         <translation>
             <numerusform>%n изменение ждёт отправки на сервер.</numerusform>

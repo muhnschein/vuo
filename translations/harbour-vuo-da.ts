@@ -27,27 +27,27 @@
 <context>
     <name>ArticlePage</name>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="118"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="126"/>
         <source>Article</source>
         <translation>Artikel</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="139"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="147"/>
         <source>Read</source>
         <translation>Læst</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="139"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="147"/>
         <source>Unread</source>
         <translation>Ulæste</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="146"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="154"/>
         <source>★ Favourite</source>
         <translation>★ Favorit</translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/pages/ArticlePage.qml" line="161"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="169"/>
         <source>%n image(s) are not proxied by your server and were not loaded.</source>
         <translation>
             <numerusform>%n billede går ikke gennem din server og blev ikke hentet.</numerusform>
@@ -55,72 +55,72 @@
         </translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="176"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="184"/>
         <source>This article was too large to display in full.</source>
         <translation>Artiklen var for stor til at blive vist i sin helhed.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="181"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="189"/>
         <source>Mark as unread</source>
         <translation>Markér som ulæst</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="181"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="189"/>
         <source>Mark as read</source>
         <translation>Markér som læst</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="190"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="198"/>
         <source>Remove favourite</source>
         <translation>Fjern favorit</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="191"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="199"/>
         <source>Add favourite</source>
         <translation>Tilføj favorit</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="195"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="203"/>
         <source>Open in browser</source>
         <translation>Åbn i browseren</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="207"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="215"/>
         <source>Fetch original content</source>
         <translation>Hent det originale indhold</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="215"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="223"/>
         <source>Asking the server for the original article…</source>
         <translation>Beder serveren om den originale artikel…</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="354"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="362"/>
         <source>Tap to load images from %1</source>
         <translation>Tryk for at hente billeder fra %1</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="448"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="472"/>
         <source>Loaded the original article.</source>
         <translation>Den originale artikel er hentet.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="452"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="476"/>
         <source>The server could not extract the original article.</source>
         <translation>Serveren kunne ikke udtrække den originale artikel.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="455"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="479"/>
         <source>This feed already carries the full article.</source>
         <translation>Feedet indeholder allerede hele artiklen.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="457"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="481"/>
         <source>The server rejected the API key.</source>
         <translation>Serveren afviste API-nøglen.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="461"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="485"/>
         <source>Could not fetch the original article: %1</source>
         <translation>Kunne ikke hente den originale artikel: %1</translation>
     </message>
@@ -418,182 +418,217 @@
 <context>
     <name>SettingsPage</name>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="70"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="71"/>
         <source>Settings</source>
         <translation>Indstillinger</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="72"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="73"/>
         <source>Account</source>
         <translation>Konto</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="77"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="78"/>
         <source>Server address</source>
         <translation>Serveradresse</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="78"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="79"/>
         <source>https://miniflux.example.com</source>
         <translation>https://miniflux.eksempel.dk</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="86"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="87"/>
         <source>API key</source>
         <translation>API-nøgle</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="103"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="104"/>
         <source>Create a key in Miniflux under Settings → API Keys.</source>
         <translation>Opret en nøgle i Miniflux under Settings → API Keys.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="108"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="109"/>
         <source>Test connection</source>
         <translation>Test forbindelsen</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="129"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="130"/>
         <source>Connected as %1</source>
         <translation>Forbundet som %1</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="130"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="131"/>
         <source>Test failed: %1</source>
         <translation>Testen mislykkedes: %1</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="133"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="134"/>
         <source>Reading</source>
         <translation>Læsning</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="138"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="139"/>
         <source>Mark as read when opened</source>
         <translation>Markér som læst ved åbning</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="140"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="141"/>
         <source>Never</source>
         <translation>Aldrig</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="141"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="142"/>
         <source>Immediately</source>
         <translation>Med det samme</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="142"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="143"/>
         <source>After 5 seconds</source>
         <translation>Efter 5 sekunder</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="143"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="144"/>
         <source>After 15 seconds</source>
         <translation>Efter 15 sekunder</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="144"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="145"/>
         <source>After 30 seconds</source>
         <translation>Efter 30 sekunder</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="156"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="157"/>
         <source>The delay counts only while the article is on screen. Marking an article read or unread yourself always wins.</source>
         <translation>Forsinkelsen tæller kun, mens artiklen er på skærmen. Selv at markere en artikel som læst eller ulæst vinder altid.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="159"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="160"/>
         <source>Images</source>
         <translation>Billeder</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="164"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="165"/>
         <source>Images not proxied by your server</source>
         <translation>Billeder der ikke går gennem din server</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="166"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="167"/>
         <source>Never load</source>
         <translation>Hent aldrig</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="167"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="168"/>
         <source>Ask each site</source>
         <translation>Spørg for hver side</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="168"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="169"/>
         <source>Always load</source>
         <translation>Hent altid</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="180"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="181"/>
         <source>Miniflux proxies plain-http images only by default, so most images arrive unproxied. Loading them directly tells those sites your IP address and when you read.</source>
         <translation>Miniflux videresender som standard kun billeder over almindelig HTTP, så de fleste kommer direkte. At hente dem direkte fortæller de sider din IP-adresse og hvornår du læser.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="183"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="184"/>
         <source>Synchronisation</source>
         <translation>Synkronisering</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="191"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="192"/>
         <source>Sync with server</source>
         <translation>Synkronisér med serveren</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="193"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="194"/>
         <source>Manual only</source>
         <translation>Kun manuelt</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="194"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="195"/>
         <source>Every 15 minutes</source>
         <translation>Hvert 15. minut</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="195"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="196"/>
         <source>Every 30 minutes</source>
         <translation>Hvert 30. minut</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="196"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="197"/>
         <source>Hourly</source>
         <translation>Hver time</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="197"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="198"/>
         <source>Every 6 hours</source>
         <translation>Hver 6. time</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="211"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="212"/>
         <source>How often Vuo fetches from your Miniflux server while it is open or on the cover. How often the server itself checks your feeds is set on the server, not here.</source>
         <translation>Hvor ofte Vuo henter fra din Miniflux-server, mens appen er åben eller ligger som omslag. Hvor ofte serveren selv tjekker dine feeds indstilles på serveren, ikke her.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="222"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="226"/>
+        <source>Keep read articles</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="228"/>
+        <source>Forever</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="229"/>
+        <source>For a month</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="230"/>
+        <source>For three months</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="231"/>
+        <source>For six months</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="232"/>
+        <source>For a year</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="247"/>
+        <source>Older articles you have already read are removed from this phone at the end of a sync. Favourites, unread articles and anything not yet sent to the server are always kept, and nothing is removed from your Miniflux server.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="258"/>
         <source>Advanced</source>
         <translation>Avanceret</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="226"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="262"/>
         <source>Use a custom CA certificate</source>
         <translation>Brug et eget CA-certifikat</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="233"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="269"/>
         <source>For a self-hosted server with a private certificate authority. Place the certificate at ~/.local/share/harbour-vuo/harbour-vuo/ca.pem. Certificate verification is never disabled, and there is no option to disable it.</source>
         <translation>Til en server du selv driver med en privat certifikatmyndighed. Læg certifikatet i ~/.local/share/harbour-vuo/harbour-vuo/ca.pem. Certifikatkontrollen slås aldrig fra, og der findes ingen indstilling til at slå den fra.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="234"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="270"/>
         <source>Only applies to an https:// server. This one is not encrypted by TLS, so no certificate is used.</source>
         <translation>Gælder kun en https://-server. Denne er ikke krypteret med TLS, så der bruges intet certifikat.</translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/pages/SettingsPage.qml" line="246"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="282"/>
         <source>%n change(s) waiting to be sent to the server.</source>
         <translation>
             <numerusform>%n ændring venter på at blive sendt til serveren.</numerusform>

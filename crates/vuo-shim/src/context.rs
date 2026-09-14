@@ -431,6 +431,7 @@ fn build_from(paths: &AppPaths, account: Account) -> vuo_core::Result<Rc<AppCont
     let db = Database::open(&paths.database)?;
     let fingerprint = fingerprint(&account);
     let sync_interval = crate::settings::sync_interval_minutes_for(account.sync_interval_index);
+    let retention = crate::settings::retention_seconds_for(account.retention_index);
 
     let worker = shared_worker().ok_or_else(|| {
         vuo_core::Error::Config("the sync worker thread is not running".to_owned())
@@ -455,6 +456,8 @@ fn build_from(paths: &AppPaths, account: Account) -> vuo_core::Result<Rc<AppCont
     ctx.send(Command::SetSyncInterval {
         minutes: sync_interval,
     });
+    // And its retention window, applied at the end of each pass.
+    ctx.send(Command::SetRetention { seconds: retention });
     tracing::info!("the application context is built");
     Ok(ctx)
 }

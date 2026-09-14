@@ -57,6 +57,36 @@ pub const MARK_READ_DELAYS_SECONDS: [i32; 3] = [5, 15, 30];
 /// stay in the unread list.
 pub const MARK_READ_DEFAULT_INDEX: i32 = 2;
 
+/// How long a read, unfavourited article is kept in the local mirror, in days.
+///
+/// Index 0 is "keep everything", and it is index 0 for the reason
+/// [`MARK_READ_NEVER`] is: `i32::default()` is 0, so a wiring mistake, a
+/// hand-edited account file or an account written before this setting existed
+/// degrades to Vuo deleting nothing. The safe polarity for a destructive
+/// default is the one where the default destroys nothing.
+pub const RETENTION_DAYS: [i64; 5] = [0, 30, 90, 180, 365];
+
+/// A new install keeps everything, as every version before this one did.
+///
+/// Not a recommendation -- a month would serve most readers better -- but the
+/// mirror is the reader's, and an update that starts deleting their articles
+/// because the author thought it should is not a setting, it is a surprise.
+pub const RETENTION_DEFAULT_INDEX: i32 = 0;
+
+/// The retention window a stored `retention_index` means, in seconds.
+///
+/// `None` for "keep everything", and `None` for an index that is not one of
+/// ours -- the same conservative direction as the constant above.
+#[must_use]
+pub fn retention_seconds_for(index: i32) -> Option<i64> {
+    usize::try_from(index)
+        .ok()
+        .and_then(|i| RETENTION_DAYS.get(i))
+        .copied()
+        .filter(|days| *days > 0)
+        .map(|days| days * 24 * 60 * 60)
+}
+
 /// How long an article must be open before it counts as read.
 ///
 /// `None` never, `Some(0)` immediately, `Some(n)` after n seconds. An index a
@@ -86,6 +116,8 @@ pub struct Settings {
     syncIntervalIndex: qt_property!(i32; NOTIFY changed),
     /// When an opened article is marked read. See [`MARK_READ_NEVER`].
     markReadDelayIndex: qt_property!(i32; NOTIFY changed),
+    /// How long read articles are kept locally. See [`RETENTION_DAYS`].
+    retentionIndex: qt_property!(i32; NOTIFY changed),
     wifiOnly: qt_property!(bool; NOTIFY changed),
     useCustomCa: qt_property!(bool; NOTIFY changed),
     /// How many local changes are still waiting to reach the server. Shown so
@@ -182,6 +214,7 @@ impl Settings {
         self.syncIntervalIndex = account.sync_interval_index;
         self.wifiOnly = account.wifi_only;
         self.markReadDelayIndex = account.mark_read_delay_index;
+        self.retentionIndex = account.retention_index;
     }
 
     fn is_configured(&self) -> bool {
@@ -253,6 +286,7 @@ impl Settings {
             sync_interval_index: self.syncIntervalIndex,
             wifi_only: self.wifiOnly,
             mark_read_delay_index: self.markReadDelayIndex,
+            retention_index: self.retentionIndex,
         };
         if account.server_url.is_empty() || account.token.is_empty() {
             return;
@@ -301,6 +335,12 @@ impl Settings {
             // the save -- same server, same key -- hears it here.
             ctx.send(worker::Command::SetSyncInterval {
                 minutes: sync_interval_minutes_for(self.syncIntervalIndex),
+            });
+            // And the retention window, which the worker applies at the end of
+            // the next pass. Same hop, same reason: a worker that survived the
+            // save was told its window when it spawned.
+            ctx.send(worker::Command::SetRetention {
+                seconds: retention_seconds_for(self.retentionIndex),
             });
         }
         tracing::info!("the settings screen has published the saved account");
@@ -871,6 +911,27 @@ mod tests {
         // And the shipped default is one of the delayed choices, not "never"
         // and not "immediately" -- a mis-tap must be recoverable.
         assert_eq!(mark_read_delay_seconds(MARK_READ_DEFAULT_INDEX), Some(5));
+    }
+
+    /// §retention degrades to keeping everything, never to deleting.
+    ///
+    /// The one setting in this file that destroys the user's data, so the
+    /// direction every wrong answer falls in is the property worth asserting.
+    /// Index 0 is "keep everything" precisely because `i32::default()` is 0:
+    /// an account file written before this setting existed, a hand-edited one,
+    /// and a future wiring mistake all land there.
+    #[test]
+    fn an_unknown_retention_index_keeps_everything() {
+        assert_eq!(retention_seconds_for(RETENTION_DEFAULT_INDEX), None);
+        assert_eq!(retention_seconds_for(0), None, "keep everything");
+        assert_eq!(retention_seconds_for(1), Some(30 * 24 * 60 * 60));
+        assert_eq!(retention_seconds_for(4), Some(365 * 24 * 60 * 60));
+        assert_eq!(retention_seconds_for(99), None, "past the end of the list");
+        assert_eq!(
+            retention_seconds_for(-1),
+            None,
+            "and before the start of it"
+        );
     }
 
     #[test]

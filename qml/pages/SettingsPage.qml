@@ -51,6 +51,7 @@ Page {
         imagesCombo.currentIndex = settings.mediaPolicy
         refreshCombo.currentIndex = settings.syncIntervalIndex
         markReadCombo.currentIndex = settings.markReadDelayIndex
+        retentionCombo.currentIndex = settings.retentionIndex
         caSwitch.checked = settings.useCustomCa
         page.ready = true
     }
@@ -209,6 +210,41 @@ Page {
                 // The two cadences are easy to confuse, and only one of them
                 // is set here.
                 text: qsTr("How often Vuo fetches from your Miniflux server while it is open or on the cover. How often the server itself checks your feeds is set on the server, not here.")
+            }
+
+            // The mirror is a cache of the server, and nothing ever removed
+            // anything from it: a phone that had read a year of feeds still
+            // held every article body it had ever seen. This is the only
+            // control that shrinks it.
+            //
+            // "Keep everything" is index 0 and the default, because that is
+            // what every version before this one did. An update does not start
+            // deleting the reader's articles on its own.
+            ComboBox {
+                id: retentionCombo
+                width: parent.width
+                label: qsTr("Keep read articles")
+                menu: ContextMenu {
+                    MenuItem { text: qsTr("Forever") }
+                    MenuItem { text: qsTr("For a month") }
+                    MenuItem { text: qsTr("For three months") }
+                    MenuItem { text: qsTr("For six months") }
+                    MenuItem { text: qsTr("For a year") }
+                }
+                onCurrentIndexChanged: if (page.ready) settings.retentionIndex = currentIndex
+            }
+
+            Label {
+                x: Theme.horizontalPageMargin
+                width: parent.width - Theme.horizontalPageMargin * 2
+                wrapMode: Text.Wrap
+                textFormat: Text.PlainText
+                font.pixelSize: Theme.fontSizeExtraSmall
+                color: Theme.secondaryColor
+                // Saying exactly what survives matters more than saying what
+                // goes: a reader deciding this needs to know their favourites
+                // are safe before they pick anything but "Forever".
+                text: qsTr("Older articles you have already read are removed from this phone at the end of a sync. Favourites, unread articles and anything not yet sent to the server are always kept, and nothing is removed from your Miniflux server.")
             }
 
             // "Only on Wi-Fi" used to sit here. It is gone rather than hidden:
