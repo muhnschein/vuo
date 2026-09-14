@@ -384,7 +384,11 @@ fn log_event(event: Event) {
     match &event {
         Event::SyncFinished { unread, .. } => tracing::info!(unread, "sync finished"),
         Event::AuthFailed => tracing::warn!("the server rejected the API key"),
-        Event::SyncFailed { message } => tracing::warn!(%message, "sync failed"),
+        // `error =`, not a bare `%message`: the literal below is recorded by
+        // `tracing` as the event's own `message` field, so a second field of
+        // that name collides with it and a subscriber shows one or the other.
+        // What gets dropped is the half that says what actually went wrong.
+        Event::SyncFailed { message } => tracing::warn!(error = %message, "sync failed"),
         other => tracing::debug!(?other, "sync event"),
     }
 }
