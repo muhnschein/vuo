@@ -65,12 +65,21 @@ struct CachedChrome {
 ///
 /// `PartialEq` so a rebuild that finds the same feeds can hand back the map it
 /// already had -- see [`AppContext::feed_chrome`].
+///
+/// `QString`, not `String`, and that is the whole point of this struct's
+/// shape. A `QString` is implicitly shared in Qt, so cloning one is a
+/// refcount bump rather than a copy -- and `data()` is called for every
+/// visible row on every repaint. Held as Rust `String`s, each of those calls
+/// converted the icon afresh: up to 683 KB of base64 per call per row, since
+/// an icon may be 512 KiB before encoding. Held as `QString`s, every row in
+/// every list and every delegate Qt builds from them point at ONE buffer per
+/// feed.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct FeedChrome {
     /// FOREIGN TEXT: the feed's own name, or the one the user gave it.
-    pub name: String,
+    pub name: qmetaobject::QString,
     /// The icon as a `data:` URI, or empty when the mirror has none.
-    pub icon_uri: String,
+    pub icon_uri: qmetaobject::QString,
 }
 
 /// The one worker thread, and the signal it publishes through.
@@ -222,7 +231,7 @@ impl AppContext {
                 (
                     feed.feed_id,
                     FeedChrome {
-                        name: feed.title,
+                        name: qmetaobject::QString::from(feed.title),
                         icon_uri,
                     },
                 )
@@ -252,7 +261,7 @@ impl AppContext {
 /// The MIME type comes from the mirror, which stores the format DETERMINED
 /// FROM THE BYTES rather than the one the server claimed -- so a server that
 /// labels a script `image/png` cannot get that label back out of here.
-fn data_uri(mime: &str, bytes: &[u8]) -> String {
+fn data_uri(mime: &str, bytes: &[u8]) -> qmetaobject::QString {
     use base64::Engine as _;
     // SVG is excluded on purpose: it is a document, not a bitmap, and Qt's
     // renderer will follow external references in one -- which would leak the
@@ -262,13 +271,15 @@ fn data_uri(mime: &str, bytes: &[u8]) -> String {
     // gamble); the delegate hides an Image that fails to load, so the cost of
     // guessing wrong is a missing favicon rather than a broken-image glyph.
     if mime == "image/svg+xml" {
-        return String::new();
+        return qmetaobject::QString::default();
     }
-    format!(
+    // Converted to a `QString` once, here, and shared by refcount from then
+    // on. See [`FeedChrome`].
+    qmetaobject::QString::from(format!(
         "data:{};base64,{}",
         mime,
         base64::engine::general_purpose::STANDARD.encode(bytes)
-    )
+    ))
 }
 
 thread_local! {

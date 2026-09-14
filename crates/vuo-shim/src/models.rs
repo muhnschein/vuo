@@ -755,11 +755,8 @@ impl EntryModel {
     /// A feed the map has never heard of draws with neither, which is what an
     /// entry whose feed has just been unsubscribed looks like for the moment
     /// between the two reloads.
-    fn chrome_for(&self, feed_id: i64) -> (&str, &str) {
-        self.feed_chrome
-            .get(&feed_id)
-            .map(|c| (c.name.as_str(), c.icon_uri.as_str()))
-            .unwrap_or(("", ""))
+    fn chrome_for(&self, feed_id: i64) -> Option<&crate::context::FeedChrome> {
+        self.feed_chrome.get(&feed_id)
     }
 
     /// Announce that every row needs re-reading, without moving any of them.
@@ -859,11 +856,21 @@ impl QAbstractListModel for EntryModel {
             ROLE_PUBLISHED => row.published.into(),
             ROLE_READING_TIME => row.reading_time.into(),
             ROLE_URL => QString::from(row.url.clone()).into(),
-            // Looked up rather than held per row -- see [`EntryRow`]. Only
-            // the delegates actually on screen ask, so at most a screenful of
-            // these strings exists at a time instead of one per row.
-            ROLE_FEED_NAME => QString::from(self.chrome_for(row.feed_id).0.to_owned()).into(),
-            ROLE_FEED_ICON => QString::from(self.chrome_for(row.feed_id).1.to_owned()).into(),
+            // Looked up rather than held per row -- see [`EntryRow`] -- and
+            // CLONED rather than rebuilt. These are `QString`s in the shared
+            // map, so the clone is a refcount bump: this method runs for every
+            // visible row on every repaint, and it used to convert the feed's
+            // whole base64 icon each time it did.
+            ROLE_FEED_NAME => self
+                .chrome_for(row.feed_id)
+                .map(|c| c.name.clone())
+                .unwrap_or_default()
+                .into(),
+            ROLE_FEED_ICON => self
+                .chrome_for(row.feed_id)
+                .map(|c| c.icon_uri.clone())
+                .unwrap_or_default()
+                .into(),
             _ => QVariant::default(),
         }
     }
@@ -920,7 +927,13 @@ pub struct FeedRow {
     pub hide_globally: bool,
     /// The feed's icon as a `data:` URI, or empty. Built from bytes already in
     /// the mirror, so drawing it fetches nothing (§9.3).
-    pub icon_uri: String,
+    ///
+    /// A `QString` taken from the shared chrome map, so this row and every
+    /// entry list that draws the same feed share one buffer -- see
+    /// [`crate::context::FeedChrome`]. As a Rust `String` it was a second full
+    /// copy of every icon in the mirror, and `data` made a third on every
+    /// repaint.
+    pub icon_uri: QString,
 }
 
 #[derive(QObject, Default)]
@@ -1153,10 +1166,11 @@ impl FeedModel {
                         crawler: f.crawler,
                         disabled: f.disabled,
                         hide_globally: f.hide_globally,
-                        // Copied rather than looked up per delegate, as the
-                        // entry list does: a feed list is tens of rows and
-                        // holds one icon each, so there is nothing here to
-                        // duplicate five hundredfold.
+                        // Held per row rather than looked up per delegate, as
+                        // the entry list does: a feed list is tens of rows and
+                        // holds one icon each. The clone costs nothing anyway
+                        // -- it is a `QString` refcount bump onto the shared
+                        // map's buffer, not a copy of the icon.
                         icon_uri: chrome
                             .get(&f.id.get())
                             .map(|c| c.icon_uri.clone())
@@ -1221,7 +1235,7 @@ impl QAbstractListModel for FeedModel {
             ROLE_FEED_CRAWLER => row.crawler.into(),
             ROLE_FEED_DISABLED => row.disabled.into(),
             ROLE_FEED_HIDDEN => row.hide_globally.into(),
-            ROLE_FEED_ICON_URI => QString::from(row.icon_uri.clone()).into(),
+            ROLE_FEED_ICON_URI => row.icon_uri.clone().into(),
             _ => QVariant::default(),
         }
     }
@@ -1439,11 +1453,13 @@ mod row_decoration_tests {
         // handed to QML does not have, so every index comes back invalid and
         // every role comes back null, whatever the model holds.
         let row = model.rows().first().expect("one row");
-        let (name, icon) = model.chrome_for(row.feed_id);
+        let chrome = model.chrome_for(row.feed_id).cloned().unwrap_or_default();
         assert_eq!(
-            name, "Tagesschau",
+            chrome.name.to_string(),
+            "Tagesschau",
             "the row must name the feed it came from"
         );
+        let icon = chrome.icon_uri.to_string();
         assert!(
             icon.starts_with("data:image/png;base64,"),
             "and carry its icon as a data URI, got {icon:?}"
@@ -1497,17 +1513,27 @@ mod row_decoration_tests {
                 && std::rc::Rc::ptr_eq(&held, &all.feed_chrome),
             "every entry list must hold the one map, not a copy of it"
         );
+        // The SAME BUFFER, not an equal string. A `QString` is implicitly
+        // shared, so a clone out of the chrome map is a refcount bump onto the
+        // one buffer -- which is what makes it affordable to hand the icon to
+        // every feed row and to rebuild it for every visible entry row on
+        // every repaint. As Rust `String`s these were separate copies of up to
+        // 683 KB of base64 apiece, and comparing them for equality could not
+        // have told the difference.
+        let from_feed_list = feeds
+            .rows()
+            .first()
+            .map(|r| r.icon_uri.clone())
+            .unwrap_or_default();
+        let from_chrome = held.get(&1).map(|c| c.icon_uri.clone()).unwrap_or_default();
         assert!(
-            feeds
-                .rows()
-                .first()
-                .map(|r| r.icon_uri.as_str())
-                .unwrap_or_default()
-                == held
-                    .get(&1)
-                    .map(|c| c.icon_uri.as_str())
-                    .unwrap_or_default(),
-            "and the feed list must draw the same icon the entry lists do"
+            !from_chrome.to_slice().is_empty(),
+            "the fixture must have an icon for this to say anything"
+        );
+        assert_eq!(
+            from_feed_list.to_slice().as_ptr(),
+            from_chrome.to_slice().as_ptr(),
+            "the feed list must share the entry lists' icon, not copy it"
         );
 
         // A bump alone must NOT move the map. Marking one article read bumps
@@ -1554,16 +1580,16 @@ mod row_decoration_tests {
             "a renamed feed must move the map"
         );
         assert_eq!(
-            after.get(&1).map(|c| c.name.as_str()),
-            Some("Tagesschau 24")
+            after.get(&1).map(|c| c.name.to_string()),
+            Some("Tagesschau 24".to_owned())
         );
 
         // And the list must be told, because no ROW changed: the reload's row
         // diff cannot see a rename, so the map moving is the only signal.
         unread.reload();
         assert_eq!(
-            unread.chrome_for(1).0,
-            "Tagesschau 24",
+            unread.chrome_for(1).map(|c| c.name.to_string()),
+            Some("Tagesschau 24".to_owned()),
             "the list must pick the new name up"
         );
     }
@@ -1588,10 +1614,10 @@ mod row_decoration_tests {
         // a different query for a while -- this one had none at all -- so the
         // page showed bare names and the reader had to recognise a feed by its
         // title alone.
+        let icon = row.icon_uri.to_string();
         assert!(
-            row.icon_uri.starts_with("data:image/png;base64,"),
-            "a feed row must carry its icon as a data URI, got {:?}",
-            row.icon_uri
+            icon.starts_with("data:image/png;base64,"),
+            "a feed row must carry its icon as a data URI, got {icon:?}"
         );
         let names = <FeedModel as QAbstractListModel>::role_names(&model);
         for (role, name) in [
