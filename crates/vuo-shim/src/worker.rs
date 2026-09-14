@@ -206,10 +206,26 @@ struct CommandGuard<'a> {
     /// construction, so an opportunistic `FlushOutbox` fired by a star tap
     /// physically cannot switch off the spinner of a refresh already running.
     clears_spinner: bool,
+    /// Whether this command is big enough to be worth returning its peak to
+    /// the kernel. See [`crate::memory`].
+    ///
+    /// Decided from the command for the same reason `clears_spinner` is, and
+    /// true for the two that inflate, parse and then drop a whole corpus or a
+    /// whole article body. Not for the small ones: a star tap sends
+    /// `FlushOutbox`, and walking every arena on every tap would buy nothing
+    /// and cost the one thread that must never make the UI wait.
+    trims_allocator: bool,
 }
 
 impl Drop for CommandGuard<'_> {
     fn drop(&mut self) {
+        // Before the signal, not after. A bump sets every model reloading on
+        // the Qt thread, and the trim takes each arena's lock as it goes --
+        // so doing it first is the difference between the UI waiting on the
+        // allocator and the allocator being done before the UI asks.
+        if self.trims_allocator {
+            crate::memory::release_free_memory();
+        }
         // Clear BEFORE bumping, and the order is load-bearing. `pollSync`
         // spends a generation the first time it sees it, so a poll landing
         // between a bump and a clear would read `running` as still true and
@@ -510,6 +526,10 @@ impl Worker {
                         signal: &signal,
                         changed: false,
                         clears_spinner: matches!(command, Command::Sync),
+                        trims_allocator: matches!(
+                            command,
+                            Command::Sync | Command::FetchOriginal { .. }
+                        ),
                     };
                     match command {
                         // All three are handled above, before the guard.
@@ -1360,6 +1380,7 @@ EQBBQIobIy41+aQiMsM0XBYH3Q==\n\
                 signal: &signal,
                 changed: false,
                 clears_spinner: true,
+            trims_allocator: false,
             };
             // An arm that reports a failure and sets nothing at all.
         }
@@ -1382,6 +1403,7 @@ EQBBQIobIy41+aQiMsM0XBYH3Q==\n\
                 signal: &signal,
                 changed: true,
                 clears_spinner: false,
+            trims_allocator: false,
             };
             guard.changed = true;
         }
@@ -1398,6 +1420,7 @@ EQBBQIobIy41+aQiMsM0XBYH3Q==\n\
                 signal,
                 changed: false,
                 clears_spinner: true,
+            trims_allocator: false,
             };
             #[allow(clippy::needless_return)]
             return;
