@@ -32,7 +32,7 @@ use qmetaobject::*;
 use vuo_core::db::store;
 #[allow(unused_imports)]
 use vuo_core::model::FeedId;
-use vuo_core::model::{Entry, EntryId, EntryStatus};
+use vuo_core::model::{EntryId, EntryStatus};
 
 use crate::context::AppContext;
 use crate::worker::{self, Command};
@@ -58,9 +58,20 @@ pub const ROLE_FEED_NAME: i32 = USER_ROLE + 9;
 /// A `data:` URI for the feed's icon, or empty when the mirror has none.
 pub const ROLE_FEED_ICON: i32 = USER_ROLE + 10;
 
-/// A row as the UI needs it. Deliberately not [`Entry`]: the model holds only
-/// what the list draws, so scrolling a long list does not keep every article
-/// body resident.
+/// A row as the UI needs it.
+///
+/// Deliberately neither [`vuo_core::model::Entry`] nor a copy of the feed
+/// chrome. The body stays in SQLite, and so do the feed's name and icon: those
+/// are looked up by `feed_id` when a delegate asks for them (see
+/// [`EntryModel::chrome_for`]) rather than copied in here.
+///
+/// The icon is why that matters. It is a base64 `data:` URI, which for a
+/// perfectly ordinary 6 KB favicon is 8 KB of text, and the fetcher accepts
+/// icons up to 512 KB. Copying it into every row cost 8 KB x 500 rows x four
+/// models -- 16 MB resident on a mirror of the size this was reported against,
+/// with a worst case two orders of magnitude worse -- to hold at most
+/// fifty-six distinct strings. It was also compared byte by byte on every
+/// poll, because [`publish_rows`] diffs whole rows.
 ///
 /// `PartialEq` so a reload can tell a row that actually moved from one it has
 /// just re-read unchanged -- see [`EntryModel::reload`].
@@ -75,14 +86,10 @@ pub struct EntryRow {
     pub published: i64,
     pub reading_time: i32,
     pub url: String,
-    /// The feed's name, filled in after the query from the chrome cache.
-    pub feed_name: String,
-    /// The feed's icon as a `data:` URI, or empty.
-    pub feed_icon: String,
 }
 
-impl From<&Entry> for EntryRow {
-    fn from(e: &Entry) -> Self {
+impl From<&store::EntryListRow> for EntryRow {
+    fn from(e: &store::EntryListRow) -> Self {
         EntryRow {
             id: e.id.get(),
             feed_id: e.feed_id.get(),
@@ -90,50 +97,11 @@ impl From<&Entry> for EntryRow {
             author: e.author.clone(),
             unread: !e.status.is_read(),
             starred: e.starred,
-            published: e.published_at.map(|t| t.timestamp()).unwrap_or(0),
+            published: e.published_at.unwrap_or(0),
             reading_time: e.reading_time,
-            url: e
-                .url
-                .as_ref()
-                .map(|u| u.as_str().to_owned())
-                .unwrap_or_default(),
-            // Filled in by `reload` from the per-feed cache: the entry query
-            // knows nothing about feeds.
-            feed_name: String::new(),
-            feed_icon: String::new(),
+            url: e.url.clone().unwrap_or_default(),
         }
     }
-}
-
-/// A feed's name and icon URI, as an entry row needs them.
-#[derive(Debug, Clone, Default)]
-struct FeedChrome {
-    name: String,
-    icon_uri: String,
-}
-
-/// Wrap image bytes as a `data:` URI QML's `Image.source` can take.
-///
-/// The MIME type comes from the mirror, which stores the format DETERMINED
-/// FROM THE BYTES rather than the one the server claimed -- so a server that
-/// labels a script `image/png` cannot get that label back out of here.
-fn data_uri(mime: &str, bytes: &[u8]) -> String {
-    use base64::Engine as _;
-    // SVG is excluded on purpose: it is a document, not a bitmap, and Qt's
-    // renderer will follow external references in one -- which would leak the
-    // device's IP to whatever host a feed operator names, on a list scroll.
-    // The raster formats are passed through even where the device may lack a
-    // handler (it ships only libqjpeg.so as a plugin, so ICO and GIF are a
-    // gamble); the delegate hides an Image that fails to load, so the cost of
-    // guessing wrong is a missing favicon rather than a broken-image glyph.
-    if mime == "image/svg+xml" {
-        return String::new();
-    }
-    format!(
-        "data:{};base64,{}",
-        mime,
-        base64::engine::general_purpose::STANDARD.encode(bytes)
-    )
 }
 
 /// A list model that re-reads its rows from the mirror wholesale and swaps the
@@ -361,11 +329,13 @@ pub struct EntryModel {
     /// under a newer one starts from nothing rather than keeping the rows on
     /// screen -- see [`reload`](EntryModel::reload).
     seen_refresh_epoch: u64,
-    /// Feed name and icon URI per feed id, built once and reused.
+    /// Feed name and icon URI per feed id, shared with every other list.
     ///
-    /// Re-encoding every icon on every reload would base64 the same few
-    /// kilobytes on each poll of a list that is polled twice a second.
-    feed_chrome: std::collections::HashMap<i64, FeedChrome>,
+    /// A handle on [`AppContext::feed_chrome`], which builds the map at most
+    /// once per generation for all four models. Held rather than fetched in
+    /// `data` because `data` is `&self` and is called once per role per
+    /// visible delegate.
+    feed_chrome: std::rc::Rc<std::collections::HashMap<i64, crate::context::FeedChrome>>,
     /// The spinner state this model last told QML about.
     ///
     /// `syncing` is READ + NOTIFY, so QML re-evaluates it only when
@@ -623,13 +593,15 @@ impl EntryModel {
             // marked at most PAGE_SIZE entries and silently left the rest
             // unread, while the UI reported success.
             _ => {
+                // Ids and nothing else. This used to go through
+                // `list_entries(.., i64::MAX, 0)`, which built the whole scope
+                // as full entries -- every title, every URL and every BODY in
+                // the mirror -- to read one integer off each. On the corpus
+                // this was reported against that was 54 MB allocated in one
+                // go, on a phone, to mark a list read.
                 let ids: Vec<EntryId> = ctx
                     .read(|db| {
-                        store::list_entries(db.conn(), scope.to_filter(), i64::MAX, 0)
-                            .unwrap_or_default()
-                            .iter()
-                            .map(|e| e.id)
-                            .collect::<Vec<_>>()
+                        store::entry_ids_matching(db.conn(), scope.to_filter()).unwrap_or_default()
                     })
                     .unwrap_or_default();
                 ctx.write(|db| worker::apply_local_status_bulk(db, &ids, EntryStatus::Read))
@@ -744,7 +716,7 @@ impl EntryModel {
                     if listed.contains(&id) {
                         continue;
                     }
-                    if let Ok(Some(entry)) = store::entry(db.conn(), EntryId(id)) {
+                    if let Ok(Some(entry)) = store::entry_list_row(db.conn(), EntryId(id)) {
                         entries.push(entry);
                     }
                 }
@@ -756,47 +728,56 @@ impl EntryModel {
         // where it did rather than at the bottom. A stable sort, and the
         // fresh rows arrived sorted, so this only moves the kept ones.
         rows.sort_by_key(|r| (std::cmp::Reverse(r.published), std::cmp::Reverse(r.id)));
-        self.refresh_feed_chrome();
-        for row in &mut rows {
-            if let Some(chrome) = self.feed_chrome.get(&row.feed_id) {
-                row.feed_name = chrome.name.clone();
-                row.feed_icon = chrome.icon_uri.clone();
-            }
-        }
+
+        // The chrome is not part of a row any more, so a row diff cannot see a
+        // feed that was renamed or that finally got an icon. Take the shared
+        // map first and note whether it is a different one; if the rows then
+        // turn out to be unchanged, they still have to be redrawn.
+        let chrome = ctx.feed_chrome();
+        let chrome_moved = !std::rc::Rc::ptr_eq(&self.feed_chrome, &chrome);
+        self.feed_chrome = chrome;
 
         // Reset only if these are not the rows the list already holds --
         // otherwise the reader loses their place for nothing. See
         // `publish_rows`, which is where that rule lives for both models.
-        publish_rows(self, rows)
+        let reset = publish_rows(self, rows);
+        if !reset && chrome_moved {
+            self.redraw_all_rows();
+        }
+        reset
     }
 
-    /// Rebuild the feed name/icon cache from the mirror.
+    /// The feed name and icon a row is drawn with: what [`EntryModel::data`]
+    /// hands QML for `feedName` and `feedIcon`.
     ///
-    /// Called from `reload`, which runs on a scope change or a generation
-    /// bump -- not on every poll. A mirror has tens of feeds and a favicon is
-    /// a couple of kilobytes, so re-encoding the set outright is cheaper than
-    /// the invalidation logic that avoiding it would need.
-    fn refresh_feed_chrome(&mut self) {
-        let Some(ctx) = self.context() else { return };
-        let Some(feeds) = ctx.read(|db| store::feed_chrome(db.conn()).unwrap_or_default()) else {
+    /// Borrowed out of the shared map rather than copied into the row -- see
+    /// [`EntryRow`] for why that distinction is the point of this method.
+    /// A feed the map has never heard of draws with neither, which is what an
+    /// entry whose feed has just been unsubscribed looks like for the moment
+    /// between the two reloads.
+    fn chrome_for(&self, feed_id: i64) -> (&str, &str) {
+        self.feed_chrome
+            .get(&feed_id)
+            .map(|c| (c.name.as_str(), c.icon_uri.as_str()))
+            .unwrap_or(("", ""))
+    }
+
+    /// Announce that every row needs re-reading, without moving any of them.
+    ///
+    /// A no-op on an empty model: `row_index` of a row that is not there is
+    /// not an index a view can be told about.
+    fn redraw_all_rows(&mut self) {
+        let Some(last) = self
+            .rows
+            .len()
+            .checked_sub(1)
+            .and_then(|n| i32::try_from(n).ok())
+        else {
             return;
         };
-        self.feed_chrome = feeds
-            .into_iter()
-            .map(|feed| {
-                let icon_uri = feed
-                    .icon
-                    .map(|(mime, bytes)| data_uri(&mime, &bytes))
-                    .unwrap_or_default();
-                (
-                    feed.feed_id,
-                    FeedChrome {
-                        name: feed.title,
-                        icon_uri,
-                    },
-                )
-            })
-            .collect();
+        let first = (self as &mut dyn QAbstractListModel).row_index(0);
+        let last = (self as &mut dyn QAbstractListModel).row_index(last);
+        (self as &mut dyn QAbstractListModel).data_changed(first, last);
     }
 
     /// Update one row in place after a local mutation, without a full reload.
@@ -878,8 +859,11 @@ impl QAbstractListModel for EntryModel {
             ROLE_PUBLISHED => row.published.into(),
             ROLE_READING_TIME => row.reading_time.into(),
             ROLE_URL => QString::from(row.url.clone()).into(),
-            ROLE_FEED_NAME => QString::from(row.feed_name.clone()).into(),
-            ROLE_FEED_ICON => QString::from(row.feed_icon.clone()).into(),
+            // Looked up rather than held per row -- see [`EntryRow`]. Only
+            // the delegates actually on screen ask, so at most a screenful of
+            // these strings exists at a time instead of one per row.
+            ROLE_FEED_NAME => QString::from(self.chrome_for(row.feed_id).0.to_owned()).into(),
+            ROLE_FEED_ICON => QString::from(self.chrome_for(row.feed_id).1.to_owned()).into(),
             _ => QVariant::default(),
         }
     }
@@ -1148,24 +1132,14 @@ impl FeedModel {
         let Some(ctx) = self.context() else {
             return false;
         };
+        // The same shared map the entry lists draw from, so the two cannot
+        // disagree about what a feed looks like and neither pays for the
+        // encode twice. Taken outside `read`, which would otherwise hold the
+        // mirror borrowed while this borrows it again to build the cache.
+        let chrome = ctx.feed_chrome();
         let rows: Vec<FeedRow> = ctx
             .read(|db| {
                 let counts = store::unread_counts_by_feed(db.conn()).unwrap_or_default();
-                // The icons come from the same query the entry list uses, so
-                // the two lists cannot disagree about what a feed looks like.
-                // Encoded on every reload rather than cached: this model
-                // reloads on a generation bump, not on the poll, and a mirror
-                // holds tens of feeds.
-                let mut icons: std::collections::HashMap<i64, String> =
-                    store::feed_chrome(db.conn())
-                        .unwrap_or_default()
-                        .into_iter()
-                        .filter_map(|feed| {
-                            let (mime, bytes) = feed.icon?;
-                            let uri = data_uri(&mime, &bytes);
-                            (!uri.is_empty()).then_some((feed.feed_id, uri))
-                        })
-                        .collect();
                 store::feeds(db.conn())
                     .unwrap_or_default()
                     .iter()
@@ -1179,7 +1153,14 @@ impl FeedModel {
                         crawler: f.crawler,
                         disabled: f.disabled,
                         hide_globally: f.hide_globally,
-                        icon_uri: icons.remove(&f.id.get()).unwrap_or_default(),
+                        // Copied rather than looked up per delegate, as the
+                        // entry list does: a feed list is tens of rows and
+                        // holds one icon each, so there is nothing here to
+                        // duplicate five hundredfold.
+                        icon_uri: chrome
+                            .get(&f.id.get())
+                            .map(|c| c.icon_uri.clone())
+                            .unwrap_or_default(),
                     })
                     .collect()
             })
@@ -1446,15 +1427,26 @@ mod row_decoration_tests {
         model.setScope(0, 0);
 
         assert_eq!(model.row_count(), 1, "the seeded entry is unread");
+
+        // Through `chrome_for`, which is what `data` calls, and NOT off the
+        // row: the chrome is looked up by feed id when a delegate asks for it
+        // rather than copied into every row (see `EntryRow`), so the row
+        // struct is no longer where the answer lives.
+        //
+        // Not through `data` itself either, much as that is the QML-facing
+        // call. `data` needs a `QModelIndex`, and the only way to make one is
+        // to ask the model's C++ side -- which a model built here and never
+        // handed to QML does not have, so every index comes back invalid and
+        // every role comes back null, whatever the model holds.
         let row = model.rows().first().expect("one row");
+        let (name, icon) = model.chrome_for(row.feed_id);
         assert_eq!(
-            row.feed_name, "Tagesschau",
+            name, "Tagesschau",
             "the row must name the feed it came from"
         );
         assert!(
-            row.feed_icon.starts_with("data:image/png;base64,"),
-            "and carry its icon as a data URI, got {:?}",
-            row.feed_icon
+            icon.starts_with("data:image/png;base64,"),
+            "and carry its icon as a data URI, got {icon:?}"
         );
 
         // The names are half the contract: the delegate reaches these by the
@@ -1468,6 +1460,112 @@ mod row_decoration_tests {
                 "QML reaches this role by name"
             );
         }
+    }
+
+    /// §one encode of the feed chrome, not one per list.
+    ///
+    /// Four `EntryModel`s and a `FeedModel` are alive at once and every one of
+    /// them reloads on the same generation bump. Each used to re-read every
+    /// icon blob out of SQLite and base64 it afresh on each of those reloads,
+    /// for a set that changes only when a sync brings a new feed or a new
+    /// icon. The cache lives on the context because that is the one thing the
+    /// models -- all constructed by QML, none able to reach another -- share.
+    ///
+    /// `Rc::ptr_eq` is the assertion because it is the only one that can tell
+    /// a shared map from an identical copy, and an identical copy is exactly
+    /// the bug.
+    #[test]
+    fn every_list_draws_from_one_feed_chrome_map() {
+        let (_dir, ctx) = seeded();
+
+        let mut unread = EntryModel::default();
+        unread.attach(std::rc::Rc::clone(&ctx));
+        unread.setScope(0, 0);
+        let mut all = EntryModel::default();
+        all.attach(std::rc::Rc::clone(&ctx));
+        all.setScope(2, 0);
+        let mut feeds = FeedModel::default();
+        feeds.attach(std::rc::Rc::clone(&ctx));
+
+        let held = ctx.feed_chrome();
+        assert!(
+            std::rc::Rc::ptr_eq(&held, &ctx.feed_chrome()),
+            "asking twice at the same generation must not build it twice"
+        );
+        assert!(
+            std::rc::Rc::ptr_eq(&held, &unread.feed_chrome)
+                && std::rc::Rc::ptr_eq(&held, &all.feed_chrome),
+            "every entry list must hold the one map, not a copy of it"
+        );
+        assert!(
+            feeds
+                .rows()
+                .first()
+                .map(|r| r.icon_uri.as_str())
+                .unwrap_or_default()
+                == held
+                    .get(&1)
+                    .map(|c| c.icon_uri.as_str())
+                    .unwrap_or_default(),
+            "and the feed list must draw the same icon the entry lists do"
+        );
+
+        // A bump alone must NOT move the map. Marking one article read bumps
+        // the generation, and a list that sees the map move redraws every row
+        // -- which rebuilds each delegate's detail line from font metrics. The
+        // cheapest thing the reader can do would repaint the whole list.
+        ctx.signal().bump();
+        assert!(
+            std::rc::Rc::ptr_eq(&held, &ctx.feed_chrome()),
+            "a bump that did not change a feed must hand back the same map"
+        );
+
+        // A feed that actually changed does move it, or a renamed feed would
+        // keep its old name on every list until the app restarted.
+        ctx.write(|db| {
+            db.with_tx(|tx| {
+                store::upsert_feed(
+                    tx,
+                    &Feed {
+                        id: FeedId(1),
+                        category_id: None,
+                        title: "Tagesschau 24".to_owned(),
+                        site_url: None,
+                        feed_url: None,
+                        icon_id: Some(IconId(5)),
+                        checked_at: None,
+                        parsing_error_message: String::new(),
+                        parsing_error_count: 0,
+                        disabled: false,
+                        hide_globally: false,
+                        crawler: true,
+                    },
+                    2,
+                )
+            })
+        })
+        .expect("borrow")
+        .expect("rename");
+        ctx.signal().bump();
+
+        let after = ctx.feed_chrome();
+        assert!(
+            !std::rc::Rc::ptr_eq(&held, &after),
+            "a renamed feed must move the map"
+        );
+        assert_eq!(
+            after.get(&1).map(|c| c.name.as_str()),
+            Some("Tagesschau 24")
+        );
+
+        // And the list must be told, because no ROW changed: the reload's row
+        // diff cannot see a rename, so the map moving is the only signal.
+        unread.reload();
+        assert_eq!(
+            unread.chrome_for(1).0,
+            "Tagesschau 24",
+            "the list must pick the new name up"
+        );
     }
 
     /// §the feed list exposes the settings the editor writes.
