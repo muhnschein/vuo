@@ -98,15 +98,23 @@ Page {
         anchors.fill: parent
         model: article
 
-        // Keep delegates alive well beyond the viewport.
+        // Keep delegates alive a little beyond the viewport.
         //
         // A ListView destroys delegates that scroll out of range and rebuilds
         // them on the way back, which for this page meant every image was
         // re-resolved and re-decoded each time it re-entered view -- so
         // scrolling back up through an article you had already read jumped
-        // around exactly as it had on the way down. Four screens of buffer
-        // covers a normal article's worth of back-and-forth.
-        cacheBuffer: Math.round(blocks.height * 4)
+        // around exactly as it had on the way down.
+        //
+        // This was four screens, which is nine screens of live delegates once
+        // both directions are counted, and a live image delegate holds a
+        // DECODED pixmap -- several megabytes each at this width. An article
+        // that is mostly pictures held tens of them at once. One screen either
+        // side is enough now that a rebuilt delegate no longer jumps: the
+        // `height` binding below reserves the right shape from the tag's own
+        // ratio before any pixel arrives, and `cache: true` means the pixmap
+        // usually comes back from Qt's cache rather than the network.
+        cacheBuffer: Math.round(blocks.height)
 
         header: Column {
             width: blocks.width
@@ -370,7 +378,10 @@ Page {
                         // <img> tag's own width/height gives the right shape
                         // outright, and where the feed offered none, a square
                         // is reserved: wrong by some amount, but wrong by a
-                        // BOUNDED amount and only once.
+                        // BOUNDED amount and only once. The bound is real --
+                        // `article.rs`'s MAX_IMAGE_RATIO clamps what the tag
+                        // may claim, so a 1 x 20000 px `<img>` can no longer
+                        // reserve a block taller than the article.
                         height: {
                             if (status === Image.Ready && implicitWidth > 0) {
                                 return width * (implicitHeight / implicitWidth)
@@ -380,10 +391,23 @@ Page {
                         fillMode: Image.PreserveAspectFit
                         asynchronous: true
                         cache: true
-                        // Capped so a hostile image cannot exhaust memory
-                        // during decode; the URL was validated as http(s) in
-                        // Rust before it ever reached QML.
+                        // BOTH dimensions, which is what actually bounds the
+                        // decode. Qt only downscales a source that exceeds the
+                        // size asked for, so a width cap alone left the height
+                        // free: a 1000 x 30000 px image -- 30 megapixels, about
+                        // 120 MB decoded -- came through the proxy at full
+                        // resolution, and the comment here used to claim the
+                        // opposite. With both set and PreserveAspectFit, Qt
+                        // scales the source to fit INSIDE the box, so the
+                        // decoded pixmap is bounded whatever shape arrives.
+                        //
+                        // Four screens tall is past anything meant to be read
+                        // on a phone; beyond it the image is drawn upscaled and
+                        // soft, which is the right way to lose that argument.
+                        // The URL was validated as http(s) in Rust before it
+                        // ever reached QML.
                         sourceSize.width: block.width
+                        sourceSize.height: block.width * 4
                         source: needsConsent ? "" : imageSource
                     }
 

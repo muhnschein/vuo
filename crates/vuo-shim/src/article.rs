@@ -82,8 +82,8 @@ pub struct BlockRow {
     /// True when the image is third-party and un-proxied: the delegate shows a
     /// tap-to-load placeholder naming the host and fetches nothing (§9.3).
     pub needs_consent: bool,
-    /// height / width from the `<img>` tag's own attributes; 0 when it gave
-    /// none usable.
+    /// height / width from the `<img>` tag's own attributes, clamped to
+    /// [`MAX_IMAGE_RATIO`]; 0 when the tag gave none usable.
     ///
     /// A ratio rather than the pair, because reserving space is all the
     /// delegate does with it and the width it renders at is its own. 0 means
@@ -92,6 +92,35 @@ pub struct BlockRow {
     /// under the reader every time an image landed.
     pub image_ratio: f64,
     pub code_language: String,
+}
+
+/// The tallest shape a single image is allowed to reserve, as a multiple of
+/// its own width.
+///
+/// The delegate turns this straight into a height: `width * ratio`. The core
+/// caps each `<img>` dimension at 20 000 px but says nothing about their
+/// RATIO, so `width="1" height="20000"` asked for a block 21 million pixels
+/// tall on a 1080 px screen -- and because the reservation stands for as long
+/// as the image is not `Ready`, an image that never arrives left the article
+/// unscrollable for the rest of the session.
+///
+/// Four is past any real photograph and past the tall infographics feeds
+/// actually publish. Past that the reservation is wrong either way, and being
+/// wrong by a screen beats being wrong by four hundred.
+pub const MAX_IMAGE_RATIO: f64 = 4.0;
+
+/// `height / width` from an `<img>`'s own attributes, made safe to multiply a
+/// screen width by.
+///
+/// Rejects the two shapes that are not a ratio at all: a zero width, which
+/// divides to infinity, and a NaN. Both reached the delegate before this
+/// existed, and `width * NaN` is a block with no height that never reflows.
+fn image_ratio((w, h): (u32, u32)) -> f64 {
+    let ratio = f64::from(h) / f64::from(w);
+    if !ratio.is_finite() || ratio <= 0.0 {
+        return 0.0;
+    }
+    ratio.min(MAX_IMAGE_RATIO)
 }
 
 fn row_for(block: &RenderBlock) -> BlockRow {
@@ -145,11 +174,7 @@ fn row_for(block: &RenderBlock) -> BlockRow {
             row.image_alt = alt.clone();
             row.image_host = src.as_url().host_str().unwrap_or_default().to_owned();
             row.needs_consent = matches!(fetch, MediaFetch::NeedsConsent);
-            // The core caps both dimensions well below the point where this
-            // division could lose precision or produce a silly rectangle.
-            row.image_ratio = intrinsic
-                .map(|(w, h)| f64::from(h) / f64::from(w))
-                .unwrap_or(0.0);
+            row.image_ratio = intrinsic.map(image_ratio).unwrap_or(0.0);
         }
         BlockKind::Table { rows } => {
             row.kind = "table".to_owned();
@@ -617,6 +642,35 @@ impl QAbstractListModel for ArticleModel {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// §an `<img>` cannot reserve more of the page than it could fill.
+    ///
+    /// The delegate multiplies a screen width by this, so it is the one number
+    /// in this file a feed can hand straight into a layout. The core caps each
+    /// dimension at 20 000 px and nothing capped their ratio, so
+    /// `width="1" height="20000"` reserved a block 21 million pixels tall on a
+    /// 1080 px screen -- and the reservation stands until the image is
+    /// `Ready`, so one that never arrives left the article unscrollable for
+    /// the rest of the session. The comment at the call site claimed the
+    /// dimension caps already prevented "a silly rectangle". They did not.
+    #[test]
+    fn an_images_reserved_shape_is_bounded_whatever_the_tag_claims() {
+        assert_eq!(
+            image_ratio((2, 1)),
+            0.5,
+            "an ordinary landscape passes through"
+        );
+        assert_eq!(image_ratio((1, 2)), 2.0, "and so does an ordinary portrait");
+        assert_eq!(
+            image_ratio((1, 20_000)),
+            MAX_IMAGE_RATIO,
+            "the tallest thing the core will accept is clamped, not honoured"
+        );
+        // A zero width divides to infinity, and `width * inf` is a block with
+        // no finite height at all. Both of these reached the delegate.
+        assert_eq!(image_ratio((0, 100)), 0.0, "no width is no hint");
+        assert_eq!(image_ratio((100, 0)), 0.0, "and neither is no height");
+    }
 
     /// §9.3's media policy, from the user's setting to the transform context.
     ///
