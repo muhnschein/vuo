@@ -98,15 +98,23 @@ Page {
         anchors.fill: parent
         model: article
 
-        // Keep delegates alive well beyond the viewport.
+        // Keep delegates alive a little beyond the viewport.
         //
         // A ListView destroys delegates that scroll out of range and rebuilds
         // them on the way back, which for this page meant every image was
         // re-resolved and re-decoded each time it re-entered view -- so
         // scrolling back up through an article you had already read jumped
-        // around exactly as it had on the way down. Four screens of buffer
-        // covers a normal article's worth of back-and-forth.
-        cacheBuffer: Math.round(blocks.height * 4)
+        // around exactly as it had on the way down.
+        //
+        // This was four screens, which is nine screens of live delegates once
+        // both directions are counted, and a live image delegate holds a
+        // DECODED pixmap -- several megabytes each at this width. An article
+        // that is mostly pictures held tens of them at once. One screen either
+        // side is enough now that a rebuilt delegate no longer jumps: the
+        // `height` binding below reserves the right shape from the tag's own
+        // ratio before any pixel arrives, and `cache: true` means the pixmap
+        // usually comes back from Qt's cache rather than the network.
+        cacheBuffer: Math.round(blocks.height)
 
         header: Column {
             width: blocks.width
@@ -231,6 +239,19 @@ Page {
         // A single delegate with one visible child per block kind keeps the
         // roles in scope, which is what a Qt 5.6-era Silica app would do
         // anyway: there are no required properties and no Controls 2 here.
+        //
+        // WHICH MEANS EVERY BLOCK BUILDS ALL OF THEM, and `visible: false`
+        // only stops a child being DRAWN. A `Text` still parses and lays out
+        // whatever is assigned to its `text`, because implicit sizing needs
+        // the result whether or not anyone sees it -- so four of these Labels
+        // were each building a full StyledText layout, with glyph runs, over
+        // the same `styledText`, for every block in the article.
+        //
+        // Measured on a Jolla with a long text-only article: 30 MB of that,
+        // resident, and not released on leaving the page. Every `text` below
+        // is therefore gated on the block kind, not merely hidden. The
+        // `height: visible ? implicitHeight : 0` bindings were already safe --
+        // a false `visible` short-circuits before implicitHeight is read.
         delegate: Item {
             id: block
             width: blocks.width
@@ -250,7 +271,10 @@ Page {
                     // foreign text into it. StyledText is safe here, and only
                     // where the text came from that one function.
                     textFormat: Text.StyledText
-                    text: styledText
+                    // Gated on the kind, not just hidden. See the note above
+                    // the delegate: an invisible Text still parses and lays
+                    // out whatever is assigned to `text`.
+                    text: visible ? styledText : ""
                     color: Theme.highlightColor
                     font.pixelSize: level <= 2 ? Theme.fontSizeLarge : Theme.fontSizeMedium
                     font.bold: true
@@ -263,7 +287,7 @@ Page {
                     width: block.width - x - Theme.horizontalPageMargin
                     wrapMode: Text.Wrap
                     textFormat: Text.StyledText
-                    text: styledText
+                    text: visible ? styledText : ""
                     color: quoteDepth > 0 ? Theme.secondaryColor : Theme.primaryColor
                     font.pixelSize: Theme.fontSizeSmall
                     linkColor: Theme.highlightColor
@@ -279,7 +303,7 @@ Page {
 
                     Label {
                         textFormat: Text.PlainText
-                        text: marker
+                        text: blockKind === "list_item" ? marker : ""
                         color: Theme.secondaryColor
                         font.pixelSize: Theme.fontSizeSmall
                     }
@@ -288,7 +312,7 @@ Page {
                         width: parent.width - Theme.paddingLarge
                         wrapMode: Text.Wrap
                         textFormat: Text.StyledText
-                        text: styledText
+                        text: blockKind === "list_item" ? styledText : ""
                         color: Theme.primaryColor
                         font.pixelSize: Theme.fontSizeSmall
                         linkColor: Theme.highlightColor
@@ -312,7 +336,8 @@ Page {
                         // Verbatim by definition. Rendering code as markup
                         // would both corrupt it and reintroduce injection.
                         textFormat: Text.PlainText
-                        text: styledText
+                        text: blockKind === "code" || blockKind === "table"
+                              ? styledText : ""
                         wrapMode: Text.WrapAnywhere
                         font.family: "monospace"
                         font.pixelSize: Theme.fontSizeExtraSmall
@@ -351,7 +376,9 @@ Page {
                             textFormat: Text.PlainText
                             font.pixelSize: Theme.fontSizeExtraSmall
                             color: Theme.secondaryHighlightColor
-                            text: qsTr("Tap to load images from %1").arg(imageHost)
+                            text: needsConsent
+                                  ? qsTr("Tap to load images from %1").arg(imageHost)
+                                  : ""
                         }
                     }
 
@@ -370,7 +397,10 @@ Page {
                         // <img> tag's own width/height gives the right shape
                         // outright, and where the feed offered none, a square
                         // is reserved: wrong by some amount, but wrong by a
-                        // BOUNDED amount and only once.
+                        // BOUNDED amount and only once. The bound is real --
+                        // `article.rs`'s MAX_IMAGE_RATIO clamps what the tag
+                        // may claim, so a 1 x 20000 px `<img>` can no longer
+                        // reserve a block taller than the article.
                         height: {
                             if (status === Image.Ready && implicitWidth > 0) {
                                 return width * (implicitHeight / implicitWidth)
@@ -380,19 +410,33 @@ Page {
                         fillMode: Image.PreserveAspectFit
                         asynchronous: true
                         cache: true
-                        // Capped so a hostile image cannot exhaust memory
-                        // during decode; the URL was validated as http(s) in
-                        // Rust before it ever reached QML.
+                        // BOTH dimensions, which is what actually bounds the
+                        // decode. Qt only downscales a source that exceeds the
+                        // size asked for, so a width cap alone left the height
+                        // free: a 1000 x 30000 px image -- 30 megapixels, about
+                        // 120 MB decoded -- came through the proxy at full
+                        // resolution, and the comment here used to claim the
+                        // opposite. With both set and PreserveAspectFit, Qt
+                        // scales the source to fit INSIDE the box, so the
+                        // decoded pixmap is bounded whatever shape arrives.
+                        //
+                        // Four screens tall is past anything meant to be read
+                        // on a phone; beyond it the image is drawn upscaled and
+                        // soft, which is the right way to lose that argument.
+                        // The URL was validated as http(s) in Rust before it
+                        // ever reached QML.
                         sourceSize.width: block.width
-                        source: needsConsent ? "" : imageSource
+                        sourceSize.height: block.width * 4
+                        source: blockKind === "image" && !needsConsent
+                                ? imageSource : ""
                     }
 
                     Label {
-                        visible: imageAlt.length > 0
+                        visible: blockKind === "image" && imageAlt.length > 0
                         width: parent.width
                         horizontalAlignment: Text.AlignHCenter
                         textFormat: Text.PlainText
-                        text: imageAlt
+                        text: visible ? imageAlt : ""
                         wrapMode: Text.Wrap
                         font.pixelSize: Theme.fontSizeExtraSmall
                         color: Theme.secondaryColor

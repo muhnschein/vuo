@@ -117,6 +117,12 @@ pub enum Command {
     SetSyncInterval {
         minutes: Option<i64>,
     },
+    /// How long read, unfavourited articles are kept in the mirror, in
+    /// seconds; `None` for "keep everything". Sent alongside
+    /// [`Command::SetSyncInterval`] and applied at the end of the next pass.
+    SetRetention {
+        seconds: Option<i64>,
+    },
     Shutdown,
 }
 
@@ -139,6 +145,7 @@ impl Command {
             Command::TestConnection => "TestConnection",
             Command::Configure(_) => "Configure",
             Command::SetSyncInterval { .. } => "SetSyncInterval",
+            Command::SetRetention { .. } => "SetRetention",
             Command::Shutdown => "Shutdown",
         }
     }
@@ -206,10 +213,26 @@ struct CommandGuard<'a> {
     /// construction, so an opportunistic `FlushOutbox` fired by a star tap
     /// physically cannot switch off the spinner of a refresh already running.
     clears_spinner: bool,
+    /// Whether this command is big enough to be worth returning its peak to
+    /// the kernel. See [`crate::memory`].
+    ///
+    /// Decided from the command for the same reason `clears_spinner` is, and
+    /// true for the two that inflate, parse and then drop a whole corpus or a
+    /// whole article body. Not for the small ones: a star tap sends
+    /// `FlushOutbox`, and walking every arena on every tap would buy nothing
+    /// and cost the one thread that must never make the UI wait.
+    trims_allocator: bool,
 }
 
 impl Drop for CommandGuard<'_> {
     fn drop(&mut self) {
+        // Before the signal, not after. A bump sets every model reloading on
+        // the Qt thread, and the trim takes each arena's lock as it goes --
+        // so doing it first is the difference between the UI waiting on the
+        // allocator and the allocator being done before the UI asks.
+        if self.trims_allocator {
+            crate::memory::release_free_memory();
+        }
         // Clear BEFORE bumping, and the order is load-bearing. `pollSync`
         // spends a generation the first time it sees it, so a poll landing
         // between a bump and a clear would read `running` as still true and
@@ -394,6 +417,10 @@ impl Worker {
                 // difference is who asked.
                 let mut interval: Option<i64> = None;
                 let mut next_sync: Option<std::time::Instant> = None;
+                // The retention window, or `None` for "keep everything" --
+                // which is what an install that has never opened Settings
+                // means, and what every version before this one did.
+                let mut retention: Option<i64> = None;
                 loop {
                     // Only an account being served has a sync that can fall
                     // due. Without this filter, an interval set before an
@@ -487,6 +514,15 @@ impl Worker {
                                     .map(|delay| std::time::Instant::now() + delay);
                             continue;
                         }
+                        Command::SetRetention { seconds } => {
+                            // Recorded, not acted on. Pruning here would
+                            // delete the reader's articles the instant they
+                            // tapped Save, in front of them; at the end of a
+                            // pass it happens with everything else the sync
+                            // changed, once.
+                            retention = seconds;
+                            continue;
+                        }
                         _ => {}
                     }
 
@@ -510,15 +546,23 @@ impl Worker {
                         signal: &signal,
                         changed: false,
                         clears_spinner: matches!(command, Command::Sync),
+                        trims_allocator: matches!(
+                            command,
+                            Command::Sync | Command::FetchOriginal { .. }
+                        ),
                     };
                     match command {
                         // All three are handled above, before the guard.
                         Command::Shutdown
                         | Command::Configure(_)
-                        | Command::SetSyncInterval { .. } => {}
+                        | Command::SetSyncInterval { .. }
+                        | Command::SetRetention { .. } => {}
                         Command::Sync => {
                             on_event(Event::SyncStarted);
-                            let options = SyncOptions::default();
+                            let options = SyncOptions {
+                                retention_secs: retention,
+                                ..SyncOptions::default()
+                            };
                             match runtime.block_on(sync::sync(db, client, options)) {
                                 Ok(report) if report.replay.auth_failed => {
                                     guard.changed = true;
@@ -584,7 +628,10 @@ impl Worker {
                                     let _ = runtime.block_on(sync::sync(
                                         db,
                                         client,
-                                        SyncOptions::default(),
+                                        SyncOptions {
+                                            retention_secs: retention,
+                                            ..SyncOptions::default()
+                                        },
                                     ));
                                     guard.changed = true;
                                     on_event(Event::SubscriptionChanged {
@@ -1085,6 +1132,10 @@ pub struct Account {
     /// When an opened article is marked read. See `settings::MARK_READ_*`.
     #[serde(default = "default_mark_read_delay_index")]
     pub mark_read_delay_index: i32,
+    /// How long read, unfavourited articles are kept locally. Index into
+    /// `settings::RETENTION_DAYS`; 0 keeps everything.
+    #[serde(default)]
+    pub retention_index: i32,
 }
 
 /// Ask, not Strict. On a stock Miniflux `MEDIA_PROXY_MODE` is `http-only`, so
@@ -1114,6 +1165,7 @@ impl Default for Account {
             sync_interval_index: default_sync_interval_index(),
             wifi_only: false,
             mark_read_delay_index: default_mark_read_delay_index(),
+            retention_index: crate::settings::RETENTION_DEFAULT_INDEX,
         }
     }
 }
@@ -1360,6 +1412,7 @@ EQBBQIobIy41+aQiMsM0XBYH3Q==\n\
                 signal: &signal,
                 changed: false,
                 clears_spinner: true,
+                trims_allocator: false,
             };
             // An arm that reports a failure and sets nothing at all.
         }
@@ -1382,6 +1435,7 @@ EQBBQIobIy41+aQiMsM0XBYH3Q==\n\
                 signal: &signal,
                 changed: true,
                 clears_spinner: false,
+                trims_allocator: false,
             };
             guard.changed = true;
         }
@@ -1398,6 +1452,7 @@ EQBBQIobIy41+aQiMsM0XBYH3Q==\n\
                 signal,
                 changed: false,
                 clears_spinner: true,
+                trims_allocator: false,
             };
             #[allow(clippy::needless_return)]
             return;

@@ -303,6 +303,46 @@ pub fn delete_entry(tx: &Transaction<'_>, id: EntryId) -> Result<()> {
     Ok(())
 }
 
+/// Forget read, unfavourited entries published before `cutoff`.
+///
+/// The mirror is a cache of the server, not an archive, but nothing ever
+/// removed anything from it: a phone that had synced for a year held every
+/// article body it had ever seen, and the file only grew. This is the one
+/// thing that shrinks it.
+///
+/// Three kinds of entry are never touched, and each exclusion is load-bearing:
+///
+/// - **Unread.** The reader has not seen it yet. Deleting it would be
+///   indistinguishable from the app losing it.
+/// - **Favourited.** A favourite is the user saying "keep this". A retention
+///   policy that deletes favourites is a bug with a settings page.
+/// - **Anything with a queued intent.** An outbox row is a local change the
+///   server has not confirmed. Deleting the entry under it would drop the
+///   user's own tap -- so a just-read article survives until its `read` has
+///   actually reached the server, and is pruned on some later pass.
+///
+/// An entry the feed gave no date at all is aged from `created_at`, and if it
+/// has neither it is treated as older than any cutoff: a read, unfavourited,
+/// undated article is exactly what this exists to collect.
+///
+/// Safe with respect to sync. The pull is driven by a `changed_after` cursor
+/// which only moves forward, and the reconcile only ever deletes local rows the
+/// server no longer has -- so nothing pruned here comes back on the next pass,
+/// and nothing here makes the reconcile delete something else.
+pub fn prune_entries(tx: &Transaction<'_>, cutoff: i64) -> Result<usize> {
+    // Enclosures follow by `ON DELETE CASCADE`; `foreign_keys` is ON for every
+    // connection this crate opens (see `db::Database::configure`).
+    let removed = tx.execute(
+        "DELETE FROM entries \
+          WHERE status = 'read' \
+            AND starred = 0 \
+            AND COALESCE(published_at, created_at, 0) < ?1 \
+            AND id NOT IN (SELECT entry_id FROM outbox)",
+        [cutoff],
+    )?;
+    Ok(removed)
+}
+
 /// Every entry id Vuo holds locally.
 pub fn local_entry_ids(conn: &rusqlite::Connection) -> Result<Vec<EntryId>> {
     let mut stmt = conn.prepare("SELECT id FROM entries")?;
@@ -351,6 +391,36 @@ pub enum EntryFilter {
     Category(i64),
 }
 
+/// A row as an entry LIST needs it: everything the list draws, and not the
+/// article body.
+///
+/// The body is the reason this type exists. A list is capped at 500 rows, but
+/// an entry body routinely runs to tens of kilobytes, so reading [`Entry`] to
+/// draw a list carried megabytes out of SQLite on every reload and dropped
+/// every byte of it unread -- four times over, because there is one model per
+/// scope tab and they all reload on the same generation bump. Measured against
+/// a 5,357-entry mirror with 10 KB bodies: 5 MB read and discarded per model
+/// per reload, 20 MB per bump, at the rate the QML timer polls. The allocator
+/// does not hand that back to the system, so it shows up as resident memory
+/// that only ever grows.
+///
+/// Whoever needs the body asks for one entry by id -- [`entry`] -- which is
+/// what opening an article already does.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EntryListRow {
+    pub id: EntryId,
+    pub feed_id: FeedId,
+    pub status: EntryStatus,
+    pub starred: bool,
+    /// FOREIGN TEXT: the feed's own words.
+    pub title: String,
+    pub url: Option<String>,
+    /// FOREIGN TEXT.
+    pub author: String,
+    pub published_at: Option<i64>,
+    pub reading_time: i32,
+}
+
 /// List entries for the UI, newest first.
 ///
 /// Each filter is its own complete literal statement. Sharing a column list
@@ -364,21 +434,21 @@ pub fn list_entries(
     filter: EntryFilter,
     limit: i64,
     offset: i64,
-) -> Result<Vec<Entry>> {
-    const UNREAD: &str = "SELECT id, feed_id, status, starred, title, url, comments_url, author, \
-        content, published_at, created_at, changed_at, reading_time, tags FROM entries \
+) -> Result<Vec<EntryListRow>> {
+    const UNREAD: &str = "SELECT id, feed_id, status, starred, title, url, author, published_at, \
+        reading_time FROM entries \
         WHERE status = 'unread' ORDER BY published_at DESC, id DESC LIMIT ?1 OFFSET ?2";
-    const STARRED: &str = "SELECT id, feed_id, status, starred, title, url, comments_url, author, \
-        content, published_at, created_at, changed_at, reading_time, tags FROM entries \
+    const STARRED: &str = "SELECT id, feed_id, status, starred, title, url, author, published_at, \
+        reading_time FROM entries \
         WHERE starred = 1 ORDER BY published_at DESC, id DESC LIMIT ?1 OFFSET ?2";
-    const ALL: &str = "SELECT id, feed_id, status, starred, title, url, comments_url, author, \
-        content, published_at, created_at, changed_at, reading_time, tags FROM entries \
+    const ALL: &str = "SELECT id, feed_id, status, starred, title, url, author, published_at, \
+        reading_time FROM entries \
         ORDER BY published_at DESC, id DESC LIMIT ?1 OFFSET ?2";
-    const BY_FEED: &str = "SELECT id, feed_id, status, starred, title, url, comments_url, author, \
-        content, published_at, created_at, changed_at, reading_time, tags FROM entries \
+    const BY_FEED: &str = "SELECT id, feed_id, status, starred, title, url, author, published_at, \
+        reading_time FROM entries \
         WHERE feed_id = ?3 ORDER BY published_at DESC, id DESC LIMIT ?1 OFFSET ?2";
-    const BY_CATEGORY: &str = "SELECT id, feed_id, status, starred, title, url, comments_url, \
-        author, content, published_at, created_at, changed_at, reading_time, tags FROM entries \
+    const BY_CATEGORY: &str = "SELECT id, feed_id, status, starred, title, url, author, \
+        published_at, reading_time FROM entries \
         WHERE feed_id IN (SELECT id FROM feeds WHERE category_id = ?3) \
         ORDER BY published_at DESC, id DESC LIMIT ?1 OFFSET ?2";
 
@@ -393,7 +463,7 @@ pub fn list_entries(
             let mut stmt = conn.prepare(sql)?;
             let mut rows = stmt.query(rusqlite::params![limit, offset])?;
             while let Some(row) = rows.next()? {
-                out.push(row_to_entry(row)?);
+                out.push(row_to_list_row(row)?);
             }
         }
         EntryFilter::Feed(id) | EntryFilter::Category(id) => {
@@ -405,11 +475,101 @@ pub fn list_entries(
             let mut stmt = conn.prepare(sql)?;
             let mut rows = stmt.query(rusqlite::params![limit, offset, id])?;
             while let Some(row) = rows.next()? {
-                out.push(row_to_entry(row)?);
+                out.push(row_to_list_row(row)?);
             }
         }
     }
     Ok(out)
+}
+
+/// One list row by id, for a row a list is holding on to that its own query no
+/// longer returns -- an article the reader has just finished with.
+pub fn entry_list_row(conn: &rusqlite::Connection, id: EntryId) -> Result<Option<EntryListRow>> {
+    let row = conn
+        .query_row(
+            "SELECT id, feed_id, status, starred, title, url, author, published_at, \
+             reading_time FROM entries WHERE id = ?1",
+            [id.get()],
+            row_to_list_row,
+        )
+        .optional()?;
+    Ok(row)
+}
+
+/// The ids of every entry a filter matches, and nothing else.
+///
+/// "Mark all as read" is the caller: it has to act on the whole scope rather
+/// than on the page a list happens to be showing, and it needs nothing but the
+/// ids. Reading [`EntryListRow`]s to throw all but the id away would still
+/// carry every title and URL in the mirror through memory; reading [`Entry`]s,
+/// as this once did through `list_entries(.., i64::MAX, 0)`, carried every
+/// BODY -- measured at 54 MB in a single allocation on a 5,357-entry mirror,
+/// which is a spike a phone feels and the allocator never returns.
+pub fn entry_ids_matching(
+    conn: &rusqlite::Connection,
+    filter: EntryFilter,
+) -> Result<Vec<EntryId>> {
+    const UNREAD: &str = "SELECT id FROM entries WHERE status = 'unread'";
+    const STARRED: &str = "SELECT id FROM entries WHERE starred = 1";
+    const ALL: &str = "SELECT id FROM entries";
+    const BY_FEED: &str = "SELECT id FROM entries WHERE feed_id = ?1";
+    const BY_CATEGORY: &str =
+        "SELECT id FROM entries WHERE feed_id IN (SELECT id FROM feeds WHERE category_id = ?1)";
+
+    let mut out = Vec::new();
+    match filter {
+        EntryFilter::Unread | EntryFilter::Starred | EntryFilter::All => {
+            let sql = match filter {
+                EntryFilter::Unread => UNREAD,
+                EntryFilter::Starred => STARRED,
+                _ => ALL,
+            };
+            let mut stmt = conn.prepare(sql)?;
+            let mut rows = stmt.query([])?;
+            while let Some(row) = rows.next()? {
+                out.push(EntryId(row.get(0)?));
+            }
+        }
+        EntryFilter::Feed(id) | EntryFilter::Category(id) => {
+            let sql = if matches!(filter, EntryFilter::Feed(_)) {
+                BY_FEED
+            } else {
+                BY_CATEGORY
+            };
+            let mut stmt = conn.prepare(sql)?;
+            let mut rows = stmt.query([id])?;
+            while let Some(row) = rows.next()? {
+                out.push(EntryId(row.get(0)?));
+            }
+        }
+    }
+    Ok(out)
+}
+
+fn row_to_list_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<EntryListRow> {
+    Ok(EntryListRow {
+        id: EntryId(r.get(0)?),
+        feed_id: FeedId(r.get(1)?),
+        status: if r.get::<_, String>(2)? == "read" {
+            EntryStatus::Read
+        } else {
+            EntryStatus::Unread
+        },
+        starred: r.get::<_, i64>(3)? != 0,
+        title: r.get(4)?,
+        // Re-parsed rather than handed straight out, exactly as the full
+        // `Entry` read path does: this string reaches QML and is what a tap
+        // opens in a browser, and a row written by an older build may hold
+        // something the current policy no longer accepts. A URL that does not
+        // survive the parse is dropped, not passed on.
+        url: r
+            .get::<_, Option<String>>(5)?
+            .and_then(|s| crate::content::MediaUrl::parse(&s))
+            .map(|u| u.as_str().to_owned()),
+        author: r.get(6)?,
+        published_at: r.get(7)?,
+        reading_time: r.get::<_, i64>(8)? as i32,
+    })
 }
 
 fn row_to_entry(r: &rusqlite::Row<'_>) -> rusqlite::Result<Entry> {
@@ -750,8 +910,103 @@ mod tests {
         db
     }
 
-    fn ids(entries: &[Entry]) -> Vec<i64> {
+    fn ids(entries: &[EntryListRow]) -> Vec<i64> {
         entries.iter().map(|e| e.id.get()).collect()
+    }
+
+    fn ids_of(entries: &[EntryId]) -> Vec<i64> {
+        entries.iter().map(|id| id.get()).collect()
+    }
+
+    /// §retention drops what the reader is done with, and nothing else.
+    ///
+    /// The mirror grew forever: nothing removed anything from it except a
+    /// server-side deletion, so a phone that had read a year of feeds still
+    /// held every body it had ever seen. This is the only thing that shrinks
+    /// it, which makes exactly what it REFUSES to touch the interesting half.
+    #[test]
+    fn retention_keeps_the_unread_the_favourites_and_the_unsent() {
+        let mut db = populated();
+
+        // A queued intent on entry 6, which is otherwise the oldest thing a
+        // wide cutoff would take: its `read` has not reached the server, and
+        // deleting the row under it would drop the reader's own tap.
+        db.with_tx(|tx| {
+            outbox::queue(
+                tx,
+                EntryId(6),
+                outbox::DesiredValue::Status(EntryStatus::Read),
+                1_000,
+            )
+        })
+        .expect("queue");
+
+        // Past every entry in the fixture, so only the exclusions decide.
+        let pruned = db.with_tx(|tx| prune_entries(tx, 10_000)).expect("prune");
+        assert_eq!(pruned, 1, "only entry 4 is read, unfavourited and settled");
+
+        let mut left = ids_of(&local_entry_ids(db.conn()).expect("ids"));
+        left.sort_unstable();
+        assert_eq!(
+            left,
+            vec![1, 2, 3, 5, 6],
+            "unread (1, 3, 5), favourited (2) and unflushed (6) all survive"
+        );
+    }
+
+    /// §retention is a window, not a purge.
+    #[test]
+    fn retention_only_reaches_past_the_cutoff() {
+        let mut db = populated();
+
+        // Entry 4 is published at 400 and entry 6 at 600; both are read and
+        // unfavourited. A cutoff between them must take exactly one.
+        let pruned = db.with_tx(|tx| prune_entries(tx, 500)).expect("prune");
+        assert_eq!(pruned, 1);
+        let mut left = ids_of(&local_entry_ids(db.conn()).expect("ids"));
+        left.sort_unstable();
+        assert_eq!(
+            left,
+            vec![1, 2, 3, 5, 6],
+            "the article inside the window stays"
+        );
+
+        // And nothing at all when the window covers everything.
+        let pruned = db.with_tx(|tx| prune_entries(tx, 0)).expect("prune");
+        assert_eq!(pruned, 0);
+    }
+
+    /// §an enclosure does not outlive the entry retention dropped.
+    ///
+    /// The FK says `ON DELETE CASCADE` and `foreign_keys` is ON, so this is
+    /// the pragma being load-bearing rather than decorative -- which is what
+    /// `db::tests::foreign_keys_are_enforced` exists to protect from the other
+    /// side.
+    #[test]
+    fn retention_takes_the_enclosures_with_it() {
+        let mut db = populated();
+        db.with_tx(|tx| {
+            let mut e = entry_at(4, 11, EntryStatus::Read, false, 400);
+            e.enclosures = vec![Enclosure {
+                id: 99,
+                entry_id: EntryId(4),
+                url: crate::content::MediaUrl::parse("https://example.test/a.mp3"),
+                mime_type: "audio/mpeg".to_owned(),
+                size: 1,
+            }];
+            upsert_entry(tx, &e, 2)
+        })
+        .expect("enclosure");
+
+        let count = |db: &Database| -> i64 {
+            db.conn()
+                .query_row("SELECT COUNT(*) FROM enclosures", [], |r| r.get(0))
+                .expect("count")
+        };
+        assert_eq!(count(&db), 1, "the fixture must have one to lose");
+
+        db.with_tx(|tx| prune_entries(tx, 10_000)).expect("prune");
+        assert_eq!(count(&db), 0, "the enclosure went with its entry");
     }
 
     #[test]
@@ -880,6 +1135,91 @@ mod tests {
         db.with_tx(|tx| grant_media_consent(tx, "https://cdn.example", 3))
             .expect("regrant");
         assert_eq!(media_consent(db.conn()).expect("read").len(), 2);
+    }
+
+    /// §"Mark all as read" acts on the scope, not on the page a list shows.
+    ///
+    /// The ids used to come from `list_entries(.., i64::MAX, 0)`, which built
+    /// the whole scope as full entries -- every BODY in the mirror -- to read
+    /// one integer off each. This is the replacement, and the property it has
+    /// to keep is the one the old call was there for: EVERY id in scope, not
+    /// the first page of them.
+    #[test]
+    fn the_ids_in_a_scope_are_all_of_them() {
+        let db = populated();
+        let mut got = entry_ids_matching(db.conn(), EntryFilter::Unread).expect("unread ids");
+        got.sort_unstable();
+        assert_eq!(ids_of(&got), vec![1, 3, 5]);
+
+        let mut got = entry_ids_matching(db.conn(), EntryFilter::Starred).expect("starred ids");
+        got.sort_unstable();
+        assert_eq!(ids_of(&got), vec![2, 3]);
+
+        let mut got = entry_ids_matching(db.conn(), EntryFilter::All).expect("all ids");
+        got.sort_unstable();
+        assert_eq!(ids_of(&got), vec![1, 2, 3, 4, 5, 6]);
+
+        let mut got = entry_ids_matching(db.conn(), EntryFilter::Feed(11)).expect("feed ids");
+        got.sort_unstable();
+        assert_eq!(ids_of(&got), vec![3, 4]);
+
+        let mut got = entry_ids_matching(db.conn(), EntryFilter::Category(1)).expect("cat ids");
+        got.sort_unstable();
+        assert_eq!(
+            ids_of(&got),
+            vec![1, 2, 3, 4],
+            "a category spans its feeds, as the listing does"
+        );
+    }
+
+    /// §a list reads what a list draws, and the body is not part of that.
+    ///
+    /// The body is the whole reason [`EntryListRow`] exists: reading `Entry`
+    /// to draw a list carried megabytes out of SQLite per reload and dropped
+    /// every byte unread. The absence of a `content` field is compile-checked,
+    /// so what this pins is the other half -- that the columns a list DOES
+    /// need all survived the narrowing, including the ones an older build
+    /// spelled differently.
+    #[test]
+    fn a_list_row_carries_what_a_list_draws() {
+        let mut db = Database::open_in_memory().expect("mirror");
+        db.with_tx(|tx| {
+            upsert_feed(tx, &feed_in(10, None), 1)?;
+            let mut e = entry_at(1, 10, EntryStatus::Unread, true, 4_200);
+            e.title = "Ein Titel".to_owned();
+            e.author = "Eine Autorin".to_owned();
+            e.reading_time = 7;
+            e.url = crate::content::MediaUrl::parse("https://example.test/a");
+            // A body far larger than anything the row should carry.
+            e.content = "x".repeat(200_000);
+            upsert_entry(tx, &e, 1)
+        })
+        .expect("seed");
+
+        let rows = list_entries(db.conn(), EntryFilter::All, 10, 0).expect("list");
+        let row = rows.first().expect("one row");
+        assert_eq!(row.id, EntryId(1));
+        assert_eq!(row.feed_id, FeedId(10));
+        assert_eq!(row.status, EntryStatus::Unread);
+        assert!(row.starred);
+        assert_eq!(row.title, "Ein Titel");
+        assert_eq!(row.author, "Eine Autorin");
+        assert_eq!(row.published_at, Some(4_200));
+        assert_eq!(row.reading_time, 7);
+        assert_eq!(row.url.as_deref(), Some("https://example.test/a"));
+
+        // And the same row by id, which is the path a list takes for an
+        // article the reader has finished with but is still holding on to.
+        let one = entry_list_row(db.conn(), EntryId(1))
+            .expect("read")
+            .expect("the row is there");
+        assert_eq!(&one, row, "both reads must agree, or a kept row redraws");
+        assert!(
+            entry_list_row(db.conn(), EntryId(404))
+                .expect("read")
+                .is_none(),
+            "an id the mirror does not have is None, not an error"
+        );
     }
 
     #[test]

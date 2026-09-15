@@ -43,6 +43,13 @@ pub struct SyncOptions {
     pub icons_per_pass: i64,
     /// Skip the outbox flush (used by a read-only refresh).
     pub skip_replay: bool,
+    /// How long a read, unfavourited article is kept locally, in seconds.
+    ///
+    /// `None` -- the default -- keeps everything, which is what every version
+    /// before this one did and what an existing install must keep doing unless
+    /// its owner asks otherwise. See [`store::prune_entries`] for what is
+    /// never pruned whatever this says.
+    pub retention_secs: Option<i64>,
 }
 
 impl Default for SyncOptions {
@@ -51,6 +58,7 @@ impl Default for SyncOptions {
             reconcile_interval_secs: 24 * 60 * 60,
             icons_per_pass: 8,
             skip_replay: false,
+            retention_secs: None,
         }
     }
 }
@@ -61,6 +69,8 @@ pub struct SyncReport {
     pub pull: pull::PullOutcome,
     pub entries_deleted: usize,
     pub icons_fetched: usize,
+    /// Entries dropped by the retention policy this pass.
+    pub entries_pruned: usize,
     pub reconciled: bool,
     pub server_version: Option<String>,
 }
@@ -123,7 +133,29 @@ pub async fn sync(
     // 5.
     report.icons_fetched = fetch_icons(db, client, options.icons_per_pass).await?;
 
-    // 6. Only now, with everything above committed.
+    // 6. Retention, last of the mirror-changing steps.
+    //
+    // After the pull and after the reconcile, not before: pruning first would
+    // delete rows this pass is about to re-write, and pruning before the
+    // reconcile would shrink the local side of a comparison the reconcile is
+    // still making.
+    //
+    // Off unless the user turned it on. The mirror holding every article the
+    // phone has ever seen is a disk problem, not a correctness one, and
+    // deleting the reader's articles is not a thing to start doing on their
+    // behalf because they installed an update.
+    if let Some(keep_for) = options.retention_secs.filter(|s| *s > 0) {
+        let cutoff = now.saturating_sub(keep_for);
+        report.entries_pruned = db.with_tx(|tx| store::prune_entries(tx, cutoff))?;
+        if report.entries_pruned > 0 {
+            tracing::info!(
+                pruned = report.entries_pruned,
+                "dropped read articles past the retention window"
+            );
+        }
+    }
+
+    // 7. Only now, with everything above committed.
     let next = store::SyncState {
         cursor_changed_after: report.pull.next_cursor.or(state.cursor_changed_after),
         sync_generation: generation,

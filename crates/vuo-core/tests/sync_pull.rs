@@ -374,11 +374,17 @@ async fn the_counters_check_finds_diverging_feeds() {
     let diverging = pull::diverging_feeds(&db, &client).await.unwrap();
     assert_eq!(
         diverging,
-        vec![2, 3],
-        "divergence is a DISAGREEMENT, in either direction. Only ever testing \
-         the server-has-more case meant weakening the comparison to `>` -- so \
-         deletions could never raise divergence, which is what the check is \
-         for -- left every test green."
+        vec![3],
+        "divergence is the mirror holding MORE than the server, and only that. \
+         The check's one consumer is the reconcile, and the reconcile only \
+         ever deletes -- so feed 3, where an entry has gone from the server, \
+         is the case it is for. Feed 2, where the server has entries the \
+         mirror has not pulled yet, is the cursor's job; raising it here \
+         bought a full id listing of the whole corpus that could not have \
+         fixed it. That mattered the moment a mirror could deliberately hold \
+         less than the server: with a retention policy set, EVERY feed is \
+         permanently short, so `!=` meant paging the entire corpus on every \
+         single pass forever."
     );
 }
 
@@ -601,9 +607,16 @@ async fn hostile_feed_counters_do_not_panic() {
     let client = client_for(&server);
     let mut db = memory_db();
     db.with_tx(|tx| {
-        tx.execute("INSERT INTO feeds (id, title) VALUES (1, 'f')", [])?;
+        // Feed 1 takes the overflowing counts. Feed 2 is absent from the
+        // response -- zero there, one entry here -- so the call still has to
+        // produce a real answer after surviving the accumulator, rather than
+        // passing by returning nothing at all.
         tx.execute(
-            "INSERT INTO entries (id, feed_id, status) VALUES (1, 1, 'unread')",
+            "INSERT INTO feeds (id, title) VALUES (1, 'f'), (2, 'g')",
+            [],
+        )?;
+        tx.execute(
+            "INSERT INTO entries (id, feed_id, status) VALUES (1, 1, 'unread'), (2, 2, 'unread')",
             [],
         )?;
         Ok(())
@@ -613,8 +626,9 @@ async fn hostile_feed_counters_do_not_panic() {
     let diverging = pull::diverging_feeds(&db, &client).await.unwrap();
     assert_eq!(
         diverging,
-        vec![1],
-        "an absurd count is divergence, not a crash"
+        vec![2],
+        "the absurd count saturates instead of panicking, and the feed that \
+         really is ahead of the server is still found"
     );
 }
 

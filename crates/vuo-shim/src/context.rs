@@ -43,6 +43,43 @@ pub struct AppContext {
     /// a context outlives the credentials it was built from. This is how a
     /// save decides whether the running worker is still the right one.
     fingerprint: u64,
+    /// Feed names and icons, shared by every list that draws them.
+    ///
+    /// Here rather than on each model for the reason `media_policy` is here:
+    /// QML constructs the models and they cannot reach each other. There are
+    /// four `EntryModel`s alive at once, they all reload on the same
+    /// generation bump, and each used to re-read every icon blob out of SQLite
+    /// and base64 it afresh -- fifty-six encodes per model per bump, for a set
+    /// that changes only when a sync brings a new feed or icon. One cache, one
+    /// encode.
+    chrome: RefCell<Option<CachedChrome>>,
+}
+
+/// The feed chrome cache, and the generation it was built at.
+struct CachedChrome {
+    generation: u64,
+    feeds: Rc<std::collections::HashMap<i64, FeedChrome>>,
+}
+
+/// A feed's name and icon, as an entry list row needs them.
+///
+/// `PartialEq` so a rebuild that finds the same feeds can hand back the map it
+/// already had -- see [`AppContext::feed_chrome`].
+///
+/// `QString`, not `String`, and that is the whole point of this struct's
+/// shape. A `QString` is implicitly shared in Qt, so cloning one is a
+/// refcount bump rather than a copy -- and `data()` is called for every
+/// visible row on every repaint. Held as Rust `String`s, each of those calls
+/// converted the icon afresh: up to 683 KB of base64 per call per row, since
+/// an icon may be 512 KiB before encoding. Held as `QString`s, every row in
+/// every list and every delegate Qt builds from them point at ONE buffer per
+/// feed.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct FeedChrome {
+    /// FOREIGN TEXT: the feed's own name, or the one the user gave it.
+    pub name: qmetaobject::QString,
+    /// The icon as a `data:` URI, or empty when the mirror has none.
+    pub icon_uri: qmetaobject::QString,
 }
 
 /// The one worker thread, and the signal it publishes through.
@@ -81,6 +118,7 @@ impl AppContext {
             mark_read_delay_index: std::cell::Cell::new(crate::settings::MARK_READ_DEFAULT_INDEX),
             signal: std::sync::Arc::clone(&worker.signal),
             fingerprint,
+            chrome: RefCell::new(None),
         })
     }
 
@@ -147,6 +185,101 @@ impl AppContext {
     pub fn send(&self, command: Command) -> bool {
         self.commands.send(command).is_ok()
     }
+
+    /// Feed names and icons, built once per generation and shared.
+    ///
+    /// Keyed on the SYNC GENERATION, which is bumped by anything that changes
+    /// the mirror -- including marking an article read, which cannot change a
+    /// feed's name or its icon. So this rebuilds a little more eagerly than it
+    /// strictly must. That is the deliberate trade: the generation is the one
+    /// counter every model already agrees on, and a cache keyed on something
+    /// narrower would need its own invalidation path through the worker, which
+    /// is exactly the kind of thing that cannot be exercised without a device.
+    /// Rebuilding once per bump instead of once per model per bump is where
+    /// the cost was.
+    ///
+    /// The `Rc` is the point of the return type as much as the cache is:
+    /// callers hold the map rather than copying strings out of it, and
+    /// `Rc::ptr_eq` tells a list whether the chrome it drew with is still the
+    /// chrome the mirror has.
+    ///
+    /// Which is why a rebuild that finds the SAME feeds hands back the map it
+    /// already had rather than an equal copy. A list redraws every row when
+    /// this map moves under it -- it has to, since a renamed feed changes no
+    /// row -- and the delegate rebuilds its detail line from font metrics on
+    /// every redraw. Marking one article read bumps the generation, so without
+    /// this the cheapest thing the reader can do would repaint the whole list.
+    pub fn feed_chrome(&self) -> Rc<std::collections::HashMap<i64, FeedChrome>> {
+        let generation = self.signal.generation();
+        if let Ok(held) = self.chrome.try_borrow() {
+            if let Some(cached) = held.as_ref() {
+                if cached.generation == generation {
+                    return Rc::clone(&cached.feeds);
+                }
+            }
+        }
+
+        let built: std::collections::HashMap<i64, FeedChrome> = self
+            .read(|db| vuo_core::db::store::feed_chrome(db.conn()).unwrap_or_default())
+            .unwrap_or_default()
+            .into_iter()
+            .map(|feed| {
+                let icon_uri = feed
+                    .icon
+                    .map(|(mime, bytes)| data_uri(&mime, &bytes))
+                    .unwrap_or_default();
+                (
+                    feed.feed_id,
+                    FeedChrome {
+                        name: qmetaobject::QString::from(feed.title),
+                        icon_uri,
+                    },
+                )
+            })
+            .collect();
+        // A failed borrow costs a rebuild next time and nothing else, which is
+        // the same rule `read` and `write` follow.
+        let Ok(mut slot) = self.chrome.try_borrow_mut() else {
+            return Rc::new(built);
+        };
+        let feeds = match slot.take() {
+            // Same feeds as last time: keep the map every list is already
+            // holding, so none of them sees it move.
+            Some(held) if *held.feeds == built => held.feeds,
+            _ => Rc::new(built),
+        };
+        *slot = Some(CachedChrome {
+            generation,
+            feeds: Rc::clone(&feeds),
+        });
+        feeds
+    }
+}
+
+/// Wrap image bytes as a `data:` URI QML's `Image.source` can take.
+///
+/// The MIME type comes from the mirror, which stores the format DETERMINED
+/// FROM THE BYTES rather than the one the server claimed -- so a server that
+/// labels a script `image/png` cannot get that label back out of here.
+fn data_uri(mime: &str, bytes: &[u8]) -> qmetaobject::QString {
+    use base64::Engine as _;
+    // SVG is excluded on purpose: it is a document, not a bitmap, and Qt's
+    // renderer will follow external references in one -- which would leak the
+    // device's IP to whatever host a feed operator names, on a list scroll.
+    // The raster formats are passed through even where the device may lack a
+    // handler (it ships only libqjpeg.so as a plugin, so ICO and GIF are a
+    // gamble); the delegate hides an Image that fails to load, so the cost of
+    // guessing wrong is a missing favicon rather than a broken-image glyph.
+    if mime == "image/svg+xml" {
+        return qmetaobject::QString::default();
+    }
+    // Converted to a `QString` once, here, and shared by refcount from then
+    // on. See [`FeedChrome`].
+    qmetaobject::QString::from(format!(
+        "data:{};base64,{}",
+        mime,
+        base64::engine::general_purpose::STANDARD.encode(bytes)
+    ))
 }
 
 thread_local! {
@@ -262,7 +395,11 @@ fn log_event(event: Event) {
     match &event {
         Event::SyncFinished { unread, .. } => tracing::info!(unread, "sync finished"),
         Event::AuthFailed => tracing::warn!("the server rejected the API key"),
-        Event::SyncFailed { message } => tracing::warn!(%message, "sync failed"),
+        // `error =`, not a bare `%message`: the literal below is recorded by
+        // `tracing` as the event's own `message` field, so a second field of
+        // that name collides with it and a subscriber shows one or the other.
+        // What gets dropped is the half that says what actually went wrong.
+        Event::SyncFailed { message } => tracing::warn!(error = %message, "sync failed"),
         other => tracing::debug!(?other, "sync event"),
     }
 }
@@ -294,6 +431,7 @@ fn build_from(paths: &AppPaths, account: Account) -> vuo_core::Result<Rc<AppCont
     let db = Database::open(&paths.database)?;
     let fingerprint = fingerprint(&account);
     let sync_interval = crate::settings::sync_interval_minutes_for(account.sync_interval_index);
+    let retention = crate::settings::retention_seconds_for(account.retention_index);
 
     let worker = shared_worker().ok_or_else(|| {
         vuo_core::Error::Config("the sync worker thread is not running".to_owned())
@@ -318,6 +456,8 @@ fn build_from(paths: &AppPaths, account: Account) -> vuo_core::Result<Rc<AppCont
     ctx.send(Command::SetSyncInterval {
         minutes: sync_interval,
     });
+    // And its retention window, applied at the end of each pass.
+    ctx.send(Command::SetRetention { seconds: retention });
     tracing::info!("the application context is built");
     Ok(ctx)
 }
