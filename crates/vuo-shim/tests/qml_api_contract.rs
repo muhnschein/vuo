@@ -594,7 +594,17 @@ fn bare_identifiers(line: &str) -> Vec<String> {
         while chars.get(j) == Some(&' ') {
             j += 1;
         }
-        let is_binding = chars.get(j) == Some(&':');
+        // A colon after an identifier is a property binding -- UNLESS a `?`
+        // came first on the line, in which case it closes a ternary and the
+        // identifier is a value being read.
+        //
+        // Without this the check quietly stopped covering every role used in
+        // a conditional: `text: visible ? styledText : ""` scanned as a
+        // binding named `styledText`, so the role counted as unreferenced and
+        // the whole point of the test -- noticing a role nothing reads any
+        // more -- was lost for that binding shape.
+        let ternary_before = chars[..start].contains(&'?');
+        let is_binding = chars.get(j) == Some(&':') && !ternary_before;
         if !preceded_by_dot && !is_binding {
             out.push(chars[start..i].iter().collect());
         }
@@ -725,6 +735,18 @@ fn every_role_the_delegates_use_is_exposed_by_a_model() {
 
     let roles = declared_roles(&root);
     assert!(!roles.is_empty(), "found no role_names() entries");
+
+    // The scanner must be able to see a role read from inside a ternary, and
+    // must still not mistake a property name for one. Both directions, because
+    // a scanner that reports nothing passes this test by doing nothing.
+    assert!(
+        bare_identifiers(r#"text: visible ? styledText : """#).contains(&"styledText".to_owned()),
+        "the scanner cannot see a role used in a ternary, so it guarantees nothing for one"
+    );
+    assert!(
+        !bare_identifiers("    styledText: 1").contains(&"styledText".to_owned()),
+        "the scanner counts a property NAME as a role read"
+    );
 
     let mut files = Vec::new();
     qml_files(&root.join("qml"), &mut files);

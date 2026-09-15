@@ -239,6 +239,19 @@ Page {
         // A single delegate with one visible child per block kind keeps the
         // roles in scope, which is what a Qt 5.6-era Silica app would do
         // anyway: there are no required properties and no Controls 2 here.
+        //
+        // WHICH MEANS EVERY BLOCK BUILDS ALL OF THEM, and `visible: false`
+        // only stops a child being DRAWN. A `Text` still parses and lays out
+        // whatever is assigned to its `text`, because implicit sizing needs
+        // the result whether or not anyone sees it -- so four of these Labels
+        // were each building a full StyledText layout, with glyph runs, over
+        // the same `styledText`, for every block in the article.
+        //
+        // Measured on a Jolla with a long text-only article: 30 MB of that,
+        // resident, and not released on leaving the page. Every `text` below
+        // is therefore gated on the block kind, not merely hidden. The
+        // `height: visible ? implicitHeight : 0` bindings were already safe --
+        // a false `visible` short-circuits before implicitHeight is read.
         delegate: Item {
             id: block
             width: blocks.width
@@ -258,7 +271,10 @@ Page {
                     // foreign text into it. StyledText is safe here, and only
                     // where the text came from that one function.
                     textFormat: Text.StyledText
-                    text: styledText
+                    // Gated on the kind, not just hidden. See the note above
+                    // the delegate: an invisible Text still parses and lays
+                    // out whatever is assigned to `text`.
+                    text: visible ? styledText : ""
                     color: Theme.highlightColor
                     font.pixelSize: level <= 2 ? Theme.fontSizeLarge : Theme.fontSizeMedium
                     font.bold: true
@@ -271,7 +287,7 @@ Page {
                     width: block.width - x - Theme.horizontalPageMargin
                     wrapMode: Text.Wrap
                     textFormat: Text.StyledText
-                    text: styledText
+                    text: visible ? styledText : ""
                     color: quoteDepth > 0 ? Theme.secondaryColor : Theme.primaryColor
                     font.pixelSize: Theme.fontSizeSmall
                     linkColor: Theme.highlightColor
@@ -287,7 +303,7 @@ Page {
 
                     Label {
                         textFormat: Text.PlainText
-                        text: marker
+                        text: blockKind === "list_item" ? marker : ""
                         color: Theme.secondaryColor
                         font.pixelSize: Theme.fontSizeSmall
                     }
@@ -296,7 +312,7 @@ Page {
                         width: parent.width - Theme.paddingLarge
                         wrapMode: Text.Wrap
                         textFormat: Text.StyledText
-                        text: styledText
+                        text: blockKind === "list_item" ? styledText : ""
                         color: Theme.primaryColor
                         font.pixelSize: Theme.fontSizeSmall
                         linkColor: Theme.highlightColor
@@ -320,7 +336,8 @@ Page {
                         // Verbatim by definition. Rendering code as markup
                         // would both corrupt it and reintroduce injection.
                         textFormat: Text.PlainText
-                        text: styledText
+                        text: blockKind === "code" || blockKind === "table"
+                              ? styledText : ""
                         wrapMode: Text.WrapAnywhere
                         font.family: "monospace"
                         font.pixelSize: Theme.fontSizeExtraSmall
@@ -359,7 +376,9 @@ Page {
                             textFormat: Text.PlainText
                             font.pixelSize: Theme.fontSizeExtraSmall
                             color: Theme.secondaryHighlightColor
-                            text: qsTr("Tap to load images from %1").arg(imageHost)
+                            text: needsConsent
+                                  ? qsTr("Tap to load images from %1").arg(imageHost)
+                                  : ""
                         }
                     }
 
@@ -408,15 +427,16 @@ Page {
                         // ever reached QML.
                         sourceSize.width: block.width
                         sourceSize.height: block.width * 4
-                        source: needsConsent ? "" : imageSource
+                        source: blockKind === "image" && !needsConsent
+                                ? imageSource : ""
                     }
 
                     Label {
-                        visible: imageAlt.length > 0
+                        visible: blockKind === "image" && imageAlt.length > 0
                         width: parent.width
                         horizontalAlignment: Text.AlignHCenter
                         textFormat: Text.PlainText
-                        text: imageAlt
+                        text: visible ? imageAlt : ""
                         wrapMode: Text.Wrap
                         font.pixelSize: Theme.fontSizeExtraSmall
                         color: Theme.secondaryColor
