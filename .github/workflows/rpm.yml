@@ -39,6 +39,16 @@ on:
           and device testing wants each one to supersede the last.
         type: boolean
         default: false
+      release_tag:
+        description: >
+          Publish a GitHub release at this tag, e.g. v1.0.1, creating the tag
+          at the commit this run builds. Leave empty to build a package and
+          release nothing. Pushing the tag does the same thing without the
+          form; this exists because creating a tag is not something every
+          contributor's checkout is allowed to do, while this workflow's own
+          token is.
+        type: string
+        default: ""
   push:
     # `v*` for a release. `build-*` is a throwaway handle for running this
     # before it reaches the default branch, since workflow_dispatch only
@@ -93,6 +103,38 @@ jobs:
           esac
           echo "IMAGE=coderus/sailfishos-platform-sdk@$digest" >> "$GITHUB_ENV"
           echo "TARGET=SailfishOS-$SFOS-$ARCH" >> "$GITHUB_ENV"
+
+      # What this run releases, if anything, decided before anything is built
+      # so a bad tag costs seconds rather than the whole build.
+      #
+      # The tag is free text from the dispatch form and ends up as a git ref
+      # and a `gh` argument, so it is checked for shape first -- the same
+      # reason sfos_version is, and it is read through the environment rather
+      # than expanded into the script, so a tag cannot be shell.
+      #
+      # It must also match the Version the tree actually builds. Otherwise a
+      # typo in the form publishes v1.0.2 whose package says 1.0.1, and the
+      # release page and the RPM disagree about what it is.
+      - name: Resolve the release tag
+        env:
+          INPUT_RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          tag="${INPUT_RELEASE_TAG:-}"
+          if [ -n "$tag" ]; then
+            [[ $tag =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+              echo "::error::release_tag '$tag' is not vMAJOR.MINOR.PATCH"; exit 1; }
+          elif [ "${{ startsWith(github.ref, 'refs/tags/v') }}" = "true" ]; then
+            tag="$GITHUB_REF_NAME"
+          fi
+          if [ -n "$tag" ]; then
+            spec=$(sed -n 's/^Version: *//p' rpm/harbour-vuo.spec | head -1)
+            [ "$tag" = "v$spec" ] || {
+              echo "::error::$tag does not match the spec's Version: $spec"; exit 1; }
+            echo "this run releases $tag"
+          else
+            echo "this run releases nothing; building a package only"
+          fi
+          echo "RELEASE_TAG=$tag" >> "$GITHUB_ENV"
 
       # ~13 GB unpacked; a hosted runner has well over that free, and the
       # image is removed again once its pieces are lifted out below.
@@ -205,7 +247,7 @@ jobs:
       - name: Stamp the build so each one is its own package
         run: |
           echo "SHORT_SHA=$(git rev-parse --short HEAD)" >> "$GITHUB_ENV"
-          if [ "${{ inputs.release }}" = "true" ] || [ "${{ startsWith(github.ref, 'refs/tags/v') }}" = "true" ]; then
+          if [ "${{ inputs.release }}" = "true" ] || [ -n "$RELEASE_TAG" ]; then
             echo "VUO_RELEASE=1"     >> "$GITHUB_ENV"
             echo "RELEASE_BUILD=yes" >> "$GITHUB_ENV"
             echo "building a RELEASE package (Release: 1)"
@@ -269,7 +311,8 @@ jobs:
           readelf=/opt/cross/bin/aarch64-meego-linux-gnu-readelf
           ./scripts/check-linked-libs.sh "$bin" "$readelf"
 
-      # A tag build is a release, so publish one, with the package attached.
+      # A run that resolved a release tag publishes one, with the package
+      # attached -- whether the tag was pushed or asked for on the form.
       #
       # LAST, deliberately: after both Harbour rules above, so a package that
       # breaks one never reaches the release page. The allowed-libraries step
@@ -279,7 +322,7 @@ jobs:
       # unlike every action pinned by digest in this file there is no tag
       # somebody else can repoint, and nothing to keep pinned.
       - name: Publish the release
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: env.RELEASE_TAG != ''
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -306,11 +349,13 @@ jobs:
 
           # Idempotent, so re-running the job after a transient failure
           # attaches the package rather than dying on "release already exists".
-          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" dist/*.rpm --clobber
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" dist/*.rpm --clobber
           else
-            gh release create "$GITHUB_REF_NAME" dist/*.rpm \
-              --title "Vuo $GITHUB_REF_NAME" \
+            # --target is what creates the tag when the form asked for one; on
+            # a tag push the tag is already this commit's and gh ignores it.
+            gh release create "$RELEASE_TAG" dist/*.rpm \
+              --title "Vuo $RELEASE_TAG" \
               --notes-file "$notes" \
-              --verify-tag
+              --target "$GITHUB_SHA"
           fi
