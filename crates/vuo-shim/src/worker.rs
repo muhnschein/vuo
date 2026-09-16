@@ -100,6 +100,20 @@ pub fn earliest(
     }
 }
 
+/// The next interval sync after `now`, or `None` for "Manual only".
+///
+/// The floor of one minute is not a policy: `interval` comes from a stored
+/// index and a corrupt or hand-edited account file could hold zero, which
+/// would make the worker sync in a tight loop.
+#[must_use]
+pub fn next_interval_after(
+    interval_minutes: Option<i64>,
+    now: std::time::Instant,
+) -> Option<std::time::Instant> {
+    interval_minutes
+        .map(|minutes| now + std::time::Duration::from_secs(minutes.max(1).unsigned_abs() * 60))
+}
+
 /// Which piece of scheduled work has fallen due at `now`.
 ///
 /// A sync replays the outbox as its first step, so when both deadlines have
@@ -209,6 +223,16 @@ pub enum Command {
     SetRetention {
         seconds: Option<i64>,
     },
+    /// Whether the user has asked that Vuo sync only over Wi-Fi.
+    ///
+    /// Only the AUTOMATIC work consults it -- the interval sync and the
+    /// coalesced outbox flush. Anything the user started themselves goes out
+    /// whatever the network: a refresh they pulled for, a feed they
+    /// subscribed to, a connection they asked to test. The setting is about
+    /// what Vuo does on its own.
+    SetWifiOnly {
+        enabled: bool,
+    },
     Shutdown,
 }
 
@@ -232,6 +256,7 @@ impl Command {
             Command::Configure(_) => "Configure",
             Command::SetSyncInterval { .. } => "SetSyncInterval",
             Command::SetRetention { .. } => "SetRetention",
+            Command::SetWifiOnly { .. } => "SetWifiOnly",
             Command::Shutdown => "Shutdown",
         }
     }
@@ -510,6 +535,13 @@ impl Worker {
                 // When the coalesced outbox flush falls due, or `None` while
                 // nothing is waiting to be sent. See [`FLUSH_DEBOUNCE`].
                 let mut flush_due: Option<std::time::Instant> = None;
+                // The user's "Only sync on Wi-Fi". Consulted against the
+                // network read at the moment a piece of AUTOMATIC work falls
+                // due, never against one pushed from the Qt thread -- the
+                // whole window this matters in is the one where the app is
+                // minimised and nothing is pushing anything. See
+                // `vuo_core::net`.
+                let mut wifi_only = false;
                 loop {
                     // Only an account being served has work that can fall
                     // due. Without this filter, an interval set before an
@@ -527,8 +559,34 @@ impl Worker {
                             match rx.recv_timeout(wait) {
                                 Ok(command) => command,
                                 Err(mpsc::RecvTimeoutError::Timeout) => {
-                                    match due_work(next_sync, flush_due, std::time::Instant::now())
-                                    {
+                                    let now = std::time::Instant::now();
+                                    let work = due_work(next_sync, flush_due, now);
+                                    // Read HERE, once, for whichever piece of
+                                    // work fell due. Not at start-up and not
+                                    // on a tap: the reader walks out of Wi-Fi
+                                    // range with the app on its cover, and a
+                                    // reading taken any earlier than this is
+                                    // a reading of a network that has gone.
+                                    if !vuo_core::net::probe().allows(wifi_only) {
+                                        tracing::info!(
+                                            work = ?work,
+                                            "the network does not allow automatic work; \
+                                             leaving it for the next one"
+                                        );
+                                        // The flush simply waits: a later tap
+                                        // re-arms it, and a sync carries the
+                                        // outbox anyway. The sync goes back on
+                                        // its own interval, which is also when
+                                        // the network is looked at again -- no
+                                        // polling, and no wakeup that was not
+                                        // already going to happen.
+                                        flush_due = None;
+                                        if matches!(work, Some(DueWork::Sync)) {
+                                            next_sync = next_interval_after(interval, now);
+                                        }
+                                        continue;
+                                    }
+                                    match work {
                                         Some(DueWork::Flush) => {
                                             flush_due = None;
                                             flush_fell_due = true;
@@ -656,6 +714,10 @@ impl Worker {
                             retention = seconds;
                             continue;
                         }
+                        Command::SetWifiOnly { enabled } => {
+                            wifi_only = enabled;
+                            continue;
+                        }
                         _ => {}
                     }
 
@@ -689,7 +751,8 @@ impl Worker {
                         Command::Shutdown
                         | Command::Configure(_)
                         | Command::SetSyncInterval { .. }
-                        | Command::SetRetention { .. } => {}
+                        | Command::SetRetention { .. }
+                        | Command::SetWifiOnly { .. } => {}
                         Command::Sync => {
                             // A pass replays the outbox as its first step, so
                             // whatever the debounce was holding goes with it
@@ -749,12 +812,7 @@ impl Worker {
                             // Whatever it did, the next one is an interval
                             // away: a server that is down is not asked again
                             // every few seconds.
-                            next_sync = interval.map(|minutes| {
-                                std::time::Instant::now()
-                                    + std::time::Duration::from_secs(
-                                        minutes.max(1).unsigned_abs() * 60,
-                                    )
-                            });
+                            next_sync = next_interval_after(interval, std::time::Instant::now());
                         }
                         Command::Subscribe { feed_url } => {
                             let result = runtime.block_on(client.create_feed(&feed_url, None));
@@ -1877,6 +1935,70 @@ EQBBQIobIy41+aQiMsM0XBYH3Q==\n\
             FLUSH_AFTER_START < FLUSH_DEBOUNCE,
             "an outbox carried over from last time has already waited; it \
              should not wait a whole window again"
+        );
+    }
+
+    /// §only the worker's OWN work consults the network.
+    ///
+    /// "Only sync on Wi-Fi" is a statement about what Vuo does unprompted. A
+    /// refresh the reader pulled for, a feed they subscribed to, a connection
+    /// they asked to test: those are their decision, and a phone on cellular
+    /// must still do them. The distinction is structural rather than a flag
+    /// each arm remembers to check -- the probe happens where a DEADLINE is
+    /// resolved, and every arriving command runs below that -- so this asserts
+    /// the structure.
+    #[test]
+    fn only_automatic_work_consults_the_network() {
+        const SOURCE: &str = include_str!("worker.rs");
+        // The test's own mention of the call is in this string, so count from
+        // above it: everything up to the test module.
+        let production = SOURCE
+            .split_once("#[cfg(test)]")
+            .map_or(SOURCE, |(before, _)| before);
+
+        assert_eq!(
+            production.matches("net::probe()").count(),
+            1,
+            "the network is read in exactly one place. A second reading is \
+             either a command path that should not be gated at all, or two \
+             answers for one decision."
+        );
+
+        let probe_at = production
+            .find("net::probe()")
+            .unwrap_or_else(|| panic!("the network is not read at all"));
+        let handles_commands_at = production
+            .find("match command {")
+            .unwrap_or_else(|| panic!("the worker no longer dispatches on a command"));
+        assert!(
+            probe_at < handles_commands_at,
+            "the network is read while a command is being HANDLED. Everything \
+             below `match command` includes the commands the user sent, and \
+             gating those would mean a pulled refresh doing nothing on a \
+             mobile connection, with no way for the reader to tell why."
+        );
+    }
+
+    /// §a sync refused for the network is rescheduled, not dropped.
+    ///
+    /// Leaving `next_sync` where it was would make every wait expire
+    /// immediately and spin the loop against `/proc` for as long as the phone
+    /// stayed on cellular.
+    #[test]
+    fn a_refused_sync_goes_back_on_the_interval() {
+        let now = std::time::Instant::now();
+
+        let next = next_interval_after(Some(60), now).expect("an hourly account reschedules");
+        assert_eq!(next - now, std::time::Duration::from_secs(3600));
+
+        assert_eq!(
+            next_interval_after(None, now),
+            None,
+            "Manual only has no next sync to go back on"
+        );
+        assert!(
+            next_interval_after(Some(0), now).is_some_and(|at| at > now),
+            "a stored zero must not resolve to a deadline that is already past"
         );
     }
 }
