@@ -458,6 +458,10 @@ fn build_from(paths: &AppPaths, account: Account) -> vuo_core::Result<Rc<AppCont
     });
     // And its retention window, applied at the end of each pass.
     ctx.send(Command::SetRetention { seconds: retention });
+    // And whether it may use a metered connection on its own.
+    ctx.send(Command::SetWifiOnly {
+        enabled: account.wifi_only,
+    });
     tracing::info!("the application context is built");
     Ok(ctx)
 }

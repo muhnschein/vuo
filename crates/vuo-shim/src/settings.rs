@@ -119,6 +119,13 @@ pub struct Settings {
     /// How long read articles are kept locally. See [`RETENTION_DAYS`].
     retentionIndex: qt_property!(i32; NOTIFY changed),
     wifiOnly: qt_property!(bool; NOTIFY changed),
+    /// How often the root window polls the mirror while the app is NOT
+    /// active, in milliseconds; 0 for "do not poll at all".
+    ///
+    /// Derived from the sync interval, because the only thing that can change
+    /// what the cover shows while the app is away is an automatic sync
+    /// finishing. See [`cover_poll_ms_for`].
+    coverPollMs: qt_property!(i32; READ cover_poll_ms NOTIFY changed),
     useCustomCa: qt_property!(bool; NOTIFY changed),
     /// How many local changes are still waiting to reach the server. Shown so
     /// the user can tell "nothing happened" from "not sent yet".
@@ -342,6 +349,11 @@ impl Settings {
             ctx.send(worker::Command::SetRetention {
                 seconds: retention_seconds_for(self.retentionIndex),
             });
+            // And "Only sync on Wi-Fi", which the worker consults against the
+            // network it reads when its own work falls due.
+            ctx.send(worker::Command::SetWifiOnly {
+                enabled: self.wifiOnly,
+            });
         }
         tracing::info!("the settings screen has published the saved account");
     }
@@ -473,6 +485,58 @@ impl Settings {
     pub fn sync_interval_minutes(&self) -> Option<i64> {
         sync_interval_minutes_for(self.syncIntervalIndex)
     }
+
+    fn cover_poll_ms(&self) -> i32 {
+        cover_poll_ms_for(self.syncIntervalIndex)
+    }
+}
+
+/// A quarter of the sync interval, in milliseconds, or 0 for "Manual only".
+///
+/// # What this number is for
+///
+/// The root window's poll is how the models learn that the worker wrote to the
+/// mirror. It used to run at 1.5 seconds for the life of the process, which on
+/// a minimised app is forty wakeups a minute to notice something that happens
+/// once an hour. Stopping it outright is most of the win -- but it also froze
+/// the cover, which is the one thing a minimised Vuo is still showing anybody:
+/// a sync that finished while the app was away left the unread count as it had
+/// been until the reader opened the app.
+///
+/// So the poll does not stop while the app is away, it slows down to the
+/// cadence of the only event it could possibly see. A quarter of the interval
+/// bounds how stale the cover can be at a quarter of the gap between syncs,
+/// which is the same proportion at every setting -- so the number means the
+/// same thing to a reader on fifteen minutes as to one on six hours:
+///
+/// | Sync           | Poll         | Wakeups an hour |
+/// | -------------- | ------------ | --------------- |
+/// | Manual only    | never        | 0               |
+/// | Every 15 min   | 3 min 45 s   | 16              |
+/// | Every 30 min   | 7 min 30 s   | 8               |
+/// | Hourly         | 15 min       | 4               |
+/// | Every 6 hours  | 90 min       | 0.67            |
+///
+/// Against 2,400 an hour before, the worst of those is a 150-fold cut.
+///
+/// **Manual only polls not at all.** Nothing syncs on its own, so there is
+/// nothing for a tick to find. A refresh started from the cover's own action
+/// is not covered by this and does not need to be -- the root window keeps its
+/// fast poll running for the length of that one sync; see `harbour-vuo.qml`.
+#[must_use]
+pub fn cover_poll_ms_for(index: i32) -> i32 {
+    let Some(minutes) = sync_interval_minutes_for(index) else {
+        return 0;
+    };
+    // Saturating throughout: `index` comes off a stored file, and a quarter of
+    // six hours is 5.4 million milliseconds -- comfortably inside an i32, but
+    // this should not depend on the table never growing a larger entry.
+    minutes
+        .saturating_mul(60_000)
+        .checked_div(4)
+        .unwrap_or(0)
+        .try_into()
+        .unwrap_or(i32::MAX)
 }
 
 /// The sync interval a stored `sync_interval_index` means, in minutes, or
@@ -1005,5 +1069,56 @@ mod tests {
             };
             assert_eq!(fallback, expected, "index {index}");
         }
+    }
+
+    /// §the cover's cadence follows the cadence it exists to notice.
+    ///
+    /// The numbers are the point: a poll far slower than the sync is a cover
+    /// showing yesterday's count, and one far faster is the wakeups this was
+    /// all about. A quarter is neither, at every setting.
+    #[test]
+    fn the_idle_poll_is_a_quarter_of_the_sync_interval() {
+        // The picker's own indices, in its own order.
+        assert_eq!(
+            cover_poll_ms_for(0),
+            0,
+            "Manual only syncs never, so a poll would find nothing"
+        );
+        assert_eq!(cover_poll_ms_for(1), 15 * 60_000 / 4);
+        assert_eq!(cover_poll_ms_for(2), 30 * 60_000 / 4);
+        assert_eq!(cover_poll_ms_for(3), 60 * 60_000 / 4);
+        assert_eq!(cover_poll_ms_for(4), 360 * 60_000 / 4);
+    }
+
+    /// §every choice the picker offers yields a usable Timer interval.
+    ///
+    /// A QML `Timer` takes an `int` and a zero interval on a repeating timer
+    /// is a wakeup per event-loop pass -- the opposite of what this is for.
+    /// So the only interval that may be zero is the one whose timer is not
+    /// running at all.
+    #[test]
+    fn no_sync_choice_produces_a_spinning_timer() {
+        for index in 0..i32::try_from(SYNC_INTERVALS_MINUTES.len()).unwrap_or(0) {
+            let ms = cover_poll_ms_for(index);
+            if sync_interval_minutes_for(index).is_none() {
+                assert_eq!(ms, 0, "index {index} is Manual only");
+                continue;
+            }
+            assert!(
+                ms >= 60_000,
+                "index {index} polls every {ms} ms, which is not an idle cadence"
+            );
+        }
+    }
+
+    /// §an index the table does not have is "do not poll", not a panic.
+    ///
+    /// It comes off a stored file, which a user can edit and a partial write
+    /// can truncate.
+    #[test]
+    fn an_impossible_stored_index_does_not_poll() {
+        assert_eq!(cover_poll_ms_for(-1), 0);
+        assert_eq!(cover_poll_ms_for(99), 0);
+        assert_eq!(cover_poll_ms_for(i32::MAX), 0);
     }
 }

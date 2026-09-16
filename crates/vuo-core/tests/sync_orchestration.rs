@@ -285,3 +285,102 @@ async fn a_pass_prunes_only_when_a_retention_window_is_set() {
         "entry 1 is unread and entry 99 is a favourite; neither is retention's to take"
     );
 }
+
+/// §the server version is asked for once, not once per pass.
+///
+/// A version gates two request rules and one endpoint's existence, so the pass
+/// genuinely needs it -- but it changes when someone upgrades their Miniflux,
+/// and on a phone every request re-arms the radio and holds it there for the
+/// tail timer. Asking hourly for an answer that changes yearly is the cheapest
+/// request in the pass to remove.
+#[tokio::test]
+async fn a_recorded_server_version_is_not_asked_for_again_next_pass() {
+    let server = quiet_server().await;
+    let client = client_for(&server);
+    let mut db = Database::open_in_memory().expect("mirror");
+
+    sync::sync(&mut db, &client, SyncOptions::default())
+        .await
+        .expect("first sync");
+
+    let state = store::sync_state(db.conn()).expect("state");
+    assert_eq!(state.server_version.as_deref(), Some("2.2.0"));
+    assert!(
+        state.server_version_checked_at.is_some(),
+        "the pass that asked must record WHEN it asked, or the next one cannot \
+         tell a fresh answer from an ancient one"
+    );
+
+    let after_first = version_requests(&server).await;
+    assert_eq!(after_first, 1, "the first pass has nothing cached to use");
+
+    sync::sync(&mut db, &client, SyncOptions::default())
+        .await
+        .expect("second sync");
+    assert_eq!(
+        version_requests(&server).await,
+        after_first,
+        "the second pass must reuse the recorded version rather than asking again"
+    );
+
+    // And the cache does expire: a zero TTL is "trust nothing", which is what
+    // an instance upgraded between passes needs.
+    sync::sync(
+        &mut db,
+        &client,
+        SyncOptions {
+            server_version_ttl_secs: 0,
+            ..SyncOptions::default()
+        },
+    )
+    .await
+    .expect("third sync");
+    assert_eq!(
+        version_requests(&server).await,
+        after_first + 1,
+        "an expired cache must be re-asked, or an upgraded server is never noticed"
+    );
+}
+
+/// §the counters request is not spent when nothing could read its answer.
+///
+/// It is the ONLY evidence a server-side deletion leaves -- the cursor cannot
+/// see one -- so it has to survive a quiet pass. What it does not have to
+/// survive is a pass whose reconcile is due anyway, which happens whatever the
+/// counters say.
+#[tokio::test]
+async fn the_counters_request_is_skipped_when_a_reconcile_is_due_anyway() {
+    let server = quiet_server().await;
+    let client = client_for(&server);
+    let mut db = Database::open_in_memory().expect("mirror");
+
+    // A fresh mirror has never reconciled, so the first pass is always due.
+    sync::sync(&mut db, &client, SyncOptions::default())
+        .await
+        .expect("sync");
+
+    let counters = server
+        .received_requests()
+        .await
+        .expect("requests")
+        .iter()
+        .filter(|r| r.url.path() == "/v1/feeds/counters")
+        .count();
+    assert_eq!(
+        counters, 0,
+        "a pass that is going to reconcile regardless has no use for the \
+         counters, and asking anyway is a round trip spent on a question \
+         whose answer is ignored"
+    );
+}
+
+/// How many times the mock server was asked for its version.
+async fn version_requests(server: &MockServer) -> usize {
+    server
+        .received_requests()
+        .await
+        .expect("requests")
+        .iter()
+        .filter(|r| r.url.path() == "/v1/version")
+        .count()
+}

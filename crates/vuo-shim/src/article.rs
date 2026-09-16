@@ -290,8 +290,6 @@ pub struct ArticleModel {
     toggleStarred: qt_method!(fn(&mut self)),
 
     rows: Vec<BlockRow>,
-    /// The worker generation this model last re-read at.
-    seen_generation: u64,
     entry_id: i64,
     article_url: String,
     /// Origins the user has agreed to for this article view.
@@ -388,11 +386,6 @@ impl ArticleModel {
         let Some(ctx) = self.context() else {
             return false;
         };
-        // Keep the generation cursor moving even when we do nothing with it,
-        // so a later poll cannot mistake a backlog of unrelated bumps for
-        // something addressed to this article.
-        self.seen_generation = ctx.signal().generation();
-
         let open = self.entry_id;
         if open == 0 {
             return false;

@@ -37,12 +37,28 @@ use vuo_core::model::{EntryId, EntryStatus};
 use crate::context::AppContext;
 use crate::worker::{self, Command};
 
-/// Rows loaded into a list model at once.
+/// Rows loaded into a list model at once, and how much a
+/// [`loadMore`](EntryModel::loadMore) adds.
 ///
 /// The list is a window onto the mirror, not the whole of it. Anything that
 /// acts on "everything in this scope" must query the database rather than
 /// iterating the loaded rows.
-pub const PAGE_SIZE: i64 = 500;
+///
+/// This was 500, which was five hundred rows per model and FOUR models alive
+/// at once -- three tabs and the browse list. Every generation bump re-ran
+/// each of their queries, built up to two thousand `EntryRow`s, sorted them
+/// and compared them row by row, and a generation bump is not rare: a sync
+/// makes one, and so does every local mark-read. A phone shows about ten rows.
+///
+/// The cost is not only the CPU of a reload. It is resident memory, and on
+/// Sailfish resident memory is what decides whether the app is still running
+/// when the reader comes back to it -- a process killed for its footprint pays
+/// a cold start, which is far more expensive than any reload this saves.
+///
+/// A hundred and fifty is about fifteen screens, so the reader reaches the end
+/// of the window by scrolling rather than by accident, and
+/// [`loadMore`](EntryModel::loadMore) extends it by another page when they do.
+pub const PAGE_SIZE: i64 = 150;
 
 pub const ROLE_ID: i32 = USER_ROLE;
 pub const ROLE_TITLE: i32 = USER_ROLE + 1;
@@ -320,9 +336,29 @@ pub struct EntryModel {
     /// run it over every article in the mirror. Passing the scope in binds the
     /// action to the tab that was showing when it was armed.
     markAllReadIn: qt_method!(fn(&mut self, kind: i32, id: i64)),
+    /// True when the mirror holds more rows in this scope than are loaded.
+    ///
+    /// The list binds its "load the next page" trigger to this, so a list that
+    /// is already showing everything does nothing at its end.
+    pub hasMore: qt_property!(bool; NOTIFY hasMoreChanged),
+    hasMoreChanged: qt_signal!(),
+    /// Extend the window by another [`PAGE_SIZE`].
+    ///
+    /// Called from the list when the reader reaches the end of what is
+    /// loaded. A no-op when there is nothing more, so an over-eager binding
+    /// costs a comparison rather than a query.
+    loadMore: qt_method!(fn(&mut self)),
 
     rows: Vec<EntryRow>,
     scope: Option<Scope>,
+    /// How many rows this model is currently asked to hold.
+    ///
+    /// Zero until the first reload, which is what `Default` leaves it at and
+    /// why [`window`](EntryModel::window) reads it rather than the field being
+    /// read directly. Grows by [`PAGE_SIZE`] per
+    /// [`loadMore`](EntryModel::loadMore) and goes back to one page on any
+    /// reload that starts the list over -- a new scope, or a manual refresh.
+    limit: i64,
     /// The worker generation this model last reloaded at.
     seen_generation: u64,
     /// The manual-refresh epoch this model's rows were loaded under. A reload
@@ -678,8 +714,37 @@ impl EntryModel {
     }
 
     /// Re-read rows from the mirror and show exactly what matches the scope.
+    ///
+    /// Also puts the window back to one page. This is the path taken when the
+    /// list starts over -- a new scope, a manual refresh, "mark all as read"
+    /// -- and a reader who had paged down to four hundred rows in the previous
+    /// scope should not have the next one open at four hundred rows.
     fn reload_fresh(&mut self) -> bool {
+        self.limit = PAGE_SIZE;
         self.reload_keeping(false)
+    }
+
+    /// How many rows to ask the mirror for.
+    ///
+    /// `Default` leaves `limit` at zero and QML constructs these objects, so
+    /// the floor is applied here rather than trusting the field.
+    fn window(&self) -> i64 {
+        if self.limit < PAGE_SIZE {
+            PAGE_SIZE
+        } else {
+            self.limit
+        }
+    }
+
+    fn loadMore(&mut self) {
+        if !self.hasMore {
+            return;
+        }
+        self.limit = self.window().saturating_add(PAGE_SIZE);
+        // `reload`, not `reload_fresh`: paging down is not starting over, and
+        // the rows already on screen are exactly the ones the reader is
+        // looking at.
+        self.reload();
     }
 
     fn reload_keeping(&mut self, keep_shown: bool) -> bool {
@@ -703,10 +768,16 @@ impl EntryModel {
             Vec::new()
         };
 
+        let window = self.window();
+        let mut full_window = false;
         let entries = ctx
             .read(|db| {
-                let mut entries = store::list_entries(db.conn(), scope.to_filter(), PAGE_SIZE, 0)
+                let mut entries = store::list_entries(db.conn(), scope.to_filter(), window, 0)
                     .unwrap_or_default();
+                // Before the kept rows are appended: those are rows the reader
+                // has finished with, which the scope no longer matches, and
+                // counting them would make a part-full window look full.
+                full_window = i64::try_from(entries.len()).unwrap_or(i64::MAX) >= window;
                 let listed: HashSet<i64> = entries.iter().map(|e| e.id.get()).collect();
                 // One statement per kept row rather than a built `IN (...)`
                 // list, as the outbox does (§9.4). There are as many of these
@@ -736,6 +807,14 @@ impl EntryModel {
         let chrome = ctx.feed_chrome();
         let chrome_moved = !std::rc::Rc::ptr_eq(&self.feed_chrome, &chrome);
         self.feed_chrome = chrome;
+
+        // A window the mirror filled completely may have more behind it. One
+        // row short of the window is proof it does not, which is the common
+        // case and costs no extra query to establish.
+        if full_window != self.hasMore {
+            self.hasMore = full_window;
+            self.hasMoreChanged();
+        }
 
         // Reset only if these are not the rows the list already holds --
         // otherwise the reader loses their place for nothing. See
@@ -1883,6 +1962,109 @@ mod row_decoration_tests {
             ids(&unread),
             vec![7],
             "a refresh is asked of the app, not of a tab"
+        );
+    }
+
+    /// §the list is a window, and the window grows when the reader asks.
+    ///
+    /// The whole point of a smaller `PAGE_SIZE` is that the rows the reader
+    /// cannot see are not built, sorted, compared and held resident four times
+    /// over. That is only acceptable if the ones past the window are still
+    /// REACHABLE, so this walks the path a reader scrolling to the bottom
+    /// takes: a full window says there is more, `loadMore` widens it, and a
+    /// window the mirror could not fill says there is nothing left.
+    #[test]
+    fn a_full_window_can_be_extended_until_the_mirror_runs_out() {
+        let (_dir, ctx) = seeded();
+
+        // One page and a bit, so the first window is full and the second is
+        // not. Entry 7 is already seeded by `seeded`.
+        let extra = PAGE_SIZE + 10;
+        ctx.write(|db| {
+            db.with_tx(|tx| {
+                for n in 0..extra {
+                    store::upsert_entry(
+                        tx,
+                        &Entry {
+                            id: EntryId(1000 + n),
+                            feed_id: FeedId(1),
+                            status: EntryStatus::Unread,
+                            starred: false,
+                            title: format!("Entry {n}"),
+                            url: None,
+                            comments_url: None,
+                            author: String::new(),
+                            content: String::new(),
+                            published_at: None,
+                            created_at: None,
+                            changed_at: None,
+                            reading_time: 1,
+                            tags: Vec::new(),
+                            enclosures: Vec::new(),
+                        },
+                        1,
+                    )?;
+                }
+                Ok(())
+            })
+        })
+        .transpose()
+        .expect("seed a page and a bit")
+        .expect("seed a page and a bit");
+
+        let mut model = EntryModel::default();
+        model.attach(std::rc::Rc::clone(&ctx));
+        model.setScope(0, 0);
+
+        assert_eq!(
+            i64::from(model.row_count()),
+            PAGE_SIZE,
+            "the list must open on ONE page, not on the whole mirror"
+        );
+        assert!(
+            model.hasMore,
+            "a window the mirror filled completely may have more behind it, \
+             and a list that says otherwise strands every row past the first \
+             page"
+        );
+
+        model.loadMore();
+        assert_eq!(
+            i64::from(model.row_count()),
+            extra + 1,
+            "the second page must bring the rest in"
+        );
+        assert!(
+            !model.hasMore,
+            "a window the mirror could not fill is proof there is nothing \
+             behind it; saying otherwise leaves the list asking forever"
+        );
+
+        // And it is a no-op once there is nothing left, so a list bouncing at
+        // its own bottom does not re-query on every bounce.
+        let before = model.row_count();
+        model.loadMore();
+        assert_eq!(model.row_count(), before);
+    }
+
+    /// §starting the list over starts the window over with it.
+    ///
+    /// A reader who paged deep into Unread and then opened a feed should not
+    /// find the feed's list opening at four hundred rows -- the memory the
+    /// window costs would never be given back.
+    #[test]
+    fn a_new_scope_goes_back_to_one_page() {
+        let (_dir, ctx) = seeded();
+        let mut model = EntryModel::default();
+        model.attach(std::rc::Rc::clone(&ctx));
+        model.setScope(0, 0);
+
+        model.limit = PAGE_SIZE * 4;
+        model.setScope(2, 0);
+
+        assert_eq!(
+            model.limit, PAGE_SIZE,
+            "a new scope is a new list, and it opens at one page"
         );
     }
 }

@@ -134,7 +134,17 @@ CoverBackground {
                     // always false, so the spinner appeared, sat perfectly
                     // still, and read as a frozen app. `_forceAnimation` is
                     // the escape hatch that predicate is written around.
-                    _forceAnimation: true
+                    //
+                    // Bound to the cover's own status rather than set to
+                    // `true`. A plain `true` overrides the `visible` half of
+                    // Silica's predicate as well as the `Qt.application.active`
+                    // half -- so a sync running with the screen off, or with
+                    // another app in front, drove a rotation animation and the
+                    // repaints that go with it for nobody. `Cover.Active` is
+                    // exactly "this cover is the one being shown", which is
+                    // the case the escape hatch was wanted for and the only
+                    // case it is now used in.
+                    _forceAnimation: cover.status === Cover.Active
                 }
 
                 Image {
