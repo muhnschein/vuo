@@ -60,6 +60,11 @@ jobs:
   rpm:
     runs-on: ubuntu-latest
     timeout-minutes: 120
+    # Write, for the one step that publishes a release. Read is the floor for
+    # everything else, which is why it stays on the workflow above: a build
+    # that is not a tag build still runs with the default read-only token.
+    permissions:
+      contents: write
     env:
       ARCH: ${{ inputs.arch || 'aarch64' }}
       SFOS: ${{ inputs.sfos_version || '5.2.0.15' }}
@@ -263,3 +268,49 @@ jobs:
           bin=target/aarch64-unknown-linux-gnu/release/harbour-vuo
           readelf=/opt/cross/bin/aarch64-meego-linux-gnu-readelf
           ./scripts/check-linked-libs.sh "$bin" "$readelf"
+
+      # A tag build is a release, so publish one, with the package attached.
+      #
+      # LAST, deliberately: after both Harbour rules above, so a package that
+      # breaks one never reaches the release page. The allowed-libraries step
+      # fails the job, and a failed job never gets here.
+      #
+      # `gh` rather than a third-party action: the runner already ships it, so
+      # unlike every action pinned by digest in this file there is no tag
+      # somebody else can repoint, and nothing to keep pinned.
+      - name: Publish the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          notes=$(mktemp)
+          {
+            echo "Device package for SailfishOS ${SFOS} and later, ${ARCH}."
+            echo
+            echo 'Install it with `pkcon install-local harbour-vuo-*.rpm`, or'
+            echo 'through Storeman if you have it.'
+            echo
+            echo "## Changes"
+            echo
+            # The spec's %changelog is the changelog; its top entry is this
+            # release's. Read it from there rather than writing the notes a
+            # second time and letting the two disagree.
+            awk '
+              /^%changelog/ { in_cl = 1; next }
+              !in_cl        { next }
+              /^\* /        { if (++seen > 1) exit; next }
+                            { print }
+            ' rpm/harbour-vuo.spec
+          } > "$notes"
+          cat "$notes"
+
+          # Idempotent, so re-running the job after a transient failure
+          # attaches the package rather than dying on "release already exists".
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" dist/*.rpm --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" dist/*.rpm \
+              --title "Vuo $GITHUB_REF_NAME" \
+              --notes-file "$notes" \
+              --verify-tag
+          fi

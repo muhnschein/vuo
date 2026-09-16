@@ -23,7 +23,7 @@
 
 Name:       harbour-vuo
 Summary:    Miniflux feed reader for SailfishOS
-Version:    1.0.0
+Version:    1.0.1
 Release:    1
 License:    GPL-3.0-or-later
 Group:      Applications/Internet
@@ -219,6 +219,23 @@ install -Dm 644 LICENSE %{buildroot}%{_datadir}/harbour-vuo/LICENSE
 %{_datadir}/icons/hicolor/*/apps/harbour-vuo.png
 
 %changelog
+* Wed Sep 16 2026 Vuo contributors <noreply@example.invalid> - 1.0.1-1
+- Cut the read path's memory use: article lists no longer carry entry bodies
+  they never draw, feed icons are held once instead of per row and per repaint,
+  and an article block lays its text out once rather than four times over.
+- Return a sync pass's peak to the kernel with malloc_trim instead of letting
+  glibc keep it resident.
+- Cap both dimensions of an article image, so one oversized image can no longer
+  decode without bound.
+- Optional retention: read, unfavourited articles can now be dropped from the
+  local mirror after a month, three months, six months or a year. Off by
+  default -- "Forever" is the default and what every earlier version did.
+- Keep the reader's place when a reload returns the same rows.
+- rustls 0.23.45, for RUSTSEC-2026-0285 (TLS 1.3 messages accepted at the wrong
+  encryption level).
+- Log the server's own words when a sync fails, instead of dropping them on a
+  field-name collision.
+
 * Mon Sep 07 2026 Vuo contributors <noreply@example.invalid> - 1.0.0-1
 - First release.
 
