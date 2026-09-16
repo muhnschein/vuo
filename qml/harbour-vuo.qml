@@ -74,24 +74,64 @@ ApplicationWindow {
     // QML owns these objects: Rust has no handle on a live model to call into,
     // and a registry of cross-thread pointers is exactly the sort of thing
     // that cannot be exercised without a device.
+    //
+    // ONLY WHILE SOMEONE IS LOOKING. This used to be `running: true`, which on
+    // a phone means forty wakeups a minute for the life of the process --
+    // minimised, screen off, no account configured, it made no difference. A
+    // tick is individually cheap (`pollSync` is an atomic load and an early
+    // return while nothing has changed), but the wakeup itself is the cost:
+    // it enters the JS engine, walks five models, and denies the CPU the deep
+    // idle states it would otherwise reach between them. Nothing it learns can
+    // be seen while the app is not on screen.
+    function pollModels() {
+        // Every model is polled, not just the first: a local mutation on
+        // one tab bumps the generation so the others pick the change up,
+        // and `pollSync` is the only thing that looks.
+        var changed = entries.pollSync()
+        changed = starredEntries.pollSync() || changed
+        changed = allEntries.pollSync() || changed
+        // Cheap while nothing is being browsed: a model with no scope
+        // reloads nothing.
+        changed = browseEntries.pollSync() || changed
+        if (changed) {
+            feeds.pollSync()
+        }
+        return changed
+    }
+
+    /// True while a refresh started FROM THE COVER is still in flight.
+    ///
+    /// The cover has a Refresh action and the app is by definition not active
+    /// while it is showing, so without this the one thing the reader can start
+    /// from the cover would raise a spinner that never moved and never
+    /// cleared: `syncing` is a live read, but the CHANGE NOTIFICATION that
+    /// redraws the cover is only emitted by `pollSync`.
+    property bool _watchingCoverRefresh: false
+
     Timer {
+        id: mirrorPoll
         interval: 1500
         repeat: true
-        running: true
+        running: Qt.application.active || app._watchingCoverRefresh
         onTriggered: {
-            // Every model is polled, not just the first: a local mutation on
-            // one tab bumps the generation so the others pick the change up,
-            // and `pollSync` is the only thing that looks.
-            var changed = entries.pollSync()
-            changed = starredEntries.pollSync() || changed
-            changed = allEntries.pollSync() || changed
-            // Cheap while nothing is being browsed: a model with no scope
-            // reloads nothing.
-            changed = browseEntries.pollSync() || changed
-            if (changed) {
-                feeds.pollSync()
+            app.pollModels()
+            // `syncing` reads the worker's flag directly, so this is current
+            // whether or not the tick above emitted anything.
+            if (app._watchingCoverRefresh && !entries.syncing) {
+                app._watchingCoverRefresh = false
             }
         }
+    }
+
+    /// Mirrors the application's own state so a handler can fire on it.
+    property bool _active: Qt.application.active
+
+    on_ActiveChanged: if (app._active) {
+        // Once, immediately, on the way back in. The timer starts on the same
+        // transition, but its first tick is an interval away, and the list
+        // should be current in the frame the reader sees rather than a second
+        // and a half later.
+        app.pollModels()
     }
 
     Component.onCompleted: {
@@ -159,7 +199,13 @@ ApplicationWindow {
             // there, rather than spinning until the user reopens the app.
             syncError: entries.syncError
             syncErrorIsAuth: entries.syncErrorIsAuth
-            onRefresh: entries.requestSync()
+            onRefresh: {
+                entries.requestSync()
+                // See `_watchingCoverRefresh`: the poll is stopped while the
+                // cover is up, and this is the one thing that starts work
+                // from there.
+                app._watchingCoverRefresh = true
+            }
         }
     }
     allowedOrientations: defaultAllowedOrientations

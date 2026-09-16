@@ -40,6 +40,86 @@ use vuo_core::model::{EntryId, EntryStatus};
 use vuo_core::redact::ApiToken;
 use vuo_core::sync::{self, SyncOptions};
 
+/// How long a mark-read or a star waits before the worker sends it.
+///
+/// The outbox already batches WITHIN a flush -- `replay::flush` groups pending
+/// intents by desired value, so a thousand marks leave as a handful of
+/// requests. What it did not do was batch the flushes themselves: the UI fires
+/// [`Command::FlushOutbox`] from every tap, and the worker acted on each one,
+/// so a reading session's thirty marks were thirty separate requests however
+/// well each was batched internally.
+///
+/// On a phone that is the expensive part. A request is not just its bytes: it
+/// re-arms the radio's connected state and, on cellular, holds it there for
+/// the tail timer afterwards. Thirty of them spread over a few minutes keeps
+/// the modem out of idle for most of that time.
+///
+/// The window is a MAXIMUM AGE, not an idle timeout: the first request arms
+/// it and later ones do not push it back, so an intent is never delayed by
+/// more than this however steadily the reader taps. Forty-five seconds
+/// collapses a normal reading session into one or two requests while staying
+/// short enough that a reader who marks something and immediately checks
+/// another device sees it there.
+///
+/// Nothing is lost if the window does not elapse. The intent is already in the
+/// outbox, which is durable and idempotent and survives the process being
+/// killed; [`FLUSH_AFTER_START`] is what picks it up next time.
+pub const FLUSH_DEBOUNCE: std::time::Duration = std::time::Duration::from_secs(45);
+
+/// How soon after an account is configured an outbox left over from last time
+/// is sent.
+///
+/// The debounce means a reader who closes Vuo mid-session leaves intents
+/// behind. Waiting for the next interval to carry them would be up to an hour,
+/// so start-up looks at the outbox and arms a flush if there is anything in
+/// it. One request per launch, and only when there is something to send.
+///
+/// Deliberately not a flush on [`Command::Shutdown`]: `Worker::drop` sends
+/// that and then JOINS, on whatever thread is dropping the worker -- the Qt
+/// thread, when the settings screen rebuilds the context. A network request
+/// there would freeze the UI for as long as the phone's signal took, up to the
+/// transport's whole 120-second budget.
+pub const FLUSH_AFTER_START: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// What the worker does when its wait ends with no command having arrived.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DueWork {
+    Sync,
+    Flush,
+}
+
+/// The nearer of two deadlines, if there is one.
+#[must_use]
+pub fn earliest(
+    a: Option<std::time::Instant>,
+    b: Option<std::time::Instant>,
+) -> Option<std::time::Instant> {
+    match (a, b) {
+        (Some(a), Some(b)) => Some(a.min(b)),
+        (a, b) => a.or(b),
+    }
+}
+
+/// Which piece of scheduled work has fallen due at `now`.
+///
+/// A sync replays the outbox as its first step, so when both deadlines have
+/// passed the sync is the one to run and the waiting flush is subsumed by it
+/// rather than being sent separately a moment earlier.
+#[must_use]
+pub fn due_work(
+    next_sync: Option<std::time::Instant>,
+    flush_due: Option<std::time::Instant>,
+    now: std::time::Instant,
+) -> Option<DueWork> {
+    if next_sync.is_some_and(|at| at <= now) {
+        Some(DueWork::Sync)
+    } else if flush_due.is_some_and(|at| at <= now) {
+        Some(DueWork::Flush)
+    } else {
+        None
+    }
+}
+
 /// Everything the worker needs in order to serve one account.
 ///
 /// Handed over by [`Command::Configure`] rather than captured when the thread
@@ -81,7 +161,13 @@ impl std::fmt::Debug for WorkerAccount {
 pub enum Command {
     /// Run a full sync pass.
     Sync,
-    /// Flush the outbox without pulling.
+    /// Ask for the outbox to be flushed, without pulling.
+    ///
+    /// A REQUEST, not an order. Every mark-read and every star sends one, and
+    /// each used to be its own HTTPS round trip: a reader working through
+    /// thirty articles made thirty of them, and on a cellular connection each
+    /// one re-arms the radio's connected state and its tail timer. The worker
+    /// coalesces them instead -- see [`FLUSH_DEBOUNCE`].
     FlushOutbox,
     /// Subscribe to a feed. The *server* discovers and fetches it; §3 makes
     /// local feed fetching the project's most important boundary.
@@ -421,22 +507,47 @@ impl Worker {
                 // which is what an install that has never opened Settings
                 // means, and what every version before this one did.
                 let mut retention: Option<i64> = None;
+                // When the coalesced outbox flush falls due, or `None` while
+                // nothing is waiting to be sent. See [`FLUSH_DEBOUNCE`].
+                let mut flush_due: Option<std::time::Instant> = None;
                 loop {
-                    // Only an account being served has a sync that can fall
+                    // Only an account being served has work that can fall
                     // due. Without this filter, an interval set before an
                     // account arrives makes every wait expire immediately and
                     // the loop spins.
-                    let due = next_sync.filter(|_| client.is_some());
+                    let due = earliest(next_sync, flush_due).filter(|_| client.is_some());
+                    // Set only when the command below was produced by a
+                    // deadline rather than sent by the UI. A flush the UI
+                    // ASKED for arms the debounce; a flush the debounce
+                    // produced is the one that actually runs.
+                    let mut flush_fell_due = false;
                     let command = match due {
                         Some(at) => {
                             let wait = at.saturating_duration_since(std::time::Instant::now());
                             match rx.recv_timeout(wait) {
                                 Ok(command) => command,
                                 Err(mpsc::RecvTimeoutError::Timeout) => {
-                                    // As `requestSync` does before sending,
-                                    // so the cover and the list show it.
-                                    signal.set_running(true);
-                                    Command::Sync
+                                    match due_work(next_sync, flush_due, std::time::Instant::now())
+                                    {
+                                        Some(DueWork::Flush) => {
+                                            flush_due = None;
+                                            flush_fell_due = true;
+                                            Command::FlushOutbox
+                                        }
+                                        // `None` cannot happen -- the wait
+                                        // ended because one of the two
+                                        // deadlines passed -- but a sync is
+                                        // the safe reading of it either way,
+                                        // and it is what the loop did before
+                                        // there was a second deadline.
+                                        _ => {
+                                            // As `requestSync` does before
+                                            // sending, so the cover and the
+                                            // list show it.
+                                            signal.set_running(true);
+                                            Command::Sync
+                                        }
+                                    }
                                 }
                                 Err(mpsc::RecvTimeoutError::Disconnected) => break,
                             }
@@ -446,6 +557,19 @@ impl Worker {
                             Err(_) => break,
                         },
                     };
+
+                    // A flush the UI asked for only arms the window; the
+                    // deadline above is what sends. Re-arming on each request
+                    // would be an idle timeout, and a reader tapping steadily
+                    // would then never reach the end of one -- so the first
+                    // request sets the deadline and later ones find it
+                    // already set and leave it alone.
+                    if matches!(command, Command::FlushOutbox) && !flush_fell_due {
+                        if flush_due.is_none() {
+                            flush_due = Some(std::time::Instant::now() + FLUSH_DEBOUNCE);
+                        }
+                        continue;
+                    }
                     // Shutdown is handled above the guard: there is no spinner
                     // to clear for it, and draining whatever is queued behind
                     // it matters more. A `Sync` sitting in the queue when the
@@ -505,6 +629,15 @@ impl Worker {
                             next_sync =
                                 next_sync_delay(interval, read_sync_time(&last_sync), chrono_now())
                                     .map(|delay| std::time::Instant::now() + delay);
+                            // Anything the last session left unsent goes
+                            // shortly after start-up rather than waiting for
+                            // the next interval, which may be an hour away.
+                            // See [`FLUSH_AFTER_START`].
+                            flush_due = db
+                                .as_ref()
+                                .and_then(|db| outbox::len(db.conn()).ok())
+                                .filter(|pending| *pending > 0)
+                                .map(|_| std::time::Instant::now() + FLUSH_AFTER_START);
                             continue;
                         }
                         Command::SetSyncInterval { minutes } => {
@@ -558,6 +691,10 @@ impl Worker {
                         | Command::SetSyncInterval { .. }
                         | Command::SetRetention { .. } => {}
                         Command::Sync => {
+                            // A pass replays the outbox as its first step, so
+                            // whatever the debounce was holding goes with it
+                            // and must not be sent again a moment later.
+                            flush_due = None;
                             on_event(Event::SyncStarted);
                             let options = SyncOptions {
                                 retention_secs: retention,
@@ -853,6 +990,11 @@ impl Worker {
                             }
                         }
                         Command::FlushOutbox => {
+                            // Belt and braces: the deadline is cleared where
+                            // it fires, and this arm is also reachable from a
+                            // command sent before there was an account to
+                            // serve it.
+                            flush_due = None;
                             match runtime.block_on(sync::replay::flush(db, client)) {
                                 Ok(outcome) if outcome.auth_failed => {
                                     signal.post(Notice::SyncFailed {
@@ -1634,5 +1776,107 @@ EQBBQIobIy41+aQiMsM0XBYH3Q==\n\
             .expect("an account file means configured");
         assert_eq!(paths.database, base.join("vuo.sqlite"));
         assert_eq!(paths.ca_certificate, base.join("ca.pem"));
+    }
+
+    /// §a flush the UI asks for arms the debounce rather than sending.
+    ///
+    /// The window is a MAXIMUM AGE and not an idle timeout, which is the whole
+    /// difference between "a reading session costs one request" and "a reader
+    /// who taps steadily is never flushed at all". Expressed here as the rule
+    /// the loop actually follows: a request that finds a deadline already set
+    /// leaves it where it is.
+    #[test]
+    fn a_second_flush_request_does_not_push_the_deadline_back() {
+        let started = std::time::Instant::now();
+        let mut flush_due: Option<std::time::Instant> = None;
+
+        // The first tap arms the window.
+        if flush_due.is_none() {
+            flush_due = Some(started + FLUSH_DEBOUNCE);
+        }
+        let armed = flush_due.expect("the first request arms the window");
+
+        // A tap half a window later must not move it.
+        let later = started + FLUSH_DEBOUNCE / 2;
+        if flush_due.is_none() {
+            flush_due = Some(later + FLUSH_DEBOUNCE);
+        }
+
+        assert_eq!(
+            flush_due.expect("still armed"),
+            armed,
+            "re-arming on each request would make this an idle timeout, and a \
+             reader marking an article every few seconds would never be flushed"
+        );
+    }
+
+    /// §both deadlines due at once runs the sync, not the flush.
+    ///
+    /// A pass replays the outbox as its first step, so sending the flush
+    /// separately a moment earlier would be one request for work the sync was
+    /// about to do anyway -- which is the exact cost this whole mechanism
+    /// exists to avoid.
+    #[test]
+    fn a_sync_subsumes_a_flush_that_falls_due_with_it() {
+        let now = std::time::Instant::now();
+        let past = now - std::time::Duration::from_secs(1);
+
+        assert_eq!(
+            due_work(Some(past), Some(past), now),
+            Some(DueWork::Sync),
+            "a sync replays the outbox, so it takes precedence over a flush"
+        );
+        assert_eq!(due_work(None, Some(past), now), Some(DueWork::Flush));
+        assert_eq!(due_work(Some(past), None, now), Some(DueWork::Sync));
+    }
+
+    /// §a deadline still in the future is not work.
+    #[test]
+    fn nothing_is_due_before_its_deadline() {
+        let now = std::time::Instant::now();
+        let soon = now + std::time::Duration::from_secs(30);
+
+        assert_eq!(due_work(Some(soon), Some(soon), now), None);
+        assert_eq!(due_work(None, None, now), None);
+    }
+
+    /// §the wait ends on whichever deadline comes first.
+    ///
+    /// Waiting on the sync alone is what the loop did before the flush had a
+    /// deadline of its own, and it would hold a reader's marks until the next
+    /// interval -- up to an hour.
+    #[test]
+    fn the_wait_ends_on_the_nearer_of_the_two_deadlines() {
+        let now = std::time::Instant::now();
+        let sync_at = now + std::time::Duration::from_secs(3600);
+        let flush_at = now + FLUSH_DEBOUNCE;
+
+        assert_eq!(earliest(Some(sync_at), Some(flush_at)), Some(flush_at));
+        assert_eq!(earliest(Some(flush_at), Some(sync_at)), Some(flush_at));
+        assert_eq!(earliest(None, Some(flush_at)), Some(flush_at));
+        assert_eq!(earliest(Some(sync_at), None), Some(sync_at));
+        assert_eq!(earliest(None, None), None);
+    }
+
+    /// §the debounce is short enough to be invisible and long enough to batch.
+    ///
+    /// Both ends matter. Too long and a reader who marks something here and
+    /// looks at another device sees it unread; too short and a reading session
+    /// is back to one request per tap.
+    #[test]
+    fn the_flush_window_stays_within_a_reading_session() {
+        assert!(
+            FLUSH_DEBOUNCE >= std::time::Duration::from_secs(20),
+            "shorter than this and a normal reading pace outruns the window"
+        );
+        assert!(
+            FLUSH_DEBOUNCE <= std::time::Duration::from_secs(120),
+            "longer than this and the server is visibly behind the phone"
+        );
+        assert!(
+            FLUSH_AFTER_START < FLUSH_DEBOUNCE,
+            "an outbox carried over from last time has already waited; it \
+             should not wait a whole window again"
+        );
     }
 }

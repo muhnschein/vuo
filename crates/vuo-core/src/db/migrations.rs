@@ -175,6 +175,23 @@ ALTER TABLE entries ADD COLUMN content_scraped INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE feeds ADD COLUMN crawler INTEGER NOT NULL DEFAULT 0;
 "#,
     },
+    Migration {
+        version: 5,
+        name: "remember when the server version was last asked for",
+        sql: r#"
+-- Every pass used to open with GET /v1/version. The answer gates two request
+-- rules and one endpoint's existence, so it is genuinely needed -- but it
+-- changes when someone upgrades their Miniflux, not every hour, and on a
+-- phone a request is not just its bytes: it re-arms the radio and holds it
+-- there for the tail timer afterwards. `server_version` was already stored;
+-- this is the stamp that says whether it is still worth trusting.
+--
+-- Nullable with no default on purpose: an existing mirror has a version
+-- recorded but no idea how old it is, and NULL means "ask once, now" rather
+-- than silently treating an unknown age as fresh.
+ALTER TABLE sync_state ADD COLUMN server_version_checked_at INTEGER;
+"#,
+    },
 ];
 
 /// The schema version this build expects.

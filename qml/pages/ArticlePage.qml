@@ -82,14 +82,24 @@ Page {
         }
     }
 
-    // The worker writes a scraped body into the mirror and bumps the signal;
-    // without this the OPEN article never re-read it, which is why "Fetch
-    // original content" looked like it did nothing. Only runs while the page
-    // is showing.
+    // The worker writes a scraped body into the mirror and leaves the outcome
+    // on the signal; without this the OPEN article never re-read it, which is
+    // why "Fetch original content" looked like it did nothing.
+    //
+    // ONLY WHILE A SCRAPE IS ACTUALLY IN FLIGHT. `running` used to be the page
+    // being showing, and reading an article is the longest-lived state this
+    // app has -- so the common case was a wakeup every second, for minutes, to
+    // ask about a scrape the reader had not asked for. `Article::pollSync`
+    // does nothing at all unless `take_fetch_outcome` has something for the
+    // open entry, and `fetching` is true exactly between the request and that
+    // outcome, so this loses no case and costs nothing when the menu item is
+    // never used.
     Timer {
         interval: 1000
         repeat: true
-        running: page.status === PageStatus.Active
+        running: article.fetching
+                 && page.status === PageStatus.Active
+                 && Qt.application.active
         onTriggered: article.pollSync()
     }
 

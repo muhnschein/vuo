@@ -19,6 +19,36 @@
 //! duration of a request would block the UI's readers for however long the
 //! phone's signal takes, which is the opposite of §5's promise that the UI
 //! never waits on the network.
+//!
+//! # Why the pass is as short as it can be made
+//!
+//! Every step above is a request, and on a phone the cost of a request is not
+//! its bytes: it is the radio. A cellular modem that has gone idle must
+//! re-establish a connected state to send anything, and stays there for a tail
+//! timer afterwards -- so what a sync pass costs the battery tracks HOW LONG
+//! THE PASS IS, near enough, and not how much it transfers.
+//!
+//! Two things follow, and both are done above rather than described:
+//!
+//! - **Ask only for what changes.** The server's version gates two request
+//!   rules and one endpoint's existence, but it changes when someone upgrades
+//!   their Miniflux. It is cached in the mirror and re-asked once a day.
+//! - **Ask only when the answer is read.** The counters request is the only
+//!   evidence a server-side deletion leaves, so it survives on the quiet
+//!   passes -- that is the case it exists for. It is skipped where nothing
+//!   could act on it: a reconcile already due, or a server with no id
+//!   listing.
+//!
+//! And one that is deliberately NOT done, because it does not pay yet.
+//! Categories and feeds are independent, and so are icons of each other, so
+//! awaiting them in sequence holds the radio up for the sum of their latencies
+//! rather than the longest. But `reqwest` is built without the `http2`
+//! feature, so concurrent requests cannot share a connection: each one in
+//! flight is another TCP connection and another TLS handshake, and passes are
+//! far enough apart that the pool is always cold. Saving tens of milliseconds
+//! from a radio event with a multi-second tail, at the price of a second
+//! handshake, is a loss. Turn on HTTP/2 first; the concurrency is worth having
+//! after that and not before.
 
 pub mod pull;
 pub mod replay;
@@ -50,6 +80,16 @@ pub struct SyncOptions {
     /// its owner asks otherwise. See [`store::prune_entries`] for what is
     /// never pruned whatever this says.
     pub retention_secs: Option<i64>,
+    /// How long a recorded server version is trusted before it is asked for
+    /// again, in seconds.
+    ///
+    /// A version changes when the instance's owner upgrades it. Asking every
+    /// pass cost one request per pass to learn the same answer; asking once a
+    /// day costs one in twenty-four at an hourly interval, and the worst case
+    /// of a stale answer is one pass that uses the previous era's request
+    /// rules against a server that has just been upgraded -- which the next
+    /// pass corrects, and which the cursor is already designed to survive.
+    pub server_version_ttl_secs: i64,
 }
 
 impl Default for SyncOptions {
@@ -59,6 +99,7 @@ impl Default for SyncOptions {
             icons_per_pass: 8,
             skip_replay: false,
             retention_secs: None,
+            server_version_ttl_secs: 24 * 60 * 60,
         }
     }
 }
@@ -98,7 +139,19 @@ pub async fn sync(
 
     // Version gating: several request rules and one endpoint's existence
     // depend on it, and guessing high means calling endpoints that 404.
-    let version = client.version().await.unwrap_or_default();
+    //
+    // Cached in the mirror, because the answer changes when the instance's
+    // owner upgrades their Miniflux and not otherwise. See
+    // `SyncOptions::server_version_ttl_secs`.
+    let cached_version = state
+        .server_version_checked_at
+        .filter(|checked| now - checked < options.server_version_ttl_secs)
+        .and(state.server_version.as_deref())
+        .and_then(ServerVersion::parse);
+    let (version, version_checked_at) = match cached_version {
+        Some(version) => (version, state.server_version_checked_at),
+        None => (client.version().await.unwrap_or_default(), Some(now)),
+    };
     report.server_version = Some(version.raw.clone());
 
     // 2 & 3.
@@ -109,7 +162,27 @@ pub async fn sync(
     let due = state
         .last_full_reconcile_at
         .is_none_or(|last| now - last >= options.reconcile_interval_secs);
-    let diverging = pull::diverging_feeds(db, client).await.unwrap_or_default();
+    // The counters request is spent only where its answer can change what
+    // this pass does.
+    //
+    // It CANNOT be skipped on a quiet pass, and it is worth saying why, since
+    // that is the tempting version of this optimisation and it is wrong: a
+    // server-side deletion is invisible to the cursor by construction (see
+    // `pull`'s "What the cursor cannot see"), so a pass that pulled nothing is
+    // exactly the pass where a count mismatch is the only evidence there is.
+    // Gating on pull activity would quietly disable the deletion backstop.
+    //
+    // What it can be skipped on is the two cases where the answer is not read:
+    // a reconcile already due runs whatever the counters say, and a server
+    // with no id listing has nothing that could act on divergence -- there the
+    // request bought a log line and a round trip. Modest: one request a day on
+    // a current server, one per pass on a pre-2.3 one.
+    let worth_asking = !due && version.has_entry_ids_endpoint();
+    let diverging = if worth_asking {
+        pull::diverging_feeds(db, client).await.unwrap_or_default()
+    } else {
+        Vec::new()
+    };
     if version.has_entry_ids_endpoint() && (due || !diverging.is_empty()) {
         let outcome = pull::reconcile(db, client).await?;
         report.entries_deleted = outcome.deleted;
@@ -119,16 +192,15 @@ pub async fn sync(
         // checked -- and an abort is not rare: any concurrent write tears the
         // listing.
         report.reconciled = outcome.completed;
-    } else if !diverging.is_empty() {
-        // An older server has no cheap id listing. Rather than re-pulling the
-        // whole corpus on every divergence, note it and let the periodic full
-        // refresh handle it; a stale read entry is a much smaller problem than
-        // a phone that re-downloads everything whenever a feed is trimmed.
-        tracing::info!(
-            feeds = diverging.len(),
-            "feeds diverge from the server's counts, but this server has no id listing endpoint"
-        );
     }
+    // There used to be an `else if !diverging.is_empty()` here, logging that an
+    // older server's feeds diverged with no id listing to reconcile against.
+    // It is gone with the request that fed it: `worth_asking` leaves
+    // `diverging` empty on exactly the servers that branch was about, so
+    // keeping it would be a branch that can no longer be taken. The behaviour
+    // it described -- let the periodic refresh handle it, rather than
+    // re-pulling the corpus -- is unchanged, because it never did anything
+    // else.
 
     // 5.
     report.icons_fetched = fetch_icons(db, client, options.icons_per_pass).await?;
@@ -166,6 +238,7 @@ pub async fn sync(
         },
         server_era: Some(era_label(&version).to_owned()),
         server_version: report.server_version.clone(),
+        server_version_checked_at: version_checked_at,
     };
     db.with_tx(|tx| store::set_sync_state(tx, &next))?;
 
