@@ -128,24 +128,19 @@
 <context>
     <name>CoverPage</name>
     <message>
-        <location filename="../qml/cover/CoverPage.qml" line="166"/>
+        <location filename="../qml/cover/CoverPage.qml" line="228"/>
         <source>Sign-in failed</source>
         <translation>Login mislykkedes</translation>
     </message>
     <message>
-        <location filename="../qml/cover/CoverPage.qml" line="166"/>
+        <location filename="../qml/cover/CoverPage.qml" line="228"/>
         <source>Refresh failed</source>
         <translation>Opdatering mislykkedes</translation>
     </message>
     <message>
-        <location filename="../qml/cover/CoverPage.qml" line="167"/>
+        <location filename="../qml/cover/CoverPage.qml" line="229"/>
         <source>Refreshing</source>
         <translation>Opdaterer</translation>
-    </message>
-    <message>
-        <location filename="../qml/cover/CoverPage.qml" line="167"/>
-        <source>Unread</source>
-        <translation>Ulæste</translation>
     </message>
 </context>
 <context>
@@ -575,47 +570,47 @@
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="222"/>
         <source>Only sync on Wi-Fi</source>
-        <translation type="unfinished"></translation>
+        <translation>Synkronisér kun over Wi-Fi</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="223"/>
         <source>Vuo syncs on its own only over Wi-Fi, and waits on a mobile connection. A refresh you ask for yourself is always sent.</source>
-        <translation type="unfinished"></translation>
+        <translation>Vuo synkroniserer af sig selv kun over Wi-Fi og venter på en mobilforbindelse. En opdatering, du selv beder om, sendes altid.</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="238"/>
         <source>Keep read articles</source>
-        <translation type="unfinished"></translation>
+        <translation>Behold læste artikler</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="240"/>
         <source>Forever</source>
-        <translation type="unfinished"></translation>
+        <translation>For altid</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="241"/>
         <source>For a month</source>
-        <translation type="unfinished"></translation>
+        <translation>I en måned</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="242"/>
         <source>For three months</source>
-        <translation type="unfinished"></translation>
+        <translation>I tre måneder</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="243"/>
         <source>For six months</source>
-        <translation type="unfinished"></translation>
+        <translation>I seks måneder</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="244"/>
         <source>For a year</source>
-        <translation type="unfinished"></translation>
+        <translation>I et år</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="259"/>
         <source>Older articles you have already read are removed from this phone at the end of a sync. Favourites, unread articles and anything not yet sent to the server are always kept, and nothing is removed from your Miniflux server.</source>
-        <translation type="unfinished"></translation>
+        <translation>Ældre artikler, du allerede har læst, fjernes fra denne telefon ved afslutningen af en synkronisering. Favoritter, ulæste artikler og alt, der endnu ikke er sendt til serveren, beholdes altid, og der fjernes intet fra din Miniflux-server.</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="270"/>

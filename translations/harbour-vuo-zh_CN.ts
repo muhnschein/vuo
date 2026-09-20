@@ -127,24 +127,19 @@
 <context>
     <name>CoverPage</name>
     <message>
-        <location filename="../qml/cover/CoverPage.qml" line="166"/>
+        <location filename="../qml/cover/CoverPage.qml" line="228"/>
         <source>Sign-in failed</source>
         <translation>登录失败</translation>
     </message>
     <message>
-        <location filename="../qml/cover/CoverPage.qml" line="166"/>
+        <location filename="../qml/cover/CoverPage.qml" line="228"/>
         <source>Refresh failed</source>
         <translation>刷新失败</translation>
     </message>
     <message>
-        <location filename="../qml/cover/CoverPage.qml" line="167"/>
+        <location filename="../qml/cover/CoverPage.qml" line="229"/>
         <source>Refreshing</source>
         <translation>正在刷新</translation>
-    </message>
-    <message>
-        <location filename="../qml/cover/CoverPage.qml" line="167"/>
-        <source>Unread</source>
-        <translation>未读</translation>
     </message>
 </context>
 <context>
@@ -570,47 +565,47 @@
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="222"/>
         <source>Only sync on Wi-Fi</source>
-        <translation type="unfinished"></translation>
+        <translation>仅在 Wi-Fi 下同步</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="223"/>
         <source>Vuo syncs on its own only over Wi-Fi, and waits on a mobile connection. A refresh you ask for yourself is always sent.</source>
-        <translation type="unfinished"></translation>
+        <translation>Vuo 只在 Wi-Fi 下自行同步，使用移动网络时会等待。你自己要求的刷新始终会发出。</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="238"/>
         <source>Keep read articles</source>
-        <translation type="unfinished"></translation>
+        <translation>保留已读文章</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="240"/>
         <source>Forever</source>
-        <translation type="unfinished"></translation>
+        <translation>永久</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="241"/>
         <source>For a month</source>
-        <translation type="unfinished"></translation>
+        <translation>一个月</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="242"/>
         <source>For three months</source>
-        <translation type="unfinished"></translation>
+        <translation>三个月</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="243"/>
         <source>For six months</source>
-        <translation type="unfinished"></translation>
+        <translation>六个月</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="244"/>
         <source>For a year</source>
-        <translation type="unfinished"></translation>
+        <translation>一年</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="259"/>
         <source>Older articles you have already read are removed from this phone at the end of a sync. Favourites, unread articles and anything not yet sent to the server are always kept, and nothing is removed from your Miniflux server.</source>
-        <translation type="unfinished"></translation>
+        <translation>你已经读过的较旧文章会在同步结束时从这台手机上移除。收藏、未读文章以及尚未发往服务器的内容始终保留，你的 Miniflux 服务器上不会移除任何内容。</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="270"/>

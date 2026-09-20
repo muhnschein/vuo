@@ -127,24 +127,19 @@
 <context>
     <name>CoverPage</name>
     <message>
-        <location filename="../qml/cover/CoverPage.qml" line="166"/>
+        <location filename="../qml/cover/CoverPage.qml" line="228"/>
         <source>Sign-in failed</source>
         <translation>Đăng nhập thất bại</translation>
     </message>
     <message>
-        <location filename="../qml/cover/CoverPage.qml" line="166"/>
+        <location filename="../qml/cover/CoverPage.qml" line="228"/>
         <source>Refresh failed</source>
         <translation>Làm mới thất bại</translation>
     </message>
     <message>
-        <location filename="../qml/cover/CoverPage.qml" line="167"/>
+        <location filename="../qml/cover/CoverPage.qml" line="229"/>
         <source>Refreshing</source>
         <translation>Đang làm mới</translation>
-    </message>
-    <message>
-        <location filename="../qml/cover/CoverPage.qml" line="167"/>
-        <source>Unread</source>
-        <translation>Chưa đọc</translation>
     </message>
 </context>
 <context>
@@ -570,47 +565,47 @@
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="222"/>
         <source>Only sync on Wi-Fi</source>
-        <translation type="unfinished"></translation>
+        <translation>Chỉ đồng bộ qua Wi-Fi</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="223"/>
         <source>Vuo syncs on its own only over Wi-Fi, and waits on a mobile connection. A refresh you ask for yourself is always sent.</source>
-        <translation type="unfinished"></translation>
+        <translation>Vuo tự nó chỉ đồng bộ qua Wi-Fi và chờ khi dùng kết nối di động. Lần làm mới do bạn tự yêu cầu thì luôn được gửi đi.</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="238"/>
         <source>Keep read articles</source>
-        <translation type="unfinished"></translation>
+        <translation>Giữ bài viết đã đọc</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="240"/>
         <source>Forever</source>
-        <translation type="unfinished"></translation>
+        <translation>Mãi mãi</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="241"/>
         <source>For a month</source>
-        <translation type="unfinished"></translation>
+        <translation>Một tháng</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="242"/>
         <source>For three months</source>
-        <translation type="unfinished"></translation>
+        <translation>Ba tháng</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="243"/>
         <source>For six months</source>
-        <translation type="unfinished"></translation>
+        <translation>Sáu tháng</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="244"/>
         <source>For a year</source>
-        <translation type="unfinished"></translation>
+        <translation>Một năm</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="259"/>
         <source>Older articles you have already read are removed from this phone at the end of a sync. Favourites, unread articles and anything not yet sent to the server are always kept, and nothing is removed from your Miniflux server.</source>
-        <translation type="unfinished"></translation>
+        <translation>Những bài viết cũ mà bạn đã đọc sẽ bị xoá khỏi điện thoại này khi kết thúc một lần đồng bộ. Bài ưa thích, bài chưa đọc và mọi thứ chưa gửi lên máy chủ luôn được giữ lại, và không có gì bị xoá khỏi máy chủ Miniflux của bạn.</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="270"/>

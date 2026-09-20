@@ -127,24 +127,19 @@
 <context>
     <name>CoverPage</name>
     <message>
-        <location filename="../qml/cover/CoverPage.qml" line="166"/>
+        <location filename="../qml/cover/CoverPage.qml" line="228"/>
         <source>Sign-in failed</source>
         <translation>Керү уңышсыз</translation>
     </message>
     <message>
-        <location filename="../qml/cover/CoverPage.qml" line="166"/>
+        <location filename="../qml/cover/CoverPage.qml" line="228"/>
         <source>Refresh failed</source>
         <translation>Яңарту уңышсыз</translation>
     </message>
     <message>
-        <location filename="../qml/cover/CoverPage.qml" line="167"/>
+        <location filename="../qml/cover/CoverPage.qml" line="229"/>
         <source>Refreshing</source>
         <translation>Яңартыла</translation>
-    </message>
-    <message>
-        <location filename="../qml/cover/CoverPage.qml" line="167"/>
-        <source>Unread</source>
-        <translation>Укылмаган</translation>
     </message>
 </context>
 <context>
@@ -570,47 +565,47 @@
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="222"/>
         <source>Only sync on Wi-Fi</source>
-        <translation type="unfinished"></translation>
+        <translation>Бары тик Wi-Fi аша синхронла</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="223"/>
         <source>Vuo syncs on its own only over Wi-Fi, and waits on a mobile connection. A refresh you ask for yourself is always sent.</source>
-        <translation type="unfinished"></translation>
+        <translation>Vuo үзлегеннән бары тик Wi-Fi аша гына синхронлый, мобиль тоташуда көтә. Үзең сораган яңарту һәрвакыт җибәрелә.</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="238"/>
         <source>Keep read articles</source>
-        <translation type="unfinished"></translation>
+        <translation>Укылган мәкаләләрне сакла</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="240"/>
         <source>Forever</source>
-        <translation type="unfinished"></translation>
+        <translation>Мәңге</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="241"/>
         <source>For a month</source>
-        <translation type="unfinished"></translation>
+        <translation>Бер ай</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="242"/>
         <source>For three months</source>
-        <translation type="unfinished"></translation>
+        <translation>Өч ай</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="243"/>
         <source>For six months</source>
-        <translation type="unfinished"></translation>
+        <translation>Алты ай</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="244"/>
         <source>For a year</source>
-        <translation type="unfinished"></translation>
+        <translation>Бер ел</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="259"/>
         <source>Older articles you have already read are removed from this phone at the end of a sync. Favourites, unread articles and anything not yet sent to the server are always kept, and nothing is removed from your Miniflux server.</source>
-        <translation type="unfinished"></translation>
+        <translation>Син инде укыган иске мәкаләләр синхронлау ахырында бу телефоннан бетерелә. Сайланма, укылмаган мәкаләләр һәм серверга әле җибәрелмәгән бар нәрсә һәрвакыт саклана, ә синең Miniflux серверыңнан бернәрсә дә бетерелми.</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="270"/>

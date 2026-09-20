@@ -128,24 +128,19 @@
 <context>
     <name>CoverPage</name>
     <message>
-        <location filename="../qml/cover/CoverPage.qml" line="166"/>
+        <location filename="../qml/cover/CoverPage.qml" line="228"/>
         <source>Sign-in failed</source>
         <translation>ਸਾਈਨ-ਇਨ ਅਸਫਲ</translation>
     </message>
     <message>
-        <location filename="../qml/cover/CoverPage.qml" line="166"/>
+        <location filename="../qml/cover/CoverPage.qml" line="228"/>
         <source>Refresh failed</source>
         <translation>ਤਾਜ਼ਾ ਕਰਨਾ ਅਸਫਲ</translation>
     </message>
     <message>
-        <location filename="../qml/cover/CoverPage.qml" line="167"/>
+        <location filename="../qml/cover/CoverPage.qml" line="229"/>
         <source>Refreshing</source>
         <translation>ਤਾਜ਼ਾ ਹੋ ਰਿਹਾ ਹੈ</translation>
-    </message>
-    <message>
-        <location filename="../qml/cover/CoverPage.qml" line="167"/>
-        <source>Unread</source>
-        <translation>ਅਣਪੜ੍ਹੇ</translation>
     </message>
 </context>
 <context>
@@ -575,47 +570,47 @@
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="222"/>
         <source>Only sync on Wi-Fi</source>
-        <translation type="unfinished"></translation>
+        <translation>ਸਿਰਫ਼ Wi-Fi ਉੱਤੇ ਸਮਕਾਲੀ ਕਰੋ</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="223"/>
         <source>Vuo syncs on its own only over Wi-Fi, and waits on a mobile connection. A refresh you ask for yourself is always sent.</source>
-        <translation type="unfinished"></translation>
+        <translation>Vuo ਆਪਣੇ ਆਪ ਸਿਰਫ਼ Wi-Fi ਉੱਤੇ ਸਮਕਾਲੀ ਕਰਦਾ ਹੈ ਅਤੇ ਮੋਬਾਈਲ ਕੁਨੈਕਸ਼ਨ ਉੱਤੇ ਉਡੀਕਦਾ ਹੈ। ਤੁਸੀਂ ਆਪ ਜੋ ਤਾਜ਼ਾ ਕਰਨ ਲਈ ਕਹਿੰਦੇ ਹੋ, ਉਹ ਹਮੇਸ਼ਾ ਭੇਜਿਆ ਜਾਂਦਾ ਹੈ।</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="238"/>
         <source>Keep read articles</source>
-        <translation type="unfinished"></translation>
+        <translation>ਪੜ੍ਹੇ ਲੇਖ ਰੱਖੋ</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="240"/>
         <source>Forever</source>
-        <translation type="unfinished"></translation>
+        <translation>ਹਮੇਸ਼ਾ ਲਈ</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="241"/>
         <source>For a month</source>
-        <translation type="unfinished"></translation>
+        <translation>ਇੱਕ ਮਹੀਨਾ</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="242"/>
         <source>For three months</source>
-        <translation type="unfinished"></translation>
+        <translation>ਤਿੰਨ ਮਹੀਨੇ</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="243"/>
         <source>For six months</source>
-        <translation type="unfinished"></translation>
+        <translation>ਛੇ ਮਹੀਨੇ</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="244"/>
         <source>For a year</source>
-        <translation type="unfinished"></translation>
+        <translation>ਇੱਕ ਸਾਲ</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="259"/>
         <source>Older articles you have already read are removed from this phone at the end of a sync. Favourites, unread articles and anything not yet sent to the server are always kept, and nothing is removed from your Miniflux server.</source>
-        <translation type="unfinished"></translation>
+        <translation>ਜਿਹੜੇ ਪੁਰਾਣੇ ਲੇਖ ਤੁਸੀਂ ਪਹਿਲਾਂ ਹੀ ਪੜ੍ਹ ਚੁੱਕੇ ਹੋ, ਉਹ ਸਮਕਾਲੀਕਰਨ ਦੇ ਅੰਤ ਵਿੱਚ ਇਸ ਫ਼ੋਨ ਤੋਂ ਹਟਾ ਦਿੱਤੇ ਜਾਂਦੇ ਹਨ। ਪਸੰਦੀਦਾ, ਅਣਪੜ੍ਹੇ ਲੇਖ ਅਤੇ ਸਰਵਰ ਨੂੰ ਹਾਲੇ ਨਾ ਭੇਜਿਆ ਗਿਆ ਸਭ ਕੁਝ ਹਮੇਸ਼ਾ ਰੱਖਿਆ ਜਾਂਦਾ ਹੈ, ਅਤੇ ਤੁਹਾਡੇ Miniflux ਸਰਵਰ ਤੋਂ ਕੁਝ ਵੀ ਨਹੀਂ ਹਟਾਇਆ ਜਾਂਦਾ।</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="270"/>
