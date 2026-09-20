@@ -67,16 +67,17 @@ fi
 # nobody chose from walking down to plain http (§9.1).
 FONT_DIR=${VUO_FONT_DIR:-"$ROOT/.fonts"}
 DIGITS="$FONT_DIR/FiraSans-ExtraBold.ttf"
+TLS_ONLY=(--proto '=https' --proto-redir '=https')
 if [[ ! -f "$DIGITS" ]]; then
     echo "== fetching Fira Sans ExtraBold (SIL OFL) into $FONT_DIR =="
     mkdir -p "$FONT_DIR"
-    css=$(curl -sSfL --proto '=https' --proto-redir '=https' \
+    css=$(curl -sSfL "${TLS_ONLY[@]}" \
         "https://fonts.googleapis.com/css2?family=Fira+Sans:wght@800&display=swap") || {
         echo "could not reach Google Fonts; set VUO_FONT_DIR to a directory holding FiraSans-ExtraBold.ttf." >&2
         exit 1; }
     url=$(grep -oE "https://fonts.gstatic.com/[^)]*" <<< "$css" | head -1)
     [[ -n "$url" ]] || { echo "the font CSS named no file" >&2; exit 1; }
-    curl -sSfL --proto '=https' --proto-redir '=https' "$url" -o "$DIGITS"
+    curl -sSfL "${TLS_ONLY[@]}" "$url" -o "$DIGITS"
 fi
 
 # The painter reads Theme for the font family, so it needs the Silica stubs
