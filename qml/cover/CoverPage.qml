@@ -71,15 +71,22 @@ CoverBackground {
     /// outlast it.
     readonly property bool hasStatus: cover.syncing || cover._showFailure
 
-    /// How far above the bottom edge sync speaks.
+    /// How far above the bottom edge sync speaks: the bottom of the status
+    /// row, and the floor of the room the texture gives up for it.
     ///
-    /// The cover-action strip is `Theme.itemSizeSmall` tall and the refresh
-    /// button is drawn inside it, so clearing the strip is not the same as
-    /// clearing the button: at one `paddingSmall` the line sat on the icon.
-    /// The row and the band the texture gives up both measure from here, so
-    /// moving the line moves the room made for it.
+    /// The rule this is set to is that the line should sit as far above the
+    /// refresh icon as the icon sits above the bottom edge. The icon is
+    /// Silica's, centred in the cover-action strip, and a cover cannot ask
+    /// how tall that strip is -- so this is measured rather than derived:
+    /// off a device screenshot the icon cleared the bottom edge by about
+    /// 8% of the cover's height and its own top was about 18% up, which
+    /// puts the line's bottom about a quarter of the way up the cover.
+    /// One `paddingSmall`, where this started, left seven pixels.
+    ///
+    /// It is one number, deliberately: nudging the line moves the room made
+    /// for it with it.
     readonly property real statusBaseline:
-        Theme.itemSizeSmall + Theme.paddingLarge * 2
+        Theme.itemSizeSmall + Theme.paddingLarge
 
     on_ErrorTokenChanged: {
         if (cover._errorToken.length > 0) {
@@ -124,15 +131,19 @@ CoverBackground {
 
         // The room for the status line, made by the texture rather than
         // over it: the mask runs out towards the bottom edge while sync has
-        // something to say, and is whole again the moment it stops. The
-        // band is twice the height the line sits at, so the line lands
-        // around the middle of the ramp with the pattern already well
-        // thinned under it and the very foot of the cover nearly bare.
+        // something to say, and is whole again the moment it stops.
+        //
+        // The band is twice the height of everything below the row's top,
+        // so the line lands around the middle of the ramp with the pattern
+        // already well thinned under it and the very foot of the cover
+        // nearly bare -- and a line that WRAPPED to two rows grows the band
+        // with it rather than climbing out of the top of it.
         //
         // Off means both at zero, not a band of no height at the bottom:
         // the shader's test is `fadeOutTo > fadeOutFrom`.
         fadeOutFrom: cover.hasStatus
-                     ? cover.height - cover.statusBaseline * 2 : 0
+                     ? cover.height - (cover.statusBaseline + status.height) * 2
+                     : 0
         fadeOutTo: cover.hasStatus ? cover.height : 0
     }
 
@@ -209,6 +220,34 @@ CoverBackground {
                   : (cover.syncing ? qsTr("Refreshing") : "")
             font.pixelSize: Theme.fontSizeExtraSmall
             color: cover._showFailure ? Theme.errorColor : Theme.secondaryHighlightColor
+
+            // The line WRAPS rather than running off both edges.
+            //
+            // A `Row` centred on the cover gives its children whatever
+            // width they ask for, and a `Label` asks for the whole string
+            // on one line. English fits; "Aktualisierung fehlgeschlagen"
+            // does not, so the row grew wider than the cover, centring put
+            // the overhang on both sides, and the German read as a phrase
+            // with its head and tail cut off. Forty catalogues means this
+            // was never going to be a question of picking shorter English.
+            //
+            // Bounded instead of elided: a cover has the room going UP, and
+            // the row hangs off its bottom edge, so a second line pushes the
+            // top of the row up into texture the mask has already given up
+            // and leaves the gap to the refresh icon exactly as it was.
+            // `Math.min` keeps a line that does fit at its natural width,
+            // so short strings still centre as a tight row rather than a
+            // centred block in a full-width box.
+            width: Math.min(implicitWidth, cover.width
+                            - Theme.paddingMedium * 2
+                            - statusSlot.width - status.spacing)
+            wrapMode: Text.Wrap
+            horizontalAlignment: Text.AlignHCenter
+            // Three lines of extra-small text is most of the room between
+            // the count and the action strip; past that the line is cut,
+            // which is at least cut at one end and on a word.
+            maximumLineCount: 3
+            elide: Text.ElideRight
         }
     }
 

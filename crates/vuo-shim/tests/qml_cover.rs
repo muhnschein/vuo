@@ -56,6 +56,12 @@ const PROBE_QML: &str = r"
             loader.item.syncError = text
             return 'ok'
         }
+        function narrow(width) { loader.item.width = width; return 'ok' }
+        function fits() {
+            var row = findIn(loader.item, 'syncStatus')
+            if (!row) { return 'missing:syncStatus' }
+            return row.width <= loader.item.width ? 'fits' : 'overflows'
+        }
     }
 ";
 
@@ -211,6 +217,33 @@ fn the_cover_names_the_mask_for_its_count_and_says_how_sync_is() {
         "the texture must give the status line room while it is shown"
     );
     assert_eq!(get!("syncStatusLabel", "text"), "Refreshing");
+
+    // The line never runs off the cover's edges.
+    //
+    // A `Row` centred on the cover hands a `Label` whatever width it asks
+    // for, and a `Label` asks for its whole string on one line; the German
+    // for "Refresh failed" is half again as wide as the cover, so the row
+    // grew past both edges and the phrase was clipped at BOTH ends. The
+    // catalogue that broke it is not the one this test can load, so the
+    // cover is squeezed instead until English cannot fit either: the rule
+    // is geometric, and so is the check.
+    assert_eq!(
+        call!("fits"),
+        "fits",
+        "the status row must fit at full width"
+    );
+    assert_eq!(call!("narrow", 120), "ok");
+    assert_eq!(
+        call!("fits"),
+        "fits",
+        "the status row must stay inside a cover too narrow for its line"
+    );
+    assert!(
+        number!(get!("syncStatusLabel", "lineCount")) > 1.0,
+        "a line that cannot fit must wrap rather than overflow"
+    );
+    assert_eq!(call!("narrow", 240), "ok");
+
     assert_eq!(
         get!("unreadTotal", "text"),
         "4",
