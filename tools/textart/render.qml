@@ -45,13 +45,16 @@ Window {
     FontLoader { id: filler; source: "SailSansPro-Light.ttf" }
 
     // A cover is 234x374 at pixel ratio 1 -- an aspect of about 0.626 -- and
-    // at most 1.75 times that on the phones Sailfish ships on. 512x768 is
-    // the smallest 2:3 master that still only scales DOWN on a cover at
-    // ratio 2, and being wider than any cover it is always trimmed at the
-    // sides, never the top or bottom, so a height on the master is the same
-    // fraction of the height on every cover.
-    readonly property int coverWidth: 512
-    readonly property int coverHeight: 768
+    // at most 1.75 times that (410x655) on the phones Sailfish ships on.
+    // 480x720 is the smallest 2:3 master that still only scales DOWN on
+    // every one of those, and a hundred and one of them is what the set
+    // costs on disk, so it is not larger; a phone at ratio 2, should one
+    // come, would scale it up by four percent. Being wider than any cover
+    // it is always trimmed at the sides, never the top or bottom, so a
+    // height on the master is the same fraction of the height on every
+    // cover.
+    readonly property int coverWidth: 480
+    readonly property int coverHeight: 720
 
     /// One cover master. `key` is the count, or "99+".
     function coverJob(key) {
@@ -72,7 +75,13 @@ Window {
             // so the fraction holds; the digits are centred above it.
             reservedBottom: Math.round(win.coverHeight * 80 / 374),
             levelOffset: 0.6,
-            topsFaceSource: true
+            topsFaceSource: true,
+            // The halo: full strength on the digits, easing down to the
+            // cover's usual 0.55 six lines out. The cover draws the mask at
+            // full ink, so the sweeps look as they always did and the
+            // number glows.
+            farInk: 0.55,
+            haloReach: 6
         }
     }
 
@@ -125,6 +134,8 @@ Window {
         reservedBottom: win.job && win.job.reservedBottom ? win.job.reservedBottom : 0
         levelOffset: win.job && win.job.levelOffset ? win.job.levelOffset : 0.5
         topsFaceSource: win.job && win.job.topsFaceSource ? true : false
+        farInk: win.job && win.job.farInk ? win.job.farInk : 1.0
+        haloReach: win.job && win.job.haloReach ? win.job.haloReach : 0
         ink: 1.0
         colour: "white"
         visible: false

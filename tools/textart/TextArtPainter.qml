@@ -155,6 +155,15 @@ Canvas {
     /// from it. The painter's sweeps have always faced away; the cover's
     /// masters face in, so the lines beneath the number read upright.
     property bool topsFaceSource: false
+    /// A halo: the lines are painted at full strength where they touch the
+    /// digits and ease down to `farInk` of it over `haloReach` line
+    /// spacings, so the number is the brightest thing on the cover and the
+    /// sweeps recede from it. Off while `haloReach` is 0, or with no
+    /// obstacle. Baked into the mask, since the app's shader knows nothing
+    /// of where the digits are; the app then draws the mask at full ink and
+    /// the far lines come out as they did at `farInk`.
+    property real farInk: 1.0
+    property real haloReach: 0
 
     // --------------------------------------------- room for what sits on top
 
@@ -189,7 +198,7 @@ Canvas {
         art.strokes.length,
         art.obstacle, art.obstacleFont, art.obstacleGap, art.obstacleMaxWidth,
         art.obstacleMaxHeight, art.fitAspect, art.reservedBottom,
-        art.levelOffset, art.topsFaceSource
+        art.levelOffset, art.topsFaceSource, art.farInk, art.haloReach
     ].join(",")
     on_KeyChanged: art.restart()
 
@@ -1070,6 +1079,20 @@ Canvas {
     /// band at the top and inside the disc.
     function weightAt(x, y) {
         var w = 1
+        var O = art._obstacle
+        if (O && art.haloReach > 0) {
+            // The nearest texel of the digits' distance is enough for the
+            // strength of one run of glyphs; smoothstep, so the ring that
+            // touches the digits is plainly the brightest and the fall-off
+            // has no edge of its own.
+            var ix = Math.round(x), iy = Math.round(y)
+            if (ix < 0) { ix = 0 } else if (ix >= O.w) { ix = O.w - 1 }
+            if (iy < 0) { iy = 0 } else if (iy >= O.h) { iy = O.h - 1 }
+            var t = O.dd[iy * O.w + ix] / (art.haloReach * art.spacing)
+            if (t < 0) { t = 0 } else if (t > 1) { t = 1 }
+            var eased = t * t * (3 - 2 * t)
+            w = 1 - (1 - art.farInk) * eased
+        }
         if (art.fadeTo > art.fadeFrom) {
             var f = (y - art.fadeFrom) / (art.fadeTo - art.fadeFrom)
             if (f < w) { w = f }
@@ -1111,6 +1134,15 @@ Canvas {
             var r = Math.sqrt(dx * dx + dy * dy)
             if (r > art.clearRadius - art.glyph
                     && r < art.clearRadius + art.clearFeather + art.glyph) {
+                fading = true
+            }
+        }
+        var O = art._obstacle
+        if (O && art.haloReach > 0) {
+            var ix = Math.round(x), iy = Math.round(y)
+            if (ix < 0) { ix = 0 } else if (ix >= O.w) { ix = O.w - 1 }
+            if (iy < 0) { iy = 0 } else if (iy >= O.h) { iy = O.h - 1 }
+            if (O.dd[iy * O.w + ix] < art.haloReach * art.spacing) {
                 fading = true
             }
         }
