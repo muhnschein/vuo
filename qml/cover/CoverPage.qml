@@ -23,7 +23,10 @@ import "../components"
  * Sync has lost the heading it used to speak under, so it says its piece in
  * the strip just above the action area instead: a spinner while refreshing,
  * a warning for a few seconds after a refresh fails, and a fixed line of
- * text beside either. It is never the server's text (§9.3).
+ * text beside either. It is never the server's text (§9.3). That is the one
+ * thing that does get drawn over the texture, so it brings its own ground
+ * with it: a gradient that comes and goes with the status and darkens the
+ * foot of the cover, under both the line and the action strip.
  *
  * A cover is drawn while the app is NOT the active window, which is the source
  * of most of the care below -- see the BusyIndicator note.
@@ -59,6 +62,11 @@ CoverBackground {
     /// One expression, so the failure trigger below cannot get out of step
     /// with what counts as a failure.
     property string _errorToken: cover.syncErrorIsAuth ? "auth" : cover.syncError
+
+    /// True while sync has a word to say -- a spinner or a warning. The
+    /// status row and the scrim underneath it both hang off this, so the
+    /// backing cannot appear without the thing it backs, or outlast it.
+    readonly property bool hasStatus: cover.syncing || cover._showFailure
 
     on_ErrorTokenChanged: {
         if (cover._errorToken.length > 0) {
@@ -102,6 +110,52 @@ CoverBackground {
         ink: 1.5
     }
 
+    // A scrim up the bottom of the cover, between the texture and the
+    // furniture drawn over it -- the status line, and the refresh action
+    // the system paints in its own strip below that. The texture is a
+    // full-strength drift of lines with the count's ink driven past full
+    // in it, and a line of small secondary-coloured text laid straight on
+    // top of that had nothing to sit on.
+    //
+    // It is there only while there is a status to read. The count is what
+    // the cover is for and it is read against the bare pattern the rest of
+    // the time, so this is `visible`, not a permanent transparent layer at
+    // zero alpha: an invisible item is not rendered at all, and a cover
+    // repaints on a phone that is doing nothing else.
+    //
+    // Both stops are the ambience's own overlay colour and differ only in
+    // alpha. A gradient interpolates straight through RGBA, so easing out
+    // of the literal `"transparent"` -- which is transparent BLACK -- would
+    // drag a light ambience's scrim through grey on the way up.
+    Rectangle {
+        id: statusScrim
+        objectName: "statusScrim"
+        anchors {
+            left: parent.left
+            right: parent.right
+            bottom: parent.bottom
+        }
+        // Tall enough that the ramp is well above the status row rather
+        // than a visible edge behind it: the row sits one action strip and
+        // a little up from the bottom.
+        height: Theme.itemSizeSmall * 3
+        visible: cover.hasStatus
+        gradient: Gradient {
+            GradientStop {
+                position: 0
+                color: Theme.rgba(Theme.overlayBackgroundColor, 0)
+            }
+            GradientStop {
+                position: 0.55
+                color: Theme.rgba(Theme.overlayBackgroundColor, Theme.opacityLow)
+            }
+            GradientStop {
+                position: 1
+                color: Theme.rgba(Theme.overlayBackgroundColor, Theme.opacityOverlay)
+            }
+        }
+    }
+
     // The count as DATA, for anything that reads the cover rather than
     // looks at it. Never drawn: the art already says it.
     Label {
@@ -123,7 +177,7 @@ CoverBackground {
             bottomMargin: Theme.itemSizeSmall + Theme.paddingSmall
         }
         spacing: Theme.paddingSmall
-        visible: cover.syncing || cover._showFailure
+        visible: cover.hasStatus
 
         Item {
             id: statusSlot

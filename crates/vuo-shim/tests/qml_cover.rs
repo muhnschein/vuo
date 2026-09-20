@@ -182,14 +182,28 @@ fn the_cover_names_the_mask_for_its_count_and_says_how_sync_is() {
     );
 
     // ------------------------------------------------------- what sync says
+    // The scrim under the status line comes and goes with it. It is the one
+    // thing drawn over the texture, so while the cover is only counting it
+    // must not be drawn at all -- `visible`, not a transparent layer left
+    // permanently in the scene.
     assert_eq!(
         get!("syncStatus", "visible"),
         "false",
         "nothing to say while sync is idle and well"
     );
+    assert_eq!(
+        get!("statusScrim", "visible"),
+        "false",
+        "the scrim must not sit on the texture while there is no status to back"
+    );
     assert_eq!(get!("syncStatusLabel", "text"), "");
     assert_eq!(call!("syncing", true), "ok");
     assert_eq!(get!("syncStatus", "visible"), "true");
+    assert_eq!(
+        get!("statusScrim", "visible"),
+        "true",
+        "the status line must have its ground under it while it is shown"
+    );
     assert_eq!(get!("syncStatusLabel", "text"), "Refreshing");
     assert_eq!(
         get!("unreadTotal", "text"),
@@ -199,6 +213,11 @@ fn the_cover_names_the_mask_for_its_count_and_says_how_sync_is() {
     mask!("4");
     assert_eq!(call!("syncing", false), "ok");
     assert_eq!(get!("syncStatus", "visible"), "false");
+    assert_eq!(
+        get!("statusScrim", "visible"),
+        "false",
+        "the scrim must go when the status it backs does"
+    );
     assert_eq!(get!("syncStatusLabel", "text"), "");
 
     // §9.3: the server's own words never reach the cover.
@@ -211,6 +230,11 @@ fn the_cover_names_the_mask_for_its_count_and_says_how_sync_is() {
         "ok"
     );
     assert_eq!(get!("syncStatus", "visible"), "true");
+    assert_eq!(
+        get!("statusScrim", "visible"),
+        "true",
+        "a warning needs the same ground under it as a spinner"
+    );
     assert_eq!(
         get!("syncStatusLabel", "text"),
         "Refresh failed",
