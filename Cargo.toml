@@ -98,7 +98,23 @@ qmetaobject = { path = "third_party/qmetaobject" }
 [profile.release]
 # The device build is size-sensitive; a phone does not need 16 codegen units'
 # worth of parallel compilation more than it needs a smaller binary.
-opt-level = "z"
+#
+# `s` rather than `z`, and the difference is a battery one. `z` additionally
+# turns off loop vectorisation, which is not free here: the hot paths are all
+# bursts of exactly the work vectorisation helps -- html5ever tokenising a
+# corpus of article bodies, serde_json over a 250-entry page, base64 over a
+# feed's icons, SQLite's own C. A phone finishing that work sooner and
+# returning to idle uses less energy than one grinding through it longer at
+# the same clock, so the size `z` saves is paid for in CPU-seconds on every
+# sync. `s` keeps the size discipline -- no inlining explosion, still far
+# below the default -- without that particular cut.
+#
+# Measured on a host x86_64 release build of harbour-vuo, which is the closest
+# proxy available without the SDK: 4,675,696 bytes at `z` against 4,803,632 at
+# `s`. 125 KB, or 2.7%. If the device build ever needs that back, this is the
+# line to reconsider -- but reconsider it against a measurement of the sync
+# path's CPU time, not on the size alone.
+opt-level = "s"
 lto = true
 codegen-units = 1
 panic = "abort"

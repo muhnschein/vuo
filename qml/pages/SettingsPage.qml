@@ -52,6 +52,7 @@ Page {
         refreshCombo.currentIndex = settings.syncIntervalIndex
         markReadCombo.currentIndex = settings.markReadDelayIndex
         retentionCombo.currentIndex = settings.retentionIndex
+        wifiOnlySwitch.checked = settings.wifiOnly
         caSwitch.checked = settings.useCustomCa
         page.ready = true
     }
@@ -212,6 +213,17 @@ Page {
                 text: qsTr("How often Vuo fetches from your Miniflux server while it is open or on the cover. How often the server itself checks your feeds is set on the server, not here.")
             }
 
+            // Consulted only for the work Vuo starts BY ITSELF. Anything the
+            // reader asks for -- the pulley's Refresh, the cover's, adding a
+            // feed -- goes out whatever the connection, which is why the
+            // description below says "on its own" rather than "never".
+            TextSwitch {
+                id: wifiOnlySwitch
+                text: qsTr("Only sync on Wi-Fi")
+                description: qsTr("Vuo syncs on its own only over Wi-Fi, and waits on a mobile connection. A refresh you ask for yourself is always sent.")
+                onClicked: settings.wifiOnly = checked
+            }
+
             // The mirror is a cache of the server, and nothing ever removed
             // anything from it: a phone that had read a year of feeds still
             // held every article body it had ever seen. This is the only
@@ -247,13 +259,13 @@ Page {
                 text: qsTr("Older articles you have already read are removed from this phone at the end of a sync. Favourites, unread articles and anything not yet sent to the server are always kept, and nothing is removed from your Miniflux server.")
             }
 
-            // "Only on Wi-Fi" used to sit here. It is gone rather than hidden:
-            // it was not a control for an absent package, it was a control for
-            // absent CODE -- nothing in the sync or transport path has ever
-            // read `wifi_only`. Hiding it would still have shipped a switch
-            // that does nothing on a device that HAS the sync package. The
-            // stored field is kept so the value survives for whenever the
-            // behaviour is actually implemented.
+            // "Only on Wi-Fi" used to sit here, and was removed because it
+            // was a control for absent CODE: nothing in the sync path read
+            // `wifi_only`, so the switch moved a value nobody consulted. The
+            // stored field was kept "for whenever the behaviour is actually
+            // implemented", which is what the switch above now is -- it sits
+            // in the Synchronisation section, beside the cadence it qualifies,
+            // rather than back down here.
 
             SectionHeader { text: qsTr("Advanced") }
 

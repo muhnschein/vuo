@@ -54,6 +54,7 @@ pub mod content;
 pub mod db;
 pub mod error;
 pub mod model;
+pub mod net;
 pub mod redact;
 pub mod sync;
 
