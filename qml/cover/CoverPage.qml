@@ -24,9 +24,11 @@ import "../components"
  * the strip just above the action area instead: a spinner while refreshing,
  * a warning for a few seconds after a refresh fails, and a fixed line of
  * text beside either. It is never the server's text (§9.3). That is the one
- * thing that does get drawn over the texture, so it brings its own ground
- * with it: a gradient that comes and goes with the status and darkens the
- * foot of the cover, under both the line and the action strip.
+ * thing that does get drawn over the texture, so while it is there the
+ * TEXTURE GETS OUT OF ITS WAY: the mask sinks away towards the foot of the
+ * cover, further the nearer the bottom edge, and the line sits in what it
+ * leaves behind. Nothing is laid on top -- a wash over the pattern would
+ * still be a thing drawn on the cover, and the cover is the pattern.
  *
  * A cover is drawn while the app is NOT the active window, which is the source
  * of most of the care below -- see the BusyIndicator note.
@@ -64,9 +66,20 @@ CoverBackground {
     property string _errorToken: cover.syncErrorIsAuth ? "auth" : cover.syncError
 
     /// True while sync has a word to say -- a spinner or a warning. The
-    /// status row and the scrim underneath it both hang off this, so the
-    /// backing cannot appear without the thing it backs, or outlast it.
+    /// status row and the texture's retreat behind it both hang off this,
+    /// so the room cannot open without the thing it is made for, or
+    /// outlast it.
     readonly property bool hasStatus: cover.syncing || cover._showFailure
+
+    /// How far above the bottom edge sync speaks.
+    ///
+    /// The cover-action strip is `Theme.itemSizeSmall` tall and the refresh
+    /// button is drawn inside it, so clearing the strip is not the same as
+    /// clearing the button: at one `paddingSmall` the line sat on the icon.
+    /// The row and the band the texture gives up both measure from here, so
+    /// moving the line moves the room made for it.
+    readonly property real statusBaseline:
+        Theme.itemSizeSmall + Theme.paddingLarge * 2
 
     on_ErrorTokenChanged: {
         if (cover._errorToken.length > 0) {
@@ -108,52 +121,19 @@ CoverBackground {
         // number is the brightest thing here and the sweeps recede from
         // it. See tools/textart/render.qml.
         ink: 1.5
-    }
 
-    // A scrim up the bottom of the cover, between the texture and the
-    // furniture drawn over it -- the status line, and the refresh action
-    // the system paints in its own strip below that. The texture is a
-    // full-strength drift of lines with the count's ink driven past full
-    // in it, and a line of small secondary-coloured text laid straight on
-    // top of that had nothing to sit on.
-    //
-    // It is there only while there is a status to read. The count is what
-    // the cover is for and it is read against the bare pattern the rest of
-    // the time, so this is `visible`, not a permanent transparent layer at
-    // zero alpha: an invisible item is not rendered at all, and a cover
-    // repaints on a phone that is doing nothing else.
-    //
-    // Both stops are the ambience's own overlay colour and differ only in
-    // alpha. A gradient interpolates straight through RGBA, so easing out
-    // of the literal `"transparent"` -- which is transparent BLACK -- would
-    // drag a light ambience's scrim through grey on the way up.
-    Rectangle {
-        id: statusScrim
-        objectName: "statusScrim"
-        anchors {
-            left: parent.left
-            right: parent.right
-            bottom: parent.bottom
-        }
-        // Tall enough that the ramp is well above the status row rather
-        // than a visible edge behind it: the row sits one action strip and
-        // a little up from the bottom.
-        height: Theme.itemSizeSmall * 3
-        visible: cover.hasStatus
-        gradient: Gradient {
-            GradientStop {
-                position: 0
-                color: Theme.rgba(Theme.overlayBackgroundColor, 0)
-            }
-            GradientStop {
-                position: 0.55
-                color: Theme.rgba(Theme.overlayBackgroundColor, Theme.opacityLow)
-            }
-            GradientStop {
-                position: 1
-                color: Theme.rgba(Theme.overlayBackgroundColor, Theme.opacityOverlay)
-            }
-        }
+        // The room for the status line, made by the texture rather than
+        // over it: the mask runs out towards the bottom edge while sync has
+        // something to say, and is whole again the moment it stops. The
+        // band is twice the height the line sits at, so the line lands
+        // around the middle of the ramp with the pattern already well
+        // thinned under it and the very foot of the cover nearly bare.
+        //
+        // Off means both at zero, not a band of no height at the bottom:
+        // the shader's test is `fadeOutTo > fadeOutFrom`.
+        fadeOutFrom: cover.hasStatus
+                     ? cover.height - cover.statusBaseline * 2 : 0
+        fadeOutTo: cover.hasStatus ? cover.height : 0
     }
 
     // The count as DATA, for anything that reads the cover rather than
@@ -174,7 +154,7 @@ CoverBackground {
         anchors {
             horizontalCenter: parent.horizontalCenter
             bottom: parent.bottom
-            bottomMargin: Theme.itemSizeSmall + Theme.paddingSmall
+            bottomMargin: cover.statusBaseline
         }
         spacing: Theme.paddingSmall
         visible: cover.hasStatus

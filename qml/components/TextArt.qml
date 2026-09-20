@@ -24,18 +24,20 @@ import Sailfish.Silica 1.0
  * own colour, so one file is right on every ambience -- a light one included,
  * where a white picture would be invisible -- and there is nothing to
  * regenerate when Sailfish gains another. The same shader dims the mask to
- * `ink` and cuts the two holes the app needs in it, both of which are
+ * `ink` and cuts the three shapes the app needs in it, all of which are
  * geometry only the app knows:
  *
  *   - a band at the top the texture fades in beneath (`fadeFrom`..`fadeTo`),
  *     for a heading to sit in;
  *   - a disc it fades out of (`clearRadius` around `clearX`, `clearY`), for
- *     a title in the middle.
+ *     a title in the middle;
+ *   - a band at the foot it sinks away into (`fadeOutFrom`..`fadeOutTo`),
+ *     for the cover's status line.
  *
- * Both are off by default, and the cover uses neither: the room for its
- * count is painted into its masks. Cutting them here rather than baking
- * them in keeps the disc exactly where the page's title actually is rather
- * than where it was guessed to.
+ * All three are off by default. Cutting them here rather than baking them
+ * in keeps the disc exactly where the page's title actually is rather than
+ * where it was guessed to, and lets the cover's foot come and go with the
+ * thing it is making room for.
  *
  * The mask keeps its own proportions and is centred, never stretched: the
  * shader crops it to whatever shape it is asked to fill, which is why one
@@ -60,6 +62,17 @@ Item {
     /// `fadeTo` down. Off while `fadeTo <= fadeFrom`.
     property real fadeFrom: 0
     property real fadeTo: 0
+
+    /// The band at the foot: full strength above `fadeOutFrom`, nothing from
+    /// `fadeOutTo` down. Off while `fadeOutTo <= fadeOutFrom`.
+    ///
+    /// The ramp is EASED rather than straight -- the mask keeps most of its
+    /// strength through the top of the band and gives the rest up quickly
+    /// near the bottom, which is what a texture running out towards the
+    /// foot looks like. A linear ramp reads as a flat wash laid over the
+    /// pattern instead of the pattern itself going.
+    property real fadeOutFrom: 0
+    property real fadeOutTo: 0
 
     /// The disc: nothing within `clearRadius` of `clearX`, `clearY`, full
     /// strength `clearFeather` beyond it. Off while `clearRadius` is 0.
@@ -96,6 +109,8 @@ Item {
                                  : 1
         property real fadeFrom: art.fadeFrom
         property real fadeTo: art.fadeTo
+        property real fadeOutFrom: art.fadeOutFrom
+        property real fadeOutTo: art.fadeOutTo
         property variant clearAt: Qt.point(art.clearX, art.clearY)
         property real clearRadius: art.clearRadius
         property real clearFeather: art.clearFeather
@@ -112,6 +127,8 @@ Item {
             uniform highp float srcAspect;
             uniform highp float fadeFrom;
             uniform highp float fadeTo;
+            uniform highp float fadeOutFrom;
+            uniform highp float fadeOutTo;
             uniform highp vec2 clearAt;
             uniform highp float clearRadius;
             uniform highp float clearFeather;
@@ -134,6 +151,11 @@ Item {
                 highp vec2 px = qt_TexCoord0 * size;
                 if (fadeTo > fadeFrom) {
                     a *= clamp((px.y - fadeFrom) / (fadeTo - fadeFrom), 0.0, 1.0);
+                }
+                if (fadeOutTo > fadeOutFrom) {
+                    highp float sink = clamp((fadeOutTo - px.y)
+                                             / (fadeOutTo - fadeOutFrom), 0.0, 1.0);
+                    a *= sink * sink;
                 }
                 if (clearRadius > 0.0) {
                     a *= clamp((distance(px, clearAt) - clearRadius)

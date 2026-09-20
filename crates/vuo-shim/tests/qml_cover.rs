@@ -182,27 +182,33 @@ fn the_cover_names_the_mask_for_its_count_and_says_how_sync_is() {
     );
 
     // ------------------------------------------------------- what sync says
-    // The scrim under the status line comes and goes with it. It is the one
-    // thing drawn over the texture, so while the cover is only counting it
-    // must not be drawn at all -- `visible`, not a transparent layer left
-    // permanently in the scene.
+    // The room for the status line is made by the TEXTURE, which runs out
+    // towards the foot of the cover while there is something to read there
+    // and is whole again afterwards. Nothing is laid over the pattern, so
+    // what this checks is the mask's own band, not a layer.
+    macro_rules! sinks {
+        ($expected:expr, $why:expr) => {{
+            let from = number!(get!("textArt", "fadeOutFrom"));
+            let to = number!(get!("textArt", "fadeOutTo"));
+            assert_eq!(to > from, $expected, "{}: {from} to {to}", $why);
+        }};
+    }
+
     assert_eq!(
         get!("syncStatus", "visible"),
         "false",
         "nothing to say while sync is idle and well"
     );
-    assert_eq!(
-        get!("statusScrim", "visible"),
-        "false",
-        "the scrim must not sit on the texture while there is no status to back"
+    sinks!(
+        false,
+        "the texture must be whole while there is no status to make room for"
     );
     assert_eq!(get!("syncStatusLabel", "text"), "");
     assert_eq!(call!("syncing", true), "ok");
     assert_eq!(get!("syncStatus", "visible"), "true");
-    assert_eq!(
-        get!("statusScrim", "visible"),
-        "true",
-        "the status line must have its ground under it while it is shown"
+    sinks!(
+        true,
+        "the texture must give the status line room while it is shown"
     );
     assert_eq!(get!("syncStatusLabel", "text"), "Refreshing");
     assert_eq!(
@@ -213,10 +219,9 @@ fn the_cover_names_the_mask_for_its_count_and_says_how_sync_is() {
     mask!("4");
     assert_eq!(call!("syncing", false), "ok");
     assert_eq!(get!("syncStatus", "visible"), "false");
-    assert_eq!(
-        get!("statusScrim", "visible"),
-        "false",
-        "the scrim must go when the status it backs does"
+    sinks!(
+        false,
+        "the texture must come back when the status it made room for goes"
     );
     assert_eq!(get!("syncStatusLabel", "text"), "");
 
@@ -230,11 +235,7 @@ fn the_cover_names_the_mask_for_its_count_and_says_how_sync_is() {
         "ok"
     );
     assert_eq!(get!("syncStatus", "visible"), "true");
-    assert_eq!(
-        get!("statusScrim", "visible"),
-        "true",
-        "a warning needs the same ground under it as a spinner"
-    );
+    sinks!(true, "a warning needs the same room as a spinner");
     assert_eq!(
         get!("syncStatusLabel", "text"),
         "Refresh failed",
