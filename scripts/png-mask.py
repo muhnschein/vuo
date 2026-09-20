@@ -7,9 +7,11 @@ keeps the alpha channel as the single channel of a grayscale PNG, which is
 what qml/components/TextArt.qml samples and tints.
 
 The coverage is quantised on the way, because it is antialiasing rather than
-photography: sixteen levels are indistinguishable once the app has multiplied
-them by an ink of about a half, and they cost a little over half of what the
-full range does -- measured at 960 KiB against 558 KiB for the page.
+photography: eight levels are indistinguishable once the app has multiplied
+them by an ink of about a half, and they cost well under half of what the
+full range does. Sixteen were measured at 960 KiB against 558 KiB for the
+page; eight take a further fifth off, which matters now that the cover ships
+a hundred and one masks rather than one.
 
 Pure standard library on purpose. This runs from `make textart`, which a
 contributor may run on any machine, and a Pillow that has to be installed
@@ -157,7 +159,7 @@ def write_gray(path, width, height, gray):
     open(path, "wb").write(body)
 
 
-LEVELS = 16
+LEVELS = 8
 
 
 def quantise(values, levels):
