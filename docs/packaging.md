@@ -209,7 +209,8 @@ build needs neither of the tools:
 | File | Made by | Needs |
 | --- | --- | --- |
 | `translations/*.qm` | `lrelease` | Qt's linguist tools |
-| `qml/art/*.png` | `make textart` | a QML runtime and a display (or `xvfb`) |
+| `qml/art/onboarding.png` | `make textart` (`scripts/render-textart.sh onboarding`) | a QML runtime and a display (or `xvfb`) |
+| `qml/art/cover/*.png` | `make textart` (`scripts/render-textart.sh cover`) | the same, plus the digits' font; the device's own font if you have it |
 | `store/cover.png` | `scripts/render-store-cover.sh` | the same, plus two font files |
 
 The art is the texture the cover and the onboarding page wear: nested curves
@@ -222,10 +223,69 @@ painter and is **not** installed.
 What ships is a **coverage mask** -- one grayscale channel, no colour -- which
 `qml/components/TextArt.qml` tints with the theme's own colour. One file is
 therefore right on every ambience, a light one included, and there is nothing
-to regenerate when Sailfish gains another. The same shader dims it and cuts
-the two holes the app needs: the band the cover's heading sits in, and the
-disc the onboarding page's title sits in. Both are geometry the app knows and
-the painter does not, so neither is baked in.
+to regenerate when Sailfish gains another. The same shader dims it and can cut
+two holes in it: a band at the top for a heading, and a disc for the
+onboarding page's title. Both are geometry the app knows and the painter does
+not, so neither is baked in.
+
+### The cover's set
+
+On the cover the unread count is **negative space**: the lines of text flow
+around the digits, hug their outline, and a few lines out are the usual
+sweeps again. Nothing is drawn inside the digits and nothing is drawn on top
+of the texture. That means the whole background depends on the number, so
+the cover is not one mask but a set, `qml/art/cover/0.png` … `99.png` and
+`99+.png` -- every count from 0 to 99 and one for everything past that. The
+cover names the one for its count (`CoverPage.qml`, `countKey`) and the
+count itself is still there as data, in an invisible `unreadTotal` label.
+
+Three ways of packaging that were weighed; this is the first:
+
+| | Masks | Installed | Costs on the phone |
+| --- | --- | --- | --- |
+| **0–99 plus "99+"** (chosen) | 101 | about 6.5 MB | nothing: one image load, from Qt's pixmap cache between covers |
+| 0–999 plus "999+" | 1001 | about 70 MB | nothing, but too large for a Harbour package |
+| paint on the device, cache per count | 0 | a cache | a second or so of a core every time the count changes, memory for the field and the canvas, and the device-side painting this art was retired from |
+
+"Art is shipped, never drawn" is the rule the first keeps, and the megabytes
+are the whole of its price. Two things keep them few: the master is
+512×768, the smallest 2:3 size that still only scales *down* on a cover at
+pixel ratio 2 (a cover is 234×374 at ratio 1; 480×720 was tried and looked
+grainy on a phone), and `scripts/png-mask.py` quantises coverage to sixteen
+levels, which is indistinguishable from the full range at well under half
+the size. Eight levels were tried and are grainy, because the halo below
+leaves the far lines few levels to be antialiased in; JPEG was measured and
+is two to three times larger at any quality that does not ring. The cap is
+99, not the 999 the old label had: the digits are set large enough to read
+from across a room, and three of them do not fit.
+
+The masks also carry a **halo**: the lines are painted at full strength
+where they touch the digits and ease down to 0.55 / 1.5 of it six line
+spacings out. The cover draws its masks at an ink of 1.5, so the far lines
+land at the 0.55 everything else is drawn at, and the lines on the digits
+are driven past full: the shader's output saturates there, which makes the
+thin glyphs bolder and brighter than a mask alone could, and the number is
+the brightest thing on the cover.
+
+The digits are Fira Sans **ExtraBold** (SIL OFL), which `render-textart.sh`
+fetches over TLS into the gitignored `.fonts/` as the store cover's script
+does its two, with `VUO_FONT_DIR` to point it elsewhere. Black was tried and
+rejected: the counter of the 4 closes up at that weight and the digit reads
+as a solid shape. The digits are only a silhouette, so the difference between
+this face and the device's own does not show.
+
+The placement rests on one number that should be **checked on a device**:
+`tools/textart/render.qml` takes the cover-action strip to be
+`Theme.itemSizeSmall` (80 at ratio 1) of a 374-tall cover, about 0.214 of
+its height, and centres the digits' ink in the height above it. Both scale
+with the pixel ratio, so the fraction should hold everywhere; a screenshot of
+a stock cover with one action, measured, is what would confirm it.
+
+`scripts/render-textart.sh cover:42` paints one count, for looking at a
+change to the painter before running it over all hundred and one; a full
+`cover` run replaces the directory. The painter refuses any master on which
+two lines of text run over one another, so the whole set is checked as it is
+made.
 
 `store/` is the Harbour Store page's own assets and is **not installed** --
 nothing in either spec touches it. `store/cover.png` is the 1080x540 banner at
@@ -235,12 +295,17 @@ page and the app look like one thing. Its wordmark is Fira Sans (SIL OFL); the
 script fetches the two files it needs and `.gitignore` keeps them out of the
 tree, since the rendered PNG is what is tracked.
 
-One caveat, stated because it cannot be fixed here: **the masks are not
-rendered in the device's own font.** Sail Sans Pro ships with SailfishOS and
-is not redistributable, so whichever machine runs `make textart` renders them
-with its default sans instead. At these sizes the letters are texture rather
-than reading matter and the pattern is identical, but it is the one respect
-in which the shipped art is not what the device would have drawn for itself.
+One caveat about the filler's face. Sail Sans Pro ships with SailfishOS and
+is not redistributable, so the script never fetches it and it is never
+committed. Put a copy of `/usr/share/fonts/sail-sans-pro/SailSansPro-Light.ttf`
+from a phone into the font directory by hand and `render-textart.sh` sets
+the filler in it, which is how the cover's set was made; without it, the
+host renders whatever its fontconfig calls "Sail Sans Pro", in practice its
+default sans, which is how `onboarding.png` was made. At these sizes the
+letters are texture rather than reading matter and the pattern is the same
+either way. It does mean two machines need not paint byte-identical masks,
+so regenerate a set only when the painter or its inputs change, and
+regenerate the whole set when you do.
 
 ## The sandbox
 

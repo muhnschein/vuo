@@ -6,13 +6,24 @@ import "../components"
  * What the cover has to say while the app is minimised: how much is unread,
  * and whether sync is in trouble.
  *
- * The heading is laid out as the platform's own covers lay theirs out, and
- * with postivene's measures exactly: the name top left with a line under it,
- * the two set close, and the number top right, large. The rest of the cover
- * is texture, after Jolla's own packaging -- see components/TextArt.qml. The
- * text is filler and means nothing; the count is the message, and the
- * texture is what makes the cover Vuo's rather than a number on a plain
- * ground.
+ * The count is NEGATIVE SPACE. The whole cover is texture, after Jolla's own
+ * packaging -- see components/TextArt.qml -- and the number is the part of
+ * it where the lines are not: they hug the outline of each digit, and a few
+ * lines out they have forgotten it and are the usual sweeps. Nothing is
+ * drawn inside the digits, and nothing is drawn on top of the texture; the
+ * number is not a label, and it is not a hole cut in the pattern. It is what
+ * the pattern was painted around.
+ *
+ * That makes the texture a SET of masks rather than one: every count from 0
+ * to 99 has its own, and everything past that shares "99+". The digits' ink
+ * is centred across the cover, and centred between the top edge and the
+ * cover-action strip at the bottom, where the reload button is unchanged.
+ * The text is filler and means nothing; the count is the message.
+ *
+ * Sync has lost the heading it used to speak under, so it says its piece in
+ * the strip just above the action area instead: a spinner while refreshing,
+ * a warning for a few seconds after a refresh fails, and a fixed line of
+ * text beside either. It is never the server's text (§9.3).
  *
  * A cover is drawn while the app is NOT the active window, which is the source
  * of most of the care below -- see the BusyIndicator note.
@@ -28,6 +39,14 @@ CoverBackground {
     /// could act on, and the entry list already shows the words.
     property string syncError: ""
     property bool syncErrorIsAuth: false
+
+    /// The count as the art says it, and as the mask for it is named. Two
+    /// digits is what fits at a size that reads from across a room; an
+    /// unread count in the hundreds is an ordinary week for a feed reader,
+    /// and past a hundred the reader is not counting them off a cover
+    /// anyway. A count below zero cannot happen, and is shown as none.
+    readonly property string countKey:
+        cover.unreadCount > 99 ? "99+" : "" + Math.max(0, cover.unreadCount)
 
     /// True for a few seconds after a refresh ends badly.
     ///
@@ -64,136 +83,99 @@ CoverBackground {
         onTriggered: cover._showFailure = false
     }
 
-    // The texture, under everything else -- the same pattern that fills the
-    // onboarding page, at a cover's density. It begins where postivene's
-    // field of faces begins under the same heading -- a large padding below
-    // it -- and fades in over the next tenth of the cover rather than
-    // starting on a hard line.
+    // The texture, which is the whole of the cover: the mask painted around
+    // this count. No fade and no cleared disc -- the room for the number is
+    // already in the mask, and nothing else sits on the texture for long.
     TextArt {
         id: art
         objectName: "textArt"
         anchors.fill: parent
-        source: "../art/cover.png"
-        fadeFrom: heading.y + heading.height + Theme.paddingLarge
-        fadeTo: fadeFrom + cover.height * 0.1
+        source: "../art/cover/" + cover.countKey + ".png"
+        // An ink of 1.5, not the usual 0.55: the cover's masks carry their
+        // own strength -- full where the lines touch the digits, easing
+        // down to 0.55 / 1.5 a few lines out -- so the far lines land at
+        // 0.55 as everywhere else, and the lines on the digits are driven
+        // past full. The shader's output saturates there, which makes the
+        // thin glyphs bolder and brighter than a mask alone could; the
+        // number is the brightest thing here and the sweeps recede from
+        // it. See tools/textart/render.qml.
+        ink: 1.5
     }
 
-    // The name and what the number means, top left; the number top right,
-    // always -- a zero says as much as a count.
-    Column {
-        id: heading
-        objectName: "heading"
+    // The count as DATA, for anything that reads the cover rather than
+    // looks at it. Never drawn: the art already says it.
+    Label {
+        objectName: "unreadTotal"
+        visible: false
+        textFormat: Text.PlainText
+        text: cover.countKey
+    }
+
+    // Where sync speaks: just above the action strip, centred. Exactly one
+    // of the two states occupies the slot, so the spinner cannot be drawn
+    // across the warning; the line beside it is a fixed, translated string.
+    Row {
+        id: status
+        objectName: "syncStatus"
         anchors {
-            top: parent.top
-            left: parent.left
-            right: unreadLabel.left
-            margins: Theme.paddingLarge
-            rightMargin: Theme.paddingMedium
+            horizontalCenter: parent.horizontalCenter
+            bottom: parent.bottom
+            bottomMargin: Theme.itemSizeSmall + Theme.paddingSmall
         }
-        // Postivene's: the two lines set closer than their line boxes would
-        // put them, so they read as one heading.
-        spacing: -Theme.paddingSmall
+        spacing: Theme.paddingSmall
+        visible: cover.syncing || cover._showFailure
+
+        Item {
+            id: statusSlot
+            width: Theme.iconSizeSmall
+            height: statusLabel.height
+            anchors.verticalCenter: parent.verticalCenter
+
+            BusyIndicator {
+                anchors.centerIn: parent
+                running: cover.syncing && !cover._showFailure
+                size: BusyIndicatorSize.ExtraSmall
+                // THE COVER IS NOT THE ACTIVE WINDOW, and Silica's
+                // indicator gates its RotationAnimator on
+                // `_forceAnimation || (visible && Qt.application.active)`
+                // (BusyIndicator.qml:80). On a cover the second half is
+                // always false, so the spinner appeared, sat perfectly
+                // still, and read as a frozen app. `_forceAnimation` is
+                // the escape hatch that predicate is written around.
+                //
+                // Bound to the cover's own status rather than set to
+                // `true`. A plain `true` overrides the `visible` half of
+                // Silica's predicate as well as the `Qt.application.active`
+                // half -- so a sync running with the screen off, or with
+                // another app in front, drove a rotation animation and the
+                // repaints that go with it for nobody. `Cover.Active` is
+                // exactly "this cover is the one being shown", which is
+                // the case the escape hatch was wanted for and the only
+                // case it is now used in.
+                _forceAnimation: cover.status === Cover.Active
+            }
+
+            Image {
+                anchors.centerIn: parent
+                source: "image://theme/icon-s-warning"
+                visible: cover._showFailure
+            }
+        }
 
         Label {
-            objectName: "brand"
-            width: parent.width
+            id: statusLabel
+            objectName: "syncStatusLabel"
+            anchors.verticalCenter: parent.verticalCenter
             textFormat: Text.PlainText
-            text: "Vuo"
-            color: Theme.highlightColor
-            font.pixelSize: Theme.fontSizeMedium
-            truncationMode: TruncationMode.Fade
+            // Fixed, translated strings only -- never the server's error
+            // text. Empty while there is nothing to say, so the row can
+            // hide without a stale word in it.
+            text: cover._showFailure
+                  ? (cover.syncErrorIsAuth ? qsTr("Sign-in failed") : qsTr("Refresh failed"))
+                  : (cover.syncing ? qsTr("Refreshing") : "")
+            font.pixelSize: Theme.fontSizeExtraSmall
+            color: cover._showFailure ? Theme.errorColor : Theme.secondaryHighlightColor
         }
-
-        // The line under the name is where sync speaks. There is no room on a
-        // cover for anything longer, and the count above it must not be
-        // replaced by a spinner: it is the one thing the cover is for.
-        Row {
-            width: parent.width
-            spacing: Theme.paddingSmall
-            // No taller than the line it holds: the icon's slot used to set
-            // the row's height, which pushed this line down from the name by
-            // more than postivene's sits from its own.
-            height: subtitleLabel.height
-
-            // Exactly one of the two states occupies this, so the spinner
-            // cannot be drawn across the warning.
-            Item {
-                id: statusSlot
-                width: cover._showFailure || cover.syncing ? Theme.iconSizeSmall : 0
-                height: subtitleLabel.height
-                anchors.verticalCenter: parent.verticalCenter
-
-                BusyIndicator {
-                    anchors.centerIn: parent
-                    running: cover.syncing && !cover._showFailure
-                    size: BusyIndicatorSize.ExtraSmall
-                    // THE COVER IS NOT THE ACTIVE WINDOW, and Silica's
-                    // indicator gates its RotationAnimator on
-                    // `_forceAnimation || (visible && Qt.application.active)`
-                    // (BusyIndicator.qml:80). On a cover the second half is
-                    // always false, so the spinner appeared, sat perfectly
-                    // still, and read as a frozen app. `_forceAnimation` is
-                    // the escape hatch that predicate is written around.
-                    //
-                    // Bound to the cover's own status rather than set to
-                    // `true`. A plain `true` overrides the `visible` half of
-                    // Silica's predicate as well as the `Qt.application.active`
-                    // half -- so a sync running with the screen off, or with
-                    // another app in front, drove a rotation animation and the
-                    // repaints that go with it for nobody. `Cover.Active` is
-                    // exactly "this cover is the one being shown", which is
-                    // the case the escape hatch was wanted for and the only
-                    // case it is now used in.
-                    _forceAnimation: cover.status === Cover.Active
-                }
-
-                Image {
-                    anchors.centerIn: parent
-                    source: "image://theme/icon-s-warning"
-                    visible: cover._showFailure
-                }
-            }
-
-            Label {
-                id: subtitleLabel
-                objectName: "subtitle"
-                width: parent.width - statusSlot.width - Theme.paddingSmall
-                anchors.verticalCenter: parent.verticalCenter
-                textFormat: Text.PlainText
-                // Fixed, translated strings only -- never the server's error
-                // text.
-                text: cover._showFailure
-                      ? (cover.syncErrorIsAuth ? qsTr("Sign-in failed") : qsTr("Refresh failed"))
-                      : (cover.syncing ? qsTr("Refreshing") : qsTr("Unread"))
-                font.pixelSize: Theme.fontSizeExtraSmall
-                color: cover._showFailure ? Theme.errorColor : Theme.secondaryHighlightColor
-                truncationMode: TruncationMode.Fade
-            }
-        }
-    }
-
-    Label {
-        id: unreadLabel
-        objectName: "unreadTotal"
-        anchors {
-            top: parent.top
-            right: parent.right
-            topMargin: Theme.paddingMedium
-            rightMargin: Theme.paddingLarge
-        }
-        textFormat: Text.PlainText
-        // Three digits is what a feed reader needs -- an unread count in the
-        // hundreds is an ordinary week here, not the runaway a chat app's
-        // would be. Past that the reader is not counting them off a cover
-        // anyway.
-        text: cover.unreadCount > 999 ? "999+" : cover.unreadCount
-        // Four glyphs at the huge size run straight over the app's name; the
-        // number is anchored to the edge and grows leftwards into it. It
-        // steps down instead, which keeps the digits legible AND the name
-        // readable.
-        font.pixelSize: cover.unreadCount > 99 ? Theme.fontSizeExtraLarge
-                                               : Theme.fontSizeHuge
-        color: Theme.primaryColor
     }
 
     CoverActionList {

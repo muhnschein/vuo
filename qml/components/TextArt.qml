@@ -32,9 +32,10 @@ import Sailfish.Silica 1.0
  *   - a disc it fades out of (`clearRadius` around `clearX`, `clearY`), for
  *     a title in the middle.
  *
- * Both are off by default. Cutting them here rather than baking them in is
- * what lets one mask serve a cover and a page, and keeps the fade exactly
- * where the heading actually ends rather than where it was guessed to.
+ * Both are off by default, and the cover uses neither: the room for its
+ * count is painted into its masks. Cutting them here rather than baking
+ * them in keeps the disc exactly where the page's title actually is rather
+ * than where it was guessed to.
  *
  * The mask keeps its own proportions and is centred, never stretched: the
  * shader crops it to whatever shape it is asked to fill, which is why one
@@ -44,9 +45,11 @@ Item {
     id: art
 
     /// The mask to draw, as a URL relative to the file that sets it.
-    /// qml/art/ holds one per density: `cover.png` is drawn at about
-    /// sixty-four glyph heights across, `onboarding.png` at a hundred and
-    /// fifteen, which is the whole of the difference between them.
+    /// qml/art/ holds `onboarding.png`, drawn at about a hundred and
+    /// fifteen glyph heights across, and `cover/`, a set drawn at
+    /// sixty-four: one mask per unread count, because on the cover the
+    /// count is the negative space the lines flow around, and the whole
+    /// pattern depends on it.
     property url source
 
     /// What colour the ink is, and how much of it there is.

@@ -96,25 +96,31 @@ work around it in the app.
 ### The cover test, and the texture
 
 The load test instantiates every file with its properties at their defaults,
-which for the app cover shows the heading -- the name, the sync line, the
-count. What it cannot see is what that heading says as sync and the count
-move underneath it, which is what `crates/vuo-shim/tests/qml_cover.rs` drives
-in an engine of its own: the count survives a refresh, a failure puts Vuo's
-own translated line on the cover rather than the server's words, and a count
-too wide for the corner is capped rather than pushed into the app's name.
+which for the app cover shows the texture for a count of zero. What it cannot
+see is what the cover does as sync and the count move underneath it, which
+is what `crates/vuo-shim/tests/qml_cover.rs` drives in an engine of its own.
 
-The texture under it is **not computed at runtime**. It is painted ahead of
-time by `tools/textart/` and shipped as a coverage mask in `qml/art/`; see
-the packaging notes. Two things about it are still checked:
+On the cover the count is **negative space** in the texture -- the lines flow
+around the digits -- so every count has a mask of its own in
+`qml/art/cover/` and the cover's one job is to name the right one. The test
+asserts that it does: the mask follows the count, zero included; past the
+cap every count names `99+.png` and the count-as-data says `99+`; the count
+survives a refresh; a failure puts Vuo's own translated line on the cover
+rather than the server's words; and nothing is faded or cleared out of the
+texture, because the room for the number is already in it.
 
-- `qml_loads.rs` walks every `source:` in the QML and asserts the file is
-  there and is an 8-bit **grayscale** PNG. The shader reads coverage from the
-  red channel, so a mask re-exported as RGBA -- which any image editor does
-  by default, and which looks identical in a viewer -- would tint the whole
-  surface solid.
-- The cover test asserts the texture fades in *below* the heading. It is
-  drawn under the whole cover, so that fade is the only thing keeping the
-  app's name off a field of text.
+The texture is **not computed at runtime**. It is painted ahead of time by
+`tools/textart/` and shipped as coverage masks in `qml/art/`; see the
+packaging notes. Two things about it are still checked:
+
+- `qml_loads.rs` walks every literal `source:` in the QML and asserts the
+  file is there and is an 8-bit **grayscale** PNG. The shader reads coverage
+  from the red channel, so a mask re-exported as RGBA -- which any image
+  editor does by default, and which looks identical in a viewer -- would
+  tint the whole surface solid.
+- The cover's source is computed, so a second test in `qml_cover.rs` checks
+  the set instead: every mask a count can name is there and is such a PNG,
+  and nothing else is in the directory.
 
 What the pattern *looks like* is a manual check: render it, look at it. That
 is worth doing before touching `tools/textart/`, and the harness that does it
