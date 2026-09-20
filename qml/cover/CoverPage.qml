@@ -23,7 +23,12 @@ import "../components"
  * Sync has lost the heading it used to speak under, so it says its piece in
  * the strip just above the action area instead: a spinner while refreshing,
  * a warning for a few seconds after a refresh fails, and a fixed line of
- * text beside either. It is never the server's text (§9.3).
+ * text beside either. It is never the server's text (§9.3). That is the one
+ * thing that does get drawn over the texture, so while it is there the
+ * TEXTURE GETS OUT OF ITS WAY: the mask sinks away towards the foot of the
+ * cover, further the nearer the bottom edge, and the line sits in what it
+ * leaves behind. Nothing is laid on top -- a wash over the pattern would
+ * still be a thing drawn on the cover, and the cover is the pattern.
  *
  * A cover is drawn while the app is NOT the active window, which is the source
  * of most of the care below -- see the BusyIndicator note.
@@ -59,6 +64,29 @@ CoverBackground {
     /// One expression, so the failure trigger below cannot get out of step
     /// with what counts as a failure.
     property string _errorToken: cover.syncErrorIsAuth ? "auth" : cover.syncError
+
+    /// True while sync has a word to say -- a spinner or a warning. The
+    /// status row and the texture's retreat behind it both hang off this,
+    /// so the room cannot open without the thing it is made for, or
+    /// outlast it.
+    readonly property bool hasStatus: cover.syncing || cover._showFailure
+
+    /// How far above the bottom edge sync speaks: the bottom of the status
+    /// row, and the floor of the room the texture gives up for it.
+    ///
+    /// The rule this is set to is that the line should sit as far above the
+    /// refresh icon as the icon sits above the bottom edge. The icon is
+    /// Silica's, centred in the cover-action strip, and a cover cannot ask
+    /// how tall that strip is -- so this is measured rather than derived:
+    /// off a device screenshot the icon cleared the bottom edge by about
+    /// 8% of the cover's height and its own top was about 18% up, which
+    /// puts the line's bottom about a quarter of the way up the cover.
+    /// One `paddingSmall`, where this started, left seven pixels.
+    ///
+    /// It is one number, deliberately: nudging the line moves the room made
+    /// for it with it.
+    readonly property real statusBaseline:
+        Theme.itemSizeSmall + Theme.paddingLarge
 
     on_ErrorTokenChanged: {
         if (cover._errorToken.length > 0) {
@@ -100,6 +128,23 @@ CoverBackground {
         // number is the brightest thing here and the sweeps recede from
         // it. See tools/textart/render.qml.
         ink: 1.5
+
+        // The room for the status line, made by the texture rather than
+        // over it: the mask runs out towards the bottom edge while sync has
+        // something to say, and is whole again the moment it stops.
+        //
+        // The band is twice the height of everything below the row's top,
+        // so the line lands around the middle of the ramp with the pattern
+        // already well thinned under it and the very foot of the cover
+        // nearly bare -- and a line that WRAPPED to two rows grows the band
+        // with it rather than climbing out of the top of it.
+        //
+        // Off means both at zero, not a band of no height at the bottom:
+        // the shader's test is `fadeOutTo > fadeOutFrom`.
+        fadeOutFrom: cover.hasStatus
+                     ? cover.height - (cover.statusBaseline + status.height) * 2
+                     : 0
+        fadeOutTo: cover.hasStatus ? cover.height : 0
     }
 
     // The count as DATA, for anything that reads the cover rather than
@@ -120,10 +165,10 @@ CoverBackground {
         anchors {
             horizontalCenter: parent.horizontalCenter
             bottom: parent.bottom
-            bottomMargin: Theme.itemSizeSmall + Theme.paddingSmall
+            bottomMargin: cover.statusBaseline
         }
         spacing: Theme.paddingSmall
-        visible: cover.syncing || cover._showFailure
+        visible: cover.hasStatus
 
         Item {
             id: statusSlot
@@ -175,6 +220,34 @@ CoverBackground {
                   : (cover.syncing ? qsTr("Refreshing") : "")
             font.pixelSize: Theme.fontSizeExtraSmall
             color: cover._showFailure ? Theme.errorColor : Theme.secondaryHighlightColor
+
+            // The line WRAPS rather than running off both edges.
+            //
+            // A `Row` centred on the cover gives its children whatever
+            // width they ask for, and a `Label` asks for the whole string
+            // on one line. English fits; "Aktualisierung fehlgeschlagen"
+            // does not, so the row grew wider than the cover, centring put
+            // the overhang on both sides, and the German read as a phrase
+            // with its head and tail cut off. Forty catalogues means this
+            // was never going to be a question of picking shorter English.
+            //
+            // Bounded instead of elided: a cover has the room going UP, and
+            // the row hangs off its bottom edge, so a second line pushes the
+            // top of the row up into texture the mask has already given up
+            // and leaves the gap to the refresh icon exactly as it was.
+            // `Math.min` keeps a line that does fit at its natural width,
+            // so short strings still centre as a tight row rather than a
+            // centred block in a full-width box.
+            width: Math.min(implicitWidth, cover.width
+                            - Theme.paddingMedium * 2
+                            - statusSlot.width - status.spacing)
+            wrapMode: Text.Wrap
+            horizontalAlignment: Text.AlignHCenter
+            // Three lines of extra-small text is most of the room between
+            // the count and the action strip; past that the line is cut,
+            // which is at least cut at one end and on a word.
+            maximumLineCount: 3
+            elide: Text.ElideRight
         }
     }
 

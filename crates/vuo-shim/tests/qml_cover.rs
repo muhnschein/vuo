@@ -56,6 +56,12 @@ const PROBE_QML: &str = r"
             loader.item.syncError = text
             return 'ok'
         }
+        function narrow(width) { loader.item.width = width; return 'ok' }
+        function fits() {
+            var row = findIn(loader.item, 'syncStatus')
+            if (!row) { return 'missing:syncStatus' }
+            return row.width <= loader.item.width ? 'fits' : 'overflows'
+        }
     }
 ";
 
@@ -182,15 +188,62 @@ fn the_cover_names_the_mask_for_its_count_and_says_how_sync_is() {
     );
 
     // ------------------------------------------------------- what sync says
+    // The room for the status line is made by the TEXTURE, which runs out
+    // towards the foot of the cover while there is something to read there
+    // and is whole again afterwards. Nothing is laid over the pattern, so
+    // what this checks is the mask's own band, not a layer.
+    macro_rules! sinks {
+        ($expected:expr, $why:expr) => {{
+            let from = number!(get!("textArt", "fadeOutFrom"));
+            let to = number!(get!("textArt", "fadeOutTo"));
+            assert_eq!(to > from, $expected, "{}: {from} to {to}", $why);
+        }};
+    }
+
     assert_eq!(
         get!("syncStatus", "visible"),
         "false",
         "nothing to say while sync is idle and well"
     );
+    sinks!(
+        false,
+        "the texture must be whole while there is no status to make room for"
+    );
     assert_eq!(get!("syncStatusLabel", "text"), "");
     assert_eq!(call!("syncing", true), "ok");
     assert_eq!(get!("syncStatus", "visible"), "true");
+    sinks!(
+        true,
+        "the texture must give the status line room while it is shown"
+    );
     assert_eq!(get!("syncStatusLabel", "text"), "Refreshing");
+
+    // The line never runs off the cover's edges.
+    //
+    // A `Row` centred on the cover hands a `Label` whatever width it asks
+    // for, and a `Label` asks for its whole string on one line; the German
+    // for "Refresh failed" is half again as wide as the cover, so the row
+    // grew past both edges and the phrase was clipped at BOTH ends. The
+    // catalogue that broke it is not the one this test can load, so the
+    // cover is squeezed instead until English cannot fit either: the rule
+    // is geometric, and so is the check.
+    assert_eq!(
+        call!("fits"),
+        "fits",
+        "the status row must fit at full width"
+    );
+    assert_eq!(call!("narrow", 120), "ok");
+    assert_eq!(
+        call!("fits"),
+        "fits",
+        "the status row must stay inside a cover too narrow for its line"
+    );
+    assert!(
+        number!(get!("syncStatusLabel", "lineCount")) > 1.0,
+        "a line that cannot fit must wrap rather than overflow"
+    );
+    assert_eq!(call!("narrow", 240), "ok");
+
     assert_eq!(
         get!("unreadTotal", "text"),
         "4",
@@ -199,6 +252,10 @@ fn the_cover_names_the_mask_for_its_count_and_says_how_sync_is() {
     mask!("4");
     assert_eq!(call!("syncing", false), "ok");
     assert_eq!(get!("syncStatus", "visible"), "false");
+    sinks!(
+        false,
+        "the texture must come back when the status it made room for goes"
+    );
     assert_eq!(get!("syncStatusLabel", "text"), "");
 
     // §9.3: the server's own words never reach the cover.
@@ -211,6 +268,7 @@ fn the_cover_names_the_mask_for_its_count_and_says_how_sync_is() {
         "ok"
     );
     assert_eq!(get!("syncStatus", "visible"), "true");
+    sinks!(true, "a warning needs the same room as a spinner");
     assert_eq!(
         get!("syncStatusLabel", "text"),
         "Refresh failed",

@@ -128,24 +128,19 @@
 <context>
     <name>CoverPage</name>
     <message>
-        <location filename="../qml/cover/CoverPage.qml" line="166"/>
+        <location filename="../qml/cover/CoverPage.qml" line="228"/>
         <source>Sign-in failed</source>
         <translation>സൈൻ-ഇൻ പരാജയപ്പെട്ടു</translation>
     </message>
     <message>
-        <location filename="../qml/cover/CoverPage.qml" line="166"/>
+        <location filename="../qml/cover/CoverPage.qml" line="228"/>
         <source>Refresh failed</source>
         <translation>പുതുക്കൽ പരാജയപ്പെട്ടു</translation>
     </message>
     <message>
-        <location filename="../qml/cover/CoverPage.qml" line="167"/>
+        <location filename="../qml/cover/CoverPage.qml" line="229"/>
         <source>Refreshing</source>
         <translation>പുതുക്കുന്നു</translation>
-    </message>
-    <message>
-        <location filename="../qml/cover/CoverPage.qml" line="167"/>
-        <source>Unread</source>
-        <translation>വായിക്കാത്തവ</translation>
     </message>
 </context>
 <context>
@@ -575,47 +570,47 @@
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="222"/>
         <source>Only sync on Wi-Fi</source>
-        <translation type="unfinished"></translation>
+        <translation>Wi-Fi-യിൽ മാത്രം സമന്വയം</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="223"/>
         <source>Vuo syncs on its own only over Wi-Fi, and waits on a mobile connection. A refresh you ask for yourself is always sent.</source>
-        <translation type="unfinished"></translation>
+        <translation>Vuo സ്വയം Wi-Fi-യിൽ മാത്രമേ സമന്വയിപ്പിക്കൂ, മൊബൈൽ കണക്ഷനിൽ കാത്തിരിക്കും. നിങ്ങൾ സ്വയം ആവശ്യപ്പെടുന്ന പുതുക്കൽ എപ്പോഴും അയയ്ക്കപ്പെടും.</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="238"/>
         <source>Keep read articles</source>
-        <translation type="unfinished"></translation>
+        <translation>വായിച്ച ലേഖനങ്ങൾ സൂക്ഷിക്കുക</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="240"/>
         <source>Forever</source>
-        <translation type="unfinished"></translation>
+        <translation>എന്നെന്നും</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="241"/>
         <source>For a month</source>
-        <translation type="unfinished"></translation>
+        <translation>ഒരു മാസം</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="242"/>
         <source>For three months</source>
-        <translation type="unfinished"></translation>
+        <translation>മൂന്നു മാസം</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="243"/>
         <source>For six months</source>
-        <translation type="unfinished"></translation>
+        <translation>ആറു മാസം</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="244"/>
         <source>For a year</source>
-        <translation type="unfinished"></translation>
+        <translation>ഒരു വർഷം</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="259"/>
         <source>Older articles you have already read are removed from this phone at the end of a sync. Favourites, unread articles and anything not yet sent to the server are always kept, and nothing is removed from your Miniflux server.</source>
-        <translation type="unfinished"></translation>
+        <translation>നിങ്ങൾ വായിച്ചുകഴിഞ്ഞ പഴയ ലേഖനങ്ങൾ സമന്വയത്തിന്റെ അവസാനം ഈ ഫോണിൽ നിന്നു നീക്കം ചെയ്യപ്പെടും. പ്രിയപ്പെട്ടവ, വായിക്കാത്ത ലേഖനങ്ങൾ, സെർവറിലേക്ക് ഇതുവരെ അയയ്ക്കാത്തതെല്ലാം എപ്പോഴും സൂക്ഷിക്കപ്പെടും; നിങ്ങളുടെ Miniflux സെർവറിൽ നിന്ന് ഒന്നും നീക്കം ചെയ്യില്ല.</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="270"/>
