@@ -89,10 +89,22 @@ fi
 # the sizes here the letters are texture rather than reading matter, and the
 # pattern is the same either way, but it is the one respect in which the
 # shipped art is not what the device would have drawn for itself.
+# The device's own face for the filler, if a copy is at hand. Sail Sans Pro
+# is not redistributable, so this is never fetched: copy
+# /usr/share/fonts/sail-sans-pro/SailSansPro-Light.ttf off a phone into the
+# font directory by hand, and the masks come out in the font the device
+# would have drawn them in. Without it, the caveat in docs/packaging.md.
+FILLER="$FONT_DIR/SailSansPro-Light.ttf"
+
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 cp tools/textart/*.qml "$work/"
 cp "$DIGITS" "$work/FiraSans-ExtraBold.ttf"
+if [[ -f "$FILLER" ]]; then
+    cp "$FILLER" "$work/SailSansPro-Light.ttf"
+else
+    echo "  no $FILLER: the filler is set in the host's default sans" >&2
+fi
 mkdir -p "$work/cover"
 {
     printf 'var sets = ['

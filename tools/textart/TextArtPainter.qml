@@ -100,6 +100,10 @@ Canvas {
     /// own colour at less than full strength.
     property real ink: 0.55
     property color colour: Theme.primaryColor
+    /// The face the filler is set in. The device's own by default, which a
+    /// host that is not a phone resolves to whatever fontconfig has; a
+    /// `FontLoader` with the real file names it exactly (see render.qml).
+    property string fillerFont: Theme.fontFamily
 
     /// The strokes the curves grow out of, in fractions of the width and
     /// height. Each is a stroke rather than a point so the innermost curves
@@ -180,7 +184,7 @@ Canvas {
     /// none can be forgotten.
     readonly property string _key: [
         art.width, art.height, art.colour, art.glyphsAcross, art.spacing,
-        art.softness, art.ink, art.fadeFrom, art.fadeTo,
+        art.softness, art.ink, art.fillerFont, art.fadeFrom, art.fadeTo,
         art.clearX, art.clearY, art.clearRadius, art.clearFeather,
         art.strokes.length,
         art.obstacle, art.obstacleFont, art.obstacleGap, art.obstacleMaxWidth,
@@ -1217,7 +1221,10 @@ Canvas {
             }
             ctx.setTransform(1, 0, 0, 1, 0, 0)
             ctx.clearRect(0, 0, art.width, art.height)
-            ctx.font = art.glyph + "px " + Theme.fontFamily
+            // Quoted: a family with spaces in it is otherwise read as
+            // several, and the text falls back to the default sans with a
+            // warning nobody sees.
+            ctx.font = art.glyph + "px \"" + art.fillerFont + "\""
             ctx.textBaseline = "middle"
             art._lobes = art.lobes()
             art._obstacle = art.obstacleField(art._lobes)

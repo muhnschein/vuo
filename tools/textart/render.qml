@@ -37,6 +37,13 @@ Window {
     // for why it is Fira Sans and not the device's own.
     FontLoader { id: digits; source: "FiraSans-ExtraBold.ttf" }
 
+    // The filler's face: the device's own, Sail Sans Pro, when the script
+    // found a copy to put beside this file. It is not redistributable, so
+    // it is never fetched and never committed; without it the filler is
+    // set in whatever the host calls "Sail Sans Pro", in practice its
+    // default sans -- the caveat in docs/packaging.md.
+    FontLoader { id: filler; source: "SailSansPro-Light.ttf" }
+
     // A cover is 234x374 at pixel ratio 1 -- an aspect of about 0.626 -- and
     // at most 1.75 times that on the phones Sailfish ships on. 512x768 is
     // the smallest 2:3 master that still only scales DOWN on a cover at
@@ -52,6 +59,11 @@ Window {
             file: "cover/" + key + ".png",
             width: win.coverWidth, height: win.coverHeight, across: 64,
             obstacle: key,
+            // How much of the cover the digits may take. Less than the
+            // painter's own defaults: the number wants air around it on
+            // a cover, or it reads as pressed against the edges.
+            obstacleMaxWidth: 0.72,
+            obstacleMaxHeight: 0.56,
             // The narrowest cover this must survive being cropped to. A
             // little under the platform's own 0.626, for the digits' sake.
             fitAspect: 0.60,
@@ -106,6 +118,9 @@ Window {
         glyphsAcross: win.job ? win.job.across : 64
         obstacle: win.job && win.job.obstacle ? win.job.obstacle : ""
         obstacleFont: digits.name
+        obstacleMaxWidth: win.job && win.job.obstacleMaxWidth ? win.job.obstacleMaxWidth : 0.80
+        obstacleMaxHeight: win.job && win.job.obstacleMaxHeight ? win.job.obstacleMaxHeight : 0.62
+        fillerFont: filler.status === FontLoader.Ready ? filler.name : Theme.fontFamily
         fitAspect: win.job && win.job.fitAspect ? win.job.fitAspect : 0
         reservedBottom: win.job && win.job.reservedBottom ? win.job.reservedBottom : 0
         levelOffset: win.job && win.job.levelOffset ? win.job.levelOffset : 0.5
@@ -150,7 +165,7 @@ Window {
     Timer {
         interval: 50
         repeat: true
-        running: digits.status !== FontLoader.Loading
+        running: digits.status !== FontLoader.Loading && filler.status !== FontLoader.Loading
         onTriggered: {
             stop()
             if (digits.status === FontLoader.Error) {
@@ -158,6 +173,8 @@ Window {
                 Qt.quit()
                 return
             }
+            console.log("FILLER FONT", filler.status === FontLoader.Ready
+                        ? filler.name : "not found; using the host's " + Theme.fontFamily)
             win.next()
         }
     }

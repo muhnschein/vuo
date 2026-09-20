@@ -210,7 +210,7 @@ build needs neither of the tools:
 | --- | --- | --- |
 | `translations/*.qm` | `lrelease` | Qt's linguist tools |
 | `qml/art/onboarding.png` | `make textart` (`scripts/render-textart.sh onboarding`) | a QML runtime and a display (or `xvfb`) |
-| `qml/art/cover/*.png` | `make textart` (`scripts/render-textart.sh cover`) | the same, plus one font file |
+| `qml/art/cover/*.png` | `make textart` (`scripts/render-textart.sh cover`) | the same, plus the digits' font; the device's own font if you have it |
 | `store/cover.png` | `scripts/render-store-cover.sh` | the same, plus two font files |
 
 The art is the texture the cover and the onboarding page wear: nested curves
@@ -284,15 +284,17 @@ page and the app look like one thing. Its wordmark is Fira Sans (SIL OFL); the
 script fetches the two files it needs and `.gitignore` keeps them out of the
 tree, since the rendered PNG is what is tracked.
 
-One caveat, stated because it cannot be fixed here: **the masks are not
-rendered in the device's own font.** Sail Sans Pro ships with SailfishOS and
-is not redistributable, so whichever machine runs `make textart` renders them
-with its default sans instead. At these sizes the letters are texture rather
-than reading matter and the pattern is identical, but it is the one respect
-in which the shipped art is not what the device would have drawn for itself.
-It also means two machines do not paint byte-identical masks, so regenerate a
-set only when the painter or its inputs change, and regenerate the whole set
-when you do.
+One caveat about the filler's face. Sail Sans Pro ships with SailfishOS and
+is not redistributable, so the script never fetches it and it is never
+committed. Put a copy of `/usr/share/fonts/sail-sans-pro/SailSansPro-Light.ttf`
+from a phone into the font directory by hand and `render-textart.sh` sets
+the filler in it, which is how the cover's set was made; without it, the
+host renders whatever its fontconfig calls "Sail Sans Pro", in practice its
+default sans, which is how `onboarding.png` was made. At these sizes the
+letters are texture rather than reading matter and the pattern is the same
+either way. It does mean two machines need not paint byte-identical masks,
+so regenerate a set only when the painter or its inputs change, and
+regenerate the whole set when you do.
 
 ## The sandbox
 
