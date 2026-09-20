@@ -760,12 +760,18 @@ pub struct SyncState {
     pub last_full_reconcile_at: Option<i64>,
     pub server_era: Option<String>,
     pub server_version: Option<String>,
+    /// When `server_version` was last asked of the server, in Unix seconds.
+    ///
+    /// `None` means it has never been asked -- or was asked by a build that
+    /// predates this column, which amounts to the same thing: the recorded
+    /// version is of unknown age and the next pass re-checks it.
+    pub server_version_checked_at: Option<i64>,
 }
 
 pub fn sync_state(conn: &rusqlite::Connection) -> Result<SyncState> {
     Ok(conn.query_row(
         "SELECT cursor_changed_after, sync_generation, last_full_reconcile_at, server_era,
-                server_version
+                server_version, server_version_checked_at
          FROM sync_state WHERE id = 1",
         [],
         |r| {
@@ -775,6 +781,7 @@ pub fn sync_state(conn: &rusqlite::Connection) -> Result<SyncState> {
                 last_full_reconcile_at: r.get(2)?,
                 server_era: r.get(3)?,
                 server_version: r.get(4)?,
+                server_version_checked_at: r.get(5)?,
             })
         },
     )?)
@@ -783,7 +790,8 @@ pub fn sync_state(conn: &rusqlite::Connection) -> Result<SyncState> {
 pub fn set_sync_state(tx: &Transaction<'_>, state: &SyncState) -> Result<()> {
     tx.execute(
         "UPDATE sync_state SET cursor_changed_after = ?1, sync_generation = ?2,
-             last_full_reconcile_at = ?3, server_era = ?4, server_version = ?5
+             last_full_reconcile_at = ?3, server_era = ?4, server_version = ?5,
+             server_version_checked_at = ?6
          WHERE id = 1",
         rusqlite::params![
             state.cursor_changed_after,
@@ -791,6 +799,7 @@ pub fn set_sync_state(tx: &Transaction<'_>, state: &SyncState) -> Result<()> {
             state.last_full_reconcile_at,
             state.server_era,
             state.server_version,
+            state.server_version_checked_at,
         ],
     )?;
     Ok(())

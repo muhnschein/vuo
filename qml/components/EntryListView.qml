@@ -145,6 +145,21 @@ SilicaListView {
     // laid out before the finger moves now.
     model: listView.entryModel
 
+    // The list holds a WINDOW onto the mirror, not all of it -- see
+    // models::PAGE_SIZE. Reaching the end of the window asks for the next
+    // page.
+    //
+    // `atYEnd` rather than a delegate counting its own index: a delegate-based
+    // trigger fires while the reader is still scrolling and while the view is
+    // rebuilding after a reload, and it fires once per delegate. This fires on
+    // a transition, and `loadMore` is itself a no-op when there is nothing
+    // more, so a bounce at the bottom of a fully-loaded list costs a property
+    // read.
+    onAtYEndChanged: if (listView.atYEnd && listView.entryModel
+                         && listView.entryModel.hasMore) {
+        listView.entryModel.loadMore()
+    }
+
     // An Item with explicit `y` bindings, NOT a Column.
     //
     // A Column here silently mislaid its children: measured on the device's
