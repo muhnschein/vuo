@@ -243,25 +243,29 @@ Three ways of packaging that were weighed; this is the first:
 
 | | Masks | Installed | Costs on the phone |
 | --- | --- | --- | --- |
-| **0–99 plus "99+"** (chosen) | 101 | under 5 MB | nothing: one image load, from Qt's pixmap cache between covers |
+| **0–99 plus "99+"** (chosen) | 101 | about 6.5 MB | nothing: one image load, from Qt's pixmap cache between covers |
 | 0–999 plus "999+" | 1001 | about 70 MB | nothing, but too large for a Harbour package |
 | paint on the device, cache per count | 0 | a cache | a second or so of a core every time the count changes, memory for the field and the canvas, and the device-side painting this art was retired from |
 
 "Art is shipped, never drawn" is the rule the first keeps, and the megabytes
-are the whole of its price. Three things keep them few: the master is
-480×720, the smallest 2:3 size that still only scales *down* on every cover
-Sailfish ships (234×374 at ratio 1, 410×655 at the 1.75 of the current
-phones); `scripts/png-mask.py` quantises coverage to eight levels, which is
-indistinguishable from sixteen and a fifth smaller, where four is visibly
-crunchy; and the halo below dims the far lines, which then quantise to fewer
-levels still. The cap is 99, not the 999 the old label had: the digits are
-set large enough to read from across a room, and three of them do not fit.
+are the whole of its price. Two things keep them few: the master is
+512×768, the smallest 2:3 size that still only scales *down* on a cover at
+pixel ratio 2 (a cover is 234×374 at ratio 1; 480×720 was tried and looked
+grainy on a phone), and `scripts/png-mask.py` quantises coverage to sixteen
+levels, which is indistinguishable from the full range at well under half
+the size. Eight levels were tried and are grainy, because the halo below
+leaves the far lines few levels to be antialiased in; JPEG was measured and
+is two to three times larger at any quality that does not ring. The cap is
+99, not the 999 the old label had: the digits are set large enough to read
+from across a room, and three of them do not fit.
 
 The masks also carry a **halo**: the lines are painted at full strength
-where they touch the digits and ease down to 0.55 of it six line spacings
-out, so the number is the brightest thing on the cover and the sweeps recede
-from it. The cover draws its masks at full ink for that reason, where the
-page draws its own at 0.55; the far lines look the same either way.
+where they touch the digits and ease down to 0.55 / 1.5 of it six line
+spacings out. The cover draws its masks at an ink of 1.5, so the far lines
+land at the 0.55 everything else is drawn at, and the lines on the digits
+are driven past full: the shader's output saturates there, which makes the
+thin glyphs bolder and brighter than a mask alone could, and the number is
+the brightest thing on the cover.
 
 The digits are Fira Sans **ExtraBold** (SIL OFL), which `render-textart.sh`
 fetches over TLS into the gitignored `.fonts/` as the store cover's script

@@ -46,15 +46,13 @@ Window {
 
     // A cover is 234x374 at pixel ratio 1 -- an aspect of about 0.626 -- and
     // at most 1.75 times that (410x655) on the phones Sailfish ships on.
-    // 480x720 is the smallest 2:3 master that still only scales DOWN on
-    // every one of those, and a hundred and one of them is what the set
-    // costs on disk, so it is not larger; a phone at ratio 2, should one
-    // come, would scale it up by four percent. Being wider than any cover
-    // it is always trimmed at the sides, never the top or bottom, so a
-    // height on the master is the same fraction of the height on every
-    // cover.
-    readonly property int coverWidth: 480
-    readonly property int coverHeight: 720
+    // 512x768 is the smallest 2:3 master that still only scales DOWN on a
+    // cover at ratio 2; 480x720 was tried for the disk it saves and looked
+    // grainy on a phone. Being wider than any cover it is always trimmed at
+    // the sides, never the top or bottom, so a height on the master is the
+    // same fraction of the height on every cover.
+    readonly property int coverWidth: 512
+    readonly property int coverHeight: 768
 
     /// One cover master. `key` is the count, or "99+".
     function coverJob(key) {
@@ -76,11 +74,13 @@ Window {
             reservedBottom: Math.round(win.coverHeight * 80 / 374),
             levelOffset: 0.6,
             topsFaceSource: true,
-            // The halo: full strength on the digits, easing down to the
-            // cover's usual 0.55 six lines out. The cover draws the mask at
-            // full ink, so the sweeps look as they always did and the
-            // number glows.
-            farInk: 0.55,
+            // The halo: full strength on the digits, easing down to 0.367
+            // of it six lines out. The cover draws the mask at an ink of
+            // 1.5, so the far lines land at the cover's usual 0.55 and the
+            // lines on the digits are driven PAST full -- the shader's
+            // output saturates, which makes the thin glyphs there bolder
+            // and brighter than the mask alone could.
+            farInk: 0.55 / 1.5,
             haloReach: 6
         }
     }

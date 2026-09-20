@@ -91,11 +91,15 @@ CoverBackground {
         objectName: "textArt"
         anchors.fill: parent
         source: "../art/cover/" + cover.countKey + ".png"
-        // Full ink, not the usual 0.55: the cover's masks carry their own
-        // strength -- full where the lines touch the digits, easing down to
-        // 0.55 a few lines out -- so the number is the brightest thing here
-        // and the sweeps recede from it. See tools/textart/render.qml.
-        ink: 1.0
+        // An ink of 1.5, not the usual 0.55: the cover's masks carry their
+        // own strength -- full where the lines touch the digits, easing
+        // down to 0.55 / 1.5 a few lines out -- so the far lines land at
+        // 0.55 as everywhere else, and the lines on the digits are driven
+        // past full. The shader's output saturates there, which makes the
+        // thin glyphs bolder and brighter than a mask alone could; the
+        // number is the brightest thing here and the sweeps recede from
+        // it. See tools/textart/render.qml.
+        ink: 1.5
     }
 
     // The count as DATA, for anything that reads the cover rather than
