@@ -47,6 +47,23 @@ use qmetaobject::*;
 /// Set on the re-executed child to name the one file it should load.
 const CHILD_VAR: &str = "VUO_QML_LOAD_ONE";
 
+/// What the child says once it has instantiated the file, and what the parent
+/// reads INSTEAD OF the exit code.
+///
+/// The two are not the same claim. Qt reads images on a thread of its own, and
+/// a process that calls `exit` while one is mid-read runs Qt's static
+/// destructors out from under it: "QMutex: destroying locked mutex", and then
+/// a crash, in a process whose actual work was already finished. That crash
+/// says nothing at all about the QML -- but as an exit code it was
+/// indistinguishable from a file that would not load.
+///
+/// A second `Image` in TextArt.qml was enough to start provoking it on CI's
+/// runners, while sixty consecutive runs here never reproduced it once. So the
+/// child announces success at the moment it has it, and what happens on the
+/// way out is not the test's business. A crash BEFORE this line still fails,
+/// which is the case worth catching.
+const INSTANTIATED: &str = "VUO-QML-INSTANTIATED";
+
 /// Qt diagnostics that mean a binding did not do what the source says.
 ///
 /// Qt logs these at warning level and carries on, so nothing fails without
@@ -99,6 +116,9 @@ fn load_one_and_exit(path: &str) -> ! {
     }
     // The point of the child: evaluate every binding.
     let _ = component.create();
+    // Flushed by the newline -- Rust's stdout is line buffered -- so it has
+    // reached the pipe before anything teardown may do.
+    println!("{INSTANTIATED}");
     std::process::exit(0);
 }
 
@@ -138,9 +158,10 @@ fn every_qml_file_compiles_and_instantiates_against_the_silica_stubs() {
             .expect("re-exec the test binary");
 
         let stderr = String::from_utf8_lossy(&output.stderr);
-        if !output.status.success() {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        if !stdout.contains(INSTANTIATED) {
             eprintln!("--- QML errors in {relative} ---\n{stderr}");
-            failures.push(format!("{relative}: failed to compile"));
+            failures.push(format!("{relative}: failed to compile or instantiate"));
             continue;
         }
         for line in stderr.lines() {

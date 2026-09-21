@@ -118,12 +118,23 @@ Item {
         asynchronous: true
     }
 
+    /// The outline, loaded SYNCHRONOUSLY where the pattern is not.
+    ///
+    /// The two are separate loads, and the shader shows itself as soon as the
+    /// PATTERN is ready while the outline waits on its own `Ready`. Left
+    /// asynchronous, a count change could therefore paint the new pattern
+    /// with no line over it until the second load landed -- the line popping
+    /// in a frame late, every time the count moves. Loading it inline puts it
+    /// there before the pattern it belongs to can arrive.
+    ///
+    /// It can afford to be: an outline is about 1.5 KiB against the pattern's
+    /// 66, and a cover changes when the count does, not every frame.
     Image {
         id: edgeMask
 
         source: art.edgeSource
         visible: false
-        asynchronous: true
+        asynchronous: false
     }
 
     ShaderEffect {
