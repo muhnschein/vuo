@@ -39,24 +39,51 @@
 //!   could act on it: a reconcile already due, or a server with no id
 //!   listing.
 //!
-//! And one that is deliberately NOT done, because it does not pay yet.
-//! Categories and feeds are independent, and so are icons of each other, so
-//! awaiting them in sequence holds the radio up for the sum of their latencies
-//! rather than the longest. But `reqwest` is built without the `http2`
-//! feature, so concurrent requests cannot share a connection: each one in
-//! flight is another TCP connection and another TLS handshake, and passes are
-//! far enough apart that the pool is always cold. Saving tens of milliseconds
-//! from a radio event with a multi-second tail, at the price of a second
-//! handshake, is a loss. Turn on HTTP/2 first; the concurrency is worth having
-//! after that and not before.
+//! - **Ask for independent things at once, where that is free.** Categories
+//!   and feeds do not depend on each other, and neither do icons, so awaiting
+//!   them in turn holds the radio up for the sum of their latencies rather
+//!   than the longest of them.
+//!
+//! That last one is conditional, and the condition is the whole of it. It pays
+//! only over HTTP/2, where the requests share one connection. Over HTTP/1.1
+//! each request in flight is another TCP connection and another TLS handshake,
+//! and passes are far enough apart that the pool is always cold -- so the
+//! saved round trip, tens of milliseconds off a radio event whose tail is
+//! seconds, is bought with packets and elliptic-curve work that were not there
+//! before. A loss. The pass therefore asks before it overlaps anything.
+//!
+//! # How the pass knows whether it can overlap
+//!
+//! ALPN settles it on the first response, and [`crate::api::Transport`]
+//! records what it saw. But reading that from the live transport is reading it
+//! one pass too late: a phone's reader is opened, synced once and closed
+//! again, so a client built at launch has not yet seen a response by the time
+//! the taxonomy step has to decide, and on that usage pattern the answer would
+//! never arrive in time to be used.
+//!
+//! So the reading is carried in the mirror, in `sync_state.server_multiplexes`.
+//! A pass acts on what the previous pass observed and stores what this one
+//! observed, alongside the cursor and for the same reason. An instance that
+//! gains or loses `h2` -- someone puts a proxy in front of it, or takes one
+//! away -- corrects the mirror on the next pass, and the cost of being wrong
+//! for exactly one pass is one round trip either way.
+//!
+//! And one thing still deliberately NOT done: [`pull::reconcile`] pages an id
+//! listing by offset and could fire every page after the first together, which
+//! would both shorten it and narrow the window in which a concurrent write can
+//! tear the listing. It is left sequential because it runs once a day, is a
+//! single page for any corpus under a thousand entries, and its abort guard is
+//! the one place in the engine where being clever risks the user's data.
 
 pub mod pull;
 pub mod replay;
 
+use futures_util::StreamExt as _;
+
 use crate::api::{decode_icon, IconLimits, MinifluxClient};
 use crate::db::{store, Database};
 use crate::error::Result;
-use crate::model::ServerVersion;
+use crate::model::{FeedId, Icon, ServerVersion};
 
 #[derive(Debug, Clone, Copy)]
 pub struct SyncOptions {
@@ -154,8 +181,13 @@ pub async fn sync(
     };
     report.server_version = Some(version.raw.clone());
 
+    // Whether this pass may put independent requests in flight together. From
+    // the mirror, not from the client: see "How the pass knows whether it can
+    // overlap" in the module docs.
+    let multiplexes = state.server_multiplexes.unwrap_or(false);
+
     // 2 & 3.
-    pull::taxonomy(db, client, generation).await?;
+    pull::taxonomy_with(db, client, generation, multiplexes).await?;
     report.pull = pull::entries(db, client, state.cursor_changed_after, generation).await?;
 
     // 4. Deletions are invisible to the cursor, so they need their own signal.
@@ -203,7 +235,13 @@ pub async fn sync(
     // else.
 
     // 5.
-    report.icons_fetched = fetch_icons(db, client, options.icons_per_pass).await?;
+    report.icons_fetched = fetch_icons(
+        db,
+        client,
+        options.icons_per_pass,
+        icon_concurrency(multiplexes),
+    )
+    .await?;
 
     // 6. Retention, last of the mirror-changing steps.
     //
@@ -239,6 +277,11 @@ pub async fn sync(
         server_era: Some(era_label(&version).to_owned()),
         server_version: report.server_version.clone(),
         server_version_checked_at: version_checked_at,
+        // What this pass actually got, for the next one to act on. Taken here
+        // rather than earlier so it reflects the last response of the pass:
+        // reaching this line means requests succeeded, so it is a real
+        // reading and not the pessimistic value a fresh transport starts with.
+        server_multiplexes: Some(client.multiplexes()),
     };
     db.with_tx(|tx| store::set_sync_state(tx, &next))?;
 
@@ -260,41 +303,94 @@ fn era_label(version: &ServerVersion) -> &'static str {
     }
 }
 
-/// Fetch up to `limit` missing feed icons.
-async fn fetch_icons(db: &mut Database, client: &MinifluxClient, limit: i64) -> Result<usize> {
+/// How many icon requests to keep in flight.
+///
+/// One unless the connection multiplexes, and the asymmetry is the point: over
+/// HTTP/2 the extra requests are streams on a connection that is already open,
+/// so they cost nothing but the server's time; over HTTP/1.1 each one is
+/// another connection and another handshake, which is what this whole
+/// arrangement exists to avoid.
+///
+/// Four rather than "all of them". `icons_per_pass` is eight by default, and
+/// a first sync of two hundred feeds would otherwise open the batch as a
+/// thundering herd against someone's self-hosted instance -- the very thing
+/// §11 asks about and that batching the icons was the answer to. Four keeps
+/// the batch to two round trips instead of eight while still being a request
+/// rate a small server would not notice.
+#[must_use]
+pub fn icon_concurrency(multiplexes: bool) -> usize {
+    if multiplexes {
+        4
+    } else {
+        1
+    }
+}
+
+/// Fetch up to `limit` missing feed icons, `in_flight` at a time.
+///
+/// The network half runs first and the mirror is written once at the end,
+/// rather than a transaction per icon. That is not only about the concurrency:
+/// a batch of eight icons used to be up to sixteen short transactions, each
+/// one a commit the UI's readers had to wait behind, for what is ultimately
+/// one screen's worth of small images.
+///
+/// A failure to fetch or decode is recorded, never propagated. A missing or
+/// broken icon is not a reason to fail a sync -- but it IS a reason to stop
+/// asking, or that feed starves every one behind it in the batch on every
+/// future pass. See [`store::feeds_missing_icons`].
+async fn fetch_icons(
+    db: &mut Database,
+    client: &MinifluxClient,
+    limit: i64,
+    in_flight: usize,
+) -> Result<usize> {
     if limit <= 0 {
         return Ok(0);
     }
     let wanted = store::feeds_missing_icons(db.conn(), limit)?;
-    let mut fetched = 0usize;
+    if wanted.is_empty() {
+        return Ok(0);
+    }
 
-    for (feed_id, _icon_id) in wanted {
-        let wire = match client.feed_icon(feed_id.get()).await {
-            Ok(w) => w,
-            Err(e) => {
-                // A missing or broken icon is never a reason to fail a sync --
-                // but it IS a reason to stop asking, or this feed starves every
-                // one behind it in the batch on every future sync.
-                tracing::debug!(feed = %feed_id, error = %e, "could not fetch a feed icon");
-                db.with_tx(|tx| store::record_icon_failure(tx, feed_id))?;
-                continue;
-            }
-        };
-        // Validated by content, not by claimed type (§9.3).
-        match decode_icon(&wire, IconLimits::default()) {
-            Ok(icon) => {
-                db.with_tx(|tx| {
-                    store::upsert_icon(tx, &icon)?;
-                    store::clear_icon_failures(tx, feed_id)
-                })?;
-                fetched += 1;
-            }
-            Err(e) => {
-                tracing::debug!(feed = %feed_id, error = %e, "rejected a feed icon");
-                db.with_tx(|tx| store::record_icon_failure(tx, feed_id))?;
+    let outcomes: Vec<(FeedId, Option<Icon>)> =
+        futures_util::stream::iter(wanted.into_iter().map(|(feed_id, _icon_id)| async move {
+            let icon = match client.feed_icon(feed_id.get()).await {
+                // Validated by content, not by claimed type (§9.3).
+                Ok(wire) => match decode_icon(&wire, IconLimits::default()) {
+                    Ok(icon) => Some(icon),
+                    Err(e) => {
+                        tracing::debug!(feed = %feed_id, error = %e, "rejected a feed icon");
+                        None
+                    }
+                },
+                Err(e) => {
+                    tracing::debug!(feed = %feed_id, error = %e, "could not fetch a feed icon");
+                    None
+                }
+            };
+            (feed_id, icon)
+        }))
+        // `buffered`, not `buffer_unordered`: results come back in the order
+        // they were asked for, so the batch writes the same rows in the same
+        // order whatever the network did. Head-of-line blocking inside a
+        // window of four small images is not worth the nondeterminism.
+        .buffered(in_flight.max(1))
+        .collect()
+        .await;
+
+    let fetched = outcomes.iter().filter(|(_, icon)| icon.is_some()).count();
+    db.with_tx(|tx| {
+        for (feed_id, icon) in &outcomes {
+            match icon {
+                Some(icon) => {
+                    store::upsert_icon(tx, icon)?;
+                    store::clear_icon_failures(tx, *feed_id)?;
+                }
+                None => store::record_icon_failure(tx, *feed_id)?,
             }
         }
-    }
+        Ok(())
+    })?;
     Ok(fetched)
 }
 
@@ -308,6 +404,37 @@ mod tests {
         assert_eq!(era_label(&parse("2.3.2")), "hard-delete-with-id-listing");
         assert_eq!(era_label(&parse("2.3.0")), "hard-delete");
         assert_eq!(era_label(&parse("2.2.7")), "legacy-soft-delete");
+    }
+
+    #[test]
+    fn nothing_is_overlapped_on_a_connection_that_cannot_multiplex() {
+        // The asymmetry IS the feature. Over HTTP/1.1 a second request in
+        // flight is a second TCP connection and a second TLS handshake, which
+        // costs more than the round trip it saves -- so the fallback is not
+        // "a bit less concurrency", it is none at all.
+        assert_eq!(
+            icon_concurrency(false),
+            1,
+            "without multiplexing, requests must take turns on the one connection"
+        );
+    }
+
+    #[test]
+    fn multiplexing_overlaps_icons_without_opening_the_batch_all_at_once() {
+        let n = icon_concurrency(true);
+        assert!(
+            n > 1,
+            "an HTTP/2 connection carries streams; taking turns on it wastes the pass"
+        );
+        // The upper bound matters as much as the lower one. `icons_per_pass`
+        // is 8 and a first sync has hundreds of feeds waiting: a window as
+        // wide as the batch is the thundering herd §11 asks about, aimed at
+        // someone's self-hosted instance.
+        assert!(
+            n <= SyncOptions::default().icons_per_pass as usize / 2,
+            "the window must stay well inside the batch, or the batching that \
+             avoids a herd on first sync is undone by the concurrency"
+        );
     }
 
     #[test]

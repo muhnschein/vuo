@@ -766,12 +766,19 @@ pub struct SyncState {
     /// predates this column, which amounts to the same thing: the recorded
     /// version is of unknown age and the next pass re-checks it.
     pub server_version_checked_at: Option<i64>,
+    /// Whether the last pass's requests shared one HTTP/2 connection.
+    ///
+    /// `None` means no pass has looked yet. Carried in the mirror rather than
+    /// only in the transport because a phone's reader is opened, synced and
+    /// closed again: a reading that lived only in memory would be taken after
+    /// the pass that could have used it, every single time.
+    pub server_multiplexes: Option<bool>,
 }
 
 pub fn sync_state(conn: &rusqlite::Connection) -> Result<SyncState> {
     Ok(conn.query_row(
         "SELECT cursor_changed_after, sync_generation, last_full_reconcile_at, server_era,
-                server_version, server_version_checked_at
+                server_version, server_version_checked_at, server_multiplexes
          FROM sync_state WHERE id = 1",
         [],
         |r| {
@@ -782,6 +789,7 @@ pub fn sync_state(conn: &rusqlite::Connection) -> Result<SyncState> {
                 server_era: r.get(3)?,
                 server_version: r.get(4)?,
                 server_version_checked_at: r.get(5)?,
+                server_multiplexes: r.get(6)?,
             })
         },
     )?)
@@ -791,7 +799,7 @@ pub fn set_sync_state(tx: &Transaction<'_>, state: &SyncState) -> Result<()> {
     tx.execute(
         "UPDATE sync_state SET cursor_changed_after = ?1, sync_generation = ?2,
              last_full_reconcile_at = ?3, server_era = ?4, server_version = ?5,
-             server_version_checked_at = ?6
+             server_version_checked_at = ?6, server_multiplexes = ?7
          WHERE id = 1",
         rusqlite::params![
             state.cursor_changed_after,
@@ -800,6 +808,7 @@ pub fn set_sync_state(tx: &Transaction<'_>, state: &SyncState) -> Result<()> {
             state.server_era,
             state.server_version,
             state.server_version_checked_at,
+            state.server_multiplexes,
         ],
     )?;
     Ok(())

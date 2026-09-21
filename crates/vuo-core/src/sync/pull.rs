@@ -79,24 +79,48 @@ pub struct PullOutcome {
 
 /// Pull categories and feeds. Cheap, and needed before entries so that an
 /// entry's feed exists when the UI joins against it.
+///
+/// The two listings go out together where the connection multiplexes, and in
+/// turn where it does not; see [`taxonomy_with`] for why that is a decision
+/// rather than a default.
 pub async fn taxonomy(db: &mut Database, client: &MinifluxClient, generation: i64) -> Result<()> {
-    // Deliberately SEQUENTIAL, though the two listings are independent.
+    taxonomy_with(db, client, generation, client.multiplexes()).await
+}
+
+/// [`taxonomy`], with the multiplexing decision given explicitly.
+///
+/// `concurrent` is passed in for two reasons. The sync pass has a better
+/// answer than the client does -- it carries the previous pass's reading
+/// forward out of the mirror, where a freshly built client has not seen a
+/// response yet. And the concurrent branch is otherwise unreachable under
+/// test: `wiremock` serves HTTP/1.1 only, so `client.multiplexes()` is always
+/// false against it and no test could drive the other half. This is the same
+/// reason [`entries_with_page_cap`] exists.
+pub async fn taxonomy_with(
+    db: &mut Database,
+    client: &MinifluxClient,
+    generation: i64,
+    concurrent: bool,
+) -> Result<()> {
+    // The two listings are independent, so awaiting them in turn holds the
+    // radio up for the sum of their latencies rather than the longer of them.
+    // On a phone that is worth having: the modem re-arms to send anything and
+    // then sits in a connected state for a tail timer measured in seconds, so
+    // what a pass costs tracks how LONG it is far more than how much it moves.
     //
-    // Running them together would shorten the pass by one round trip, and on a
-    // phone a shorter pass is the thing worth having. It would also cost a
-    // second connection: `reqwest` is built here without the `http2` feature,
-    // so there is no multiplexing, and two requests in flight at once means
-    // two TCP connections and two TLS handshakes rather than one connection
-    // reused. Passes are an hour apart and the pool's idle timeout is ninety
-    // seconds, so every pass starts cold and pays that in full.
-    //
-    // One saved round trip is tens of milliseconds off a radio event whose
-    // tail timer is measured in seconds; an extra handshake is packets and
-    // elliptic-curve work that were not there before. The trade only turns
-    // positive with HTTP/2, and that is the change to make first -- see the
-    // module docs.
-    let categories = client.categories().await?;
-    let feeds = client.feeds().await?;
+    // But only over HTTP/2. Without multiplexing, two requests in flight at
+    // once are two TCP connections and two TLS handshakes rather than one
+    // connection reused -- and passes are an hour apart while the pool's idle
+    // timeout is ninety seconds, so every pass starts cold and would pay that
+    // in full. One saved round trip is tens of milliseconds off a radio event
+    // whose tail is seconds; an extra handshake is packets and elliptic-curve
+    // work that were not there before. That trade is a loss, which is why
+    // this waits to be told rather than always running together.
+    let (categories, feeds) = if concurrent {
+        tokio::try_join!(client.categories(), client.feeds())?
+    } else {
+        (client.categories().await?, client.feeds().await?)
+    };
 
     // Convert outside the transaction: a per-item rejection should not roll
     // back the items that were fine.

@@ -420,3 +420,48 @@ async fn a_failed_request_renders_without_the_url_or_its_query() {
         );
     }
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_plaintext_server_is_spoken_to_in_http_1_1_and_is_not_taken_for_http_2() {
+    // Two things at once, both of which would be invisible until someone's
+    // self-hosted instance stopped working.
+    //
+    // First: the client must NOT open with HTTP/2. `reqwest` has the `http2`
+    // feature on, and the mistake that comes with it is
+    // `http2_prior_knowledge`, which sends the `PRI * HTTP/2.0` preface
+    // without negotiating. Against a plaintext server -- a Miniflux on a LAN,
+    // which is a normal way to run one -- that is a hard failure, and no
+    // amount of ALPN testing would catch it because plaintext has no ALPN.
+    //
+    // Second: `multiplexes()` must read what actually came back rather than
+    // assuming the feature it was compiled with. An HTTP/1.1 answer means
+    // requests still take turns, and a pass that believed otherwise would open
+    // a connection and a TLS handshake per request in flight -- paying more
+    // than the round trip it set out to save.
+    let (base, rx, _h) = raw_server(vec![
+        b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok".to_vec()
+    ]);
+    let t = transport(&base, &cfg());
+    let res = t
+        .send(
+            reqwest::Method::GET,
+            Url::parse(&format!("{base}/v1/me")).unwrap(),
+            None,
+        )
+        .await;
+    assert!(res.is_ok(), "a plain HTTP/1.1 server must answer: {res:?}");
+
+    let request = rx.recv_timeout(Duration::from_secs(5)).unwrap();
+    assert!(
+        request.starts_with("GET /v1/me HTTP/1.1\r\n"),
+        "the request must go out as HTTP/1.1, not an HTTP/2 preface: {request:?}"
+    );
+    assert!(
+        !request.contains("PRI *"),
+        "http2_prior_knowledge would break every plaintext instance: {request:?}"
+    );
+    assert!(
+        !t.multiplexes(),
+        "an HTTP/1.1 response means requests must keep taking turns"
+    );
+}

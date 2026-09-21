@@ -214,6 +214,17 @@ impl MinifluxClient {
         &self.transport
     }
 
+    /// Whether requests to this instance can share one connection.
+    ///
+    /// See [`Transport::multiplexes`]. Forwarded here because the sync pass
+    /// holds a client, not a transport, and because the question it is really
+    /// asking -- "is putting two of these in flight together cheaper than
+    /// taking turns" -- is about the client's requests.
+    #[must_use]
+    pub fn multiplexes(&self) -> bool {
+        self.transport.multiplexes()
+    }
+
     fn url(&self, path: &str) -> Result<Url> {
         // `join` on a base whose path lacks a trailing slash would replace the
         // last segment, so build against a normalised base. This matters for
