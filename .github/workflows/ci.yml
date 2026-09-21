@@ -16,6 +16,13 @@ on:
   pull_request:
   workflow_dispatch:
 
+# Nothing here writes. Every job checks out, builds and reports through the
+# check run the Actions runtime raises on its own; none of them touch the
+# contents, issues or pull-request APIs. Saying so pins the floor, so a step
+# added later cannot quietly inherit a token that can push.
+permissions:
+  contents: read
+
 env:
   CARGO_TERM_COLOR: always
   # A phone build has no incremental cache either, and this keeps CI closer to
