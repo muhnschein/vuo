@@ -21,11 +21,36 @@ serde_json = "1.0"
 # default-features = false deliberately: it drops native-tls (and with it
 # OpenSSL) and the default redirect policy. §9.1 requires rustls and a
 # restrictive, hand-written redirect policy, so neither default is wanted.
+#
+# `http2` is on, and it is not free: the feature alone costs 438 KB of binary
+# -- measured on a host x86_64 release build of harbour-vuo by flipping only
+# this line, 4,818,736 bytes without it against 5,257,008 with, or 9.1%. That
+# is three and a half times what `opt-level = "s"` spends, so it needs a reason
+# rather than a shrug. (The whole change, concurrency and all, came to
+# 5,277,424: another 20 KB for the code that uses it.)
+#
+# The reason is that multiplexing is what makes a sync pass SHORTER, and on a
+# phone the length of a pass is what it costs: the modem re-arms to send
+# anything and then holds a connected state for a tail timer measured in
+# seconds. Independent requests -- the two taxonomy listings, a batch of feed
+# icons -- can now share one connection instead of taking turns on it, without
+# the extra TCP connection and TLS handshake per request in flight that made
+# the same change a net loss over HTTP/1.1. See `sync`'s module docs.
+#
+# It adds no crate to the vendor set: `h2` was already in `Cargo.lock` by way
+# of `hyper`, so `cargo vendor` -- and with it the SDK build -- already carried
+# it. The cost really is only the linked bytes.
+#
+# Nothing here enables `http2_prior_knowledge`, so this is HTTP/2 over ALPN
+# only. A server that does not offer `h2` -- a plaintext instance on a LAN,
+# say -- negotiates HTTP/1.1 exactly as before, and the sync pass notices and
+# stays sequential.
 reqwest = { version = "0.12", default-features = false, features = [
     "json",
     "rustls-tls-native-roots",
     "stream",
     "gzip",
+    "http2",
 ] }
 http = "1"
 url = { version = "2.5", features = ["serde"] }

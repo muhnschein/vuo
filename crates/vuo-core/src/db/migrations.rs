@@ -192,6 +192,28 @@ ALTER TABLE feeds ADD COLUMN crawler INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE sync_state ADD COLUMN server_version_checked_at INTEGER;
 "#,
     },
+    Migration {
+        version: 6,
+        name: "remember whether the instance speaks HTTP/2",
+        sql: r#"
+-- Whether requests to this instance can share one connection, which decides
+-- whether the sync pass runs its independent requests together or in turn.
+-- Over HTTP/2 that shortens the pass, and a shorter pass is less radio time;
+-- over HTTP/1.1 it would buy the same round trip at the price of a second TCP
+-- connection and TLS handshake, which is a loss.
+--
+-- It is stored rather than just observed because of how a phone is used. ALPN
+-- answers the question on the first response, but a reader is opened, synced
+-- once and closed again -- so a transport that only learned in memory would
+-- start every launch not knowing, and the answer would never be old enough to
+-- act on. Every pass re-reads it from the response it actually got, so a
+-- server that gains or loses h2 corrects this on the next pass.
+--
+-- Nullable with no default: NULL means "not known yet", which reads the same
+-- as 0 here but does not claim an instance was measured when it was not.
+ALTER TABLE sync_state ADD COLUMN server_multiplexes INTEGER;
+"#,
+    },
 ];
 
 /// The schema version this build expects.

@@ -42,7 +42,38 @@
 //!
 //! There is deliberately no way to disable verification. Not a setting, not a
 //! feature flag, not an environment variable.
+//!
+//! # HTTP/2, and the two defaults that had to be overridden
+//!
+//! `reqwest` is built with the `http2` feature, so a server that offers `h2`
+//! over ALPN gets it. That is what lets a sync pass put independent requests
+//! in flight together without paying a TCP connection and a TLS handshake for
+//! each one; [`crate::sync`] explains why a shorter pass is the thing worth
+//! buying on a phone.
+//!
+//! Two of the defaults that come with it are wrong here, and both are set
+//! explicitly in [`Transport::new`] rather than left alone:
+//!
+//! - **The flow-control window.** hyper's default stream window is 64 KiB,
+//!   which caps a single stream at one window per round trip -- about
+//!   640 KB/s at a 100 ms RTT, and less on a slow cellular link. An entry page
+//!   with full article content is megabytes, so accepting that default would
+//!   make the biggest response in the pass SLOWER over HTTP/2 than over
+//!   HTTP/1.1, where nothing throttles it. A longer transfer is a longer radio
+//!   event, which is the opposite of the point. `http2_adaptive_window` sizes
+//!   the window from the measured bandwidth-delay product instead, which is
+//!   what a phone moving between Wi-Fi and cellular actually needs.
+//! - **Keep-alive pings.** Left off, which is hyper's default, and named here
+//!   so nobody switches them on for tidiness later. A ping is a packet, a
+//!   packet re-arms the radio, and an idle connection in the pool is exactly
+//!   the thing that should cost nothing. The pool's idle timeout closes it.
+//!
+//! There is no `http2_prior_knowledge`: that would mean speaking HTTP/2 at a
+//! plaintext server without negotiating, which fails against anything that
+//! does not expect it. ALPN only, so an HTTP/1.1 instance is unaffected.
 
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 
 use futures_util::StreamExt as _;
@@ -113,6 +144,12 @@ pub struct Transport {
     config_max_bytes: usize,
     max_redirects: usize,
     request_timeout: Duration,
+    /// Whether the most recent response arrived over HTTP/2.
+    ///
+    /// Observed rather than assumed: ALPN decides this per connection, and
+    /// whether a given instance offers `h2` depends on whatever sits in front
+    /// of it. See [`Transport::multiplexes`].
+    multiplexing: Arc<AtomicBool>,
 }
 
 impl Transport {
@@ -144,6 +181,12 @@ impl Transport {
                 .timeout(config.request_timeout)
                 // Redirects are resolved by hand; see the module docs.
                 .redirect(reqwest::redirect::Policy::none())
+                // Size the HTTP/2 window from the measured bandwidth-delay
+                // product. The 64 KiB default would throttle a full entry page
+                // below what HTTP/1.1 manages; see the module docs. Harmless
+                // on a connection that negotiates HTTP/1.1, where it does not
+                // apply at all.
+                .http2_adaptive_window(true)
         };
 
         let mut api_builder = base();
@@ -187,12 +230,34 @@ impl Transport {
             config_max_bytes: config.max_response_bytes,
             max_redirects: config.max_redirects,
             request_timeout: config.request_timeout,
+            // False until a response says otherwise. The pessimistic start is
+            // the safe one: it costs at most one round trip that could have
+            // been overlapped, where guessing true against an HTTP/1.1 server
+            // costs a whole extra connection and handshake.
+            multiplexing: Arc::new(AtomicBool::new(false)),
         })
     }
 
     #[must_use]
     pub fn origin(&self) -> &Url {
         &self.origin
+    }
+
+    /// Whether the most recent response on this transport arrived over HTTP/2.
+    ///
+    /// The caller's real question is "can independent requests share one
+    /// connection", which is why this is named for multiplexing rather than
+    /// for the protocol version. It is the ONE thing that makes running them
+    /// together cheaper than running them in turn: without it each request in
+    /// flight is another TCP connection and another TLS handshake.
+    ///
+    /// Answers `false` before the first response, so the pass that discovers
+    /// the answer does not get to use it. That is deliberate -- see the note
+    /// on the field -- and why [`crate::sync`] carries the reading forward in
+    /// the mirror rather than relearning it every time the app starts.
+    #[must_use]
+    pub fn multiplexes(&self) -> bool {
+        self.multiplexing.load(Ordering::Relaxed)
     }
 
     /// A client for fetching media: no token, no cookies, no private CA.
@@ -259,6 +324,15 @@ impl Transport {
             }
 
             let response = req.send().await.map_err(|e| classify(e, &safe))?;
+            // Recorded on every hop, including a redirect's: what is being
+            // learned is a property of the connection, not of the endpoint.
+            // `Relaxed` because nothing is ordered against this -- it is a
+            // hint read at the top of the next pass, and a stale reading only
+            // ever costs or saves one round trip.
+            self.multiplexing.store(
+                response.version() == reqwest::Version::HTTP_2,
+                Ordering::Relaxed,
+            );
             let status = response.status();
 
             // 304/305/306 are in the 3xx range but are not redirects to
@@ -474,6 +548,20 @@ mod tests {
             ),
             other => panic!("expected a transport error, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn a_fresh_transport_does_not_claim_to_multiplex() {
+        // The pessimistic start is what keeps the cost of being wrong
+        // asymmetric. Claiming HTTP/2 that is not there makes the sync pass
+        // open a second connection and a second TLS handshake for a round trip
+        // it thought was free; not claiming HTTP/2 that IS there costs one
+        // round trip that could have been overlapped.
+        let t = transport("https://miniflux.example/").unwrap();
+        assert!(
+            !t.multiplexes(),
+            "nothing has been negotiated yet, so nothing may be assumed"
+        );
     }
 
     #[test]

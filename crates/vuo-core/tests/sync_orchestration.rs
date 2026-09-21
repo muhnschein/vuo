@@ -374,6 +374,69 @@ async fn the_counters_request_is_skipped_when_a_reconcile_is_due_anyway() {
     );
 }
 
+/// The pass records whether its requests shared a connection, and re-records
+/// it every time.
+///
+/// Whether an instance speaks HTTP/2 decides whether the pass overlaps its
+/// independent requests, and ALPN only answers that once a response has come
+/// back -- by which time the step that wanted to know has already run. On a
+/// phone that is not a one-pass delay but a permanent one: a reader is opened,
+/// synced once and closed again, so a reading kept only in the transport is
+/// taken after the pass that could have used it, every launch, forever.
+///
+/// Hence the column. And hence the other half of this test: a stored reading
+/// that has gone stale must be corrected by the pass that notices, or an
+/// instance that loses `h2` -- someone takes a proxy away -- would keep
+/// opening a second connection and a second handshake per pass with nothing
+/// ever to put that right.
+#[tokio::test]
+async fn a_pass_records_whether_its_requests_shared_a_connection() {
+    let server = quiet_server().await;
+    let client = client_for(&server);
+    let mut db = Database::open_in_memory().expect("mirror");
+
+    assert_eq!(
+        store::sync_state(db.conn())
+            .expect("state")
+            .server_multiplexes,
+        None,
+        "a mirror that has never synced has not measured anything, and must \
+         not claim to have measured `false`"
+    );
+
+    sync::sync(&mut db, &client, SyncOptions::default())
+        .await
+        .expect("first sync");
+    assert_eq!(
+        store::sync_state(db.conn())
+            .expect("state")
+            .server_multiplexes,
+        Some(false),
+        "wiremock serves HTTP/1.1, so the pass must have recorded that it \
+         could not share a connection"
+    );
+
+    // Now poison it, the way an instance that used to sit behind an
+    // HTTP/2 proxy would have left it.
+    let mut stale = store::sync_state(db.conn()).expect("state");
+    stale.server_multiplexes = Some(true);
+    db.with_tx(|tx| store::set_sync_state(tx, &stale))
+        .expect("store a stale reading");
+
+    sync::sync(&mut db, &client, SyncOptions::default())
+        .await
+        .expect("second sync");
+    assert_eq!(
+        store::sync_state(db.conn())
+            .expect("state")
+            .server_multiplexes,
+        Some(false),
+        "a reading is a measurement, not a setting: the pass that saw HTTP/1.1 \
+         must overwrite a stored `true` rather than leave the next pass paying \
+         for a connection per request forever"
+    );
+}
+
 /// How many times the mock server was asked for its version.
 async fn version_requests(server: &MockServer) -> usize {
     server
