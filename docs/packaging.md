@@ -211,6 +211,7 @@ build needs neither of the tools:
 | `translations/*.qm` | `lrelease` | Qt's linguist tools |
 | `qml/art/onboarding.png` | `make textart` (`scripts/render-textart.sh onboarding`) | a QML runtime and a display (or `xvfb`) |
 | `qml/art/cover/*.png` | `make textart` (`scripts/render-textart.sh cover`) | the same, plus the digits' font; the device's own font if you have it |
+| `qml/art/cover/*-edge.png` | the same run | the same; one outline per count, written beside its pattern |
 | `store/cover.png` | `scripts/render-store-cover.sh` | the same, plus two font files |
 
 The art is the texture the cover and the onboarding page wear: nested curves
@@ -232,12 +233,29 @@ not, so neither is baked in.
 
 On the cover the unread count is **negative space**: the lines of text flow
 around the digits, hug their outline, and a few lines out are the usual
-sweeps again. Nothing is drawn inside the digits and nothing is drawn on top
-of the texture. That means the whole background depends on the number, so
-the cover is not one mask but a set, `qml/art/cover/0.png` … `99.png` and
-`99+.png` -- every count from 0 to 99 and one for everything past that. The
-cover names the one for its count (`CoverPage.qml`, `countKey`) and the
-count itself is still there as data, in an invisible `unreadTotal` label.
+sweeps again. Nothing is drawn inside the digits. That means the whole
+background depends on the number, so the cover is not one mask but a set,
+`qml/art/cover/0.png` … `99.png` and `99+.png` -- every count from 0 to 99
+and one for everything past that. The cover names the one for its count
+(`CoverPage.qml`, `countKey`) and the count itself is still there as data,
+in an invisible `unreadTotal` label.
+
+Beside each is `<count>-edge.png`, the same silhouette traced as a thin
+line, which the cover draws OVER the pattern in the ambience's highlight
+colour. It is a second mask rather than a digit set at runtime because the
+face the masters were cut in (Fira Sans ExtraBold) is not on the phone, and
+because the placement is a fit the painter resolved once against the master
+-- anything drawn from a font in QML would have to reproduce the face, the
+fit and the crop, and would miss the silhouette by whatever it got wrong.
+Off the same painter at the same size it cannot miss: one shader samples
+both masks through one crop, and one set of cuts applies to both, so the
+line sinks away beneath the status row exactly as the pattern does.
+
+It is a file of its own and not a second channel of the pattern's. The two
+want different colours, which one coverage channel cannot say; and it is
+cheaper apart. An outline is about 2% of its pattern's bytes on its own,
+and 13% folded in, because a second channel interleaves with the first and
+spoils the row filters PNG compresses with.
 
 Three ways of packaging that were weighed; this is the first:
 
@@ -281,9 +299,9 @@ its height, and centres the digits' ink in the height above it. Both scale
 with the pixel ratio, so the fraction should hold everywhere; a screenshot of
 a stock cover with one action, measured, is what would confirm it.
 
-`scripts/render-textart.sh cover:42` paints one count, for looking at a
-change to the painter before running it over all hundred and one; a full
-`cover` run replaces the directory. The painter refuses any master on which
+`scripts/render-textart.sh cover:42` paints one count -- both of its masks
+-- for looking at a change to the painter before running it over all hundred
+and one; a full `cover` run replaces the directory. The painter refuses any master on which
 two lines of text run over one another, so the whole set is checked as it is
 made.
 

@@ -101,10 +101,13 @@ see is what the cover does as sync and the count move underneath it, which
 is what `crates/vuo-shim/tests/qml_cover.rs` drives in an engine of its own.
 
 On the cover the count is **negative space** in the texture -- the lines flow
-around the digits -- so every count has a mask of its own in
-`qml/art/cover/` and the cover's one job is to name the right one. The test
-asserts that it does: the mask follows the count, zero included; past the
-cap every count names `99+.png` and the count-as-data says `99+`; the count
+around the digits -- so every count has masks of its own in
+`qml/art/cover/`, a pattern and the outline drawn over it, and the cover's
+one job is to name the right ones. The test asserts that it does: both masks
+follow the count, zero included, and follow it TOGETHER, since two bindings
+over two files can disagree and draw one count's line over another's
+pattern; past the cap every count names `99+.png` and the count-as-data says
+`99+`; the count
 survives a refresh; a failure puts Vuo's own translated line on the cover
 rather than the server's words; and nothing is faded or cleared out of the
 texture, because the room for the number is already in it.

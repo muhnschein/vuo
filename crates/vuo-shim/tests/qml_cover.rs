@@ -131,6 +131,19 @@ fn the_cover_names_the_mask_for_its_count_and_says_how_sync_is() {
                 "the cover must draw the mask painted around its count: \
                  expected a source ending in {expected:?}, got {source:?}"
             );
+            // And its outline, from the same count. The two are separate
+            // bindings over separate files, so one can follow the count
+            // while the other does not -- which would draw this count's
+            // pattern with some other count's line over it, and look like
+            // a painter bug rather than a binding one.
+            let edge = get!("textArt", "edgeSource");
+            let expected_edge = format!("art/cover/{}-edge.png", $key);
+            assert!(
+                edge.ends_with(&expected_edge),
+                "the cover's outline must come from the same count as its \
+                 pattern: expected an edgeSource ending in {expected_edge:?}, \
+                 got {edge:?}"
+            );
         }};
     }
 
@@ -285,43 +298,47 @@ fn the_cover_names_the_mask_for_its_count_and_says_how_sync_is() {
 
 /// Every mask the cover can name is there, and is a coverage mask.
 ///
-/// The cover computes its `source`, so `qml_loads.rs`, which reads literal
-/// sources out of the QML, cannot see these. A missing one would be a bare
-/// cover for exactly that count -- Qt reports a missing image only as a
-/// warning -- and a mask re-exported as RGBA would tint the cover solid,
+/// TWO per count: `<count>.png`, the pattern, and `<count>-edge.png`, the
+/// outline the cover lays over it in the ambience's colour. The second is
+/// the easier one to lose and the harder one to notice -- a missing pattern
+/// is a bare cover, while a missing outline is a cover that merely looks
+/// like every other count's without its line -- so both are checked here.
+///
+/// The cover computes both sources, so `qml_loads.rs`, which reads literal
+/// sources out of the QML, cannot see them. Qt reports a missing image only
+/// as a warning, and a mask re-exported as RGBA would tint the cover solid,
 /// for the reason given over there.
 #[test]
 fn every_mask_the_cover_can_name_exists_and_is_a_mask() {
     let dir = repo_root().join("qml/art/cover");
     let mut problems: Vec<String> = Vec::new();
+    let mut expected: std::collections::HashSet<String> = std::collections::HashSet::new();
     for key in cover_keys() {
-        let path = dir.join(format!("{key}.png"));
-        let Ok(bytes) = std::fs::read(&path) else {
-            problems.push(format!("{key}.png is missing"));
-            continue;
-        };
-        if bytes.get(..8) != Some(b"\x89PNG\r\n\x1a\n") {
-            problems.push(format!("{key}.png is not a PNG"));
-            continue;
-        }
-        // IHDR is always first: 8 bytes of signature, 8 of chunk header,
-        // then width, height, bit depth, colour type.
-        let depth = bytes.get(24).copied().unwrap_or(0);
-        let colour = bytes.get(25).copied().unwrap_or(255);
-        if (depth, colour) != (8, 0) {
-            problems.push(format!(
-                "{key}.png is bit depth {depth} colour type {colour}; the shader \
-                 reads coverage from the red channel of an 8-bit grayscale mask"
-            ));
+        for name in [format!("{key}.png"), format!("{key}-edge.png")] {
+            expected.insert(name.clone());
+            let Ok(bytes) = std::fs::read(dir.join(&name)) else {
+                problems.push(format!("{name} is missing"));
+                continue;
+            };
+            if bytes.get(..8) != Some(b"\x89PNG\r\n\x1a\n") {
+                problems.push(format!("{name} is not a PNG"));
+                continue;
+            }
+            // IHDR is always first: 8 bytes of signature, 8 of chunk header,
+            // then width, height, bit depth, colour type.
+            let depth = bytes.get(24).copied().unwrap_or(0);
+            let colour = bytes.get(25).copied().unwrap_or(255);
+            if (depth, colour) != (8, 0) {
+                problems.push(format!(
+                    "{name} is bit depth {depth} colour type {colour}; the shader \
+                     reads coverage from the red channel of an 8-bit grayscale mask"
+                ));
+            }
         }
     }
 
     // And nothing else: a mask for a count the cover cannot name is dead
     // weight in every package.
-    let expected: std::collections::HashSet<String> = cover_keys()
-        .into_iter()
-        .map(|k| format!("{k}.png"))
-        .collect();
     for entry in std::fs::read_dir(&dir)
         .expect("qml/art/cover exists")
         .flatten()
