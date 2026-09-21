@@ -58,6 +58,14 @@ Window {
     function coverJob(key) {
         return {
             file: "cover/" + key + ".png",
+            // The digits' outline, written beside the pattern as a mask of
+            // its own so the cover can draw it in the ambience's colour. See
+            // TextArtPainter's `obstacleEdge`.
+            edgeFile: "cover/" + key + "-edge.png",
+            // Thin, and measured on this master rather than on a device: a
+            // cover is at most 410 wide against these 512, so three and a
+            // half pixels here land a shade under three there.
+            obstacleEdge: 3.5,
             width: win.coverWidth, height: win.coverHeight, across: 64,
             obstacle: key,
             // How much of the cover the digits may take. Less than the
@@ -129,6 +137,7 @@ Window {
         obstacleFont: digits.name
         obstacleMaxWidth: win.job && win.job.obstacleMaxWidth ? win.job.obstacleMaxWidth : 0.80
         obstacleMaxHeight: win.job && win.job.obstacleMaxHeight ? win.job.obstacleMaxHeight : 0.62
+        obstacleEdge: win.job && win.job.obstacleEdge ? win.job.obstacleEdge : 0
         fillerFont: filler.status === FontLoader.Ready ? filler.name : Theme.fontFamily
         fitAspect: win.job && win.job.fitAspect ? win.job.fitAspect : 0
         reservedBottom: win.job && win.job.reservedBottom ? win.job.reservedBottom : 0
@@ -146,6 +155,9 @@ Window {
             }
             var job = win.job
             console.log("wrote", job.file, save(job.file))
+            if (job.edgeFile) {
+                console.log("wrote", job.edgeFile, saveEdge(job.edgeFile))
+            }
             // Traced a second time, and only to be told off: a ring drawn
             // twice is the one defect of this pattern anyone notices, and
             // it has shipped once. The script reads this line and refuses

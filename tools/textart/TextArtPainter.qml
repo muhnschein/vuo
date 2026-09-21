@@ -138,6 +138,48 @@ Canvas {
     /// binds.
     property real obstacleMaxWidth: 0.80
     property real obstacleMaxHeight: 0.62
+    /// How much of the way from the ink box's centre to the ink's WEIGHT the
+    /// number is moved. 0 centres the box, 1 centres the weight.
+    ///
+    /// A 1 is the reason this exists. Its ink box runs from the tip of the
+    /// flag to the edge of the stem, but nearly all of its ink is in the
+    /// stem, so a box centred on the canvas leaves the stem -- the part the
+    /// eye reads AS the digit -- sitting right of centre. Measured on Fira
+    /// Sans ExtraBold at 300px, the weight of each digit lies this far right
+    /// of its box centre:
+    ///
+    ///     0 -0.5   1 +21.5   2 +5.3   3 +11.3   4 -1.6
+    ///     5 +1.9   6  -4.3   7 +2.2   8  -0.6   9 +1.4
+    ///
+    /// The 1 is twice the next worst and about a fifth of its own ink width;
+    /// on a 512-wide master that is some 34 pixels, which is plainly visible
+    /// and was reported from a device. The symmetric digits move by well
+    /// under a pixel, so this costs them nothing.
+    ///
+    /// HALF of that, and not all of it. Moving a 1 the whole way puts the
+    /// stem left of centre and the shape then reads as shifted the other
+    /// way: the eye weighs a glyph's extent as well as its mass, and the
+    /// flag is wide even though it is thin. Two things agree on half. It is
+    /// what looks right side by side at 0, 0.5 and 1; and it is what the
+    /// type designer drew -- Fira gives the 1 a left bearing of 2 and a
+    /// right bearing of 22, so its own advance box sits +10.0 off the ink
+    /// box centre, against the +21.5 of the weight.
+    property real obstacleOptical: 0.5
+    /// How wide a line to trace around the digits' silhouette, in pixels of
+    /// this master, or 0 for none. It is NOT painted into the pattern: it is
+    /// written beside it by `saveEdge`, as a mask of its own, so the app can
+    /// lay it over the texture in a colour of its own choosing.
+    ///
+    /// Beside and not baked in, because the two want different colours. The
+    /// pattern is the theme's text colour at a fraction of an ink; the line
+    /// is the ambience's highlight at full strength. One channel cannot say
+    /// both, and a line baked into the pattern would be tinted with it.
+    ///
+    /// It straddles the silhouette -- half over the blank the digits are,
+    /// half over the gap the first ring leaves -- which is what an outline
+    /// of a shape looks like. There is room for it: `levelOffset` holds the
+    /// first ring 0.6 spacings off the edge.
+    property real obstacleEdge: 0
     /// The narrowest aspect (width over height) this master is cropped to
     /// on a device, or 0 for the master's own. The app's shader keeps the
     /// mask's full height and trims its sides to the cover's shape, so the
@@ -265,6 +307,12 @@ Canvas {
     /// The ink and not the advance box: the advance of a 4 has air on both
     /// sides that a 2's does not, and centring advances would centre the
     /// number a few pixels off where it appears to be.
+    ///
+    /// `cx` is where the ink's WEIGHT is across that box, coverage-weighted
+    /// so the antialiased edge counts for what it covers. For most digits it
+    /// falls within a pixel or two of the middle; for a 1 it does not, and
+    /// `obstacleField` uses it to place the number where it looks centred
+    /// rather than where it measures centred.
     function inkOf(ctx, ch, px) {
         var w = stencil.width, h = stencil.height
         var x0 = Math.round(w * 0.1)
@@ -299,14 +347,18 @@ Canvas {
         }
         var bw = maxX - minX + 1, bh = maxY - minY + 1
         var bits = new Uint8Array(bw * bh)
+        var mass = 0, moment = 0
         for (var yy = 0; yy < bh; yy++) {
             for (var xx = 0; xx < bw; xx++) {
-                bits[yy * bw + xx] =
-                    data[((yy + minY) * rw + xx + minX) * 4 + 3] >= 128 ? 1 : 0
+                var a = data[((yy + minY) * rw + xx + minX) * 4 + 3]
+                bits[yy * bw + xx] = a >= 128 ? 1 : 0
+                mass += a
+                moment += a * xx
             }
         }
         return { width: bw, height: bh,
                  top: ry + minY - y0, bottom: ry + maxY - y0,
+                 cx: mass > 0 ? moment / mass : bw / 2,
                  bits: bits }
     }
 
@@ -410,6 +462,115 @@ Canvas {
         return out
     }
 
+    /// A line along the edge of `inside`, `width` pixels wide and centred on
+    /// it, as coverage from 0 to 255.
+    ///
+    /// `outside` is the distance to the shape from every pixel beyond it,
+    /// which `obstacleField` has already paid for -- but it is one-sided, and
+    /// a band grown from it alone would sit BESIDE the silhouette rather than
+    /// on it, and read as one more ring of the pattern. Its mirror, the
+    /// distance to the outside from every pixel within, costs one more
+    /// transform and completes the pair: between them every pixel knows how
+    /// far it is from the edge, whichever side of it the pixel is on, which
+    /// is what a line centred on the edge needs.
+    ///
+    /// A pixel of feather, so the line is drawn rather than stepped. The
+    /// distances are centre to centre, so the edge itself falls about half a
+    /// pixel inside the shape; at these widths the feather covers that.
+    function outlineOf(inside, outside, w, h, width) {
+        var n = w * h, i
+        var flipped = new Uint8Array(n)
+        for (i = 0; i < n; i++) {
+            flipped[i] = inside[i] ? 0 : 1
+        }
+        var within = art.distanceOutside(flipped, w, h)
+        var half = width / 2
+        var out = new Uint8Array(n)
+        for (i = 0; i < n; i++) {
+            var fromEdge = inside[i] ? within[i] : outside[i]
+            var cover = 1 - (fromEdge - (half - 0.5))
+            out[i] = cover <= 0 ? 0
+                   : (cover >= 1 ? 255 : Math.round(255 * cover))
+        }
+        return out
+    }
+
+    /// Write the outline `obstacleEdge` asked for beside the pattern, as a
+    /// mask of the same size and the same crop, so the app can lay one over
+    /// the other with nothing to line up.
+    ///
+    /// Painted into the stencil, which has finished its measuring by now and
+    /// is the right size already. White at the line's coverage and nothing
+    /// anywhere else: `scripts/png-mask.py` keeps the alpha and throws the
+    /// rest away, exactly as it does for the pattern.
+    ///
+    /// Drawn as RUNS OF FILLRECT, and not as one putImageData, because
+    /// putImageData does not work in the Qt this runs on: the bytes go into
+    /// the ImageData -- they read back from it correctly -- and never reach
+    /// the canvas, so the file comes out empty and `save` still says true.
+    /// Sixteen alpha levels is what png-mask.py quantises the coverage to
+    /// anyway, so nothing is lost by drawing in that many passes, and one
+    /// pass over the digits' own box is enough to find every run.
+    function saveEdge(file) {
+        var O = art._obstacle
+        if (!O || !O.edge) {
+            return false
+        }
+        var ctx = stencil.getContext("2d")
+        if (!ctx) {
+            return false
+        }
+        var w = stencil.width, h = stencil.height
+        ctx.setTransform(1, 0, 0, 1, 0, 0)
+        ctx.clearRect(0, 0, w, h)
+
+        // Only where the line can be: the digits' ink, grown by the width of
+        // the line and a pixel of feather. Scanning the whole canvas costs
+        // four hundred thousand steps a master for nothing.
+        var pad = Math.ceil(art.obstacleEdge / 2) + 2
+        var x0 = Math.max(0, Math.floor(O.left) - pad)
+        var x1 = Math.min(w - 1, Math.ceil(O.right) + pad)
+        var y0 = Math.max(0, Math.floor(O.top) - pad)
+        var y1 = Math.min(h - 1, Math.ceil(O.bottom) + pad)
+
+        var levels = 16
+        var byLevel = []
+        var i
+        for (i = 0; i < levels; i++) {
+            byLevel.push([])
+        }
+        var e = O.edge
+        var x, y
+        for (y = y0; y <= y1; y++) {
+            var row = y * w
+            var cur = 0, start = x0
+            for (x = x0; x <= x1 + 1; x++) {
+                // One past the end closes the last run without repeating
+                // the emit inside the loop.
+                var q = x <= x1
+                        ? Math.round(e[row + x] * (levels - 1) / 255) : 0
+                if (q !== cur) {
+                    if (cur > 0) {
+                        byLevel[cur].push(start, y, x - start)
+                    }
+                    cur = q
+                    start = x
+                }
+            }
+        }
+        for (var L = 1; L < levels; L++) {
+            var runs = byLevel[L]
+            if (runs.length === 0) {
+                continue
+            }
+            ctx.fillStyle = Qt.rgba(1, 1, 1, L / (levels - 1))
+            for (i = 0; i < runs.length; i += 3) {
+                ctx.fillRect(runs[i], runs[i + 1], runs[i + 2], 1)
+            }
+        }
+        return stencil.save(file)
+    }
+
     /// The digits as a source for the field: the distance to them from
     /// every pixel outside them, and where their ink is. Null when there is
     /// no obstacle. Built once per `_key` and kept, since tracing asks for
@@ -469,7 +630,36 @@ Canvas {
         total += (n - 1) * gap
         ctx.clearRect(0, 0, w, h)
 
-        var left = Math.round((w - total) / 2)
+        // Where the number looks centred, rather than where it measures so.
+        //
+        // Each glyph contributes its OWN offset, weighted equally with the
+        // others rather than by how much ink it has. The two are different
+        // questions: within a glyph the eye follows the weight, which is why
+        // a 1 needs moving at all; between glyphs it does not, and a heavier
+        // digit beside a lighter one should not drag the pair sideways -- a
+        // block centroid would send an 18 left because the 8 outweighs the 1.
+        var optical = 0, inked = 0
+        for (i = 0; i < n; i++) {
+            if (glyphs[i]) {
+                optical += glyphs[i].cx - glyphs[i].width / 2
+                inked++
+            }
+        }
+        optical = inked > 0 ? art.obstacleOptical * optical / inked : 0
+
+        // The shift cannot walk the number out of the crop. There is room --
+        // the fit leaves (1 - obstacleMaxWidth) of the fitted width spare,
+        // some 64px against the 34 a 1 asks for -- but a later change to
+        // either number should fail loudly here rather than clip a digit on
+        // a device.
+        var slack = (fitW - total) / 2
+        if (Math.abs(optical) > slack) {
+            console.log("OPTICAL CLAMPED", art.obstacle, optical.toFixed(1),
+                        "to", slack.toFixed(1))
+            optical = optical > 0 ? slack : -slack
+        }
+
+        var left = Math.round((w - total) / 2 - optical)
         var baseline = Math.round(usableH / 2 - (top + bottom) / 2)
         var inside = new Uint8Array(w * h)
         var cursor = left
@@ -495,11 +685,13 @@ Canvas {
         }
 
         var dd = art.distanceOutside(inside, w, h)
+        var edge = art.obstacleEdge > 0
+                   ? art.outlineOf(inside, dd, w, h, art.obstacleEdge) : null
         // Two pixels at the width the values were settled at (936).
         dd = art.blurred(dd, w, h, 2 * w / 936)
 
         var O = {
-            w: w, h: h, dd: dd,
+            w: w, h: h, dd: dd, edge: edge,
             k: 1.5 * spacing,
             left: left, top: baseline + top,
             right: left + total - 1, bottom: baseline + bottom,

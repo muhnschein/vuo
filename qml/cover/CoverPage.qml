@@ -119,6 +119,12 @@ CoverBackground {
         objectName: "textArt"
         anchors.fill: parent
         source: "../art/cover/" + cover.countKey + ".png"
+        // The count's own outline, drawn over the texture in the ambience's
+        // colour. It is a second mask off the same painter rather than a
+        // digit set here, because the face the masks were cut in is not on
+        // the phone -- see components/TextArt.qml.
+        edgeSource: "../art/cover/" + cover.countKey + "-edge.png"
+        edgeColour: Theme.highlightColor
         // An ink of 1.5, not the usual 0.55: the cover's masks carry their
         // own strength -- full where the lines touch the digits, easing
         // down to 0.55 / 1.5 a few lines out -- so the far lines land at

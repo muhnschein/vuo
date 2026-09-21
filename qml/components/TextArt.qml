@@ -81,6 +81,30 @@ Item {
     property real clearRadius: 0
     property real clearFeather: 0
 
+    /// A second mask laid OVER the first in a colour of its own: the outline
+    /// of the shape the pattern flows around. Empty for none.
+    ///
+    /// A mask, and not something drawn here from a font, because the shape
+    /// is not the app's to draw. The digits are set in a face the phone does
+    /// not have (tools/textart/ fetches it; Sail Sans Pro is not it), sized
+    /// by a fit the painter resolved once against the master, and then
+    /// cropped along with the pattern. Anything drawn here would have to
+    /// reproduce all three and would miss the silhouette by however much it
+    /// got any one of them wrong. Coming out of the same painter at the same
+    /// size, this cannot miss: it takes the crop below with the pattern,
+    /// texel for texel, and needs nothing lined up by hand.
+    ///
+    /// Beside the pattern rather than inside it because the two want
+    /// different colours -- the pattern is the theme's text colour at a
+    /// fraction of an ink, this is the ambience's highlight at full
+    /// strength -- and one coverage channel cannot say both. It costs about
+    /// 2% of a mask's bytes; folding it in as a second channel of the same
+    /// file was measured at 13%, since it breaks the pattern's own
+    /// compression.
+    property url edgeSource
+    property color edgeColour: Theme.highlightColor
+    property real edgeInk: 1.0
+
     /// The mask itself, which is never drawn -- only sampled. Loaded at its
     /// full size deliberately: capping it would need the master's own
     /// proportions, which are not known until it has loaded, and a page
@@ -90,6 +114,14 @@ Item {
         id: mask
 
         source: art.source
+        visible: false
+        asynchronous: true
+    }
+
+    Image {
+        id: edgeMask
+
+        source: art.edgeSource
         visible: false
         asynchronous: true
     }
@@ -115,6 +147,13 @@ Item {
         property real clearRadius: art.clearRadius
         property real clearFeather: art.clearFeather
 
+        // A sampler wants a texture whether or not there is an outline, so
+        // with no outline this points at the pattern and `edgeInk` is 0:
+        // sampled and multiplied away, rather than left unbound.
+        property variant edge: edgeMask.status === Image.Ready ? edgeMask : mask
+        property color edgeTint: art.edgeColour
+        property real edgeInk: edgeMask.status === Image.Ready ? art.edgeInk : 0
+
         // Fixed text, as every shader in this app is: nothing foreign is
         // anywhere near it (§9.3). Qt hands `tint` over premultiplied, and
         // the theme's colours are opaque, so its rgb is the colour itself.
@@ -132,6 +171,9 @@ Item {
             uniform highp vec2 clearAt;
             uniform highp float clearRadius;
             uniform highp float clearFeather;
+            uniform sampler2D edge;
+            uniform lowp vec4 edgeTint;
+            uniform lowp float edgeInk;
             uniform lowp float qt_Opacity;
 
             void main() {
@@ -147,22 +189,39 @@ Item {
                 }
                 highp vec2 uv = (qt_TexCoord0 - 0.5) * span + 0.5;
 
-                lowp float a = texture2D(source, uv).r * ink;
+                // The three shapes the app cuts, gathered into one factor
+                // before either layer is drawn. BOTH take it: an outline
+                // that stayed put while the pattern sank away beneath the
+                // status line would be the very seam this is drawn to avoid.
+                // highp, not lowp: the three factors multiply together and
+                // the foot's ramp is a gradient over hundreds of pixels, so
+                // rounding each product to a lowp step would band exactly
+                // where the eye is looking for smoothness.
                 highp vec2 px = qt_TexCoord0 * size;
+                highp float cut = 1.0;
                 if (fadeTo > fadeFrom) {
-                    a *= clamp((px.y - fadeFrom) / (fadeTo - fadeFrom), 0.0, 1.0);
+                    cut *= clamp((px.y - fadeFrom) / (fadeTo - fadeFrom), 0.0, 1.0);
                 }
                 if (fadeOutTo > fadeOutFrom) {
                     highp float sink = clamp((fadeOutTo - px.y)
                                              / (fadeOutTo - fadeOutFrom), 0.0, 1.0);
-                    a *= sink * sink;
+                    cut *= sink * sink;
                 }
                 if (clearRadius > 0.0) {
-                    a *= clamp((distance(px, clearAt) - clearRadius)
-                               / max(1.0, clearFeather), 0.0, 1.0);
+                    cut *= clamp((distance(px, clearAt) - clearRadius)
+                                 / max(1.0, clearFeather), 0.0, 1.0);
                 }
+
+                lowp float a = texture2D(source, uv).r * ink * cut;
+                lowp float e = texture2D(edge, uv).r * edgeInk * cut;
+
                 // Premultiplied, which is what the scene graph composites.
-                gl_FragColor = vec4(tint.rgb, 1.0) * (a * qt_Opacity);
+                // The line goes OVER the pattern and not beside it: where a
+                // ring runs under the line the line is what shows, so its
+                // colour is the ambience's and not a mixture of the two.
+                lowp vec4 line = vec4(edgeTint.rgb, 1.0) * e;
+                lowp vec4 base = vec4(tint.rgb, 1.0) * a;
+                gl_FragColor = (line + base * (1.0 - e)) * qt_Opacity;
             }"
     }
 }
