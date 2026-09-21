@@ -46,6 +46,12 @@ on:
     - cron: "17 5 * * 1"
   workflow_dispatch:
 
+# The job talks to a Miniflux it starts itself and to no part of GitHub beyond
+# the checkout. The API key it mints belongs to that throwaway instance, not to
+# this repository, so nothing here wants a writable token.
+permissions:
+  contents: read
+
 jobs:
   live:
     name: against a real Miniflux

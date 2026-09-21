@@ -10,6 +10,12 @@ on:
     - cron: "27 3 * * *"
   workflow_dispatch:
 
+# The corpus cache and the crash artifacts travel on the runtime's own token,
+# not on GITHUB_TOKEN, so the checkout is the only thing this workflow needs a
+# token for at all.
+permissions:
+  contents: read
+
 jobs:
   fuzz:
     runs-on: ubuntu-latest
