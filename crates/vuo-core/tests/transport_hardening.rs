@@ -51,7 +51,37 @@ fn cfg() -> TransportConfig {
     }
 }
 
-/// A one-shot raw HTTP server. `respond` gets the request head and returns raw bytes.
+/// Announce on the wire what this harness actually does: one response per
+/// connection, and then the socket is gone.
+///
+/// The canned responses say nothing about keep-alive, and HTTP/1.1 reads that
+/// silence as "the connection persists" -- so reqwest hands the socket back to
+/// its pool. On a redirect walk the next hop draws that same socket out again,
+/// after `raw_server` has already dropped it, and the request dies as a
+/// transport error before it ever reaches the code under test.
+/// `redirect_loop_hop_cap` lost that race about once in forty runs of this
+/// suite; the three other redirect tests are built the same way and were only
+/// waiting their turn.
+///
+/// The header is spliced in here rather than written into each test's bytes so
+/// that a test added later cannot forget it. It is framing, not content: every
+/// response below still declares its own body exactly as its author wrote it.
+fn one_shot(resp: Vec<u8>) -> Vec<u8> {
+    const CLOSE: &[u8] = b"Connection: close\r\n";
+    let after_status_line = resp
+        .windows(2)
+        .position(|w| w == b"\r\n")
+        .expect("a canned response begins with a status line")
+        + 2;
+    let mut out = Vec::with_capacity(resp.len() + CLOSE.len());
+    out.extend_from_slice(&resp[..after_status_line]);
+    out.extend_from_slice(CLOSE);
+    out.extend_from_slice(&resp[after_status_line..]);
+    out
+}
+
+/// A raw HTTP server that serves the given responses, one per connection, in
+/// order. Each request head it reads is published on the returned channel.
 fn raw_server(
     responses: Vec<Vec<u8>>,
 ) -> (String, mpsc::Receiver<String>, std::thread::JoinHandle<()>) {
@@ -66,7 +96,7 @@ fn raw_server(
             let mut buf = [0u8; 8192];
             let n = sock.read(&mut buf).unwrap_or(0);
             let _ = tx.send(String::from_utf8_lossy(&buf[..n]).to_string());
-            let _ = sock.write_all(&resp);
+            let _ = sock.write_all(&one_shot(resp));
             let _ = sock.flush();
         }
     });
