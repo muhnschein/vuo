@@ -76,6 +76,16 @@ fn rendezvous_server(n: usize) -> (String, std::thread::JoinHandle<()>) {
         }
         // Phase two: only now does anyone hear back.
         for (mut sock, head) in pending {
+            // `Connection: close`, for the reason `transport_hardening`'s
+            // `one_shot` gives: this harness serves one response per
+            // connection and then drops the socket, and HTTP/1.1 reads
+            // silence on the matter as a connection that persists. reqwest
+            // would pool a socket that is already gone, and the next request
+            // to draw it out would die as a transport error before reaching
+            // the code under test. Nothing here makes a second request on a
+            // served connection today -- but the flake that convention was
+            // written for took forty runs to show up once, so it is not
+            // something to leave to the shape of the current tests.
             let body = if head.contains("/v1/categories") {
                 serde_json::to_vec(&vec![category_json(1, "News")]).unwrap()
             } else if head.contains("/v1/feeds") {
@@ -84,7 +94,8 @@ fn rendezvous_server(n: usize) -> (String, std::thread::JoinHandle<()>) {
                 b"[]".to_vec()
             };
             let head = format!(
-                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n",
+                "HTTP/1.1 200 OK\r\nConnection: close\r\n\
+                 Content-Type: application/json\r\nContent-Length: {}\r\n\r\n",
                 body.len()
             );
             let _ = sock.write_all(head.as_bytes());
@@ -237,6 +248,11 @@ fn counting_server() -> (String, Arc<AtomicUsize>) {
 }
 
 /// Serve requests on one connection until the client stops sending them.
+///
+/// Deliberately does NOT send `Connection: close`, unlike [`rendezvous_server`]
+/// and `transport_hardening`'s `one_shot`. Those announce a socket that is
+/// about to be dropped; this one really does persist, and it has to, or the
+/// connection count it exists to report would just be the request count.
 fn serve_keepalive(mut sock: std::net::TcpStream) {
     let mut pending = Vec::new();
     let mut buf = [0u8; 4096];
