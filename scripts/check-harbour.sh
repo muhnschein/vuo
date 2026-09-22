@@ -143,6 +143,9 @@ while IFS= read -r import; do
     case "$import" in
         '"'*) continue ;;                  # a relative path import; checked below
         'QtQuick 2.6'|'Sailfish.Silica 1.0'|'Sailfish.WebView 1.0') ;;
+        # The new-articles notification. On upstream's list under "Nemo QML
+        # modules" (allowed_qmlimports.conf, checked 2026-09-22).
+        'Nemo.Notifications 1.0') ;;
         'Vuo 1.0') ;;                      # registered by the app itself
         *) bad "qml/ imports '$import', which is not on Harbour's allowed list \
 (check allowed_qmlimports.conf before adding it)" ;;

@@ -762,7 +762,7 @@ mod tests {
                 },
                 1,
             )?;
-            vuo_core::db::store::upsert_entry(tx, &entry, 1)
+            vuo_core::db::store::upsert_entry(tx, &entry, 1, vuo_core::db::store::Arrival::Quiet)
         })
         .expect("seed");
 

@@ -192,6 +192,31 @@ ALTER TABLE feeds ADD COLUMN crawler INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE sync_state ADD COLUMN server_version_checked_at INTEGER;
 "#,
     },
+    Migration {
+        version: 6,
+        name: "remember which articles arrived since the reader last looked",
+        sql: r#"
+-- The notification for new articles needs to know which ones are NEW, and
+-- nothing in the mirror said so: the upsert is `INSERT ... ON CONFLICT DO
+-- UPDATE`, so an entry arriving for the first time and one being refreshed
+-- look the same afterwards. Set to 1 only by the INSERT half of that upsert
+-- (see `store::upsert_entry`), and back to 0 once the reader has opened Vuo
+-- or dismissed the notification that told them.
+--
+-- A column rather than a count handed from the worker to the UI, because a
+-- pass commits page by page and can fail after it has written: a count that
+-- lived in the pass's report would be lost with the report, and the entries
+-- it counted would be old news by the next pass. The flag is committed with
+-- the row it describes.
+--
+-- 0 for every existing row: an upgrade is not news.
+ALTER TABLE entries ADD COLUMN arrived INTEGER NOT NULL DEFAULT 0;
+-- Partial, because the set it covers is the handful since the reader last
+-- looked, and the query that reads it runs every time a sync lands while Vuo
+-- is on its cover.
+CREATE INDEX entries_arrived_idx ON entries(published_at DESC) WHERE arrived = 1;
+"#,
+    },
 ];
 
 /// The schema version this build expects.

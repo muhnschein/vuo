@@ -41,7 +41,7 @@ use std::path::{Path, PathBuf};
 /// Names declared with `qt_property!`, `qt_method!` or `qt_signal!`.
 fn declared_members(root: &Path) -> BTreeSet<String> {
     let mut names = BTreeSet::new();
-    for file in ["models.rs", "article.rs", "settings.rs"] {
+    for file in ["models.rs", "article.rs", "settings.rs", "arrivals.rs"] {
         let path = root.join("crates/vuo-shim/src").join(file);
         let source = std::fs::read_to_string(&path)
             .unwrap_or_else(|e| panic!("reading {}: {e}", path.display()));
@@ -357,6 +357,12 @@ fn every_member_the_qml_uses_is_implemented_in_rust() {
         "account",
         "model",
         "feedModel",
+        // The root window's own ids. `accountSettings` went unchecked until the
+        // notification switch made it something the window reads on every
+        // sync, and `arrivals` is only ever called, never bound, so a typo in
+        // either would fail only on a device, only while Vuo was on its cover.
+        "accountSettings",
+        "arrivals",
     ];
 
     let mut files = Vec::new();

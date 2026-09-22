@@ -1,0 +1,11 @@
+# A stub of Nemo.Notifications, for linting and loading Vuo's QML on a machine
+# without the SailfishOS SDK. See ../../Sailfish/Silica/qmldir for why stubs
+# exist at all.
+#
+# `Notification` used to be declared in the Silica stub instead. Real Silica
+# has no such type -- it lives here, in nemo-qml-plugin-notifications -- so a
+# page that used it with only `import Sailfish.Silica 1.0` would have compiled
+# against the stubs and failed to load on a phone.
+module Nemo.Notifications
+
+Notification 1.0 Notification.qml

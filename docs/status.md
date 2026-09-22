@@ -78,6 +78,15 @@ and its evidence are in [docs/sdk-build.md](sdk-build.md).
   on the worker thread, while the app is open or on its cover; whether
   SailfishOS keeps that thread's timer running through hours of a minimised
   app is exactly the thing that needs a device.
+- **The new-articles notification has never reached a real home screen.**
+  Which articles count as new, when a banner pops and when the notification
+  comes down are all decided in Rust and tested on the host; the QML that
+  hands the result to `Nemo.Notifications` loads against a stub transcribed
+  from the plugin's own header. What the stub cannot show is lipstick: that a
+  notification with a bare `"default"` action is tappable, that emptying the
+  preview on an update really suppresses the banner, and how the body's
+  newlines are drawn. It also inherits the long-idle question above -- it can
+  only be as punctual as the sync that finds the articles.
 - **The ephemeral-Miniflux CI job has never run**, and its container images are
   pinned by version tag rather than by digest — see the note at the top of that
   workflow.
@@ -127,6 +136,15 @@ discovered:
   the worker bumps. Correct and simple, but not instant.
 - **Feed unread badges are computed per reload**, not incrementally. Fine at
   the feed counts a phone has; not fine at thousands.
+- **A new-articles notification can trail its sync.** It is raised from the
+  same poll that updates the cover, which runs at a quarter of the sync
+  interval while Vuo is on its cover, so it can arrive up to that long after
+  the sync that found the articles -- fifteen minutes on the hourly default.
+  The cover's count is late by exactly the same amount.
+- **Tapping a notification does nothing once Vuo has exited.** Harbour gives
+  the app no D-Bus service to be started through, so the notification's tap
+  reaches Vuo only while it is running. The next launch sweeps away any
+  notification the previous run left up.
 
 ## Open questions from §11 that are now answered
 

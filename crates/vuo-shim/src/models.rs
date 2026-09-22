@@ -1499,6 +1499,7 @@ mod row_decoration_tests {
                     enclosures: Vec::new(),
                 },
                 1,
+                store::Arrival::Quiet,
             )
         })
         .expect("seed");
@@ -1737,7 +1738,7 @@ mod row_decoration_tests {
     }
 
     fn put(ctx: &AppContext, entry: &Entry) {
-        ctx.write(|db| db.with_tx(|tx| store::upsert_entry(tx, entry, 1)))
+        ctx.write(|db| db.with_tx(|tx| store::upsert_entry(tx, entry, 1, store::Arrival::Quiet)))
             .expect("the mirror")
             .expect("upsert");
     }
@@ -2003,6 +2004,7 @@ mod row_decoration_tests {
                             enclosures: Vec::new(),
                         },
                         1,
+                        store::Arrival::Quiet,
                     )?;
                 }
                 Ok(())

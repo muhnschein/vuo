@@ -46,7 +46,7 @@
 use crate::api::{convert, EntriesQuery, MinifluxClient};
 use crate::db::{store, Database};
 use crate::error::Result;
-use crate::model::EntryId;
+use crate::model::{Entry, EntryId};
 
 /// Seconds subtracted from the server's clock when persisting a cursor.
 ///
@@ -156,6 +156,41 @@ pub async fn taxonomy(db: &mut Database, client: &MinifluxClient, generation: i6
     Ok(())
 }
 
+/// Whether an entry this pass is about to write would be NEWS if it turns out
+/// to be new to the mirror.
+///
+/// The upsert decides "new to the mirror" -- only its INSERT half ever marks
+/// anything, see [`store::upsert_entry`] -- so all this has to rule out is the
+/// two ways a row can be inserted without being an article that has just
+/// appeared:
+///
+/// - **The first pass a mirror ever has.** `cursor` is `None` and every entry
+///   the account holds is an insert. A notification announcing a whole corpus
+///   as "new" on the day Vuo is set up tells the reader nothing.
+/// - **An old entry coming back.** The cursor is `changed_after`, and an entry
+///   changes when anything touches it -- marked unread on the web, starred on
+///   another phone. One that retention pruned from this mirror (see
+///   [`store::prune_entries`]), or that a torn-listing reconcile never had,
+///   re-enters here as an insert. Its `created_at` -- when the SERVER first
+///   stored it, on the server's clock, which is the clock the cursor is on --
+///   is from before the window this pass is reading, and that is what gives
+///   it away.
+///
+/// An entry with no `created_at` at all is given the benefit of the doubt:
+/// every Miniflux that has an API sends one, so its absence is a server this
+/// code has never met, and "the insert happened" is still the best evidence
+/// available.
+#[must_use]
+pub fn arrival_for(entry: &Entry, cursor: Option<i64>) -> store::Arrival {
+    let Some(window_start) = cursor else {
+        return store::Arrival::Quiet;
+    };
+    match entry.created_at {
+        Some(created) if created.timestamp() < window_start => store::Arrival::Quiet,
+        _ => store::Arrival::Announce,
+    }
+}
+
 /// One incremental entry pass.
 ///
 /// Returns the cursor to persist; the caller stores it only after everything
@@ -231,7 +266,7 @@ pub async fn entries_with_page_cap(
 
         db.with_tx(|tx| {
             for e in &decoded.valid {
-                store::upsert_entry(tx, e, generation)?;
+                store::upsert_entry(tx, e, generation, arrival_for(e, cursor))?;
             }
             // A pre-2.3 server's soft delete. This is the only deletion signal
             // such a server gives, and it arrives through the ordinary cursor.
