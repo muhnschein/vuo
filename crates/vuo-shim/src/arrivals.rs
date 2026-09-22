@@ -23,7 +23,7 @@
 // `QObject` base expands to glue clippy reads as a useless transmute.
 #![allow(clippy::useless_transmute)]
 
-use qmetaobject::*;
+use qmetaobject::{qt_base_class, qt_method, QObject, QString};
 use vuo_core::db::store;
 use vuo_core::notify::{Announcement, Announcer, NotificationText, HEADLINES};
 
