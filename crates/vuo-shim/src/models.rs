@@ -28,7 +28,10 @@
 
 use std::collections::{HashMap, HashSet};
 
-use qmetaobject::*;
+use qmetaobject::{
+    qt_base_class, qt_method, qt_property, qt_signal, QAbstractListModel, QByteArray, QMetaType,
+    QModelIndex, QObject, QString, QVariant, QVariantList, USER_ROLE,
+};
 use vuo_core::db::store;
 #[allow(unused_imports)]
 use vuo_core::model::FeedId;

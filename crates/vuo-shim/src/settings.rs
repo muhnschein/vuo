@@ -17,7 +17,7 @@
 // `qt_base_class!(trait QAbstractListModel)`, which expands differently.
 #![allow(clippy::useless_transmute)]
 
-use qmetaobject::*;
+use qmetaobject::{qt_base_class, qt_method, qt_property, qt_signal, QObject, QString};
 
 use crate::context::AppContext;
 use crate::worker::{self, Account, AppPaths, Command};

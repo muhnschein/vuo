@@ -64,7 +64,7 @@ pub mod settings;
 pub mod worker;
 
 use cstr::cstr;
-use qmetaobject::*;
+use qmetaobject::qml_register_type;
 
 /// Register Vuo's types with the QML engine.
 ///
@@ -91,6 +91,9 @@ pub extern "C" fn vuo_register_qml_types() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    // For `row_count`. Here rather than beside `qml_register_type` above,
+    // where the non-test build would find it unused.
+    use qmetaobject::QAbstractListModel;
     use vuo_core::content::{MediaPolicy, TransformContext};
 
     /// The offscreen Qt smoke test §8.1 asks for.

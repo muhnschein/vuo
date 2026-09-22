@@ -17,12 +17,12 @@
 //! mirror, loads QML, and runs the event loop. Everything else is in
 //! `vuo-core`, where it can be tested without Qt.
 
-// Only the desktop harness needs these (`QmlEngine`, `QString`). The device
-// build's `run` is the cpp! block, which reaches Qt through C++ headers rather
-// than through qmetaobject's Rust types -- so under `sailfishapp` this import
-// is unused and warns.
+// Only the desktop harness needs these. The device build's `run` is the cpp!
+// block, which reaches Qt through C++ headers rather than through
+// qmetaobject's Rust types -- so under `sailfishapp` this import would be
+// unused and warn.
 #[cfg(not(feature = "sailfishapp"))]
-use qmetaobject::*;
+use qmetaobject::{QString, QmlEngine};
 
 fn main() {
     // `vuo_shim=info` is in the default on purpose, not only under `VUO_LOG`.
