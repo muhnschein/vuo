@@ -121,21 +121,19 @@ ApplicationWindow {
         if (action !== app.announceBanner && action !== app.announceQuiet) {
             return
         }
-        var count = arrivals.articleCount()
-        arrivalNotice.summary = qsTr("%n new article(s)", "", count)
-        // Feed titles, already stripped of anything the home screen could
-        // read as markup: it is another process, and Vuo cannot set its
-        // textFormat. See vuo_core::notify.
-        arrivalNotice.body = arrivals.digest()
-        arrivalNotice.itemCount = count
+        // The count and nothing else: no titles, no body, and no itemCount,
+        // whose default of 1 is what keeps the home screen from drawing a
+        // badge beside a number the summary already says.
+        arrivalNotice.summary = qsTr("%n new article(s)", "",
+                                     arrivals.articleCount())
         // A banner only for news. A quiet update has to EMPTY the preview
         // rather than leave it unset: the plugin fills an unset preview in
         // from the summary, and would pop a banner to say that there is now
         // less to read. Emptying works because a quiet update only ever
-        // follows a banner on this object, which is what set them.
+        // follows a banner on this object, which is what set it. The preview
+        // body is never set, so the plugin fills it from the body: empty.
         var banner = action === app.announceBanner
         arrivalNotice.previewSummary = banner ? arrivalNotice.summary : ""
-        arrivalNotice.previewBody = banner ? arrivals.headline() : ""
         arrivalNotice.publish()
     }
 

@@ -658,41 +658,18 @@ pub fn unread_count(conn: &rusqlite::Connection) -> Result<i64> {
 // --------------------------------------------------------------- arrivals
 
 /// The articles that arrived since the reader last looked, and are still
-/// unread.
+/// unread, newest first.
 ///
 /// "Still unread" is read at the moment of asking rather than at the moment of
 /// arrival, so an article read on another device between the sync that brought
 /// it and the notification that would announce it is simply not counted.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct Arrivals {
-    /// Every one of them, newest first.
-    pub ids: Vec<EntryId>,
-    /// FOREIGN TEXT: the titles of the newest few, newest first, exactly as
-    /// the feed wrote them. Not yet fit for any display -- see
-    /// [`crate::notify::notification_line`].
-    pub titles: Vec<String>,
-}
-
-/// Read [`Arrivals`], with at most `titles` titles.
-///
-/// Every id, but only a few titles. The ids are what a dismissal acknowledges
-/// and are eight bytes each; the titles are what a notification shows, and it
-/// shows a handful.
-pub fn arrivals(conn: &rusqlite::Connection, titles: i64) -> Result<Arrivals> {
-    let mut out = Arrivals::default();
+pub fn arrivals(conn: &rusqlite::Connection) -> Result<Vec<EntryId>> {
     let mut stmt = conn.prepare(
-        "SELECT id, title FROM entries WHERE arrived = 1 AND status = 'unread' \
+        "SELECT id FROM entries WHERE arrived = 1 AND status = 'unread' \
          ORDER BY published_at DESC, id DESC",
     )?;
-    let mut rows = stmt.query([])?;
-    let wanted = usize::try_from(titles).unwrap_or(0);
-    while let Some(row) = rows.next()? {
-        out.ids.push(EntryId(row.get(0)?));
-        if out.titles.len() < wanted {
-            out.titles.push(row.get(1)?);
-        }
-    }
-    Ok(out)
+    let rows = stmt.query_map([], |r| Ok(EntryId(r.get(0)?)))?;
+    Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
 }
 
 /// Stop treating these entries as new.
@@ -1488,21 +1465,11 @@ mod tests {
         })
         .expect("read elsewhere");
 
-        let got = arrivals(db.conn(), 2).expect("arrivals");
         assert_eq!(
-            ids_of(&got.ids),
+            ids_of(&arrivals(db.conn()).expect("arrivals")),
             vec![2, 3, 1],
             "unread arrivals, newest first"
         );
-        assert_eq!(
-            got.titles,
-            vec!["entry 2".to_owned(), "entry 3".to_owned()],
-            "the two newest titles and no more"
-        );
-
-        // No titles asked for, none read -- and no nonsense from a negative.
-        assert!(arrivals(db.conn(), 0).expect("arrivals").titles.is_empty());
-        assert!(arrivals(db.conn(), -1).expect("arrivals").titles.is_empty());
     }
 
     /// §a dismissal acknowledges what it covered, and nothing that came after.
@@ -1529,17 +1496,14 @@ mod tests {
             .with_tx(|tx| acknowledge_arrivals(tx, &[EntryId(1), EntryId(2), EntryId(99)]))
             .expect("acknowledge");
         assert_eq!(cleared, 2);
-        assert_eq!(
-            ids_of(&arrivals(db.conn(), 0).expect("arrivals").ids),
-            vec![4, 3]
-        );
+        assert_eq!(ids_of(&arrivals(db.conn()).expect("arrivals")), vec![4, 3]);
 
         assert!(any_arrivals(db.conn()).expect("any"));
         let cleared = db
             .with_tx(acknowledge_all_arrivals)
             .expect("acknowledge all");
         assert_eq!(cleared, 2);
-        assert!(arrivals(db.conn(), 0).expect("arrivals").ids.is_empty());
+        assert!(arrivals(db.conn()).expect("arrivals").is_empty());
         assert!(!any_arrivals(db.conn()).expect("any"));
     }
 }

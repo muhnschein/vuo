@@ -23,9 +23,9 @@
 // `QObject` base expands to glue clippy reads as a useless transmute.
 #![allow(clippy::useless_transmute)]
 
-use qmetaobject::{qt_base_class, qt_method, QObject, QString};
+use qmetaobject::{qt_base_class, qt_method, QObject};
 use vuo_core::db::store;
-use vuo_core::notify::{Announcement, Announcer, NotificationText, HEADLINES};
+use vuo_core::notify::{Announcement, Announcer};
 
 use crate::context::AppContext;
 
@@ -59,16 +59,10 @@ pub struct Arrivals {
     dismissed: qt_method!(fn(&mut self)),
     /// How many articles the notification covers, after a `review` that
     /// said to publish.
+    /// It says this and nothing else -- see [`vuo_core::notify`].
     articleCount: qt_method!(fn(&self) -> i32),
-    /// The newest title, fit for the home screen. FOREIGN TEXT, already made
-    /// safe for a surface Vuo does not control -- see
-    /// [`vuo_core::notify::notification_line`].
-    headline: qt_method!(fn(&self) -> QString),
-    /// The newest few titles, one per line. Same provenance as `headline`.
-    digest: qt_method!(fn(&self) -> QString),
 
     announcer: Announcer,
-    text: NotificationText,
     /// `None` until [`Arrivals::attach`] is called; QML never passes one.
     ctx: Option<std::rc::Rc<AppContext>>,
 }
@@ -107,14 +101,10 @@ impl Arrivals {
         }
         // A read that fails leaves the notification as it is. It is a status
         // line on another screen, and the next sync asks again.
-        let Some(Ok(arrivals)) = ctx.read(|db| store::arrivals(db.conn(), HEADLINES)) else {
+        let Some(Ok(arrivals)) = ctx.read(|db| store::arrivals(db.conn())) else {
             return Announcement::Unchanged;
         };
-        let announcement = self.announcer.review(&arrivals);
-        if matches!(announcement, Announcement::Show { .. }) {
-            self.text = NotificationText::from_titles(&arrivals.titles);
-        }
-        announcement
+        self.announcer.review(&arrivals)
     }
 
     fn dismissed(&mut self) {
@@ -133,14 +123,6 @@ impl Arrivals {
 
     fn articleCount(&self) -> i32 {
         i32::try_from(self.announcer.showing()).unwrap_or(i32::MAX)
-    }
-
-    fn headline(&self) -> QString {
-        QString::from(self.text.headline.as_str())
-    }
-
-    fn digest(&self) -> QString {
-        QString::from(self.text.digest.as_str())
     }
 }
 
@@ -180,15 +162,14 @@ mod tests {
     use vuo_core::db::Database;
     use vuo_core::model::{Entry, EntryId, EntryStatus, Feed, FeedId};
 
-    /// Undated, as the other shim tests' entries are: the arrivals query
-    /// orders by date and then by id, so a higher id is a newer article.
-    fn entry(id: i64, title: &str) -> Entry {
+    /// Undated, as the other shim tests' entries are.
+    fn entry(id: i64) -> Entry {
         Entry {
             id: EntryId(id),
             feed_id: FeedId(1),
             status: EntryStatus::Unread,
             starred: false,
-            title: title.to_owned(),
+            title: format!("entry {id}"),
             url: None,
             comments_url: None,
             author: String::new(),
@@ -203,19 +184,18 @@ mod tests {
     }
 
     /// As the pull would: a new, unread entry inside the window.
-    fn arrive(ctx: &AppContext, id: i64, title: &str) {
+    fn arrive(ctx: &AppContext, id: i64) {
         ctx.write(|db| {
-            db.with_tx(|tx| store::upsert_entry(tx, &entry(id, title), 2, store::Arrival::Announce))
+            db.with_tx(|tx| store::upsert_entry(tx, &entry(id), 2, store::Arrival::Announce))
         })
         .expect("a borrow")
         .expect("an arrival");
     }
 
     fn flagged(ctx: &AppContext) -> Vec<i64> {
-        ctx.read(|db| store::arrivals(db.conn(), 0))
+        ctx.read(|db| store::arrivals(db.conn()))
             .expect("a borrow")
             .expect("arrivals")
-            .ids
             .iter()
             .map(|id| id.get())
             .collect()
@@ -264,16 +244,10 @@ mod tests {
             "nothing yet"
         );
 
-        arrive(&ctx, 1, "First <b>story</b>");
-        arrive(&ctx, 2, "Second\nstory");
+        arrive(&ctx, 1);
+        arrive(&ctx, 2);
         assert_eq!(arrivals.review(false, true), ANNOUNCE_BANNER);
         assert_eq!(arrivals.articleCount(), 2);
-        assert_eq!(arrivals.headline().to_string(), "Second story");
-        assert_eq!(
-            arrivals.digest().to_string(),
-            "Second story\nFirst ‹b›story‹/b›",
-            "newest first, one line each, and no markup for the home screen"
-        );
 
         assert_eq!(
             arrivals.review(false, true),
@@ -294,25 +268,24 @@ mod tests {
     #[test]
     fn a_dismissed_notification_counts_only_what_arrives_after_it() {
         let (_dir, ctx, mut arrivals) = with_context();
-        arrive(&ctx, 1, "One");
-        arrive(&ctx, 2, "Two");
+        arrive(&ctx, 1);
+        arrive(&ctx, 2);
         assert_eq!(arrivals.review(false, true), ANNOUNCE_BANNER);
 
         // A sync lands between the notification going up and the swipe.
-        arrive(&ctx, 3, "Three");
+        arrive(&ctx, 3);
         arrivals.dismissed();
         assert_eq!(flagged(&ctx), vec![3], "1 and 2 were covered; 3 was not");
 
         assert_eq!(arrivals.review(false, true), ANNOUNCE_BANNER);
         assert_eq!(arrivals.articleCount(), 1);
-        assert_eq!(arrivals.headline().to_string(), "Three");
     }
 
     /// §the switch is off: nothing goes up, and nothing is thrown away.
     #[test]
     fn with_notifications_off_nothing_is_published_or_acknowledged() {
         let (_dir, ctx, mut arrivals) = with_context();
-        arrive(&ctx, 1, "One");
+        arrive(&ctx, 1);
         assert_eq!(arrivals.review(false, false), ANNOUNCE_NOTHING);
         assert_eq!(flagged(&ctx), vec![1], "unseen, so not acknowledged");
 
@@ -331,7 +304,6 @@ mod tests {
         assert_eq!(arrivals.review(true, true), ANNOUNCE_NOTHING);
         arrivals.dismissed();
         assert_eq!(arrivals.articleCount(), 0);
-        assert_eq!(arrivals.headline().to_string(), "");
     }
 
     /// §the QML's names for the answers are the Rust answers.

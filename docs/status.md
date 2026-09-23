@@ -78,15 +78,17 @@ and its evidence are in [docs/sdk-build.md](sdk-build.md).
   on the worker thread, while the app is open or on its cover; whether
   SailfishOS keeps that thread's timer running through hours of a minimised
   app is exactly the thing that needs a device.
-- **The new-articles notification has never reached a real home screen.**
-  Which articles count as new, when a banner pops and when the notification
-  comes down are all decided in Rust and tested on the host; the QML that
-  hands the result to `Nemo.Notifications` loads against a stub transcribed
-  from the plugin's own header. What the stub cannot show is lipstick: that a
-  notification with a bare `"default"` action is tappable, that emptying the
-  preview on an update really suppresses the banner, and how the body's
-  newlines are drawn. It also inherits the long-idle question above -- it can
-  only be as punctual as the sync that finds the articles.
+- **The new-articles notification has been seen on one device, not
+  exercised.** Which articles count as new, when a banner pops and when the
+  notification comes down are all decided in Rust and tested on the host; the
+  QML that hands the result to `Nemo.Notifications` loads against a stub
+  transcribed from the plugin's own header. On a phone it went up and a later
+  sync replaced it in place -- which is what cut it down to the bare count,
+  after a digest of titles read as clutter. Not yet watched for: that a
+  notification with a bare `"default"` action is tappable, and that emptying
+  the preview on an update really suppresses the banner. It also inherits the
+  long-idle question above -- it can only be as punctual as the sync that
+  finds the articles.
 - **The ephemeral-Miniflux CI job has never run**, and its container images are
   pinned by version tag rather than by digest — see the note at the top of that
   workflow.

@@ -733,9 +733,8 @@ async fn serve_entries(server: &MockServer, entries: Vec<serde_json::Value>) {
 }
 
 fn arrived(db: &vuo_core::db::Database) -> Vec<i64> {
-    let mut ids: Vec<i64> = store::arrivals(db.conn(), 0)
+    let mut ids: Vec<i64> = store::arrivals(db.conn())
         .unwrap()
-        .ids
         .iter()
         .map(|id| id.get())
         .collect();
@@ -873,7 +872,7 @@ async fn a_pass_that_fails_after_its_first_page_keeps_that_pages_arrivals() {
 
     assert!(result.is_err(), "the second page failed");
     assert_eq!(
-        store::arrivals(db.conn(), 0).unwrap().ids.len(),
+        store::arrivals(db.conn()).unwrap().len(),
         250,
         "the first page's arrivals were committed with its rows"
     );
