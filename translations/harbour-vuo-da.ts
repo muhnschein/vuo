@@ -36,7 +36,7 @@
         <location filename="../qml/pages/ArticlePage.qml" line="162"/>
         <source>Unread</source>
         <extracomment>The state of the one article on screen, so singular: not the plural name of the Unread tab.</extracomment>
-        <translation>Ulæste</translation>
+        <translation>Ulæst</translation>
     </message>
     <message>
         <location filename="../qml/pages/ArticlePage.qml" line="169"/>
@@ -89,17 +89,17 @@
     <message>
         <location filename="../qml/pages/ArticlePage.qml" line="238"/>
         <source>Fetching the original article…</source>
-        <translation type="unfinished"></translation>
+        <translation>Henter den originale artikel…</translation>
     </message>
     <message>
         <location filename="../qml/pages/ArticlePage.qml" line="507"/>
         <source>The original article was loaded.</source>
-        <translation type="unfinished"></translation>
+        <translation>Den originale artikel blev hentet.</translation>
     </message>
     <message>
         <location filename="../qml/pages/ArticlePage.qml" line="514"/>
         <source>This feed already contains the full article.</source>
-        <translation type="unfinished"></translation>
+        <translation>Dette feed indeholder allerede hele artiklen.</translation>
     </message>
     <message>
         <location filename="../qml/pages/ArticlePage.qml" line="395"/>
@@ -166,17 +166,17 @@
     <message>
         <location filename="../qml/pages/EditFeedPage.qml" line="139"/>
         <source>The server downloads each article from its website instead of using the text in the feed.</source>
-        <translation type="unfinished"></translation>
+        <translation>Serveren henter hver artikel fra dens websted i stedet for at bruge teksten i feedet.</translation>
     </message>
     <message>
         <location filename="../qml/pages/EditFeedPage.qml" line="152"/>
         <source>Hide from the unread list in Miniflux</source>
-        <translation type="unfinished"></translation>
+        <translation>Skjul fra listen over ulæste i Miniflux</translation>
     </message>
     <message>
         <location filename="../qml/pages/EditFeedPage.qml" line="161"/>
         <source>Do not refresh this feed</source>
-        <translation type="unfinished"></translation>
+        <translation>Opdatér ikke dette feed</translation>
     </message>
 </context>
 <context>
@@ -297,7 +297,7 @@
     <message>
         <location filename="../qml/components/EntryListView.qml" line="384"/>
         <source>Articles you add to favourites appear here</source>
-        <translation type="unfinished"></translation>
+        <translation>Artikler, du tilføjer til favoritter, vises her</translation>
     </message>
     <message>
         <location filename="../qml/components/EntryListView.qml" line="385"/>
@@ -351,12 +351,12 @@
     <message>
         <location filename="../qml/pages/FeedListPage.qml" line="39"/>
         <source>Add feed</source>
-        <translation type="unfinished"></translation>
+        <translation>Tilføj feed</translation>
     </message>
     <message>
         <location filename="../qml/pages/FeedListPage.qml" line="48"/>
         <source>Pull down to add a feed</source>
-        <translation type="unfinished"></translation>
+        <translation>Træk ned for at tilføje et feed</translation>
     </message>
     <message>
         <location filename="../qml/pages/FeedListPage.qml" line="146"/>
@@ -482,39 +482,39 @@
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="173"/>
         <source>By default, Miniflux proxies only http:// images. Loading an image directly tells its website your IP address and when you read the article.</source>
-        <translation type="unfinished"></translation>
+        <translation>Som standard går kun http://-billeder gennem Miniflux. Hvis et billede hentes direkte, får dets websted at vide, hvad din IP-adresse er, og hvornår du læser artiklen.</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="204"/>
         <source>Vuo syncs only while it is open or on the cover. How often Miniflux checks your feeds is set on the server.</source>
-        <translation type="unfinished"></translation>
+        <translation>Vuo synkroniserer kun, mens appen er åben eller ligger som omslag. Hvor ofte Miniflux tjekker dine feeds, indstilles på serveren.</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="214"/>
         <source>Automatic syncs wait for Wi-Fi. A refresh that you start yourself runs on any connection.</source>
-        <translation type="unfinished"></translation>
+        <translation>Automatiske synkroniseringer venter på Wi-Fi. En opdatering, som du selv starter, kører uanset forbindelse.</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="259"/>
         <source>Read articles older than this are deleted from this phone, but not from your Miniflux server. Favourites and unread articles are always kept.</source>
-        <translation type="unfinished"></translation>
+        <translation>Læste artikler, der er ældre end den valgte periode, slettes fra denne telefon, men ikke fra din Miniflux-server. Favoritter og ulæste artikler beholdes altid.</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="281"/>
         <source>Copy the certificate to ~/.local/share/harbour-vuo/harbour-vuo/ca.pem.</source>
-        <translation type="unfinished"></translation>
+        <translation>Kopiér certifikatet til ~/.local/share/harbour-vuo/harbour-vuo/ca.pem.</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="282"/>
         <source>A certificate is used only with an https:// server address.</source>
-        <translation type="unfinished"></translation>
+        <translation>Et certifikat bruges kun med en https://-serveradresse.</translation>
     </message>
     <message numerus="yes">
         <location filename="../qml/pages/SettingsPage.qml" line="294"/>
         <source>%n change(s) are waiting to be sent to the server.</source>
-        <translation type="unfinished">
-            <numerusform></numerusform>
-            <numerusform></numerusform>
+        <translation>
+            <numerusform>%n ændring venter på at blive sendt til serveren.</numerusform>
+            <numerusform>%n ændringer venter på at blive sendt til serveren.</numerusform>
         </translation>
     </message>
     <message>
@@ -643,7 +643,7 @@
     <message>
         <location filename="../qml/pages/SetupDialog.qml" line="112"/>
         <source>Your Miniflux server fetches your feeds, and Vuo shows them.</source>
-        <translation type="unfinished"></translation>
+        <translation>Din Miniflux-server henter dine feeds, og Vuo viser dem.</translation>
     </message>
     <message>
         <location filename="../qml/pages/SetupDialog.qml" line="118"/>

@@ -36,7 +36,7 @@
         <location filename="../qml/pages/ArticlePage.qml" line="162"/>
         <source>Unread</source>
         <extracomment>The state of the one article on screen, so singular: not the plural name of the Unread tab.</extracomment>
-        <translation>Непрочитанные</translation>
+        <translation>Не прочитано</translation>
     </message>
     <message>
         <location filename="../qml/pages/ArticlePage.qml" line="169"/>
@@ -90,17 +90,17 @@
     <message>
         <location filename="../qml/pages/ArticlePage.qml" line="238"/>
         <source>Fetching the original article…</source>
-        <translation type="unfinished"></translation>
+        <translation>Загружаем исходную статью…</translation>
     </message>
     <message>
         <location filename="../qml/pages/ArticlePage.qml" line="507"/>
         <source>The original article was loaded.</source>
-        <translation type="unfinished"></translation>
+        <translation>Исходная статья загружена.</translation>
     </message>
     <message>
         <location filename="../qml/pages/ArticlePage.qml" line="514"/>
         <source>This feed already contains the full article.</source>
-        <translation type="unfinished"></translation>
+        <translation>Эта лента уже содержит статью целиком.</translation>
     </message>
     <message>
         <location filename="../qml/pages/ArticlePage.qml" line="395"/>
@@ -167,17 +167,17 @@
     <message>
         <location filename="../qml/pages/EditFeedPage.qml" line="139"/>
         <source>The server downloads each article from its website instead of using the text in the feed.</source>
-        <translation type="unfinished"></translation>
+        <translation>Сервер загружает каждую статью с её сайта, а не использует текст из ленты.</translation>
     </message>
     <message>
         <location filename="../qml/pages/EditFeedPage.qml" line="152"/>
         <source>Hide from the unread list in Miniflux</source>
-        <translation type="unfinished"></translation>
+        <translation>Скрыть из списка непрочитанных в Miniflux</translation>
     </message>
     <message>
         <location filename="../qml/pages/EditFeedPage.qml" line="161"/>
         <source>Do not refresh this feed</source>
-        <translation type="unfinished"></translation>
+        <translation>Не обновлять эту ленту</translation>
     </message>
 </context>
 <context>
@@ -300,7 +300,7 @@
     <message>
         <location filename="../qml/components/EntryListView.qml" line="384"/>
         <source>Articles you add to favourites appear here</source>
-        <translation type="unfinished"></translation>
+        <translation>Статьи, которые вы добавите в избранное, появятся здесь</translation>
     </message>
     <message>
         <location filename="../qml/components/EntryListView.qml" line="385"/>
@@ -356,12 +356,12 @@
     <message>
         <location filename="../qml/pages/FeedListPage.qml" line="39"/>
         <source>Add feed</source>
-        <translation type="unfinished"></translation>
+        <translation>Добавить ленту</translation>
     </message>
     <message>
         <location filename="../qml/pages/FeedListPage.qml" line="48"/>
         <source>Pull down to add a feed</source>
-        <translation type="unfinished"></translation>
+        <translation>Потяните вниз, чтобы добавить ленту</translation>
     </message>
     <message>
         <location filename="../qml/pages/FeedListPage.qml" line="146"/>
@@ -432,7 +432,7 @@
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="106"/>
         <source>Create a key in Miniflux under Settings → API Keys.</source>
-        <translation>Создайте ключ в Miniflux в разделе Settings → API Keys.</translation>
+        <translation>Создайте ключ в Miniflux в разделе Настройки → API-ключи.</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="111"/>
@@ -487,40 +487,40 @@
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="173"/>
         <source>By default, Miniflux proxies only http:// images. Loading an image directly tells its website your IP address and when you read the article.</source>
-        <translation type="unfinished"></translation>
+        <translation>По умолчанию Miniflux проксирует только изображения по http://. Загрузка изображения напрямую сообщает его сайту ваш IP-адрес и время, когда вы читаете статью.</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="204"/>
         <source>Vuo syncs only while it is open or on the cover. How often Miniflux checks your feeds is set on the server.</source>
-        <translation type="unfinished"></translation>
+        <translation>Vuo синхронизируется, только пока он открыт или на обложке. Как часто Miniflux проверяет ваши ленты, задаётся на сервере.</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="214"/>
         <source>Automatic syncs wait for Wi-Fi. A refresh that you start yourself runs on any connection.</source>
-        <translation type="unfinished"></translation>
+        <translation>Автоматическая синхронизация ждёт Wi-Fi. Обновление, которое вы запускаете сами, выполняется при любом соединении.</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="259"/>
         <source>Read articles older than this are deleted from this phone, but not from your Miniflux server. Favourites and unread articles are always kept.</source>
-        <translation type="unfinished"></translation>
+        <translation>Прочитанные статьи старше выбранного срока удаляются с этого телефона, но не с вашего сервера Miniflux. Избранное и непрочитанные статьи сохраняются всегда.</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="281"/>
         <source>Copy the certificate to ~/.local/share/harbour-vuo/harbour-vuo/ca.pem.</source>
-        <translation type="unfinished"></translation>
+        <translation>Скопируйте сертификат в ~/.local/share/harbour-vuo/harbour-vuo/ca.pem.</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="282"/>
         <source>A certificate is used only with an https:// server address.</source>
-        <translation type="unfinished"></translation>
+        <translation>Сертификат используется, только если адрес сервера начинается с https://.</translation>
     </message>
     <message numerus="yes">
         <location filename="../qml/pages/SettingsPage.qml" line="294"/>
         <source>%n change(s) are waiting to be sent to the server.</source>
-        <translation type="unfinished">
-            <numerusform></numerusform>
-            <numerusform></numerusform>
-            <numerusform></numerusform>
+        <translation>
+            <numerusform>%n изменение ждёт отправки на сервер.</numerusform>
+            <numerusform>%n изменения ждут отправки на сервер.</numerusform>
+            <numerusform>%n изменений ждут отправки на сервер.</numerusform>
         </translation>
     </message>
     <message>
@@ -531,7 +531,7 @@
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="157"/>
         <source>Images not proxied by your server</source>
-        <translation>Изображения не через ваш сервер</translation>
+        <translation>Изображения в обход вашего сервера</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="159"/>
@@ -649,7 +649,7 @@
     <message>
         <location filename="../qml/pages/SetupDialog.qml" line="112"/>
         <source>Your Miniflux server fetches your feeds, and Vuo shows them.</source>
-        <translation type="unfinished"></translation>
+        <translation>Ваш сервер Miniflux загружает ленты, а Vuo их показывает.</translation>
     </message>
     <message>
         <location filename="../qml/pages/SetupDialog.qml" line="118"/>
@@ -669,7 +669,7 @@
     <message>
         <location filename="../qml/pages/SetupDialog.qml" line="142"/>
         <source>Create a key in Miniflux under Settings → API Keys.</source>
-        <translation>Создайте ключ в Miniflux в разделе Settings → API Keys.</translation>
+        <translation>Создайте ключ в Miniflux в разделе Настройки → API-ключи.</translation>
     </message>
     <message>
         <location filename="../qml/pages/SetupDialog.qml" line="151"/>

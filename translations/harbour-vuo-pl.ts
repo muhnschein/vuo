@@ -36,7 +36,7 @@
         <location filename="../qml/pages/ArticlePage.qml" line="162"/>
         <source>Unread</source>
         <extracomment>The state of the one article on screen, so singular: not the plural name of the Unread tab.</extracomment>
-        <translation>Nieprzeczytane</translation>
+        <translation>Nieprzeczytany</translation>
     </message>
     <message>
         <location filename="../qml/pages/ArticlePage.qml" line="169"/>
@@ -90,17 +90,17 @@
     <message>
         <location filename="../qml/pages/ArticlePage.qml" line="238"/>
         <source>Fetching the original article…</source>
-        <translation type="unfinished"></translation>
+        <translation>Pobieranie oryginalnego artykułu…</translation>
     </message>
     <message>
         <location filename="../qml/pages/ArticlePage.qml" line="507"/>
         <source>The original article was loaded.</source>
-        <translation type="unfinished"></translation>
+        <translation>Oryginalny artykuł został wczytany.</translation>
     </message>
     <message>
         <location filename="../qml/pages/ArticlePage.qml" line="514"/>
         <source>This feed already contains the full article.</source>
-        <translation type="unfinished"></translation>
+        <translation>Ten kanał zawiera już pełny artykuł.</translation>
     </message>
     <message>
         <location filename="../qml/pages/ArticlePage.qml" line="395"/>
@@ -167,17 +167,17 @@
     <message>
         <location filename="../qml/pages/EditFeedPage.qml" line="139"/>
         <source>The server downloads each article from its website instead of using the text in the feed.</source>
-        <translation type="unfinished"></translation>
+        <translation>Serwer pobiera każdy artykuł z jego strony internetowej, zamiast używać tekstu z kanału.</translation>
     </message>
     <message>
         <location filename="../qml/pages/EditFeedPage.qml" line="152"/>
         <source>Hide from the unread list in Miniflux</source>
-        <translation type="unfinished"></translation>
+        <translation>Ukryj artykuły na liście nieprzeczytanych w Miniflux</translation>
     </message>
     <message>
         <location filename="../qml/pages/EditFeedPage.qml" line="161"/>
         <source>Do not refresh this feed</source>
-        <translation type="unfinished"></translation>
+        <translation>Nie aktualizuj tego kanału</translation>
     </message>
 </context>
 <context>
@@ -280,7 +280,7 @@
     <message>
         <location filename="../qml/components/EntryListView.qml" line="330"/>
         <source>Marking all as read</source>
-        <translation>Oznaczanie wszystkiego jako przeczytane</translation>
+        <translation>Oznaczanie wszystkiego jako przeczytanego</translation>
     </message>
     <message>
         <location filename="../qml/components/EntryListView.qml" line="337"/>
@@ -300,7 +300,7 @@
     <message>
         <location filename="../qml/components/EntryListView.qml" line="384"/>
         <source>Articles you add to favourites appear here</source>
-        <translation type="unfinished"></translation>
+        <translation>Artykuły, które dodasz do ulubionych, pojawią się tutaj</translation>
     </message>
     <message>
         <location filename="../qml/components/EntryListView.qml" line="385"/>
@@ -356,12 +356,12 @@
     <message>
         <location filename="../qml/pages/FeedListPage.qml" line="39"/>
         <source>Add feed</source>
-        <translation type="unfinished"></translation>
+        <translation>Dodaj kanał</translation>
     </message>
     <message>
         <location filename="../qml/pages/FeedListPage.qml" line="48"/>
         <source>Pull down to add a feed</source>
-        <translation type="unfinished"></translation>
+        <translation>Pociągnij w dół, by dodać kanał</translation>
     </message>
     <message>
         <location filename="../qml/pages/FeedListPage.qml" line="146"/>
@@ -432,7 +432,7 @@
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="106"/>
         <source>Create a key in Miniflux under Settings → API Keys.</source>
-        <translation>Utwórz klucz w Minifluksie w Settings → API Keys.</translation>
+        <translation>Utwórz klucz w Miniflux w sekcji Ustawienia → Klucze API.</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="111"/>
@@ -487,40 +487,40 @@
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="173"/>
         <source>By default, Miniflux proxies only http:// images. Loading an image directly tells its website your IP address and when you read the article.</source>
-        <translation type="unfinished"></translation>
+        <translation>Domyślnie Miniflux pośredniczy tylko w obrazach http://. Bezpośrednie wczytanie obrazu przekazuje stronie, z której pochodzi, twój adres IP i czas czytania artykułu.</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="204"/>
         <source>Vuo syncs only while it is open or on the cover. How often Miniflux checks your feeds is set on the server.</source>
-        <translation type="unfinished"></translation>
+        <translation>Vuo synchronizuje się tylko wtedy, gdy jest otwarte lub na okładce. To, jak często Miniflux sprawdza twoje kanały, ustawia się na serwerze.</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="214"/>
         <source>Automatic syncs wait for Wi-Fi. A refresh that you start yourself runs on any connection.</source>
-        <translation type="unfinished"></translation>
+        <translation>Automatyczna synchronizacja czeka na Wi-Fi. Odświeżanie, które uruchamiasz samodzielnie, działa przy każdym połączeniu.</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="259"/>
         <source>Read articles older than this are deleted from this phone, but not from your Miniflux server. Favourites and unread articles are always kept.</source>
-        <translation type="unfinished"></translation>
+        <translation>Przeczytane artykuły starsze niż wybrany okres są usuwane z tego telefonu, ale nie z twojego serwera Miniflux. Ulubione i nieprzeczytane artykuły są zawsze zachowywane.</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="281"/>
         <source>Copy the certificate to ~/.local/share/harbour-vuo/harbour-vuo/ca.pem.</source>
-        <translation type="unfinished"></translation>
+        <translation>Skopiuj certyfikat do ~/.local/share/harbour-vuo/harbour-vuo/ca.pem.</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="282"/>
         <source>A certificate is used only with an https:// server address.</source>
-        <translation type="unfinished"></translation>
+        <translation>Certyfikat jest używany tylko wtedy, gdy adres serwera zaczyna się od https://.</translation>
     </message>
     <message numerus="yes">
         <location filename="../qml/pages/SettingsPage.qml" line="294"/>
         <source>%n change(s) are waiting to be sent to the server.</source>
-        <translation type="unfinished">
-            <numerusform></numerusform>
-            <numerusform></numerusform>
-            <numerusform></numerusform>
+        <translation>
+            <numerusform>%n zmiana czeka na wysłanie do serwera.</numerusform>
+            <numerusform>%n zmiany czekają na wysłanie do serwera.</numerusform>
+            <numerusform>%n zmian czeka na wysłanie do serwera.</numerusform>
         </translation>
     </message>
     <message>
@@ -649,7 +649,7 @@
     <message>
         <location filename="../qml/pages/SetupDialog.qml" line="112"/>
         <source>Your Miniflux server fetches your feeds, and Vuo shows them.</source>
-        <translation type="unfinished"></translation>
+        <translation>Twój serwer Miniflux pobiera kanały, a Vuo je pokazuje.</translation>
     </message>
     <message>
         <location filename="../qml/pages/SetupDialog.qml" line="118"/>
@@ -669,7 +669,7 @@
     <message>
         <location filename="../qml/pages/SetupDialog.qml" line="142"/>
         <source>Create a key in Miniflux under Settings → API Keys.</source>
-        <translation>Utwórz klucz w Minifluksie w Settings → API Keys.</translation>
+        <translation>Utwórz klucz w Miniflux w sekcji Ustawienia → Klucze API.</translation>
     </message>
     <message>
         <location filename="../qml/pages/SetupDialog.qml" line="151"/>

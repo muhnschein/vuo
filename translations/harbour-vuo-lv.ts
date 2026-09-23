@@ -36,7 +36,7 @@
         <location filename="../qml/pages/ArticlePage.qml" line="162"/>
         <source>Unread</source>
         <extracomment>The state of the one article on screen, so singular: not the plural name of the Unread tab.</extracomment>
-        <translation>Neizlasītie</translation>
+        <translation>Neizlasīts</translation>
     </message>
     <message>
         <location filename="../qml/pages/ArticlePage.qml" line="169"/>
@@ -90,17 +90,17 @@
     <message>
         <location filename="../qml/pages/ArticlePage.qml" line="238"/>
         <source>Fetching the original article…</source>
-        <translation type="unfinished"></translation>
+        <translation>Ielādē sākotnējo rakstu…</translation>
     </message>
     <message>
         <location filename="../qml/pages/ArticlePage.qml" line="507"/>
         <source>The original article was loaded.</source>
-        <translation type="unfinished"></translation>
+        <translation>Sākotnējais raksts ir ielādēts.</translation>
     </message>
     <message>
         <location filename="../qml/pages/ArticlePage.qml" line="514"/>
         <source>This feed already contains the full article.</source>
-        <translation type="unfinished"></translation>
+        <translation>Šajā barotnē jau ir viss raksts.</translation>
     </message>
     <message>
         <location filename="../qml/pages/ArticlePage.qml" line="395"/>
@@ -167,17 +167,17 @@
     <message>
         <location filename="../qml/pages/EditFeedPage.qml" line="139"/>
         <source>The server downloads each article from its website instead of using the text in the feed.</source>
-        <translation type="unfinished"></translation>
+        <translation>Serveris ielādē katru rakstu no tā vietnes, nevis izmanto barotnes tekstu.</translation>
     </message>
     <message>
         <location filename="../qml/pages/EditFeedPage.qml" line="152"/>
         <source>Hide from the unread list in Miniflux</source>
-        <translation type="unfinished"></translation>
+        <translation>Slēpt no Miniflux neizlasīto saraksta</translation>
     </message>
     <message>
         <location filename="../qml/pages/EditFeedPage.qml" line="161"/>
         <source>Do not refresh this feed</source>
-        <translation type="unfinished"></translation>
+        <translation>Neatsvaidzināt šo barotni</translation>
     </message>
 </context>
 <context>
@@ -300,7 +300,7 @@
     <message>
         <location filename="../qml/components/EntryListView.qml" line="384"/>
         <source>Articles you add to favourites appear here</source>
-        <translation type="unfinished"></translation>
+        <translation>Raksti, ko pievienosi izlasei, parādīsies šeit</translation>
     </message>
     <message>
         <location filename="../qml/components/EntryListView.qml" line="385"/>
@@ -356,12 +356,12 @@
     <message>
         <location filename="../qml/pages/FeedListPage.qml" line="39"/>
         <source>Add feed</source>
-        <translation type="unfinished"></translation>
+        <translation>Pievienot barotni</translation>
     </message>
     <message>
         <location filename="../qml/pages/FeedListPage.qml" line="48"/>
         <source>Pull down to add a feed</source>
-        <translation type="unfinished"></translation>
+        <translation>Pavelc uz leju, lai pievienotu barotni</translation>
     </message>
     <message>
         <location filename="../qml/pages/FeedListPage.qml" line="146"/>
@@ -487,40 +487,40 @@
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="173"/>
         <source>By default, Miniflux proxies only http:// images. Loading an image directly tells its website your IP address and when you read the article.</source>
-        <translation type="unfinished"></translation>
+        <translation>Pēc noklusējuma Miniflux starpniecību veic tikai http:// attēliem. Attēla tieša ielāde pavēsta tā vietnei tavu IP adresi un laiku, kad lasi rakstu.</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="204"/>
         <source>Vuo syncs only while it is open or on the cover. How often Miniflux checks your feeds is set on the server.</source>
-        <translation type="unfinished"></translation>
+        <translation>Vuo sinhronizējas tikai tad, kad tas ir atvērts vai uz vāka. Cik bieži Miniflux pārbauda tavas barotnes, iestata serverī.</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="214"/>
         <source>Automatic syncs wait for Wi-Fi. A refresh that you start yourself runs on any connection.</source>
-        <translation type="unfinished"></translation>
+        <translation>Automātiskā sinhronizācija gaida Wi-Fi tīklu. Atsvaidzināšana, ko sāc pats, notiek ar jebkuru savienojumu.</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="259"/>
         <source>Read articles older than this are deleted from this phone, but not from your Miniflux server. Favourites and unread articles are always kept.</source>
-        <translation type="unfinished"></translation>
+        <translation>Izlasītie raksti, kas vecāki par izvēlēto laiku, tiek dzēsti no šā tālruņa, bet ne no tava Miniflux servera. Izlase un neizlasītie raksti vienmēr tiek paturēti.</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="281"/>
         <source>Copy the certificate to ~/.local/share/harbour-vuo/harbour-vuo/ca.pem.</source>
-        <translation type="unfinished"></translation>
+        <translation>Nokopē sertifikātu uz ~/.local/share/harbour-vuo/harbour-vuo/ca.pem.</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="282"/>
         <source>A certificate is used only with an https:// server address.</source>
-        <translation type="unfinished"></translation>
+        <translation>Sertifikāts tiek lietots tikai tad, ja servera adrese sākas ar https://.</translation>
     </message>
     <message numerus="yes">
         <location filename="../qml/pages/SettingsPage.qml" line="294"/>
         <source>%n change(s) are waiting to be sent to the server.</source>
-        <translation type="unfinished">
-            <numerusform></numerusform>
-            <numerusform></numerusform>
-            <numerusform></numerusform>
+        <translation>
+            <numerusform>%n izmaiņa gaida nosūtīšanu uz serveri.</numerusform>
+            <numerusform>%n izmaiņas gaida nosūtīšanu uz serveri.</numerusform>
+            <numerusform>%n izmaiņu gaida nosūtīšanu uz serveri.</numerusform>
         </translation>
     </message>
     <message>
@@ -649,7 +649,7 @@
     <message>
         <location filename="../qml/pages/SetupDialog.qml" line="112"/>
         <source>Your Miniflux server fetches your feeds, and Vuo shows them.</source>
-        <translation type="unfinished"></translation>
+        <translation>Tavs Miniflux serveris ielādē barotnes, un Vuo tās parāda.</translation>
     </message>
     <message>
         <location filename="../qml/pages/SetupDialog.qml" line="118"/>

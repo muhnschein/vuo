@@ -89,17 +89,17 @@
     <message>
         <location filename="../qml/pages/ArticlePage.qml" line="238"/>
         <source>Fetching the original article…</source>
-        <translation type="unfinished"></translation>
+        <translation>मूल लेख लाया जा रहा है…</translation>
     </message>
     <message>
         <location filename="../qml/pages/ArticlePage.qml" line="507"/>
         <source>The original article was loaded.</source>
-        <translation type="unfinished"></translation>
+        <translation>मूल लेख लोड हो गया।</translation>
     </message>
     <message>
         <location filename="../qml/pages/ArticlePage.qml" line="514"/>
         <source>This feed already contains the full article.</source>
-        <translation type="unfinished"></translation>
+        <translation>इस फ़ीड में पूरा लेख पहले से है।</translation>
     </message>
     <message>
         <location filename="../qml/pages/ArticlePage.qml" line="395"/>
@@ -166,17 +166,17 @@
     <message>
         <location filename="../qml/pages/EditFeedPage.qml" line="139"/>
         <source>The server downloads each article from its website instead of using the text in the feed.</source>
-        <translation type="unfinished"></translation>
+        <translation>फ़ीड में दी गई सामग्री का उपयोग करने के बजाय, सर्वर हर लेख को उसकी वेबसाइट से डाउनलोड करता है।</translation>
     </message>
     <message>
         <location filename="../qml/pages/EditFeedPage.qml" line="152"/>
         <source>Hide from the unread list in Miniflux</source>
-        <translation type="unfinished"></translation>
+        <translation>Miniflux की अपठित सूची से छिपाएँ</translation>
     </message>
     <message>
         <location filename="../qml/pages/EditFeedPage.qml" line="161"/>
         <source>Do not refresh this feed</source>
-        <translation type="unfinished"></translation>
+        <translation>इस फ़ीड को ताज़ा न करें</translation>
     </message>
 </context>
 <context>
@@ -297,7 +297,7 @@
     <message>
         <location filename="../qml/components/EntryListView.qml" line="384"/>
         <source>Articles you add to favourites appear here</source>
-        <translation type="unfinished"></translation>
+        <translation>पसंदीदा में जोड़े गए लेख यहाँ दिखाई देते हैं</translation>
     </message>
     <message>
         <location filename="../qml/components/EntryListView.qml" line="385"/>
@@ -351,12 +351,12 @@
     <message>
         <location filename="../qml/pages/FeedListPage.qml" line="39"/>
         <source>Add feed</source>
-        <translation type="unfinished"></translation>
+        <translation>फ़ीड जोड़ें</translation>
     </message>
     <message>
         <location filename="../qml/pages/FeedListPage.qml" line="48"/>
         <source>Pull down to add a feed</source>
-        <translation type="unfinished"></translation>
+        <translation>फ़ीड जोड़ने के लिए नीचे खींचें</translation>
     </message>
     <message>
         <location filename="../qml/pages/FeedListPage.qml" line="146"/>
@@ -427,7 +427,7 @@
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="106"/>
         <source>Create a key in Miniflux under Settings → API Keys.</source>
-        <translation>Miniflux में Settings → API Keys के अंतर्गत एक कुंजी बनाएँ।</translation>
+        <translation>Miniflux में समायोजन → एपीआई कुंजी के अंतर्गत एक कुंजी बनाएँ।</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="111"/>
@@ -482,39 +482,39 @@
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="173"/>
         <source>By default, Miniflux proxies only http:// images. Loading an image directly tells its website your IP address and when you read the article.</source>
-        <translation type="unfinished"></translation>
+        <translation>डिफ़ॉल्ट रूप से केवल http:// वाली छवियाँ Miniflux से होकर आती हैं। किसी छवि को सीधे लोड करने पर उसकी वेबसाइट आपका IP पता और आपके लेख पढ़ने का समय जान लेती है।</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="204"/>
         <source>Vuo syncs only while it is open or on the cover. How often Miniflux checks your feeds is set on the server.</source>
-        <translation type="unfinished"></translation>
+        <translation>Vuo केवल तभी समन्वय करता है जब वह खुला हो या कवर पर हो। Miniflux आपकी फ़ीड कितनी बार जाँचता है, यह सर्वर पर तय होता है।</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="214"/>
         <source>Automatic syncs wait for Wi-Fi. A refresh that you start yourself runs on any connection.</source>
-        <translation type="unfinished"></translation>
+        <translation>स्वचालित समन्वय Wi-Fi की प्रतीक्षा करता है। जब आप स्वयं ताज़ा करते हैं, तो यह किसी भी कनेक्शन पर होता है।</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="259"/>
         <source>Read articles older than this are deleted from this phone, but not from your Miniflux server. Favourites and unread articles are always kept.</source>
-        <translation type="unfinished"></translation>
+        <translation>इस अवधि से पुराने पढ़े हुए लेख इस फ़ोन से हटा दिए जाते हैं, लेकिन आपके Miniflux सर्वर से नहीं। पसंदीदा और अपठित लेख हमेशा रखे जाते हैं।</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="281"/>
         <source>Copy the certificate to ~/.local/share/harbour-vuo/harbour-vuo/ca.pem.</source>
-        <translation type="unfinished"></translation>
+        <translation>प्रमाणपत्र को ~/.local/share/harbour-vuo/harbour-vuo/ca.pem पर कॉपी करें।</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="282"/>
         <source>A certificate is used only with an https:// server address.</source>
-        <translation type="unfinished"></translation>
+        <translation>प्रमाणपत्र का उपयोग केवल https:// सर्वर पते के साथ होता है।</translation>
     </message>
     <message numerus="yes">
         <location filename="../qml/pages/SettingsPage.qml" line="294"/>
         <source>%n change(s) are waiting to be sent to the server.</source>
-        <translation type="unfinished">
-            <numerusform></numerusform>
-            <numerusform></numerusform>
+        <translation>
+            <numerusform>%n बदलाव सर्वर पर भेजे जाने की प्रतीक्षा में है।</numerusform>
+            <numerusform>%n बदलाव सर्वर पर भेजे जाने की प्रतीक्षा में हैं।</numerusform>
         </translation>
     </message>
     <message>
@@ -643,7 +643,7 @@
     <message>
         <location filename="../qml/pages/SetupDialog.qml" line="112"/>
         <source>Your Miniflux server fetches your feeds, and Vuo shows them.</source>
-        <translation type="unfinished"></translation>
+        <translation>आपका Miniflux सर्वर आपकी फ़ीड लाता है, और Vuo उन्हें दिखाता है।</translation>
     </message>
     <message>
         <location filename="../qml/pages/SetupDialog.qml" line="118"/>
@@ -663,7 +663,7 @@
     <message>
         <location filename="../qml/pages/SetupDialog.qml" line="142"/>
         <source>Create a key in Miniflux under Settings → API Keys.</source>
-        <translation>Miniflux में Settings → API Keys के अंतर्गत एक कुंजी बनाएँ।</translation>
+        <translation>Miniflux में समायोजन → एपीआई कुंजी के अंतर्गत एक कुंजी बनाएँ।</translation>
     </message>
     <message>
         <location filename="../qml/pages/SetupDialog.qml" line="151"/>

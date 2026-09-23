@@ -36,7 +36,7 @@
         <location filename="../qml/pages/ArticlePage.qml" line="162"/>
         <source>Unread</source>
         <extracomment>The state of the one article on screen, so singular: not the plural name of the Unread tab.</extracomment>
-        <translation>படிக்காதவை</translation>
+        <translation>படிக்காதது</translation>
     </message>
     <message>
         <location filename="../qml/pages/ArticlePage.qml" line="169"/>
@@ -89,17 +89,17 @@
     <message>
         <location filename="../qml/pages/ArticlePage.qml" line="238"/>
         <source>Fetching the original article…</source>
-        <translation type="unfinished"></translation>
+        <translation>மூலக் கட்டுரை பெறப்படுகிறது…</translation>
     </message>
     <message>
         <location filename="../qml/pages/ArticlePage.qml" line="507"/>
         <source>The original article was loaded.</source>
-        <translation type="unfinished"></translation>
+        <translation>மூலக் கட்டுரை ஏற்றப்பட்டது.</translation>
     </message>
     <message>
         <location filename="../qml/pages/ArticlePage.qml" line="514"/>
         <source>This feed already contains the full article.</source>
-        <translation type="unfinished"></translation>
+        <translation>இந்த ஊட்டத்தில் முழுக் கட்டுரை ஏற்கெனவே உள்ளது.</translation>
     </message>
     <message>
         <location filename="../qml/pages/ArticlePage.qml" line="395"/>
@@ -166,17 +166,17 @@
     <message>
         <location filename="../qml/pages/EditFeedPage.qml" line="139"/>
         <source>The server downloads each article from its website instead of using the text in the feed.</source>
-        <translation type="unfinished"></translation>
+        <translation>ஊட்டத்தில் உள்ள உரையைப் பயன்படுத்துவதற்குப் பதிலாக, சேவையகம் ஒவ்வொரு கட்டுரையையும் அதன் இணையதளத்திலிருந்து பதிவிறக்குகிறது.</translation>
     </message>
     <message>
         <location filename="../qml/pages/EditFeedPage.qml" line="152"/>
         <source>Hide from the unread list in Miniflux</source>
-        <translation type="unfinished"></translation>
+        <translation>Miniflux இல் படிக்காத கட்டுரைகளின் பட்டியலிலிருந்து மறை</translation>
     </message>
     <message>
         <location filename="../qml/pages/EditFeedPage.qml" line="161"/>
         <source>Do not refresh this feed</source>
-        <translation type="unfinished"></translation>
+        <translation>இந்த ஊட்டத்தைப் புதுப்பிக்க வேண்டாம்</translation>
     </message>
 </context>
 <context>
@@ -297,7 +297,7 @@
     <message>
         <location filename="../qml/components/EntryListView.qml" line="384"/>
         <source>Articles you add to favourites appear here</source>
-        <translation type="unfinished"></translation>
+        <translation>பிடித்தவற்றில் சேர்க்கும் கட்டுரைகள் இங்கே காட்டப்படும்</translation>
     </message>
     <message>
         <location filename="../qml/components/EntryListView.qml" line="385"/>
@@ -351,12 +351,12 @@
     <message>
         <location filename="../qml/pages/FeedListPage.qml" line="39"/>
         <source>Add feed</source>
-        <translation type="unfinished"></translation>
+        <translation>ஊட்டத்தைச் சேர்</translation>
     </message>
     <message>
         <location filename="../qml/pages/FeedListPage.qml" line="48"/>
         <source>Pull down to add a feed</source>
-        <translation type="unfinished"></translation>
+        <translation>ஊட்டத்தைச் சேர்க்க கீழே இழுக்கவும்</translation>
     </message>
     <message>
         <location filename="../qml/pages/FeedListPage.qml" line="146"/>
@@ -482,39 +482,39 @@
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="173"/>
         <source>By default, Miniflux proxies only http:// images. Loading an image directly tells its website your IP address and when you read the article.</source>
-        <translation type="unfinished"></translation>
+        <translation>இயல்பாக, http:// படங்கள் மட்டுமே Miniflux வழியாக வருகின்றன. ஒரு படத்தை நேரடியாக ஏற்றினால், அதன் இணையதளத்திற்கு உங்கள் IP முகவரியும் நீங்கள் கட்டுரையைப் படிக்கும் நேரமும் தெரியவரும்.</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="204"/>
         <source>Vuo syncs only while it is open or on the cover. How often Miniflux checks your feeds is set on the server.</source>
-        <translation type="unfinished"></translation>
+        <translation>Vuo திறந்திருக்கும்போது அல்லது அட்டையில் இருக்கும்போது மட்டுமே ஒத்திசைக்கும். Miniflux உங்கள் ஊட்டங்களை எத்தனை முறை சரிபார்க்கிறது என்பது சேவையகத்தில் அமைக்கப்படுகிறது.</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="214"/>
         <source>Automatic syncs wait for Wi-Fi. A refresh that you start yourself runs on any connection.</source>
-        <translation type="unfinished"></translation>
+        <translation>தானியங்கு ஒத்திசைவுகள் Wi-Fi க்காகக் காத்திருக்கும். நீங்களே தொடங்கும் புதுப்பிப்பு எந்த இணைப்பிலும் நடக்கும்.</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="259"/>
         <source>Read articles older than this are deleted from this phone, but not from your Miniflux server. Favourites and unread articles are always kept.</source>
-        <translation type="unfinished"></translation>
+        <translation>இந்தக் காலத்தை விடப் பழைய படித்த கட்டுரைகள் இந்தத் தொலைபேசியிலிருந்து நீக்கப்படும், ஆனால் உங்கள் Miniflux சேவையகத்திலிருந்து அல்ல. பிடித்தவையும் படிக்காத கட்டுரைகளும் எப்போதும் வைக்கப்படும்.</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="281"/>
         <source>Copy the certificate to ~/.local/share/harbour-vuo/harbour-vuo/ca.pem.</source>
-        <translation type="unfinished"></translation>
+        <translation>சான்றிதழை ~/.local/share/harbour-vuo/harbour-vuo/ca.pem க்கு நகலெடுக்கவும்.</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="282"/>
         <source>A certificate is used only with an https:// server address.</source>
-        <translation type="unfinished"></translation>
+        <translation>https:// சேவையக முகவரியுடன் மட்டுமே சான்றிதழ் பயன்படுத்தப்படும்.</translation>
     </message>
     <message numerus="yes">
         <location filename="../qml/pages/SettingsPage.qml" line="294"/>
         <source>%n change(s) are waiting to be sent to the server.</source>
-        <translation type="unfinished">
-            <numerusform></numerusform>
-            <numerusform></numerusform>
+        <translation>
+            <numerusform>%n மாற்றம் சேவையகத்திற்கு அனுப்பப்படக் காத்திருக்கிறது.</numerusform>
+            <numerusform>%n மாற்றங்கள் சேவையகத்திற்கு அனுப்பப்படக் காத்திருக்கின்றன.</numerusform>
         </translation>
     </message>
     <message>
@@ -643,7 +643,7 @@
     <message>
         <location filename="../qml/pages/SetupDialog.qml" line="112"/>
         <source>Your Miniflux server fetches your feeds, and Vuo shows them.</source>
-        <translation type="unfinished"></translation>
+        <translation>உங்கள் Miniflux சேவையகம் உங்கள் ஊட்டங்களைப் பெறுகிறது, Vuo அவற்றைக் காட்டுகிறது.</translation>
     </message>
     <message>
         <location filename="../qml/pages/SetupDialog.qml" line="118"/>

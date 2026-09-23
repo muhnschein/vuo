@@ -36,7 +36,7 @@
         <location filename="../qml/pages/ArticlePage.qml" line="162"/>
         <source>Unread</source>
         <extracomment>The state of the one article on screen, so singular: not the plural name of the Unread tab.</extracomment>
-        <translation>വായിക്കാത്തവ</translation>
+        <translation>വായിച്ചില്ല</translation>
     </message>
     <message>
         <location filename="../qml/pages/ArticlePage.qml" line="169"/>
@@ -89,17 +89,17 @@
     <message>
         <location filename="../qml/pages/ArticlePage.qml" line="238"/>
         <source>Fetching the original article…</source>
-        <translation type="unfinished"></translation>
+        <translation>മൂല ലേഖനം എടുക്കുന്നു…</translation>
     </message>
     <message>
         <location filename="../qml/pages/ArticlePage.qml" line="507"/>
         <source>The original article was loaded.</source>
-        <translation type="unfinished"></translation>
+        <translation>മൂല ലേഖനം ലോഡ് ചെയ്തു.</translation>
     </message>
     <message>
         <location filename="../qml/pages/ArticlePage.qml" line="514"/>
         <source>This feed already contains the full article.</source>
-        <translation type="unfinished"></translation>
+        <translation>ഈ ഫീഡിൽ പൂർണ ലേഖനം ഇപ്പോൾത്തന്നെയുണ്ട്.</translation>
     </message>
     <message>
         <location filename="../qml/pages/ArticlePage.qml" line="395"/>
@@ -166,17 +166,17 @@
     <message>
         <location filename="../qml/pages/EditFeedPage.qml" line="139"/>
         <source>The server downloads each article from its website instead of using the text in the feed.</source>
-        <translation type="unfinished"></translation>
+        <translation>ഫീഡിലെ ഉള്ളടക്കം ഉപയോഗിക്കുന്നതിനു പകരം സെർവർ ഓരോ ലേഖനവും അതിന്റെ വെബ്‌സൈറ്റിൽ നിന്നു ഡൗൺലോഡ് ചെയ്യുന്നു.</translation>
     </message>
     <message>
         <location filename="../qml/pages/EditFeedPage.qml" line="152"/>
         <source>Hide from the unread list in Miniflux</source>
-        <translation type="unfinished"></translation>
+        <translation>Miniflux ലെ വായിക്കാത്ത ലേഖനങ്ങളുടെ പട്ടികയിൽ നിന്നു മറയ്ക്കുക</translation>
     </message>
     <message>
         <location filename="../qml/pages/EditFeedPage.qml" line="161"/>
         <source>Do not refresh this feed</source>
-        <translation type="unfinished"></translation>
+        <translation>ഈ ഫീഡ് പുതുക്കരുത്</translation>
     </message>
 </context>
 <context>
@@ -297,7 +297,7 @@
     <message>
         <location filename="../qml/components/EntryListView.qml" line="384"/>
         <source>Articles you add to favourites appear here</source>
-        <translation type="unfinished"></translation>
+        <translation>പ്രിയപ്പെട്ടവയിൽ ചേർക്കുന്ന ലേഖനങ്ങൾ ഇവിടെ കാണിക്കും</translation>
     </message>
     <message>
         <location filename="../qml/components/EntryListView.qml" line="385"/>
@@ -351,12 +351,12 @@
     <message>
         <location filename="../qml/pages/FeedListPage.qml" line="39"/>
         <source>Add feed</source>
-        <translation type="unfinished"></translation>
+        <translation>ഫീഡ് ചേർക്കുക</translation>
     </message>
     <message>
         <location filename="../qml/pages/FeedListPage.qml" line="48"/>
         <source>Pull down to add a feed</source>
-        <translation type="unfinished"></translation>
+        <translation>ഫീഡ് ചേർക്കാൻ താഴേക്കു വലിക്കുക</translation>
     </message>
     <message>
         <location filename="../qml/pages/FeedListPage.qml" line="146"/>
@@ -482,39 +482,39 @@
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="173"/>
         <source>By default, Miniflux proxies only http:// images. Loading an image directly tells its website your IP address and when you read the article.</source>
-        <translation type="unfinished"></translation>
+        <translation>സ്ഥിരസ്ഥിതിയായി http:// ചിത്രങ്ങൾ മാത്രമേ Miniflux വഴി വരൂ. ഒരു ചിത്രം നേരിട്ടു ലോഡ് ചെയ്താൽ, നിങ്ങളുടെ IP വിലാസവും നിങ്ങൾ ലേഖനം വായിക്കുന്ന സമയവും അതിന്റെ വെബ്‌സൈറ്റ് അറിയും.</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="204"/>
         <source>Vuo syncs only while it is open or on the cover. How often Miniflux checks your feeds is set on the server.</source>
-        <translation type="unfinished"></translation>
+        <translation>Vuo തുറന്നിരിക്കുമ്പോഴോ കവറിലായിരിക്കുമ്പോഴോ മാത്രമേ സമന്വയിപ്പിക്കൂ. Miniflux നിങ്ങളുടെ ഫീഡുകൾ എത്ര ഇടവിട്ടു പരിശോധിക്കുന്നു എന്നത് സെർവറിലാണ് ക്രമീകരിക്കുന്നത്.</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="214"/>
         <source>Automatic syncs wait for Wi-Fi. A refresh that you start yourself runs on any connection.</source>
-        <translation type="unfinished"></translation>
+        <translation>സ്വയമേവയുള്ള സമന്വയം Wi-Fi-ക്കായി കാത്തിരിക്കും. നിങ്ങൾ സ്വയം തുടങ്ങുന്ന പുതുക്കൽ ഏതു കണക്ഷനിലും നടക്കും.</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="259"/>
         <source>Read articles older than this are deleted from this phone, but not from your Miniflux server. Favourites and unread articles are always kept.</source>
-        <translation type="unfinished"></translation>
+        <translation>ഈ കാലയളവിലും പഴയ വായിച്ച ലേഖനങ്ങൾ ഈ ഫോണിൽ നിന്ന് ഇല്ലാതാക്കും, എന്നാൽ നിങ്ങളുടെ Miniflux സെർവറിൽ നിന്ന് ഇല്ലാതാക്കില്ല. പ്രിയപ്പെട്ടവയും വായിക്കാത്ത ലേഖനങ്ങളും എപ്പോഴും സൂക്ഷിക്കും.</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="281"/>
         <source>Copy the certificate to ~/.local/share/harbour-vuo/harbour-vuo/ca.pem.</source>
-        <translation type="unfinished"></translation>
+        <translation>സർട്ടിഫിക്കറ്റ് ~/.local/share/harbour-vuo/harbour-vuo/ca.pem ലേക്ക് പകർത്തുക.</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="282"/>
         <source>A certificate is used only with an https:// server address.</source>
-        <translation type="unfinished"></translation>
+        <translation>https:// സെർവർ വിലാസത്തിൽ മാത്രമേ സർട്ടിഫിക്കറ്റ് ഉപയോഗിക്കൂ.</translation>
     </message>
     <message numerus="yes">
         <location filename="../qml/pages/SettingsPage.qml" line="294"/>
         <source>%n change(s) are waiting to be sent to the server.</source>
-        <translation type="unfinished">
-            <numerusform></numerusform>
-            <numerusform></numerusform>
+        <translation>
+            <numerusform>%n മാറ്റം സെർവറിലേക്ക് അയയ്ക്കാൻ കാത്തിരിക്കുന്നു.</numerusform>
+            <numerusform>%n മാറ്റങ്ങൾ സെർവറിലേക്ക് അയയ്ക്കാൻ കാത്തിരിക്കുന്നു.</numerusform>
         </translation>
     </message>
     <message>
@@ -643,7 +643,7 @@
     <message>
         <location filename="../qml/pages/SetupDialog.qml" line="112"/>
         <source>Your Miniflux server fetches your feeds, and Vuo shows them.</source>
-        <translation type="unfinished"></translation>
+        <translation>നിങ്ങളുടെ Miniflux സെർവർ നിങ്ങളുടെ ഫീഡുകൾ എടുക്കുന്നു, Vuo അവ കാണിക്കുന്നു.</translation>
     </message>
     <message>
         <location filename="../qml/pages/SetupDialog.qml" line="118"/>
