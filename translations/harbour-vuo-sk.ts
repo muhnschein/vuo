@@ -18,11 +18,6 @@
         <source>https://example.com/feed.xml</source>
         <translation>https://priklad.sk/kanal.xml</translation>
     </message>
-    <message>
-        <location filename="../qml/pages/AddFeedPage.qml" line="42"/>
-        <source>Your server discovers the feed and fetches it. Vuo never downloads feeds itself.</source>
-        <translation>Váš server kanál nájde a stiahne. Vuo kanály nikdy nesťahuje samo.</translation>
-    </message>
 </context>
 <context>
     <name>ArticlePage</name>
@@ -92,8 +87,18 @@
     </message>
     <message>
         <location filename="../qml/pages/ArticlePage.qml" line="233"/>
-        <source>Asking the server for the original article…</source>
-        <translation>Žiadam server o pôvodný článok…</translation>
+        <source>Fetching the original article…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/ArticlePage.qml" line="502"/>
+        <source>The original article was loaded.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/ArticlePage.qml" line="509"/>
+        <source>This feed already contains the full article.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../qml/pages/ArticlePage.qml" line="390"/>
@@ -101,19 +106,9 @@
         <translation>Ťuknutím načítate obrázky z %1</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="502"/>
-        <source>Loaded the original article.</source>
-        <translation>Pôvodný článok načítaný.</translation>
-    </message>
-    <message>
         <location filename="../qml/pages/ArticlePage.qml" line="506"/>
         <source>The server could not extract the original article.</source>
         <translation>Server nedokázal získať pôvodný článok.</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="509"/>
-        <source>This feed already carries the full article.</source>
-        <translation>Tento kanál už obsahuje celý článok.</translation>
     </message>
     <message>
         <location filename="../qml/pages/ArticlePage.qml" line="511"/>
@@ -169,28 +164,18 @@
     </message>
     <message>
         <location filename="../qml/pages/EditFeedPage.qml" line="139"/>
-        <source>The server scrapes each article&apos;s own page instead of using what the feed provides.</source>
-        <translation>Server načíta vlastnú stránku každého článku namiesto toho, čo ponúka kanál.</translation>
+        <source>The server downloads each article from its website instead of using the text in the feed.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/pages/EditFeedPage.qml" line="149"/>
-        <source>Hide from unread</source>
-        <translation>Skryť z neprečítaných</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/EditFeedPage.qml" line="150"/>
-        <source>Keep this feed&apos;s articles out of the Unread and All lists. The feed itself still shows them.</source>
-        <translation>Držať články tohto kanála mimo zoznamov Neprečítané a Všetko. Samotný kanál ich stále ukazuje.</translation>
+        <location filename="../qml/pages/EditFeedPage.qml" line="152"/>
+        <source>Hide from the unread list in Miniflux</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../qml/pages/EditFeedPage.qml" line="161"/>
-        <source>Pause updates</source>
-        <translation>Pozastaviť aktualizácie</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/EditFeedPage.qml" line="162"/>
-        <source>The server stops refreshing this feed.</source>
-        <translation>Server prestane tento kanál aktualizovať.</translation>
+        <source>Do not refresh this feed</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -312,8 +297,8 @@
     </message>
     <message>
         <location filename="../qml/components/EntryListView.qml" line="384"/>
-        <source>Star an article to keep it here</source>
-        <translation>Pridajte článok do obľúbených, nech tu zostane</translation>
+        <source>Articles you add to favourites appear here</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../qml/components/EntryListView.qml" line="385"/>
@@ -362,19 +347,19 @@
         <translation>Kanály</translation>
     </message>
     <message>
-        <location filename="../qml/pages/FeedListPage.qml" line="39"/>
-        <source>Add subscription</source>
-        <translation>Pridať odber</translation>
-    </message>
-    <message>
         <location filename="../qml/pages/FeedListPage.qml" line="47"/>
         <source>No feeds</source>
         <translation>Žiadne kanály</translation>
     </message>
     <message>
+        <location filename="../qml/pages/FeedListPage.qml" line="39"/>
+        <source>Add feed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <location filename="../qml/pages/FeedListPage.qml" line="48"/>
-        <source>Subscribe from the pulley menu</source>
-        <translation>Odoberajte z vysúvacej ponuky</translation>
+        <source>Pull down to add a feed</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../qml/pages/FeedListPage.qml" line="146"/>
@@ -498,163 +483,153 @@
         <translation>Po 30 sekundách</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="159"/>
-        <source>The delay counts only while the article is on screen. Marking an article read or unread yourself always wins.</source>
-        <translation>Oneskorenie beží len vtedy, keď je článok na obrazovke. Vlastné označenie článku má vždy prednosť.</translation>
+        <location filename="../qml/pages/SettingsPage.qml" line="173"/>
+        <source>By default, Miniflux proxies only http:// images. Loading an image directly tells its website your IP address and when you read the article.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="162"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="204"/>
+        <source>Vuo syncs only while it is open or on the cover. How often Miniflux checks your feeds is set on the server.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="214"/>
+        <source>Automatic syncs wait for Wi-Fi. A refresh that you start yourself runs on any connection.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="259"/>
+        <source>Read articles older than this are deleted from this phone, but not from your Miniflux server. Favourites and unread articles are always kept.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="281"/>
+        <source>Copy the certificate to ~/.local/share/harbour-vuo/harbour-vuo/ca.pem.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="282"/>
+        <source>A certificate is used only with an https:// server address.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message numerus="yes">
+        <location filename="../qml/pages/SettingsPage.qml" line="294"/>
+        <source>%n change(s) are waiting to be sent to the server.</source>
+        <translation type="unfinished">
+            <numerusform></numerusform>
+            <numerusform></numerusform>
+            <numerusform></numerusform>
+        </translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="152"/>
         <source>Images</source>
         <translation>Obrázky</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="167"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="157"/>
         <source>Images not proxied by your server</source>
         <translation>Obrázky nejdúce cez váš server</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="169"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="159"/>
         <source>Never load</source>
         <translation>Nikdy nenačítať</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="170"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="160"/>
         <source>Ask each site</source>
         <translation>Pýtať sa pri každom webe</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="171"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="161"/>
         <source>Always load</source>
         <translation>Vždy načítať</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="183"/>
-        <source>Miniflux proxies plain-http images only by default, so most images arrive unproxied. Loading them directly tells those sites your IP address and when you read.</source>
-        <translation>Miniflux v predvolenom nastavení sprostredkuje len obrázky cez obyčajné HTTP, takže väčšina prichádza priamo. Načítanie priamo prezradí tým webom vašu IP adresu a kedy čítate.</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="186"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="176"/>
         <source>Synchronisation</source>
         <translation>Synchronizácia</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="194"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="184"/>
         <source>Sync with server</source>
         <translation>Synchronizovať so serverom</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="196"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="186"/>
         <source>Manual only</source>
         <translation>Len ručne</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="197"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="187"/>
         <source>Every 15 minutes</source>
         <translation>Každých 15 minút</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="198"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="188"/>
         <source>Every 30 minutes</source>
         <translation>Každých 30 minút</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="199"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="189"/>
         <source>Hourly</source>
         <translation>Každú hodinu</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="200"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="190"/>
         <source>Every 6 hours</source>
         <translation>Každých 6 hodín</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="214"/>
-        <source>How often Vuo fetches from your Miniflux server while it is open or on the cover. How often the server itself checks your feeds is set on the server, not here.</source>
-        <translation>Ako často Vuo sťahuje z vášho servera Miniflux, keď je otvorené alebo na obale. Ako často server sám kontroluje vaše kanály, sa nastavuje na serveri, nie tu.</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="223"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="213"/>
         <source>Only sync on Wi-Fi</source>
         <translation>Synchronizovať len cez Wi-Fi</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="224"/>
-        <source>Vuo syncs on its own only over Wi-Fi, and waits on a mobile connection. A refresh you ask for yourself is always sent.</source>
-        <translation>Vuo synchronizuje samo len cez Wi-Fi a na mobilnom pripojení čaká. Aktualizácia, o ktorú si poviete sami, sa odošle vždy.</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="233"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="223"/>
         <source>Notify about new articles</source>
         <translation>Upozorňovať na nové články</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="234"/>
-        <source>Shown when a sync finds new articles while Vuo is on the cover. Opening Vuo clears it.</source>
-        <translation>Oznámenie sa zobrazí, keď synchronizácia nájde nové články, kým je Vuo na obale. Otvorením Vuo zmizne.</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="249"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="238"/>
         <source>Keep read articles</source>
         <translation>Uchovávať prečítané články</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="251"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="240"/>
         <source>Forever</source>
         <translation>Navždy</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="252"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="241"/>
         <source>For a month</source>
         <translation>Mesiac</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="253"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="242"/>
         <source>For three months</source>
         <translation>Tri mesiace</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="254"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="243"/>
         <source>For six months</source>
         <translation>Šesť mesiacov</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="255"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="244"/>
         <source>For a year</source>
         <translation>Rok</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="270"/>
-        <source>Older articles you have already read are removed from this phone at the end of a sync. Favourites, unread articles and anything not yet sent to the server are always kept, and nothing is removed from your Miniflux server.</source>
-        <translation>Staršie články, ktoré ste už prečítali, sa na konci synchronizácie z tohto telefónu odstránia. Obľúbené, neprečítané články a všetko, čo ešte nebolo odoslané na server, sa uchovávajú vždy, a z vášho servera Miniflux sa neodstráni nič.</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="281"/>
         <source>Advanced</source>
         <translation>Pokročilé</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="285"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="274"/>
         <source>Use a custom CA certificate</source>
         <translation>Použiť vlastný certifikát CA</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="292"/>
-        <source>For a self-hosted server with a private certificate authority. Place the certificate at ~/.local/share/harbour-vuo/harbour-vuo/ca.pem. Certificate verification is never disabled, and there is no option to disable it.</source>
-        <translation>Pre vlastný server so súkromnou certifikačnou autoritou. Umiestnite certifikát do ~/.local/share/harbour-vuo/harbour-vuo/ca.pem. Overovanie certifikátov sa nikdy nevypína a nie je na to ani voľba.</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="293"/>
-        <source>Only applies to an https:// server. This one is not encrypted by TLS, so no certificate is used.</source>
-        <translation>Platí len pre server https://. Tento nie je šifrovaný TLS, takže sa nepoužíva žiadny certifikát.</translation>
-    </message>
-    <message numerus="yes">
-        <location filename="../qml/pages/SettingsPage.qml" line="305"/>
-        <source>%n change(s) waiting to be sent to the server.</source>
-        <translation>
-            <numerusform>%n zmena čaká na odoslanie na server.</numerusform>
-            <numerusform>%n zmeny čakajú na odoslanie na server.</numerusform>
-            <numerusform>%n zmien čaká na odoslanie na server.</numerusform>
-        </translation>
     </message>
 </context>
 <context>
@@ -671,8 +646,8 @@
     </message>
     <message>
         <location filename="../qml/pages/SetupDialog.qml" line="112"/>
-        <source>Vuo reads from your own Miniflux instance. It never fetches feeds itself.</source>
-        <translation>Vuo číta z vašej vlastnej inštancie Minifluxu. Kanály nikdy nesťahuje samo.</translation>
+        <source>Your Miniflux server fetches your feeds, and Vuo shows them.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../qml/pages/SetupDialog.qml" line="118"/>

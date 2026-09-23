@@ -18,11 +18,6 @@
         <source>https://example.com/feed.xml</source>
         <translation>https://primer.ru/feed.xml</translation>
     </message>
-    <message>
-        <location filename="../qml/pages/AddFeedPage.qml" line="42"/>
-        <source>Your server discovers the feed and fetches it. Vuo never downloads feeds itself.</source>
-        <translation>Ваш сервер находит ленту и загружает её. Vuo никогда не скачивает ленты сам.</translation>
-    </message>
 </context>
 <context>
     <name>ArticlePage</name>
@@ -92,8 +87,18 @@
     </message>
     <message>
         <location filename="../qml/pages/ArticlePage.qml" line="233"/>
-        <source>Asking the server for the original article…</source>
-        <translation>Запрашиваем у сервера исходную статью…</translation>
+        <source>Fetching the original article…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/ArticlePage.qml" line="502"/>
+        <source>The original article was loaded.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/ArticlePage.qml" line="509"/>
+        <source>This feed already contains the full article.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../qml/pages/ArticlePage.qml" line="390"/>
@@ -101,19 +106,9 @@
         <translation>Нажмите, чтобы загрузить изображения с %1</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="502"/>
-        <source>Loaded the original article.</source>
-        <translation>Исходная статья загружена.</translation>
-    </message>
-    <message>
         <location filename="../qml/pages/ArticlePage.qml" line="506"/>
         <source>The server could not extract the original article.</source>
         <translation>Сервер не смог извлечь исходную статью.</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="509"/>
-        <source>This feed already carries the full article.</source>
-        <translation>Эта лента уже содержит статью целиком.</translation>
     </message>
     <message>
         <location filename="../qml/pages/ArticlePage.qml" line="511"/>
@@ -169,28 +164,18 @@
     </message>
     <message>
         <location filename="../qml/pages/EditFeedPage.qml" line="139"/>
-        <source>The server scrapes each article&apos;s own page instead of using what the feed provides.</source>
-        <translation>Сервер читает собственную страницу каждой статьи вместо того, что даёт лента.</translation>
+        <source>The server downloads each article from its website instead of using the text in the feed.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/pages/EditFeedPage.qml" line="149"/>
-        <source>Hide from unread</source>
-        <translation>Скрыть из непрочитанных</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/EditFeedPage.qml" line="150"/>
-        <source>Keep this feed&apos;s articles out of the Unread and All lists. The feed itself still shows them.</source>
-        <translation>Не показывать статьи этой ленты в списках «Непрочитанные» и «Все». Сама лента их по-прежнему показывает.</translation>
+        <location filename="../qml/pages/EditFeedPage.qml" line="152"/>
+        <source>Hide from the unread list in Miniflux</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../qml/pages/EditFeedPage.qml" line="161"/>
-        <source>Pause updates</source>
-        <translation>Приостановить обновления</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/EditFeedPage.qml" line="162"/>
-        <source>The server stops refreshing this feed.</source>
-        <translation>Сервер перестаёт обновлять эту ленту.</translation>
+        <source>Do not refresh this feed</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -312,8 +297,8 @@
     </message>
     <message>
         <location filename="../qml/components/EntryListView.qml" line="384"/>
-        <source>Star an article to keep it here</source>
-        <translation>Добавьте статью в избранное, чтобы она осталась здесь</translation>
+        <source>Articles you add to favourites appear here</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../qml/components/EntryListView.qml" line="385"/>
@@ -362,19 +347,19 @@
         <translation>Ленты</translation>
     </message>
     <message>
-        <location filename="../qml/pages/FeedListPage.qml" line="39"/>
-        <source>Add subscription</source>
-        <translation>Добавить подписку</translation>
-    </message>
-    <message>
         <location filename="../qml/pages/FeedListPage.qml" line="47"/>
         <source>No feeds</source>
         <translation>Нет лент</translation>
     </message>
     <message>
+        <location filename="../qml/pages/FeedListPage.qml" line="39"/>
+        <source>Add feed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <location filename="../qml/pages/FeedListPage.qml" line="48"/>
-        <source>Subscribe from the pulley menu</source>
-        <translation>Подпишитесь через выдвижное меню</translation>
+        <source>Pull down to add a feed</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../qml/pages/FeedListPage.qml" line="146"/>
@@ -498,163 +483,153 @@
         <translation>Через 30 секунд</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="159"/>
-        <source>The delay counts only while the article is on screen. Marking an article read or unread yourself always wins.</source>
-        <translation>Задержка идёт, только пока статья на экране. Отметка, поставленная вами вручную, всегда важнее.</translation>
+        <location filename="../qml/pages/SettingsPage.qml" line="173"/>
+        <source>By default, Miniflux proxies only http:// images. Loading an image directly tells its website your IP address and when you read the article.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="162"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="204"/>
+        <source>Vuo syncs only while it is open or on the cover. How often Miniflux checks your feeds is set on the server.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="214"/>
+        <source>Automatic syncs wait for Wi-Fi. A refresh that you start yourself runs on any connection.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="259"/>
+        <source>Read articles older than this are deleted from this phone, but not from your Miniflux server. Favourites and unread articles are always kept.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="281"/>
+        <source>Copy the certificate to ~/.local/share/harbour-vuo/harbour-vuo/ca.pem.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="282"/>
+        <source>A certificate is used only with an https:// server address.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message numerus="yes">
+        <location filename="../qml/pages/SettingsPage.qml" line="294"/>
+        <source>%n change(s) are waiting to be sent to the server.</source>
+        <translation type="unfinished">
+            <numerusform></numerusform>
+            <numerusform></numerusform>
+            <numerusform></numerusform>
+        </translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="152"/>
         <source>Images</source>
         <translation>Изображения</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="167"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="157"/>
         <source>Images not proxied by your server</source>
         <translation>Изображения не через ваш сервер</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="169"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="159"/>
         <source>Never load</source>
         <translation>Никогда не загружать</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="170"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="160"/>
         <source>Ask each site</source>
         <translation>Спрашивать для каждого сайта</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="171"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="161"/>
         <source>Always load</source>
         <translation>Всегда загружать</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="183"/>
-        <source>Miniflux proxies plain-http images only by default, so most images arrive unproxied. Loading them directly tells those sites your IP address and when you read.</source>
-        <translation>По умолчанию Miniflux проксирует только изображения по обычному HTTP, так что большинство приходит напрямую. Загрузка напрямую сообщает этим сайтам ваш IP-адрес и время чтения.</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="186"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="176"/>
         <source>Synchronisation</source>
         <translation>Синхронизация</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="194"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="184"/>
         <source>Sync with server</source>
         <translation>Синхронизация с сервером</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="196"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="186"/>
         <source>Manual only</source>
         <translation>Только вручную</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="197"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="187"/>
         <source>Every 15 minutes</source>
         <translation>Каждые 15 минут</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="198"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="188"/>
         <source>Every 30 minutes</source>
         <translation>Каждые 30 минут</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="199"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="189"/>
         <source>Hourly</source>
         <translation>Каждый час</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="200"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="190"/>
         <source>Every 6 hours</source>
         <translation>Каждые 6 часов</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="214"/>
-        <source>How often Vuo fetches from your Miniflux server while it is open or on the cover. How often the server itself checks your feeds is set on the server, not here.</source>
-        <translation>Как часто Vuo обращается к вашему серверу Miniflux, пока открыт или на обложке. Как часто сам сервер проверяет ленты, задаётся на сервере, а не здесь.</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="223"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="213"/>
         <source>Only sync on Wi-Fi</source>
         <translation>Синхронизация только по Wi-Fi</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="224"/>
-        <source>Vuo syncs on its own only over Wi-Fi, and waits on a mobile connection. A refresh you ask for yourself is always sent.</source>
-        <translation>Сам по себе Vuo синхронизируется только по Wi-Fi, а на мобильном соединении ждёт. Обновление, о котором вы попросили сами, отправляется всегда.</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="233"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="223"/>
         <source>Notify about new articles</source>
         <translation>Уведомлять о новых статьях</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="234"/>
-        <source>Shown when a sync finds new articles while Vuo is on the cover. Opening Vuo clears it.</source>
-        <translation>Уведомление появляется, когда синхронизация находит новые статьи, пока Vuo на обложке. Открытие Vuo убирает его.</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="249"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="238"/>
         <source>Keep read articles</source>
         <translation>Хранить прочитанные статьи</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="251"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="240"/>
         <source>Forever</source>
         <translation>Всегда</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="252"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="241"/>
         <source>For a month</source>
         <translation>Месяц</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="253"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="242"/>
         <source>For three months</source>
         <translation>Три месяца</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="254"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="243"/>
         <source>For six months</source>
         <translation>Шесть месяцев</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="255"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="244"/>
         <source>For a year</source>
         <translation>Год</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="270"/>
-        <source>Older articles you have already read are removed from this phone at the end of a sync. Favourites, unread articles and anything not yet sent to the server are always kept, and nothing is removed from your Miniflux server.</source>
-        <translation>Старые статьи, которые вы уже прочитали, удаляются с этого телефона в конце синхронизации. Избранное, непрочитанные статьи и всё, что ещё не отправлено на сервер, сохраняются всегда, а с вашего сервера Miniflux не удаляется ничего.</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="281"/>
         <source>Advanced</source>
         <translation>Дополнительно</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="285"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="274"/>
         <source>Use a custom CA certificate</source>
         <translation>Свой сертификат УЦ</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="292"/>
-        <source>For a self-hosted server with a private certificate authority. Place the certificate at ~/.local/share/harbour-vuo/harbour-vuo/ca.pem. Certificate verification is never disabled, and there is no option to disable it.</source>
-        <translation>Для собственного сервера с частным удостоверяющим центром. Положите сертификат в ~/.local/share/harbour-vuo/harbour-vuo/ca.pem. Проверка сертификатов никогда не отключается, и такой настройки нет.</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="293"/>
-        <source>Only applies to an https:// server. This one is not encrypted by TLS, so no certificate is used.</source>
-        <translation>Относится только к серверу https://. Этот не шифруется TLS, поэтому сертификат не используется.</translation>
-    </message>
-    <message numerus="yes">
-        <location filename="../qml/pages/SettingsPage.qml" line="305"/>
-        <source>%n change(s) waiting to be sent to the server.</source>
-        <translation>
-            <numerusform>%n изменение ждёт отправки на сервер.</numerusform>
-            <numerusform>%n изменения ждут отправки на сервер.</numerusform>
-            <numerusform>%n изменений ждут отправки на сервер.</numerusform>
-        </translation>
     </message>
 </context>
 <context>
@@ -671,8 +646,8 @@
     </message>
     <message>
         <location filename="../qml/pages/SetupDialog.qml" line="112"/>
-        <source>Vuo reads from your own Miniflux instance. It never fetches feeds itself.</source>
-        <translation>Vuo читает с вашего собственного сервера Miniflux. Ленты он никогда не скачивает сам.</translation>
+        <source>Your Miniflux server fetches your feeds, and Vuo shows them.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../qml/pages/SetupDialog.qml" line="118"/>

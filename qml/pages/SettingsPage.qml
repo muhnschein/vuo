@@ -149,16 +149,6 @@ Page {
                 onCurrentIndexChanged: if (page.ready) settings.markReadDelayIndex = currentIndex
             }
 
-            Label {
-                x: Theme.horizontalPageMargin
-                width: parent.width - Theme.horizontalPageMargin * 2
-                wrapMode: Text.Wrap
-                textFormat: Text.PlainText
-                font.pixelSize: Theme.fontSizeExtraSmall
-                color: Theme.secondaryColor
-                text: qsTr("The delay counts only while the article is on screen. Marking an article read or unread yourself always wins.")
-            }
-
             SectionHeader { text: qsTr("Images") }
 
             ComboBox {
@@ -180,7 +170,7 @@ Page {
                 textFormat: Text.PlainText
                 font.pixelSize: Theme.fontSizeExtraSmall
                 color: Theme.secondaryColor
-                text: qsTr("Miniflux proxies plain-http images only by default, so most images arrive unproxied. Loading them directly tells those sites your IP address and when you read.")
+                text: qsTr("By default, Miniflux proxies only http:// images. Loading an image directly tells its website your IP address and when you read the article.")
             }
 
             SectionHeader { text: qsTr("Synchronisation") }
@@ -211,17 +201,17 @@ Page {
                 color: Theme.secondaryColor
                 // The two cadences are easy to confuse, and only one of them
                 // is set here.
-                text: qsTr("How often Vuo fetches from your Miniflux server while it is open or on the cover. How often the server itself checks your feeds is set on the server, not here.")
+                text: qsTr("Vuo syncs only while it is open or on the cover. How often Miniflux checks your feeds is set on the server.")
             }
 
             // Consulted only for the work Vuo starts BY ITSELF. Anything the
             // reader asks for -- the pulley's Refresh, the cover's, adding a
             // feed -- goes out whatever the connection, which is why the
-            // description below says "on its own" rather than "never".
+            // description below says only the automatic syncs wait.
             TextSwitch {
                 id: wifiOnlySwitch
                 text: qsTr("Only sync on Wi-Fi")
-                description: qsTr("Vuo syncs on its own only over Wi-Fi, and waits on a mobile connection. A refresh you ask for yourself is always sent.")
+                description: qsTr("Automatic syncs wait for Wi-Fi. A refresh that you start yourself runs on any connection.")
                 onClicked: settings.wifiOnly = checked
             }
 
@@ -231,7 +221,6 @@ Page {
             TextSwitch {
                 id: notifySwitch
                 text: qsTr("Notify about new articles")
-                description: qsTr("Shown when a sync finds new articles while Vuo is on the cover. Opening Vuo clears it.")
                 onClicked: settings.notifyNewArticles = checked
             }
 
@@ -267,7 +256,7 @@ Page {
                 // Saying exactly what survives matters more than saying what
                 // goes: a reader deciding this needs to know their favourites
                 // are safe before they pick anything but "Forever".
-                text: qsTr("Older articles you have already read are removed from this phone at the end of a sync. Favourites, unread articles and anything not yet sent to the server are always kept, and nothing is removed from your Miniflux server.")
+                text: qsTr("Read articles older than this are deleted from this phone, but not from your Miniflux server. Favourites and unread articles are always kept.")
             }
 
             // "Only on Wi-Fi" used to sit here, and was removed because it
@@ -289,8 +278,8 @@ Page {
                 // rather than as something that might be needed.
                 enabled: serverField.text.indexOf("https:") === 0
                 description: enabled
-                    ? qsTr("For a self-hosted server with a private certificate authority. Place the certificate at ~/.local/share/harbour-vuo/harbour-vuo/ca.pem. Certificate verification is never disabled, and there is no option to disable it.")
-                    : qsTr("Only applies to an https:// server. This one is not encrypted by TLS, so no certificate is used.")
+                    ? qsTr("Copy the certificate to ~/.local/share/harbour-vuo/harbour-vuo/ca.pem.")
+                    : qsTr("A certificate is used only with an https:// server address.")
                 onClicked: settings.useCustomCa = checked
             }
 
@@ -302,7 +291,7 @@ Page {
                 textFormat: Text.PlainText
                 font.pixelSize: Theme.fontSizeExtraSmall
                 color: Theme.highlightColor
-                text: qsTr("%n change(s) waiting to be sent to the server.",
+                text: qsTr("%n change(s) are waiting to be sent to the server.",
                            "", settings.pendingActions)
             }
         }

@@ -18,11 +18,6 @@
         <source>https://example.com/feed.xml</source>
         <translation>https://vidu.com/feed.xml</translation>
     </message>
-    <message>
-        <location filename="../qml/pages/AddFeedPage.qml" line="42"/>
-        <source>Your server discovers the feed and fetches it. Vuo never downloads feeds itself.</source>
-        <translation>Máy chủ của bạn tìm nguồn tin và tải về. Vuo không bao giờ tự tải nguồn tin.</translation>
-    </message>
 </context>
 <context>
     <name>ArticlePage</name>
@@ -90,8 +85,18 @@
     </message>
     <message>
         <location filename="../qml/pages/ArticlePage.qml" line="233"/>
-        <source>Asking the server for the original article…</source>
-        <translation>Đang hỏi máy chủ bài viết gốc…</translation>
+        <source>Fetching the original article…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/ArticlePage.qml" line="502"/>
+        <source>The original article was loaded.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/ArticlePage.qml" line="509"/>
+        <source>This feed already contains the full article.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../qml/pages/ArticlePage.qml" line="390"/>
@@ -99,19 +104,9 @@
         <translation>Chạm để tải ảnh từ %1</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="502"/>
-        <source>Loaded the original article.</source>
-        <translation>Đã tải bài viết gốc.</translation>
-    </message>
-    <message>
         <location filename="../qml/pages/ArticlePage.qml" line="506"/>
         <source>The server could not extract the original article.</source>
         <translation>Máy chủ không lấy được bài viết gốc.</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="509"/>
-        <source>This feed already carries the full article.</source>
-        <translation>Nguồn tin này đã có sẵn toàn bộ bài viết.</translation>
     </message>
     <message>
         <location filename="../qml/pages/ArticlePage.qml" line="511"/>
@@ -167,28 +162,18 @@
     </message>
     <message>
         <location filename="../qml/pages/EditFeedPage.qml" line="139"/>
-        <source>The server scrapes each article&apos;s own page instead of using what the feed provides.</source>
-        <translation>Máy chủ đọc trang riêng của từng bài thay vì dùng những gì nguồn tin cung cấp.</translation>
+        <source>The server downloads each article from its website instead of using the text in the feed.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/pages/EditFeedPage.qml" line="149"/>
-        <source>Hide from unread</source>
-        <translation>Ẩn khỏi mục chưa đọc</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/EditFeedPage.qml" line="150"/>
-        <source>Keep this feed&apos;s articles out of the Unread and All lists. The feed itself still shows them.</source>
-        <translation>Giữ bài của nguồn tin này ngoài danh sách Chưa đọc và Tất cả. Bản thân nguồn tin vẫn hiển thị chúng.</translation>
+        <location filename="../qml/pages/EditFeedPage.qml" line="152"/>
+        <source>Hide from the unread list in Miniflux</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../qml/pages/EditFeedPage.qml" line="161"/>
-        <source>Pause updates</source>
-        <translation>Tạm dừng cập nhật</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/EditFeedPage.qml" line="162"/>
-        <source>The server stops refreshing this feed.</source>
-        <translation>Máy chủ ngừng làm mới nguồn tin này.</translation>
+        <source>Do not refresh this feed</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -306,8 +291,8 @@
     </message>
     <message>
         <location filename="../qml/components/EntryListView.qml" line="384"/>
-        <source>Star an article to keep it here</source>
-        <translation>Thêm một bài vào ưa thích để giữ nó ở đây</translation>
+        <source>Articles you add to favourites appear here</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../qml/components/EntryListView.qml" line="385"/>
@@ -352,19 +337,19 @@
         <translation>Nguồn tin</translation>
     </message>
     <message>
-        <location filename="../qml/pages/FeedListPage.qml" line="39"/>
-        <source>Add subscription</source>
-        <translation>Thêm đăng ký</translation>
-    </message>
-    <message>
         <location filename="../qml/pages/FeedListPage.qml" line="47"/>
         <source>No feeds</source>
         <translation>Chưa có nguồn tin</translation>
     </message>
     <message>
+        <location filename="../qml/pages/FeedListPage.qml" line="39"/>
+        <source>Add feed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <location filename="../qml/pages/FeedListPage.qml" line="48"/>
-        <source>Subscribe from the pulley menu</source>
-        <translation>Đăng ký từ trình đơn kéo</translation>
+        <source>Pull down to add a feed</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../qml/pages/FeedListPage.qml" line="146"/>
@@ -488,161 +473,151 @@
         <translation>Sau 30 giây</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="159"/>
-        <source>The delay counts only while the article is on screen. Marking an article read or unread yourself always wins.</source>
-        <translation>Độ trễ chỉ tính khi bài viết đang hiển thị. Việc bạn tự đánh dấu đã đọc hay chưa đọc luôn được ưu tiên.</translation>
+        <location filename="../qml/pages/SettingsPage.qml" line="173"/>
+        <source>By default, Miniflux proxies only http:// images. Loading an image directly tells its website your IP address and when you read the article.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="162"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="204"/>
+        <source>Vuo syncs only while it is open or on the cover. How often Miniflux checks your feeds is set on the server.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="214"/>
+        <source>Automatic syncs wait for Wi-Fi. A refresh that you start yourself runs on any connection.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="259"/>
+        <source>Read articles older than this are deleted from this phone, but not from your Miniflux server. Favourites and unread articles are always kept.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="281"/>
+        <source>Copy the certificate to ~/.local/share/harbour-vuo/harbour-vuo/ca.pem.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="282"/>
+        <source>A certificate is used only with an https:// server address.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message numerus="yes">
+        <location filename="../qml/pages/SettingsPage.qml" line="294"/>
+        <source>%n change(s) are waiting to be sent to the server.</source>
+        <translation type="unfinished">
+            <numerusform></numerusform>
+        </translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="152"/>
         <source>Images</source>
         <translation>Ảnh</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="167"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="157"/>
         <source>Images not proxied by your server</source>
         <translation>Ảnh không đi qua máy chủ của bạn</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="169"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="159"/>
         <source>Never load</source>
         <translation>Không bao giờ tải</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="170"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="160"/>
         <source>Ask each site</source>
         <translation>Hỏi theo từng trang</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="171"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="161"/>
         <source>Always load</source>
         <translation>Luôn tải</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="183"/>
-        <source>Miniflux proxies plain-http images only by default, so most images arrive unproxied. Loading them directly tells those sites your IP address and when you read.</source>
-        <translation>Theo mặc định Miniflux chỉ chuyển tiếp ảnh qua HTTP thường, nên phần lớn ảnh đến thẳng. Tải thẳng sẽ cho các trang đó biết địa chỉ IP và thời điểm bạn đọc.</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="186"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="176"/>
         <source>Synchronisation</source>
         <translation>Đồng bộ</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="194"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="184"/>
         <source>Sync with server</source>
         <translation>Đồng bộ với máy chủ</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="196"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="186"/>
         <source>Manual only</source>
         <translation>Chỉ thủ công</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="197"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="187"/>
         <source>Every 15 minutes</source>
         <translation>Mỗi 15 phút</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="198"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="188"/>
         <source>Every 30 minutes</source>
         <translation>Mỗi 30 phút</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="199"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="189"/>
         <source>Hourly</source>
         <translation>Mỗi giờ</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="200"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="190"/>
         <source>Every 6 hours</source>
         <translation>Mỗi 6 giờ</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="214"/>
-        <source>How often Vuo fetches from your Miniflux server while it is open or on the cover. How often the server itself checks your feeds is set on the server, not here.</source>
-        <translation>Vuo lấy dữ liệu từ máy chủ Miniflux của bạn bao lâu một lần khi đang mở hoặc ở màn hình bìa. Máy chủ tự kiểm tra nguồn tin bao lâu một lần thì đặt trên máy chủ, không phải ở đây.</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="223"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="213"/>
         <source>Only sync on Wi-Fi</source>
         <translation>Chỉ đồng bộ qua Wi-Fi</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="224"/>
-        <source>Vuo syncs on its own only over Wi-Fi, and waits on a mobile connection. A refresh you ask for yourself is always sent.</source>
-        <translation>Vuo tự nó chỉ đồng bộ qua Wi-Fi và chờ khi dùng kết nối di động. Lần làm mới do bạn tự yêu cầu thì luôn được gửi đi.</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="233"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="223"/>
         <source>Notify about new articles</source>
         <translation>Thông báo khi có bài viết mới</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="234"/>
-        <source>Shown when a sync finds new articles while Vuo is on the cover. Opening Vuo clears it.</source>
-        <translation>Hiện khi một lần đồng bộ tìm thấy bài viết mới trong lúc Vuo ở màn hình bìa. Mở Vuo sẽ xóa thông báo.</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="249"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="238"/>
         <source>Keep read articles</source>
         <translation>Giữ bài viết đã đọc</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="251"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="240"/>
         <source>Forever</source>
         <translation>Mãi mãi</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="252"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="241"/>
         <source>For a month</source>
         <translation>Một tháng</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="253"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="242"/>
         <source>For three months</source>
         <translation>Ba tháng</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="254"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="243"/>
         <source>For six months</source>
         <translation>Sáu tháng</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="255"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="244"/>
         <source>For a year</source>
         <translation>Một năm</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="270"/>
-        <source>Older articles you have already read are removed from this phone at the end of a sync. Favourites, unread articles and anything not yet sent to the server are always kept, and nothing is removed from your Miniflux server.</source>
-        <translation>Những bài viết cũ mà bạn đã đọc sẽ bị xoá khỏi điện thoại này khi kết thúc một lần đồng bộ. Bài ưa thích, bài chưa đọc và mọi thứ chưa gửi lên máy chủ luôn được giữ lại, và không có gì bị xoá khỏi máy chủ Miniflux của bạn.</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="281"/>
         <source>Advanced</source>
         <translation>Nâng cao</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="285"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="274"/>
         <source>Use a custom CA certificate</source>
         <translation>Dùng chứng chỉ CA riêng</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="292"/>
-        <source>For a self-hosted server with a private certificate authority. Place the certificate at ~/.local/share/harbour-vuo/harbour-vuo/ca.pem. Certificate verification is never disabled, and there is no option to disable it.</source>
-        <translation>Dành cho máy chủ tự dựng với nhà cấp chứng chỉ riêng. Đặt chứng chỉ tại ~/.local/share/harbour-vuo/harbour-vuo/ca.pem. Việc kiểm tra chứng chỉ không bao giờ bị tắt, và cũng không có tuỳ chọn để tắt.</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="293"/>
-        <source>Only applies to an https:// server. This one is not encrypted by TLS, so no certificate is used.</source>
-        <translation>Chỉ áp dụng cho máy chủ https://. Máy chủ này không mã hoá bằng TLS nên không dùng chứng chỉ nào.</translation>
-    </message>
-    <message numerus="yes">
-        <location filename="../qml/pages/SettingsPage.qml" line="305"/>
-        <source>%n change(s) waiting to be sent to the server.</source>
-        <translation>
-            <numerusform>%n thay đổi đang chờ gửi lên máy chủ.</numerusform>
-        </translation>
     </message>
 </context>
 <context>
@@ -659,8 +634,8 @@
     </message>
     <message>
         <location filename="../qml/pages/SetupDialog.qml" line="112"/>
-        <source>Vuo reads from your own Miniflux instance. It never fetches feeds itself.</source>
-        <translation>Vuo đọc từ máy chủ Miniflux của riêng bạn. Nó không bao giờ tự lấy nguồn tin.</translation>
+        <source>Your Miniflux server fetches your feeds, and Vuo shows them.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../qml/pages/SetupDialog.qml" line="118"/>

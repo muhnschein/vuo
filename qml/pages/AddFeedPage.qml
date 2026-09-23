@@ -31,16 +31,6 @@ Dialog {
             // same for the virtual keyboard's return key.
             Keys.onReturnPressed: dialog.accept()
         }
-
-        Label {
-            x: Theme.horizontalPageMargin
-            width: parent.width - Theme.horizontalPageMargin * 2
-            wrapMode: Text.Wrap
-            textFormat: Text.PlainText
-            font.pixelSize: Theme.fontSizeExtraSmall
-            color: Theme.secondaryColor
-            text: qsTr("Your server discovers the feed and fetches it. Vuo never downloads feeds itself.")
-        }
     }
 
     onAccepted: model.subscribe(feedUrl.trim())

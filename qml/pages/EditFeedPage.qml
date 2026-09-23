@@ -136,8 +136,8 @@ Page {
 
             TextSwitch {
                 text: qsTr("Fetch original content")
-                description: qsTr("The server scrapes each article's own page "
-                                  + "instead of using what the feed provides.")
+                description: qsTr("The server downloads each article from its "
+                                  + "website instead of using the text in the feed.")
                 checked: page.crawler
                 onCheckedChanged: if (page.ready && page.crawler !== checked) {
                     page.crawler = checked
@@ -145,11 +145,11 @@ Page {
                 }
             }
 
+            // Miniflux's list, and only that: Vuo's own Unread and All do not
+            // read `hide_globally`, so a label promising to hide the feed here
+            // would say something the switch does not do.
             TextSwitch {
-                text: qsTr("Hide from unread")
-                description: qsTr("Keep this feed's articles out of the "
-                                  + "Unread and All lists. The feed itself "
-                                  + "still shows them.")
+                text: qsTr("Hide from the unread list in Miniflux")
                 checked: page.hideGlobally
                 onCheckedChanged: if (page.ready && page.hideGlobally !== checked) {
                     page.hideGlobally = checked
@@ -158,8 +158,7 @@ Page {
             }
 
             TextSwitch {
-                text: qsTr("Pause updates")
-                description: qsTr("The server stops refreshing this feed.")
+                text: qsTr("Do not refresh this feed")
                 checked: page.feedDisabled
                 onCheckedChanged: if (page.ready && page.feedDisabled !== checked) {
                     page.feedDisabled = checked

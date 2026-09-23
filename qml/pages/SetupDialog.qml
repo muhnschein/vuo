@@ -109,7 +109,7 @@ Dialog {
                 textFormat: Text.PlainText
                 font.pixelSize: Theme.fontSizeExtraSmall
                 color: Theme.secondaryColor
-                text: qsTr("Vuo reads from your own Miniflux instance. It never fetches feeds itself.")
+                text: qsTr("Your Miniflux server fetches your feeds, and Vuo shows them.")
             }
 
             TextField {

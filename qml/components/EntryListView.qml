@@ -381,7 +381,7 @@ SilicaListView {
         text: listView.scopeKind === 1 ? qsTr("No favourites")
                                    : qsTr("Nothing to read")
         hintText: listView.scopeKind === 1
-                  ? qsTr("Star an article to keep it here")
+                  ? qsTr("Articles you add to favourites appear here")
                   : qsTr("Pull down to refresh")
     }
 

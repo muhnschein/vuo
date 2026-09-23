@@ -18,11 +18,6 @@
         <source>https://example.com/feed.xml</source>
         <translation>https://udaharanam.com/feed.xml</translation>
     </message>
-    <message>
-        <location filename="../qml/pages/AddFeedPage.qml" line="42"/>
-        <source>Your server discovers the feed and fetches it. Vuo never downloads feeds itself.</source>
-        <translation>உங்கள் சேவையகம் ஊட்டத்தைக் கண்டறிந்து பெறுகிறது. Vuo ஒருபோதும் ஊட்டங்களைத் தானே பதிவிறக்குவதில்லை.</translation>
-    </message>
 </context>
 <context>
     <name>ArticlePage</name>
@@ -91,8 +86,18 @@
     </message>
     <message>
         <location filename="../qml/pages/ArticlePage.qml" line="233"/>
-        <source>Asking the server for the original article…</source>
-        <translation>சேவையகத்திடம் மூலக் கட்டுரை கேட்கப்படுகிறது…</translation>
+        <source>Fetching the original article…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/ArticlePage.qml" line="502"/>
+        <source>The original article was loaded.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/ArticlePage.qml" line="509"/>
+        <source>This feed already contains the full article.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../qml/pages/ArticlePage.qml" line="390"/>
@@ -100,19 +105,9 @@
         <translation>%1 இலிருந்து படங்களை ஏற்றத் தட்டவும்</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="502"/>
-        <source>Loaded the original article.</source>
-        <translation>மூலக் கட்டுரை ஏற்றப்பட்டது.</translation>
-    </message>
-    <message>
         <location filename="../qml/pages/ArticlePage.qml" line="506"/>
         <source>The server could not extract the original article.</source>
         <translation>சேவையகத்தால் மூலக் கட்டுரையை எடுக்க முடியவில்லை.</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="509"/>
-        <source>This feed already carries the full article.</source>
-        <translation>இந்த ஊட்டத்தில் முழுக் கட்டுரை ஏற்கெனவே உள்ளது.</translation>
     </message>
     <message>
         <location filename="../qml/pages/ArticlePage.qml" line="511"/>
@@ -168,28 +163,18 @@
     </message>
     <message>
         <location filename="../qml/pages/EditFeedPage.qml" line="139"/>
-        <source>The server scrapes each article&apos;s own page instead of using what the feed provides.</source>
-        <translation>ஊட்டம் தருவதற்குப் பதிலாக சேவையகம் ஒவ்வொரு கட்டுரையின் சொந்தப் பக்கத்தைப் படிக்கிறது.</translation>
+        <source>The server downloads each article from its website instead of using the text in the feed.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/pages/EditFeedPage.qml" line="149"/>
-        <source>Hide from unread</source>
-        <translation>படிக்காதவற்றிலிருந்து மறை</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/EditFeedPage.qml" line="150"/>
-        <source>Keep this feed&apos;s articles out of the Unread and All lists. The feed itself still shows them.</source>
-        <translation>இந்த ஊட்டத்தின் கட்டுரைகளைப் படிக்காதவை, அனைத்து பட்டியல்களுக்கு வெளியே வைக்கவும். ஊட்டத்தில் அவை இன்னும் தெரியும்.</translation>
+        <location filename="../qml/pages/EditFeedPage.qml" line="152"/>
+        <source>Hide from the unread list in Miniflux</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../qml/pages/EditFeedPage.qml" line="161"/>
-        <source>Pause updates</source>
-        <translation>புதுப்பிப்புகளை நிறுத்து</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/EditFeedPage.qml" line="162"/>
-        <source>The server stops refreshing this feed.</source>
-        <translation>சேவையகம் இந்த ஊட்டத்தைப் புதுப்பிப்பதை நிறுத்தும்.</translation>
+        <source>Do not refresh this feed</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -309,8 +294,8 @@
     </message>
     <message>
         <location filename="../qml/components/EntryListView.qml" line="384"/>
-        <source>Star an article to keep it here</source>
-        <translation>ஒரு கட்டுரையைப் பிடித்ததாக்கினால் அது இங்கே இருக்கும்</translation>
+        <source>Articles you add to favourites appear here</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../qml/components/EntryListView.qml" line="385"/>
@@ -357,19 +342,19 @@
         <translation>ஊட்டங்கள்</translation>
     </message>
     <message>
-        <location filename="../qml/pages/FeedListPage.qml" line="39"/>
-        <source>Add subscription</source>
-        <translation>சந்தாவைச் சேர்</translation>
-    </message>
-    <message>
         <location filename="../qml/pages/FeedListPage.qml" line="47"/>
         <source>No feeds</source>
         <translation>ஊட்டங்கள் இல்லை</translation>
     </message>
     <message>
+        <location filename="../qml/pages/FeedListPage.qml" line="39"/>
+        <source>Add feed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <location filename="../qml/pages/FeedListPage.qml" line="48"/>
-        <source>Subscribe from the pulley menu</source>
-        <translation>இழுவை பட்டியலிலிருந்து சந்தா சேரவும்</translation>
+        <source>Pull down to add a feed</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../qml/pages/FeedListPage.qml" line="146"/>
@@ -493,162 +478,152 @@
         <translation>30 வினாடிகளுக்குப் பிறகு</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="159"/>
-        <source>The delay counts only while the article is on screen. Marking an article read or unread yourself always wins.</source>
-        <translation>கட்டுரை திரையில் இருக்கும்போது மட்டுமே நேரம் கணக்கிடப்படும். நீங்களே படித்ததாக அல்லது படிக்காததாகக் குறித்தால் அதுவே எப்போதும் மேலோங்கும்.</translation>
+        <location filename="../qml/pages/SettingsPage.qml" line="173"/>
+        <source>By default, Miniflux proxies only http:// images. Loading an image directly tells its website your IP address and when you read the article.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="162"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="204"/>
+        <source>Vuo syncs only while it is open or on the cover. How often Miniflux checks your feeds is set on the server.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="214"/>
+        <source>Automatic syncs wait for Wi-Fi. A refresh that you start yourself runs on any connection.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="259"/>
+        <source>Read articles older than this are deleted from this phone, but not from your Miniflux server. Favourites and unread articles are always kept.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="281"/>
+        <source>Copy the certificate to ~/.local/share/harbour-vuo/harbour-vuo/ca.pem.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="282"/>
+        <source>A certificate is used only with an https:// server address.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message numerus="yes">
+        <location filename="../qml/pages/SettingsPage.qml" line="294"/>
+        <source>%n change(s) are waiting to be sent to the server.</source>
+        <translation type="unfinished">
+            <numerusform></numerusform>
+            <numerusform></numerusform>
+        </translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="152"/>
         <source>Images</source>
         <translation>படங்கள்</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="167"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="157"/>
         <source>Images not proxied by your server</source>
         <translation>உங்கள் சேவையகம் வழியாக வராத படங்கள்</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="169"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="159"/>
         <source>Never load</source>
         <translation>ஒருபோதும் ஏற்ற வேண்டாம்</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="170"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="160"/>
         <source>Ask each site</source>
         <translation>ஒவ்வொரு தளத்திற்கும் கேள்</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="171"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="161"/>
         <source>Always load</source>
         <translation>எப்போதும் ஏற்று</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="183"/>
-        <source>Miniflux proxies plain-http images only by default, so most images arrive unproxied. Loading them directly tells those sites your IP address and when you read.</source>
-        <translation>Miniflux இயல்பாக எளிய HTTP படங்களை மட்டுமே தன் வழியாக அனுப்புகிறது, எனவே பெரும்பாலானவை நேரடியாக வருகின்றன. அவற்றை நேரடியாக ஏற்றுவது அந்தத் தளங்களுக்கு உங்கள் IP முகவரியையும் நீங்கள் படிக்கும் நேரத்தையும் தெரிவிக்கும்.</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="186"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="176"/>
         <source>Synchronisation</source>
         <translation>ஒத்திசைவு</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="194"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="184"/>
         <source>Sync with server</source>
         <translation>சேவையகத்துடன் ஒத்திசை</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="196"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="186"/>
         <source>Manual only</source>
         <translation>கைமுறையாக மட்டும்</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="197"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="187"/>
         <source>Every 15 minutes</source>
         <translation>ஒவ்வொரு 15 நிமிடமும்</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="198"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="188"/>
         <source>Every 30 minutes</source>
         <translation>ஒவ்வொரு 30 நிமிடமும்</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="199"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="189"/>
         <source>Hourly</source>
         <translation>ஒவ்வொரு மணி நேரமும்</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="200"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="190"/>
         <source>Every 6 hours</source>
         <translation>ஒவ்வொரு 6 மணி நேரமும்</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="214"/>
-        <source>How often Vuo fetches from your Miniflux server while it is open or on the cover. How often the server itself checks your feeds is set on the server, not here.</source>
-        <translation>Vuo திறந்திருக்கும்போது அல்லது அட்டையில் இருக்கும்போது உங்கள் Miniflux சேவையகத்திலிருந்து எத்தனை முறை பெறுகிறது. சேவையகமே ஊட்டங்களை எத்தனை முறை சரிபார்க்கிறது என்பது சேவையகத்தில் அமைக்கப்படுகிறது, இங்கே அல்ல.</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="223"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="213"/>
         <source>Only sync on Wi-Fi</source>
         <translation>Wi-Fi இல் மட்டும் ஒத்திசை</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="224"/>
-        <source>Vuo syncs on its own only over Wi-Fi, and waits on a mobile connection. A refresh you ask for yourself is always sent.</source>
-        <translation>Vuo தானாகவே Wi-Fi இல் மட்டுமே ஒத்திசைக்கும், மொபைல் இணைப்பில் காத்திருக்கும். நீங்களே கேட்கும் புதுப்பிப்பு எப்போதும் அனுப்பப்படும்.</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="233"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="223"/>
         <source>Notify about new articles</source>
         <translation>புதிய கட்டுரைகள் பற்றி அறிவி</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="234"/>
-        <source>Shown when a sync finds new articles while Vuo is on the cover. Opening Vuo clears it.</source>
-        <translation>Vuo அட்டையில் இருக்கும்போது ஒத்திசைவில் புதிய கட்டுரைகள் கிடைத்தால் அறிவிப்பு தோன்றும். Vuo ஐத் திறந்தால் அது அகலும்.</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="249"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="238"/>
         <source>Keep read articles</source>
         <translation>படித்த கட்டுரைகளை வைத்திரு</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="251"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="240"/>
         <source>Forever</source>
         <translation>எப்போதும்</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="252"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="241"/>
         <source>For a month</source>
         <translation>ஒரு மாதம்</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="253"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="242"/>
         <source>For three months</source>
         <translation>மூன்று மாதம்</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="254"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="243"/>
         <source>For six months</source>
         <translation>ஆறு மாதம்</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="255"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="244"/>
         <source>For a year</source>
         <translation>ஒரு ஆண்டு</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="270"/>
-        <source>Older articles you have already read are removed from this phone at the end of a sync. Favourites, unread articles and anything not yet sent to the server are always kept, and nothing is removed from your Miniflux server.</source>
-        <translation>நீங்கள் ஏற்கனவே படித்த பழைய கட்டுரைகள் ஒத்திசைவின் முடிவில் இந்தத் தொலைபேசியிலிருந்து நீக்கப்படும். பிடித்தவை, படிக்காத கட்டுரைகள், சேவையகத்திற்கு இன்னும் அனுப்பப்படாத அனைத்தும் எப்போதும் வைக்கப்படும்; உங்கள் Miniflux சேவையகத்திலிருந்து எதுவும் நீக்கப்படாது.</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="281"/>
         <source>Advanced</source>
         <translation>மேம்பட்டவை</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="285"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="274"/>
         <source>Use a custom CA certificate</source>
         <translation>சொந்த CA சான்றிதழைப் பயன்படுத்து</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="292"/>
-        <source>For a self-hosted server with a private certificate authority. Place the certificate at ~/.local/share/harbour-vuo/harbour-vuo/ca.pem. Certificate verification is never disabled, and there is no option to disable it.</source>
-        <translation>தனிப்பட்ட சான்றிதழ் அதிகாரம் கொண்ட உங்கள் சொந்த சேவையகத்திற்கு. சான்றிதழை ~/.local/share/harbour-vuo/harbour-vuo/ca.pem இல் வைக்கவும். சான்றிதழ் சரிபார்ப்பு ஒருபோதும் முடக்கப்படுவதில்லை, அதற்கான விருப்பமும் இல்லை.</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="293"/>
-        <source>Only applies to an https:// server. This one is not encrypted by TLS, so no certificate is used.</source>
-        <translation>இது https:// சேவையகத்திற்கு மட்டுமே பொருந்தும். இது TLS ஆல் மறையாக்கப்படவில்லை, எனவே சான்றிதழ் எதுவும் பயன்படுத்தப்படவில்லை.</translation>
-    </message>
-    <message numerus="yes">
-        <location filename="../qml/pages/SettingsPage.qml" line="305"/>
-        <source>%n change(s) waiting to be sent to the server.</source>
-        <translation>
-            <numerusform>%n மாற்றம் சேவையகத்திற்கு அனுப்பப்படக் காத்திருக்கிறது.</numerusform>
-            <numerusform>%n மாற்றங்கள் சேவையகத்திற்கு அனுப்பப்படக் காத்திருக்கின்றன.</numerusform>
-        </translation>
     </message>
 </context>
 <context>
@@ -665,8 +640,8 @@
     </message>
     <message>
         <location filename="../qml/pages/SetupDialog.qml" line="112"/>
-        <source>Vuo reads from your own Miniflux instance. It never fetches feeds itself.</source>
-        <translation>Vuo உங்கள் சொந்த Miniflux இலிருந்து படிக்கிறது. அது ஒருபோதும் ஊட்டங்களைத் தானே பெறுவதில்லை.</translation>
+        <source>Your Miniflux server fetches your feeds, and Vuo shows them.</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../qml/pages/SetupDialog.qml" line="118"/>

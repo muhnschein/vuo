@@ -230,7 +230,7 @@ Page {
                     // page, which can take seconds; with no acknowledgement at
                     // all the menu item read as broken.
                     if (article.fetching) {
-                        notice.post(qsTr("Asking the server for the original article…"),
+                        notice.post(qsTr("Fetching the original article…"),
                                     false, "")
                     }
                 }
@@ -499,14 +499,14 @@ Page {
             return
         }
         if (page.fetchStatus === page.fetchOk) {
-            notice.post(qsTr("Loaded the original article."), false, "")
+            notice.post(qsTr("The original article was loaded."), false, "")
         } else if (page.fetchStatus === page.fetchEmpty) {
             // The stored article is deliberately left alone in this case, so
             // say why nothing changed rather than letting it read as a no-op.
             notice.post(qsTr("The server could not extract the original article."),
                         true, "")
         } else if (page.fetchStatus === page.fetchUnchanged) {
-            notice.post(qsTr("This feed already carries the full article."), false, "")
+            notice.post(qsTr("This feed already contains the full article."), false, "")
         } else if (page.fetchStatus === page.fetchAuth) {
             notice.post(qsTr("The server rejected the API key."), true, "")
         } else {
