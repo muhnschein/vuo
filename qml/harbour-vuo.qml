@@ -121,11 +121,21 @@ ApplicationWindow {
         if (action !== app.announceBanner && action !== app.announceQuiet) {
             return
         }
-        // The count and nothing else: no titles, no body, and no itemCount,
+        // Numbers and nothing else: no titles, no body, and no itemCount,
         // whose default of 1 is what keeps the home screen from drawing a
         // badge beside a number the summary already says.
-        arrivalNotice.summary = qsTr("%n new article(s)", "",
-                                     arrivals.articleCount())
+        var count = arrivals.articleCount()
+        var total = arrivals.unreadTotal()
+        var summary = qsTr("%n new article(s)", "", count)
+        // Then the cover's number, so the two screens agree: "11 new
+        // articles · 14 unread". Only when it says something -- every
+        // arrival is unread, so a total no bigger than the count means
+        // nothing else is, and "3 new articles · 3 unread" says it twice.
+        // Joined as the list joins its details, outside the translations.
+        if (total > count) {
+            summary += " \u00b7 " + qsTr("%n unread", "", total)
+        }
+        arrivalNotice.summary = summary
         // A banner only for news. A quiet update has to EMPTY the preview
         // rather than leave it unset: the plugin fills an unset preview in
         // from the summary, and would pop a banner to say that there is now

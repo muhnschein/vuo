@@ -732,12 +732,21 @@
 <context>
     <name>harbour-vuo</name>
     <message numerus="yes">
-        <location filename="../qml/harbour-vuo.qml" line="125"/>
+        <location filename="../qml/harbour-vuo.qml" line="129"/>
         <source>%n new article(s)</source>
         <translation>
             <numerusform>%n articol nou</numerusform>
             <numerusform>%n articole noi</numerusform>
             <numerusform>%n de articole noi</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <location filename="../qml/harbour-vuo.qml" line="136"/>
+        <source>%n unread</source>
+        <translation>
+            <numerusform>%n necitit</numerusform>
+            <numerusform>%n necitite</numerusform>
+            <numerusform>%n de necitite</numerusform>
         </translation>
     </message>
 </context>

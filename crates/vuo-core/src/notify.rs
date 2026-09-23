@@ -14,11 +14,18 @@
 //!
 //! # What it says
 //!
-//! How many, and nothing more: no titles, no body, no badge. A digest of the
+//! Numbers, and nothing more: no titles, no body, no badge. A digest of the
 //! newest titles was tried on a device and read as clutter on the home screen;
 //! the count is the news, and the articles are in Vuo. It also means no feed's
 //! text reaches the home screen, which is another process: it reads markup in
 //! a notification's body, and Vuo cannot set how it renders anything (§9.3).
+//!
+//! Two numbers, though, when they differ: how many arrived, and how many are
+//! unread in all. The second is the cover's own number. Without it, three
+//! articles left unread and eleven new ones read "11 new articles" on the home
+//! screen and 14 on the cover, and the reader is left to work out which is
+//! wrong. So the notification carries the total too, and keeps it in step
+//! with the cover -- see [`Announcer::review`].
 
 use std::collections::HashSet;
 
@@ -33,9 +40,9 @@ pub enum Announcement {
     ///
     /// `banner` is whether it also pops up over whatever the reader is doing.
     /// Only for news: something arrived that the showing notification did not
-    /// cover. A notification whose count merely went DOWN -- articles read on
-    /// another device -- is corrected in place, without interrupting anyone to
-    /// say that there is now less to read.
+    /// cover. A notification whose numbers merely moved -- articles read on
+    /// another device, new or old -- is corrected in place, without
+    /// interrupting anyone to say that there is now less to read.
     Show { banner: bool },
     /// Take the notification down.
     Withdraw,
@@ -52,19 +59,27 @@ pub enum Announcement {
 #[derive(Debug, Clone, Default)]
 pub struct Announcer {
     showing: Vec<EntryId>,
+    /// The unread total the notification that is up states; 0 when none is.
+    unread: i64,
 }
 
 impl Announcer {
     /// Decide what to do about `arrivals`, the ids
-    /// [`crate::db::store::arrivals`] read.
-    pub fn review(&mut self, arrivals: &[EntryId]) -> Announcement {
+    /// [`crate::db::store::arrivals`] read, when `unread` articles are unread
+    /// in all ([`crate::db::store::unread_count`], the cover's number).
+    ///
+    /// The total alone moving is a quiet update, never a banner: an old
+    /// article read on another device changes what the cover says, so it
+    /// changes what the notification says, but it is not news.
+    pub fn review(&mut self, arrivals: &[EntryId], unread: i64) -> Announcement {
         if arrivals.is_empty() {
             return self.withdraw();
         }
         let shown: HashSet<EntryId> = self.showing.iter().copied().collect();
         let news = arrivals.iter().any(|id| !shown.contains(id));
-        let moved = news || arrivals.len() != self.showing.len();
+        let moved = news || arrivals.len() != self.showing.len() || unread != self.unread;
         self.showing = arrivals.to_vec();
+        self.unread = unread;
         if news {
             Announcement::Show { banner: true }
         } else if moved {
@@ -81,6 +96,7 @@ impl Announcer {
             Announcement::Unchanged
         } else {
             self.showing.clear();
+            self.unread = 0;
             Announcement::Withdraw
         }
     }
@@ -88,6 +104,7 @@ impl Announcer {
     /// The home screen closed the notification -- the reader swiped it away,
     /// or tapped it. Returns the ids it covered, which are now acknowledged.
     pub fn dismissed(&mut self) -> Vec<EntryId> {
+        self.unread = 0;
         std::mem::take(&mut self.showing)
     }
 
@@ -95,6 +112,12 @@ impl Announcer {
     #[must_use]
     pub fn showing(&self) -> usize {
         self.showing.len()
+    }
+
+    /// The unread total the notification that is up states; 0 when none is.
+    #[must_use]
+    pub fn unread(&self) -> i64 {
+        self.unread
     }
 }
 
@@ -107,45 +130,75 @@ mod tests {
     }
 
     /// §a banner is for news, and only for news.
+    ///
+    /// Three older articles are unread throughout, so the total is always
+    /// three more than the arrivals.
     #[test]
     fn the_announcer_pops_a_banner_only_when_something_new_arrives() {
         let mut a = Announcer::default();
         assert_eq!(
-            a.review(&arrivals(&[])),
+            a.review(&arrivals(&[]), 3),
             Announcement::Unchanged,
             "nothing up, nothing new"
         );
 
         assert_eq!(
-            a.review(&arrivals(&[1, 2])),
+            a.review(&arrivals(&[1, 2]), 5),
             Announcement::Show { banner: true }
         );
-        assert_eq!(a.showing(), 2);
+        assert_eq!((a.showing(), a.unread()), (2, 5));
         assert_eq!(
-            a.review(&arrivals(&[1, 2])),
+            a.review(&arrivals(&[1, 2]), 5),
             Announcement::Unchanged,
             "the same two again is not news, and not worth a repaint"
         );
 
         // 1 read on another device: fewer to read, which is not news.
         assert_eq!(
-            a.review(&arrivals(&[2])),
+            a.review(&arrivals(&[2]), 4),
             Announcement::Show { banner: false }
         );
         // 3 arrives while 2 is still unread: news.
         assert_eq!(
-            a.review(&arrivals(&[3, 2])),
+            a.review(&arrivals(&[3, 2]), 5),
             Announcement::Show { banner: true }
         );
         // The same COUNT, different articles: 2 read, 4 arrived. Still news.
         assert_eq!(
-            a.review(&arrivals(&[4, 3])),
+            a.review(&arrivals(&[4, 3]), 5),
             Announcement::Show { banner: true }
         );
 
         // Everything read elsewhere: take it down.
-        assert_eq!(a.review(&arrivals(&[])), Announcement::Withdraw);
-        assert_eq!(a.showing(), 0);
+        assert_eq!(a.review(&arrivals(&[]), 3), Announcement::Withdraw);
+        assert_eq!((a.showing(), a.unread()), (0, 0));
+    }
+
+    /// §the notification's total is the cover's number, kept in step.
+    #[test]
+    fn the_total_alone_moving_is_a_quiet_update() {
+        let mut a = Announcer::default();
+        assert_eq!(
+            a.review(&arrivals(&[1, 2]), 5),
+            Announcement::Show { banner: true }
+        );
+
+        // One of the three older articles read on another device: the cover
+        // now says 4, so the notification has to as well -- but nothing new
+        // has arrived.
+        assert_eq!(
+            a.review(&arrivals(&[1, 2]), 4),
+            Announcement::Show { banner: false }
+        );
+        assert_eq!(a.unread(), 4);
+        assert_eq!(a.review(&arrivals(&[1, 2]), 4), Announcement::Unchanged);
+
+        // An old article marked unread again comes back without being an
+        // arrival: more to read, but still not news.
+        assert_eq!(
+            a.review(&arrivals(&[1, 2]), 6),
+            Announcement::Show { banner: false }
+        );
     }
 
     #[test]
@@ -157,19 +210,23 @@ mod tests {
             "nothing to take down"
         );
 
-        a.review(&arrivals(&[5, 6]));
+        a.review(&arrivals(&[5, 6]), 2);
         assert_eq!(a.withdraw(), Announcement::Withdraw);
         assert_eq!(a.withdraw(), Announcement::Unchanged);
 
-        a.review(&arrivals(&[5, 6]));
+        a.review(&arrivals(&[5, 6]), 2);
         assert_eq!(a.dismissed(), vec![EntryId(5), EntryId(6)]);
-        assert_eq!(a.showing(), 0, "the home screen has closed it");
+        assert_eq!(
+            (a.showing(), a.unread()),
+            (0, 0),
+            "the home screen has closed it"
+        );
         assert!(a.dismissed().is_empty(), "and one dismissal is one");
 
         // After a dismissal the next arrival is news again, even alongside one
         // the dismissal did not acknowledge.
         assert_eq!(
-            a.review(&arrivals(&[7])),
+            a.review(&arrivals(&[7]), 3),
             Announcement::Show { banner: true }
         );
     }

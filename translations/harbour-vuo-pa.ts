@@ -726,11 +726,19 @@
 <context>
     <name>harbour-vuo</name>
     <message numerus="yes">
-        <location filename="../qml/harbour-vuo.qml" line="125"/>
+        <location filename="../qml/harbour-vuo.qml" line="129"/>
         <source>%n new article(s)</source>
         <translation>
             <numerusform>%n ਨਵਾਂ ਲੇਖ</numerusform>
             <numerusform>%n ਨਵੇਂ ਲੇਖ</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <location filename="../qml/harbour-vuo.qml" line="136"/>
+        <source>%n unread</source>
+        <translation>
+            <numerusform>%n ਅਣਪੜ੍ਹਿਆ</numerusform>
+            <numerusform>%n ਅਣਪੜ੍ਹੇ</numerusform>
         </translation>
     </message>
 </context>

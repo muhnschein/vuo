@@ -59,8 +59,11 @@ pub struct Arrivals {
     dismissed: qt_method!(fn(&mut self)),
     /// How many articles the notification covers, after a `review` that
     /// said to publish.
-    /// It says this and nothing else -- see [`vuo_core::notify`].
     articleCount: qt_method!(fn(&self) -> i32),
+    /// How many articles are unread in all, as of that same `review`: the
+    /// cover's number, which the notification states beside its own when
+    /// the two differ. See [`vuo_core::notify`].
+    unreadTotal: qt_method!(fn(&self) -> i32),
 
     announcer: Announcer,
     /// `None` until [`Arrivals::attach`] is called; QML never passes one.
@@ -101,10 +104,14 @@ impl Arrivals {
         }
         // A read that fails leaves the notification as it is. It is a status
         // line on another screen, and the next sync asks again.
-        let Some(Ok(arrivals)) = ctx.read(|db| store::arrivals(db.conn())) else {
+        let looked = ctx.read(|db| {
+            let conn = db.conn();
+            store::arrivals(conn).and_then(|ids| Ok((ids, store::unread_count(conn)?)))
+        });
+        let Some(Ok((arrivals, unread))) = looked else {
             return Announcement::Unchanged;
         };
-        self.announcer.review(&arrivals)
+        self.announcer.review(&arrivals, unread)
     }
 
     fn dismissed(&mut self) {
@@ -123,6 +130,10 @@ impl Arrivals {
 
     fn articleCount(&self) -> i32 {
         i32::try_from(self.announcer.showing()).unwrap_or(i32::MAX)
+    }
+
+    fn unreadTotal(&self) -> i32 {
+        i32::try_from(self.announcer.unread()).unwrap_or(i32::MAX)
     }
 }
 
@@ -190,6 +201,18 @@ mod tests {
         })
         .expect("a borrow")
         .expect("an arrival");
+    }
+
+    /// As the pull would an article it holds already, or one from before the
+    /// window: in the mirror with `status`, and not an arrival.
+    fn hold(ctx: &AppContext, id: i64, status: EntryStatus) {
+        let e = Entry {
+            status,
+            ..entry(id)
+        };
+        ctx.write(|db| db.with_tx(|tx| store::upsert_entry(tx, &e, 2, store::Arrival::Quiet)))
+            .expect("a borrow")
+            .expect("an entry");
     }
 
     fn flagged(ctx: &AppContext) -> Vec<i64> {
@@ -281,6 +304,26 @@ mod tests {
         assert_eq!(arrivals.articleCount(), 1);
     }
 
+    /// §the notification's total is the cover's number, kept in step.
+    #[test]
+    fn the_notification_states_the_covers_unread_total_and_follows_it() {
+        let (_dir, ctx, mut arrivals) = with_context();
+        // Three left unread from before; two new ones arrive.
+        for id in 1..=3 {
+            hold(&ctx, id, EntryStatus::Unread);
+        }
+        arrive(&ctx, 4);
+        arrive(&ctx, 5);
+        assert_eq!(arrivals.review(false, true), ANNOUNCE_BANNER);
+        assert_eq!((arrivals.articleCount(), arrivals.unreadTotal()), (2, 5));
+
+        // One of the older three is read on another device. The cover drops
+        // to 4, so the notification is corrected -- without a banner.
+        hold(&ctx, 1, EntryStatus::Read);
+        assert_eq!(arrivals.review(false, true), ANNOUNCE_QUIET);
+        assert_eq!((arrivals.articleCount(), arrivals.unreadTotal()), (2, 4));
+    }
+
     /// §the switch is off: nothing goes up, and nothing is thrown away.
     #[test]
     fn with_notifications_off_nothing_is_published_or_acknowledged() {
@@ -304,6 +347,7 @@ mod tests {
         assert_eq!(arrivals.review(true, true), ANNOUNCE_NOTHING);
         arrivals.dismissed();
         assert_eq!(arrivals.articleCount(), 0);
+        assert_eq!(arrivals.unreadTotal(), 0);
     }
 
     /// §the QML's names for the answers are the Rust answers.
