@@ -27,22 +27,24 @@
         <translation>Artikkel</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="157"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="159"/>
         <source>Read</source>
+        <extracomment>The state of the one article on screen.</extracomment>
         <translation>Loetud</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="157"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="162"/>
         <source>Unread</source>
+        <extracomment>The state of the one article on screen, so singular: not the plural name of the Unread tab.</extracomment>
         <translation>Lugemata</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="164"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="169"/>
         <source>★ Favourite</source>
         <translation>★ Lemmik</translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/pages/ArticlePage.qml" line="179"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="184"/>
         <source>%n image(s) are not proxied by your server and were not loaded.</source>
         <translation>
             <numerusform>%n pilt ei liigu läbi sinu serveri ja jäi laadimata.</numerusform>
@@ -50,72 +52,72 @@
         </translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="194"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="199"/>
         <source>This article was too large to display in full.</source>
         <translation>Artikkel oli tervikuna kuvamiseks liiga suur.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="199"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="204"/>
         <source>Mark as unread</source>
         <translation>Märgi lugemata</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="199"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="204"/>
         <source>Mark as read</source>
         <translation>Märgi loetuks</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="208"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="213"/>
         <source>Remove favourite</source>
         <translation>Eemalda lemmikutest</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="209"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="214"/>
         <source>Add favourite</source>
         <translation>Lisa lemmikutesse</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="213"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="218"/>
         <source>Open in browser</source>
         <translation>Ava brauseris</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="225"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="230"/>
         <source>Fetch original content</source>
         <translation>Too algne sisu</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="233"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="238"/>
         <source>Fetching the original article…</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="502"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="507"/>
         <source>The original article was loaded.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="509"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="514"/>
         <source>This feed already contains the full article.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="390"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="395"/>
         <source>Tap to load images from %1</source>
         <translation>Puuduta, et laadida pildid saidilt %1</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="506"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="511"/>
         <source>The server could not extract the original article.</source>
         <translation>Server ei suutnud algset artiklit kätte saada.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="511"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="516"/>
         <source>The server rejected the API key.</source>
         <translation>Server lükkas API-võtme tagasi.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="515"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="520"/>
         <source>Could not fetch the original article: %1</source>
         <translation>Algset artiklit ei õnnestunud tuua: %1</translation>
     </message>

@@ -27,22 +27,24 @@
         <translation>নিবন্ধ</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="157"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="159"/>
         <source>Read</source>
+        <extracomment>The state of the one article on screen.</extracomment>
         <translation>পঠিত</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="157"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="162"/>
         <source>Unread</source>
+        <extracomment>The state of the one article on screen, so singular: not the plural name of the Unread tab.</extracomment>
         <translation>অপঠিত</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="164"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="169"/>
         <source>★ Favourite</source>
         <translation>★ প্রিয়</translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/pages/ArticlePage.qml" line="179"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="184"/>
         <source>%n image(s) are not proxied by your server and were not loaded.</source>
         <translation>
             <numerusform>%n টি ছবি আপনার সার্ভারের মধ্য দিয়ে আসে না, তাই লোড হয়নি।</numerusform>
@@ -50,72 +52,72 @@
         </translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="194"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="199"/>
         <source>This article was too large to display in full.</source>
         <translation>নিবন্ধটি পুরোপুরি দেখানোর মতো বড় ছিল।</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="199"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="204"/>
         <source>Mark as unread</source>
         <translation>অপঠিত হিসেবে চিহ্নিত করুন</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="199"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="204"/>
         <source>Mark as read</source>
         <translation>পঠিত হিসেবে চিহ্নিত করুন</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="208"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="213"/>
         <source>Remove favourite</source>
         <translation>প্রিয় থেকে সরান</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="209"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="214"/>
         <source>Add favourite</source>
         <translation>প্রিয়তে যোগ করুন</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="213"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="218"/>
         <source>Open in browser</source>
         <translation>ব্রাউজারে খুলুন</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="225"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="230"/>
         <source>Fetch original content</source>
         <translation>মূল লেখা আনুন</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="233"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="238"/>
         <source>Fetching the original article…</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="502"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="507"/>
         <source>The original article was loaded.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="509"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="514"/>
         <source>This feed already contains the full article.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="390"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="395"/>
         <source>Tap to load images from %1</source>
         <translation>%1 থেকে ছবি লোড করতে ট্যাপ করুন</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="506"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="511"/>
         <source>The server could not extract the original article.</source>
         <translation>সার্ভার মূল নিবন্ধটি বের করতে পারেনি।</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="511"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="516"/>
         <source>The server rejected the API key.</source>
         <translation>সার্ভার API কী প্রত্যাখ্যান করেছে।</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="515"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="520"/>
         <source>Could not fetch the original article: %1</source>
         <translation>মূল নিবন্ধ আনা গেল না: %1</translation>
     </message>

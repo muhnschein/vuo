@@ -154,7 +154,12 @@ Page {
                 spacing: Theme.paddingMedium
 
                 Label {
-                    text: article.isRead ? qsTr("Read") : qsTr("Unread")
+                    text: article.isRead
+                          //: The state of the one article on screen.
+                          ? qsTr("Read")
+                          //: The state of the one article on screen, so
+                          //: singular: not the plural name of the Unread tab.
+                          : qsTr("Unread")
                     textFormat: Text.PlainText
                     font.pixelSize: Theme.fontSizeExtraSmall
                     color: article.isRead ? Theme.secondaryColor : Theme.highlightColor

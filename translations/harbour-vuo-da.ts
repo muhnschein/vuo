@@ -27,22 +27,24 @@
         <translation>Artikel</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="157"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="159"/>
         <source>Read</source>
+        <extracomment>The state of the one article on screen.</extracomment>
         <translation>Læst</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="157"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="162"/>
         <source>Unread</source>
+        <extracomment>The state of the one article on screen, so singular: not the plural name of the Unread tab.</extracomment>
         <translation>Ulæste</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="164"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="169"/>
         <source>★ Favourite</source>
         <translation>★ Favorit</translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/pages/ArticlePage.qml" line="179"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="184"/>
         <source>%n image(s) are not proxied by your server and were not loaded.</source>
         <translation>
             <numerusform>%n billede går ikke gennem din server og blev ikke hentet.</numerusform>
@@ -50,72 +52,72 @@
         </translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="194"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="199"/>
         <source>This article was too large to display in full.</source>
         <translation>Artiklen var for stor til at blive vist i sin helhed.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="199"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="204"/>
         <source>Mark as unread</source>
         <translation>Markér som ulæst</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="199"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="204"/>
         <source>Mark as read</source>
         <translation>Markér som læst</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="208"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="213"/>
         <source>Remove favourite</source>
         <translation>Fjern favorit</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="209"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="214"/>
         <source>Add favourite</source>
         <translation>Tilføj favorit</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="213"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="218"/>
         <source>Open in browser</source>
         <translation>Åbn i browseren</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="225"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="230"/>
         <source>Fetch original content</source>
         <translation>Hent det originale indhold</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="233"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="238"/>
         <source>Fetching the original article…</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="502"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="507"/>
         <source>The original article was loaded.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="509"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="514"/>
         <source>This feed already contains the full article.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="390"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="395"/>
         <source>Tap to load images from %1</source>
         <translation>Tryk for at hente billeder fra %1</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="506"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="511"/>
         <source>The server could not extract the original article.</source>
         <translation>Serveren kunne ikke udtrække den originale artikel.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="511"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="516"/>
         <source>The server rejected the API key.</source>
         <translation>Serveren afviste API-nøglen.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="515"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="520"/>
         <source>Could not fetch the original article: %1</source>
         <translation>Kunne ikke hente den originale artikel: %1</translation>
     </message>

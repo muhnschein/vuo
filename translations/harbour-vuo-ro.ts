@@ -27,22 +27,24 @@
         <translation>Articol</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="157"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="159"/>
         <source>Read</source>
+        <extracomment>The state of the one article on screen.</extracomment>
         <translation>Citit</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="157"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="162"/>
         <source>Unread</source>
+        <extracomment>The state of the one article on screen, so singular: not the plural name of the Unread tab.</extracomment>
         <translation>Necitite</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="164"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="169"/>
         <source>★ Favourite</source>
         <translation>★ Favorit</translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/pages/ArticlePage.qml" line="179"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="184"/>
         <source>%n image(s) are not proxied by your server and were not loaded.</source>
         <translation>
             <numerusform>%n imagine nu trece prin serverul tău și nu a fost încărcată.</numerusform>
@@ -51,72 +53,72 @@
         </translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="194"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="199"/>
         <source>This article was too large to display in full.</source>
         <translation>Articolul a fost prea mare pentru a fi afișat în întregime.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="199"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="204"/>
         <source>Mark as unread</source>
         <translation>Marchează ca necitit</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="199"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="204"/>
         <source>Mark as read</source>
         <translation>Marchează ca citit</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="208"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="213"/>
         <source>Remove favourite</source>
         <translation>Scoate de la favorite</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="209"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="214"/>
         <source>Add favourite</source>
         <translation>Adaugă la favorite</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="213"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="218"/>
         <source>Open in browser</source>
         <translation>Deschide în navigator</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="225"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="230"/>
         <source>Fetch original content</source>
         <translation>Adu conținutul original</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="233"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="238"/>
         <source>Fetching the original article…</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="502"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="507"/>
         <source>The original article was loaded.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="509"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="514"/>
         <source>This feed already contains the full article.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="390"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="395"/>
         <source>Tap to load images from %1</source>
         <translation>Atinge pentru a încărca imaginile de la %1</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="506"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="511"/>
         <source>The server could not extract the original article.</source>
         <translation>Serverul nu a putut extrage articolul original.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="511"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="516"/>
         <source>The server rejected the API key.</source>
         <translation>Serverul a respins cheia API.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="515"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="520"/>
         <source>Could not fetch the original article: %1</source>
         <translation>Articolul original nu a putut fi adus: %1</translation>
     </message>
