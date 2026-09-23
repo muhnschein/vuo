@@ -18,11 +18,6 @@
         <source>https://example.com/feed.xml</source>
         <translation>https://piemers.lv/barotne.xml</translation>
     </message>
-    <message>
-        <location filename="../qml/pages/AddFeedPage.qml" line="42"/>
-        <source>Your server discovers the feed and fetches it. Vuo never downloads feeds itself.</source>
-        <translation>Tavs serveris atrod barotni un to ielādē. Vuo nekad neielādē barotnes pats.</translation>
-    </message>
 </context>
 <context>
     <name>ArticlePage</name>
@@ -32,22 +27,24 @@
         <translation>Raksts</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="157"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="159"/>
         <source>Read</source>
+        <extracomment>The state of the one article on screen.</extracomment>
         <translation>Izlasīts</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="157"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="162"/>
         <source>Unread</source>
-        <translation>Neizlasītie</translation>
+        <extracomment>The state of the one article on screen, so singular: not the plural name of the Unread tab.</extracomment>
+        <translation>Neizlasīts</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="164"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="169"/>
         <source>★ Favourite</source>
         <translation>★ Izlase</translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/pages/ArticlePage.qml" line="179"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="184"/>
         <source>%n image(s) are not proxied by your server and were not loaded.</source>
         <translation>
             <numerusform>%n attēls neiet caur tavu serveri un netika ielādēts.</numerusform>
@@ -56,72 +53,72 @@
         </translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="194"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="199"/>
         <source>This article was too large to display in full.</source>
         <translation>Raksts bija pārāk liels, lai to rādītu pilnībā.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="199"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="204"/>
         <source>Mark as unread</source>
         <translation>Atzīmēt kā neizlasītu</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="199"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="204"/>
         <source>Mark as read</source>
         <translation>Atzīmēt kā izlasītu</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="208"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="213"/>
         <source>Remove favourite</source>
         <translation>Noņemt no izlases</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="209"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="214"/>
         <source>Add favourite</source>
         <translation>Pievienot izlasei</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="213"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="218"/>
         <source>Open in browser</source>
         <translation>Atvērt pārlūkā</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="225"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="230"/>
         <source>Fetch original content</source>
         <translation>Ielādēt sākotnējo saturu</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="233"/>
-        <source>Asking the server for the original article…</source>
-        <translation>Prasa serverim sākotnējo rakstu…</translation>
+        <location filename="../qml/pages/ArticlePage.qml" line="238"/>
+        <source>Fetching the original article…</source>
+        <translation>Ielādē sākotnējo rakstu…</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="390"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="507"/>
+        <source>The original article was loaded.</source>
+        <translation>Sākotnējais raksts ir ielādēts.</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/ArticlePage.qml" line="514"/>
+        <source>This feed already contains the full article.</source>
+        <translation>Šajā barotnē jau ir viss raksts.</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/ArticlePage.qml" line="395"/>
         <source>Tap to load images from %1</source>
         <translation>Pieskaries, lai ielādētu attēlus no %1</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="502"/>
-        <source>Loaded the original article.</source>
-        <translation>Sākotnējais raksts ielādēts.</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="506"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="511"/>
         <source>The server could not extract the original article.</source>
         <translation>Serveris nespēja iegūt sākotnējo rakstu.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="509"/>
-        <source>This feed already carries the full article.</source>
-        <translation>Šajā barotnē jau ir viss raksts.</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="511"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="516"/>
         <source>The server rejected the API key.</source>
         <translation>Serveris noraidīja API atslēgu.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="515"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="520"/>
         <source>Could not fetch the original article: %1</source>
         <translation>Neizdevās ielādēt sākotnējo rakstu: %1</translation>
     </message>
@@ -169,28 +166,19 @@
     </message>
     <message>
         <location filename="../qml/pages/EditFeedPage.qml" line="139"/>
-        <source>The server scrapes each article&apos;s own page instead of using what the feed provides.</source>
-        <translation>Serveris nolasa katra raksta paša lapu, nevis to, ko dod barotne.</translation>
+        <source>The server downloads each article from its website instead of using the text in the feed.</source>
+        <translation>Serveris ielādē katru rakstu no tā vietnes, nevis izmanto barotnes tekstu.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/EditFeedPage.qml" line="149"/>
-        <source>Hide from unread</source>
-        <translation>Slēpt no neizlasītajiem</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/EditFeedPage.qml" line="150"/>
-        <source>Keep this feed&apos;s articles out of the Unread and All lists. The feed itself still shows them.</source>
-        <translation>Neļaut šīs barotnes rakstiem parādīties sarakstos Neizlasītie un Visi. Pati barotne tos joprojām rāda.</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/EditFeedPage.qml" line="161"/>
-        <source>Pause updates</source>
-        <translation>Apturēt atjaunināšanu</translation>
+        <location filename="../qml/pages/EditFeedPage.qml" line="153"/>
+        <source>Hide from Unread and All</source>
+        <extracomment>The tab names, as this catalog translates them.</extracomment>
+        <translation>Slēpt no sarakstiem Neizlasītie un Visi</translation>
     </message>
     <message>
         <location filename="../qml/pages/EditFeedPage.qml" line="162"/>
-        <source>The server stops refreshing this feed.</source>
-        <translation>Serveris pārtrauc atsvaidzināt šo barotni.</translation>
+        <source>Do not refresh this feed</source>
+        <translation>Neatsvaidzināt šo barotni</translation>
     </message>
 </context>
 <context>
@@ -312,8 +300,8 @@
     </message>
     <message>
         <location filename="../qml/components/EntryListView.qml" line="384"/>
-        <source>Star an article to keep it here</source>
-        <translation>Pievieno rakstu izlasei, lai tas paliktu šeit</translation>
+        <source>Articles you add to favourites appear here</source>
+        <translation>Raksti, ko pievienosi izlasei, parādīsies šeit</translation>
     </message>
     <message>
         <location filename="../qml/components/EntryListView.qml" line="385"/>
@@ -362,19 +350,19 @@
         <translation>Barotnes</translation>
     </message>
     <message>
-        <location filename="../qml/pages/FeedListPage.qml" line="39"/>
-        <source>Add subscription</source>
-        <translation>Pievienot abonementu</translation>
-    </message>
-    <message>
         <location filename="../qml/pages/FeedListPage.qml" line="47"/>
         <source>No feeds</source>
         <translation>Nav barotņu</translation>
     </message>
     <message>
+        <location filename="../qml/pages/FeedListPage.qml" line="39"/>
+        <source>Add feed</source>
+        <translation>Pievienot barotni</translation>
+    </message>
+    <message>
         <location filename="../qml/pages/FeedListPage.qml" line="48"/>
-        <source>Subscribe from the pulley menu</source>
-        <translation>Abonē no izvelkamās izvēlnes</translation>
+        <source>Pull down to add a feed</source>
+        <translation>Pavelc uz leju, lai pievienotu barotni</translation>
     </message>
     <message>
         <location filename="../qml/pages/FeedListPage.qml" line="146"/>
@@ -498,163 +486,153 @@
         <translation>Pēc 30 sekundēm</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="159"/>
-        <source>The delay counts only while the article is on screen. Marking an article read or unread yourself always wins.</source>
-        <translation>Aizture skaitās tikai tad, kad raksts ir ekrānā. Ja pats atzīmē rakstu kā izlasītu vai neizlasītu, tas vienmēr ir noteicošais.</translation>
+        <location filename="../qml/pages/SettingsPage.qml" line="173"/>
+        <source>By default, Miniflux proxies only http:// images. Loading an image directly tells its website your IP address and when you read the article.</source>
+        <translation>Pēc noklusējuma Miniflux starpniecību veic tikai http:// attēliem. Attēla tieša ielāde pavēsta tā vietnei tavu IP adresi un laiku, kad lasi rakstu.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="162"/>
-        <source>Images</source>
-        <translation>Attēli</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="167"/>
-        <source>Images not proxied by your server</source>
-        <translation>Attēli, kas neiet caur tavu serveri</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="169"/>
-        <source>Never load</source>
-        <translation>Nekad neielādēt</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="170"/>
-        <source>Ask each site</source>
-        <translation>Jautāt par katru vietni</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="171"/>
-        <source>Always load</source>
-        <translation>Vienmēr ielādēt</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="183"/>
-        <source>Miniflux proxies plain-http images only by default, so most images arrive unproxied. Loading them directly tells those sites your IP address and when you read.</source>
-        <translation>Pēc noklusējuma Miniflux starpniecību veic tikai vienkārša HTTP attēliem, tāpēc lielākā daļa pienāk tieši. To tieša ielāde atklāj šīm vietnēm tavu IP adresi un lasīšanas laiku.</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="186"/>
-        <source>Synchronisation</source>
-        <translation>Sinhronizācija</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="194"/>
-        <source>Sync with server</source>
-        <translation>Sinhronizēt ar serveri</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="196"/>
-        <source>Manual only</source>
-        <translation>Tikai manuāli</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="197"/>
-        <source>Every 15 minutes</source>
-        <translation>Ik 15 minūtes</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="198"/>
-        <source>Every 30 minutes</source>
-        <translation>Ik 30 minūtes</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="199"/>
-        <source>Hourly</source>
-        <translation>Reizi stundā</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="200"/>
-        <source>Every 6 hours</source>
-        <translation>Ik 6 stundas</translation>
+        <location filename="../qml/pages/SettingsPage.qml" line="204"/>
+        <source>Vuo syncs only while it is open or on the cover. How often Miniflux checks your feeds is set on the server.</source>
+        <translation>Vuo sinhronizējas tikai tad, kad tas ir atvērts vai uz vāka. Cik bieži Miniflux pārbauda tavas barotnes, iestata serverī.</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="214"/>
-        <source>How often Vuo fetches from your Miniflux server while it is open or on the cover. How often the server itself checks your feeds is set on the server, not here.</source>
-        <translation>Cik bieži Vuo ielādē no tava Miniflux servera, kamēr tas ir atvērts vai uz vāka. Cik bieži pats serveris pārbauda barotnes, iestata serverī, nevis šeit.</translation>
+        <source>Automatic syncs wait for Wi-Fi. A refresh that you start yourself runs on any connection.</source>
+        <translation>Automātiskā sinhronizācija gaida Wi-Fi tīklu. Atsvaidzināšana, ko sāc pats, notiek ar jebkuru savienojumu.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="223"/>
-        <source>Only sync on Wi-Fi</source>
-        <translation>Sinhronizēt tikai Wi-Fi tīklā</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="224"/>
-        <source>Vuo syncs on its own only over Wi-Fi, and waits on a mobile connection. A refresh you ask for yourself is always sent.</source>
-        <translation>Vuo pats sinhronizē tikai Wi-Fi tīklā un ar mobilo savienojumu gaida. Atsvaidzināšana, ko pieprasi pats, tiek nosūtīta vienmēr.</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="233"/>
-        <source>Notify about new articles</source>
-        <translation>Paziņot par jauniem rakstiem</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="234"/>
-        <source>Shown when a sync finds new articles while Vuo is on the cover. Opening Vuo clears it.</source>
-        <translation>Paziņojums parādās, kad sinhronizācija atrod jaunus rakstus, kamēr Vuo ir uz vāka. Atverot Vuo, tas pazūd.</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="249"/>
-        <source>Keep read articles</source>
-        <translation>Paturēt izlasītos rakstus</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="251"/>
-        <source>Forever</source>
-        <translation>Mūžīgi</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="252"/>
-        <source>For a month</source>
-        <translation>Mēnesi</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="253"/>
-        <source>For three months</source>
-        <translation>Trīs mēnešus</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="254"/>
-        <source>For six months</source>
-        <translation>Sešus mēnešus</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="255"/>
-        <source>For a year</source>
-        <translation>Gadu</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="270"/>
-        <source>Older articles you have already read are removed from this phone at the end of a sync. Favourites, unread articles and anything not yet sent to the server are always kept, and nothing is removed from your Miniflux server.</source>
-        <translation>Vecāki raksti, kurus jau esi izlasījis, sinhronizācijas beigās tiek noņemti no šā tālruņa. Izlase, neizlasītie raksti un viss, kas vēl nav nosūtīts uz serveri, vienmēr tiek paturēts, un no tava Miniflux servera netiek noņemts nekas.</translation>
+        <location filename="../qml/pages/SettingsPage.qml" line="259"/>
+        <source>Read articles older than this are deleted from this phone, but not from your Miniflux server. Favourites and unread articles are always kept.</source>
+        <translation>Izlasītie raksti, kas vecāki par izvēlēto laiku, tiek dzēsti no šā tālruņa, bet ne no tava Miniflux servera. Izlase un neizlasītie raksti vienmēr tiek paturēti.</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="281"/>
-        <source>Advanced</source>
-        <translation>Paplašināti</translation>
+        <source>Copy the certificate to ~/.local/share/harbour-vuo/harbour-vuo/ca.pem.</source>
+        <translation>Nokopē sertifikātu uz ~/.local/share/harbour-vuo/harbour-vuo/ca.pem.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="285"/>
-        <source>Use a custom CA certificate</source>
-        <translation>Lietot savu SI sertifikātu</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="292"/>
-        <source>For a self-hosted server with a private certificate authority. Place the certificate at ~/.local/share/harbour-vuo/harbour-vuo/ca.pem. Certificate verification is never disabled, and there is no option to disable it.</source>
-        <translation>Paša uzturētam serverim ar privātu sertifikācijas iestādi. Novieto sertifikātu ~/.local/share/harbour-vuo/harbour-vuo/ca.pem. Sertifikātu pārbaude nekad netiek izslēgta, un tādas iespējas nav.</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="293"/>
-        <source>Only applies to an https:// server. This one is not encrypted by TLS, so no certificate is used.</source>
-        <translation>Attiecas tikai uz https:// serveri. Šis nav šifrēts ar TLS, tāpēc sertifikāts netiek lietots.</translation>
+        <location filename="../qml/pages/SettingsPage.qml" line="282"/>
+        <source>A certificate is used only with an https:// server address.</source>
+        <translation>Sertifikāts tiek lietots tikai tad, ja servera adrese sākas ar https://.</translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/pages/SettingsPage.qml" line="305"/>
-        <source>%n change(s) waiting to be sent to the server.</source>
+        <location filename="../qml/pages/SettingsPage.qml" line="294"/>
+        <source>%n change(s) are waiting to be sent to the server.</source>
         <translation>
             <numerusform>%n izmaiņa gaida nosūtīšanu uz serveri.</numerusform>
             <numerusform>%n izmaiņas gaida nosūtīšanu uz serveri.</numerusform>
             <numerusform>%n izmaiņu gaida nosūtīšanu uz serveri.</numerusform>
         </translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="152"/>
+        <source>Images</source>
+        <translation>Attēli</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="157"/>
+        <source>Images not proxied by your server</source>
+        <translation>Attēli, kas neiet caur tavu serveri</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="159"/>
+        <source>Never load</source>
+        <translation>Nekad neielādēt</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="160"/>
+        <source>Ask each site</source>
+        <translation>Jautāt par katru vietni</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="161"/>
+        <source>Always load</source>
+        <translation>Vienmēr ielādēt</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="176"/>
+        <source>Synchronisation</source>
+        <translation>Sinhronizācija</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="184"/>
+        <source>Sync with server</source>
+        <translation>Sinhronizēt ar serveri</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="186"/>
+        <source>Manual only</source>
+        <translation>Tikai manuāli</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="187"/>
+        <source>Every 15 minutes</source>
+        <translation>Ik 15 minūtes</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="188"/>
+        <source>Every 30 minutes</source>
+        <translation>Ik 30 minūtes</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="189"/>
+        <source>Hourly</source>
+        <translation>Reizi stundā</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="190"/>
+        <source>Every 6 hours</source>
+        <translation>Ik 6 stundas</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="213"/>
+        <source>Only sync on Wi-Fi</source>
+        <translation>Sinhronizēt tikai Wi-Fi tīklā</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="223"/>
+        <source>Notify about new articles</source>
+        <translation>Paziņot par jauniem rakstiem</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="238"/>
+        <source>Keep read articles</source>
+        <translation>Paturēt izlasītos rakstus</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="240"/>
+        <source>Forever</source>
+        <translation>Mūžīgi</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="241"/>
+        <source>For a month</source>
+        <translation>Mēnesi</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="242"/>
+        <source>For three months</source>
+        <translation>Trīs mēnešus</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="243"/>
+        <source>For six months</source>
+        <translation>Sešus mēnešus</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="244"/>
+        <source>For a year</source>
+        <translation>Gadu</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="270"/>
+        <source>Advanced</source>
+        <translation>Paplašināti</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="274"/>
+        <source>Use a custom CA certificate</source>
+        <translation>Lietot savu SI sertifikātu</translation>
     </message>
 </context>
 <context>
@@ -671,8 +649,8 @@
     </message>
     <message>
         <location filename="../qml/pages/SetupDialog.qml" line="112"/>
-        <source>Vuo reads from your own Miniflux instance. It never fetches feeds itself.</source>
-        <translation>Vuo lasa no tava paša Miniflux servera. Barotnes tas nekad neielādē pats.</translation>
+        <source>Your Miniflux server fetches your feeds, and Vuo shows them.</source>
+        <translation>Tavs Miniflux serveris ielādē barotnes, un Vuo tās parāda.</translation>
     </message>
     <message>
         <location filename="../qml/pages/SetupDialog.qml" line="118"/>

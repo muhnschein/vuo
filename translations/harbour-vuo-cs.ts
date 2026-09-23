@@ -18,11 +18,6 @@
         <source>https://example.com/feed.xml</source>
         <translation>https://priklad.cz/kanal.xml</translation>
     </message>
-    <message>
-        <location filename="../qml/pages/AddFeedPage.qml" line="42"/>
-        <source>Your server discovers the feed and fetches it. Vuo never downloads feeds itself.</source>
-        <translation>Váš server kanál najde a stáhne. Vuo kanály nikdy nestahuje samo.</translation>
-    </message>
 </context>
 <context>
     <name>ArticlePage</name>
@@ -32,22 +27,24 @@
         <translation>Článek</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="157"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="159"/>
         <source>Read</source>
+        <extracomment>The state of the one article on screen.</extracomment>
         <translation>Přečteno</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="157"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="162"/>
         <source>Unread</source>
-        <translation>Nepřečtené</translation>
+        <extracomment>The state of the one article on screen, so singular: not the plural name of the Unread tab.</extracomment>
+        <translation>Nepřečteno</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="164"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="169"/>
         <source>★ Favourite</source>
         <translation>★ Oblíbený</translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/pages/ArticlePage.qml" line="179"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="184"/>
         <source>%n image(s) are not proxied by your server and were not loaded.</source>
         <translation>
             <numerusform>%n obrázek nejde přes váš server a nebyl načten.</numerusform>
@@ -56,72 +53,72 @@
         </translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="194"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="199"/>
         <source>This article was too large to display in full.</source>
         <translation>Článek byl příliš velký, aby se zobrazil celý.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="199"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="204"/>
         <source>Mark as unread</source>
         <translation>Označit jako nepřečtené</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="199"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="204"/>
         <source>Mark as read</source>
         <translation>Označit jako přečtené</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="208"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="213"/>
         <source>Remove favourite</source>
         <translation>Odebrat z oblíbených</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="209"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="214"/>
         <source>Add favourite</source>
         <translation>Přidat do oblíbených</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="213"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="218"/>
         <source>Open in browser</source>
         <translation>Otevřít v prohlížeči</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="225"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="230"/>
         <source>Fetch original content</source>
         <translation>Načíst původní obsah</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="233"/>
-        <source>Asking the server for the original article…</source>
-        <translation>Žádám server o původní článek…</translation>
+        <location filename="../qml/pages/ArticlePage.qml" line="238"/>
+        <source>Fetching the original article…</source>
+        <translation>Načítám původní článek…</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="390"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="507"/>
+        <source>The original article was loaded.</source>
+        <translation>Původní článek byl načten.</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/ArticlePage.qml" line="514"/>
+        <source>This feed already contains the full article.</source>
+        <translation>Tento kanál už obsahuje celý článek.</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/ArticlePage.qml" line="395"/>
         <source>Tap to load images from %1</source>
         <translation>Klepnutím načtete obrázky z %1</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="502"/>
-        <source>Loaded the original article.</source>
-        <translation>Původní článek načten.</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="506"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="511"/>
         <source>The server could not extract the original article.</source>
         <translation>Server nedokázal získat původní článek.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="509"/>
-        <source>This feed already carries the full article.</source>
-        <translation>Tento kanál už obsahuje celý článek.</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="511"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="516"/>
         <source>The server rejected the API key.</source>
         <translation>Server odmítl klíč API.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="515"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="520"/>
         <source>Could not fetch the original article: %1</source>
         <translation>Nepodařilo se načíst původní článek: %1</translation>
     </message>
@@ -169,28 +166,19 @@
     </message>
     <message>
         <location filename="../qml/pages/EditFeedPage.qml" line="139"/>
-        <source>The server scrapes each article&apos;s own page instead of using what the feed provides.</source>
-        <translation>Server načte vlastní stránku každého článku místo toho, co nabízí kanál.</translation>
+        <source>The server downloads each article from its website instead of using the text in the feed.</source>
+        <translation>Server stahuje každý článek z jeho webu, místo aby použil text z kanálu.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/EditFeedPage.qml" line="149"/>
-        <source>Hide from unread</source>
-        <translation>Skrýt z nepřečtených</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/EditFeedPage.qml" line="150"/>
-        <source>Keep this feed&apos;s articles out of the Unread and All lists. The feed itself still shows them.</source>
-        <translation>Držet články tohoto kanálu mimo seznamy Nepřečtené a Vše. Samotný kanál je stále ukazuje.</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/EditFeedPage.qml" line="161"/>
-        <source>Pause updates</source>
-        <translation>Pozastavit aktualizace</translation>
+        <location filename="../qml/pages/EditFeedPage.qml" line="153"/>
+        <source>Hide from Unread and All</source>
+        <extracomment>The tab names, as this catalog translates them.</extracomment>
+        <translation>Skrýt ze seznamů Nepřečtené a Vše</translation>
     </message>
     <message>
         <location filename="../qml/pages/EditFeedPage.qml" line="162"/>
-        <source>The server stops refreshing this feed.</source>
-        <translation>Server přestane tento kanál aktualizovat.</translation>
+        <source>Do not refresh this feed</source>
+        <translation>Neaktualizovat tento kanál</translation>
     </message>
 </context>
 <context>
@@ -312,8 +300,8 @@
     </message>
     <message>
         <location filename="../qml/components/EntryListView.qml" line="384"/>
-        <source>Star an article to keep it here</source>
-        <translation>Přidejte článek do oblíbených, ať tu zůstane</translation>
+        <source>Articles you add to favourites appear here</source>
+        <translation>Články, které přidáte do oblíbených, se zobrazí zde</translation>
     </message>
     <message>
         <location filename="../qml/components/EntryListView.qml" line="385"/>
@@ -362,19 +350,19 @@
         <translation>Kanály</translation>
     </message>
     <message>
-        <location filename="../qml/pages/FeedListPage.qml" line="39"/>
-        <source>Add subscription</source>
-        <translation>Přidat odběr</translation>
-    </message>
-    <message>
         <location filename="../qml/pages/FeedListPage.qml" line="47"/>
         <source>No feeds</source>
         <translation>Žádné kanály</translation>
     </message>
     <message>
+        <location filename="../qml/pages/FeedListPage.qml" line="39"/>
+        <source>Add feed</source>
+        <translation>Přidat kanál</translation>
+    </message>
+    <message>
         <location filename="../qml/pages/FeedListPage.qml" line="48"/>
-        <source>Subscribe from the pulley menu</source>
-        <translation>Odebírejte z vysouvací nabídky</translation>
+        <source>Pull down to add a feed</source>
+        <translation>Zatáhněte dolů pro přidání kanálu</translation>
     </message>
     <message>
         <location filename="../qml/pages/FeedListPage.qml" line="146"/>
@@ -498,163 +486,153 @@
         <translation>Po 30 sekundách</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="159"/>
-        <source>The delay counts only while the article is on screen. Marking an article read or unread yourself always wins.</source>
-        <translation>Prodleva běží jen tehdy, když je článek na obrazovce. Vlastní označení článku má vždy přednost.</translation>
+        <location filename="../qml/pages/SettingsPage.qml" line="173"/>
+        <source>By default, Miniflux proxies only http:// images. Loading an image directly tells its website your IP address and when you read the article.</source>
+        <translation>Miniflux ve výchozím nastavení zprostředkovává jen obrázky přes http://. Přímé načtení obrázku sdělí webu, ze kterého pochází, vaši IP adresu a čas, kdy článek čtete.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="162"/>
-        <source>Images</source>
-        <translation>Obrázky</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="167"/>
-        <source>Images not proxied by your server</source>
-        <translation>Obrázky nejdoucí přes váš server</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="169"/>
-        <source>Never load</source>
-        <translation>Nikdy nenačítat</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="170"/>
-        <source>Ask each site</source>
-        <translation>Ptát se u každého webu</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="171"/>
-        <source>Always load</source>
-        <translation>Vždy načítat</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="183"/>
-        <source>Miniflux proxies plain-http images only by default, so most images arrive unproxied. Loading them directly tells those sites your IP address and when you read.</source>
-        <translation>Miniflux ve výchozím nastavení zprostředkuje jen obrázky po prostém HTTP, takže většina přichází přímo. Načtení napřímo prozradí těm webům vaši IP adresu a kdy čtete.</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="186"/>
-        <source>Synchronisation</source>
-        <translation>Synchronizace</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="194"/>
-        <source>Sync with server</source>
-        <translation>Synchronizovat se serverem</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="196"/>
-        <source>Manual only</source>
-        <translation>Jen ručně</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="197"/>
-        <source>Every 15 minutes</source>
-        <translation>Každých 15 minut</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="198"/>
-        <source>Every 30 minutes</source>
-        <translation>Každých 30 minut</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="199"/>
-        <source>Hourly</source>
-        <translation>Každou hodinu</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="200"/>
-        <source>Every 6 hours</source>
-        <translation>Každých 6 hodin</translation>
+        <location filename="../qml/pages/SettingsPage.qml" line="204"/>
+        <source>Vuo syncs only while it is open or on the cover. How often Miniflux checks your feeds is set on the server.</source>
+        <translation>Vuo synchronizuje jen tehdy, když je otevřené nebo na obalu. Jak často Miniflux kontroluje vaše kanály, se nastavuje na serveru.</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="214"/>
-        <source>How often Vuo fetches from your Miniflux server while it is open or on the cover. How often the server itself checks your feeds is set on the server, not here.</source>
-        <translation>Jak často Vuo stahuje z vašeho serveru Miniflux, když je otevřené nebo na obalu. Jak často server sám kontroluje vaše kanály, se nastavuje na serveru, ne zde.</translation>
+        <source>Automatic syncs wait for Wi-Fi. A refresh that you start yourself runs on any connection.</source>
+        <translation>Automatická synchronizace čeká na Wi-Fi. Aktualizace, kterou spustíte sami, proběhne přes jakékoli připojení.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="223"/>
-        <source>Only sync on Wi-Fi</source>
-        <translation>Synchronizovat jen přes Wi-Fi</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="224"/>
-        <source>Vuo syncs on its own only over Wi-Fi, and waits on a mobile connection. A refresh you ask for yourself is always sent.</source>
-        <translation>Vuo synchronizuje samo jen přes Wi-Fi a na mobilním připojení čeká. Aktualizace, o kterou si řeknete sami, se odešle vždy.</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="233"/>
-        <source>Notify about new articles</source>
-        <translation>Upozorňovat na nové články</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="234"/>
-        <source>Shown when a sync finds new articles while Vuo is on the cover. Opening Vuo clears it.</source>
-        <translation>Oznámení se zobrazí, když synchronizace najde nové články, zatímco je Vuo na obalu. Otevřením Vuo zmizí.</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="249"/>
-        <source>Keep read articles</source>
-        <translation>Uchovávat přečtené články</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="251"/>
-        <source>Forever</source>
-        <translation>Navždy</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="252"/>
-        <source>For a month</source>
-        <translation>Měsíc</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="253"/>
-        <source>For three months</source>
-        <translation>Tři měsíce</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="254"/>
-        <source>For six months</source>
-        <translation>Šest měsíců</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="255"/>
-        <source>For a year</source>
-        <translation>Rok</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="270"/>
-        <source>Older articles you have already read are removed from this phone at the end of a sync. Favourites, unread articles and anything not yet sent to the server are always kept, and nothing is removed from your Miniflux server.</source>
-        <translation>Starší články, které jste už přečetli, se na konci synchronizace z tohoto telefonu odstraní. Oblíbené, nepřečtené články a vše, co ještě nebylo odesláno na server, se uchovávají vždy, a z vašeho serveru Miniflux se neodstraní nic.</translation>
+        <location filename="../qml/pages/SettingsPage.qml" line="259"/>
+        <source>Read articles older than this are deleted from this phone, but not from your Miniflux server. Favourites and unread articles are always kept.</source>
+        <translation>Přečtené články starší než zvolená doba se z tohoto telefonu odstraní, ale z vašeho serveru Miniflux ne. Oblíbené a nepřečtené články se uchovávají vždy.</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="281"/>
-        <source>Advanced</source>
-        <translation>Pokročilé</translation>
+        <source>Copy the certificate to ~/.local/share/harbour-vuo/harbour-vuo/ca.pem.</source>
+        <translation>Zkopírujte certifikát do ~/.local/share/harbour-vuo/harbour-vuo/ca.pem.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="285"/>
-        <source>Use a custom CA certificate</source>
-        <translation>Použít vlastní certifikát CA</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="292"/>
-        <source>For a self-hosted server with a private certificate authority. Place the certificate at ~/.local/share/harbour-vuo/harbour-vuo/ca.pem. Certificate verification is never disabled, and there is no option to disable it.</source>
-        <translation>Pro vlastní server se soukromou certifikační autoritou. Umístěte certifikát do ~/.local/share/harbour-vuo/harbour-vuo/ca.pem. Ověřování certifikátů se nikdy nevypíná a není pro to ani volba.</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="293"/>
-        <source>Only applies to an https:// server. This one is not encrypted by TLS, so no certificate is used.</source>
-        <translation>Platí jen pro server https://. Tento není šifrován TLS, takže se žádný certifikát nepoužívá.</translation>
+        <location filename="../qml/pages/SettingsPage.qml" line="282"/>
+        <source>A certificate is used only with an https:// server address.</source>
+        <translation>Certifikát se používá jen tehdy, když adresa serveru začíná https://.</translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/pages/SettingsPage.qml" line="305"/>
-        <source>%n change(s) waiting to be sent to the server.</source>
+        <location filename="../qml/pages/SettingsPage.qml" line="294"/>
+        <source>%n change(s) are waiting to be sent to the server.</source>
         <translation>
             <numerusform>%n změna čeká na odeslání na server.</numerusform>
             <numerusform>%n změny čekají na odeslání na server.</numerusform>
             <numerusform>%n změn čeká na odeslání na server.</numerusform>
         </translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="152"/>
+        <source>Images</source>
+        <translation>Obrázky</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="157"/>
+        <source>Images not proxied by your server</source>
+        <translation>Obrázky nejdoucí přes váš server</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="159"/>
+        <source>Never load</source>
+        <translation>Nikdy nenačítat</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="160"/>
+        <source>Ask each site</source>
+        <translation>Ptát se u každého webu</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="161"/>
+        <source>Always load</source>
+        <translation>Vždy načítat</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="176"/>
+        <source>Synchronisation</source>
+        <translation>Synchronizace</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="184"/>
+        <source>Sync with server</source>
+        <translation>Synchronizovat se serverem</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="186"/>
+        <source>Manual only</source>
+        <translation>Jen ručně</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="187"/>
+        <source>Every 15 minutes</source>
+        <translation>Každých 15 minut</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="188"/>
+        <source>Every 30 minutes</source>
+        <translation>Každých 30 minut</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="189"/>
+        <source>Hourly</source>
+        <translation>Každou hodinu</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="190"/>
+        <source>Every 6 hours</source>
+        <translation>Každých 6 hodin</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="213"/>
+        <source>Only sync on Wi-Fi</source>
+        <translation>Synchronizovat jen přes Wi-Fi</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="223"/>
+        <source>Notify about new articles</source>
+        <translation>Upozorňovat na nové články</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="238"/>
+        <source>Keep read articles</source>
+        <translation>Uchovávat přečtené články</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="240"/>
+        <source>Forever</source>
+        <translation>Navždy</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="241"/>
+        <source>For a month</source>
+        <translation>Měsíc</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="242"/>
+        <source>For three months</source>
+        <translation>Tři měsíce</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="243"/>
+        <source>For six months</source>
+        <translation>Šest měsíců</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="244"/>
+        <source>For a year</source>
+        <translation>Rok</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="270"/>
+        <source>Advanced</source>
+        <translation>Pokročilé</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="274"/>
+        <source>Use a custom CA certificate</source>
+        <translation>Použít vlastní certifikát CA</translation>
     </message>
 </context>
 <context>
@@ -671,8 +649,8 @@
     </message>
     <message>
         <location filename="../qml/pages/SetupDialog.qml" line="112"/>
-        <source>Vuo reads from your own Miniflux instance. It never fetches feeds itself.</source>
-        <translation>Vuo čte z vaší vlastní instance Minifluxu. Kanály nikdy nestahuje samo.</translation>
+        <source>Your Miniflux server fetches your feeds, and Vuo shows them.</source>
+        <translation>Váš server Miniflux stahuje vaše kanály a Vuo je zobrazuje.</translation>
     </message>
     <message>
         <location filename="../qml/pages/SetupDialog.qml" line="118"/>

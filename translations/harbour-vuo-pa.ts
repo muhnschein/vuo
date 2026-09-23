@@ -18,11 +18,6 @@
         <source>https://example.com/feed.xml</source>
         <translation>https://udaharan.com/feed.xml</translation>
     </message>
-    <message>
-        <location filename="../qml/pages/AddFeedPage.qml" line="42"/>
-        <source>Your server discovers the feed and fetches it. Vuo never downloads feeds itself.</source>
-        <translation>ਤੁਹਾਡਾ ਸਰਵਰ ਫੀਡ ਲੱਭ ਕੇ ਲਿਆਉਂਦਾ ਹੈ। Vuo ਕਦੇ ਵੀ ਆਪ ਫੀਡ ਨਹੀਂ ਲਾਹੁੰਦਾ।</translation>
-    </message>
 </context>
 <context>
     <name>ArticlePage</name>
@@ -32,22 +27,24 @@
         <translation>ਲੇਖ</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="157"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="159"/>
         <source>Read</source>
+        <extracomment>The state of the one article on screen.</extracomment>
         <translation>ਪੜ੍ਹਿਆ</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="157"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="162"/>
         <source>Unread</source>
-        <translation>ਅਣਪੜ੍ਹੇ</translation>
+        <extracomment>The state of the one article on screen, so singular: not the plural name of the Unread tab.</extracomment>
+        <translation>ਅਣਪੜ੍ਹਿਆ</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="164"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="169"/>
         <source>★ Favourite</source>
         <translation>★ ਪਸੰਦੀਦਾ</translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/pages/ArticlePage.qml" line="179"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="184"/>
         <source>%n image(s) are not proxied by your server and were not loaded.</source>
         <translation>
             <numerusform>%n ਤਸਵੀਰ ਤੁਹਾਡੇ ਸਰਵਰ ਰਾਹੀਂ ਨਹੀਂ ਆਉਂਦੀ ਅਤੇ ਲੋਡ ਨਹੀਂ ਹੋਈ।</numerusform>
@@ -55,72 +52,72 @@
         </translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="194"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="199"/>
         <source>This article was too large to display in full.</source>
         <translation>ਇਹ ਲੇਖ ਪੂਰਾ ਵਿਖਾਉਣ ਲਈ ਬਹੁਤ ਵੱਡਾ ਸੀ।</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="199"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="204"/>
         <source>Mark as unread</source>
         <translation>ਅਣਪੜ੍ਹਿਆ ਨਿਸ਼ਾਨ ਲਾਓ</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="199"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="204"/>
         <source>Mark as read</source>
         <translation>ਪੜ੍ਹਿਆ ਨਿਸ਼ਾਨ ਲਾਓ</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="208"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="213"/>
         <source>Remove favourite</source>
         <translation>ਪਸੰਦੀਦਾ ਵਿੱਚੋਂ ਹਟਾਓ</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="209"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="214"/>
         <source>Add favourite</source>
         <translation>ਪਸੰਦੀਦਾ ਵਿੱਚ ਜੋੜੋ</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="213"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="218"/>
         <source>Open in browser</source>
         <translation>ਬਰਾਊਜ਼ਰ ਵਿੱਚ ਖੋਲ੍ਹੋ</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="225"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="230"/>
         <source>Fetch original content</source>
         <translation>ਮੂਲ ਸਮੱਗਰੀ ਲਿਆਓ</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="233"/>
-        <source>Asking the server for the original article…</source>
-        <translation>ਸਰਵਰ ਤੋਂ ਮੂਲ ਲੇਖ ਮੰਗਿਆ ਜਾ ਰਿਹਾ ਹੈ…</translation>
+        <location filename="../qml/pages/ArticlePage.qml" line="238"/>
+        <source>Fetching the original article…</source>
+        <translation>ਮੂਲ ਲੇਖ ਲਿਆਂਦਾ ਜਾ ਰਿਹਾ ਹੈ…</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="390"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="507"/>
+        <source>The original article was loaded.</source>
+        <translation>ਮੂਲ ਲੇਖ ਲੋਡ ਹੋ ਗਿਆ।</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/ArticlePage.qml" line="514"/>
+        <source>This feed already contains the full article.</source>
+        <translation>ਇਸ ਫੀਡ ਵਿੱਚ ਪੂਰਾ ਲੇਖ ਪਹਿਲਾਂ ਹੀ ਹੈ।</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/ArticlePage.qml" line="395"/>
         <source>Tap to load images from %1</source>
         <translation>%1 ਤੋਂ ਤਸਵੀਰਾਂ ਲੋਡ ਕਰਨ ਲਈ ਟੈਪ ਕਰੋ</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="502"/>
-        <source>Loaded the original article.</source>
-        <translation>ਮੂਲ ਲੇਖ ਲੋਡ ਹੋ ਗਿਆ।</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="506"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="511"/>
         <source>The server could not extract the original article.</source>
         <translation>ਸਰਵਰ ਮੂਲ ਲੇਖ ਕੱਢ ਨਹੀਂ ਸਕਿਆ।</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="509"/>
-        <source>This feed already carries the full article.</source>
-        <translation>ਇਸ ਫੀਡ ਵਿੱਚ ਪੂਰਾ ਲੇਖ ਪਹਿਲਾਂ ਹੀ ਹੈ।</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="511"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="516"/>
         <source>The server rejected the API key.</source>
         <translation>ਸਰਵਰ ਨੇ API ਕੁੰਜੀ ਰੱਦ ਕਰ ਦਿੱਤੀ।</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="515"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="520"/>
         <source>Could not fetch the original article: %1</source>
         <translation>ਮੂਲ ਲੇਖ ਨਹੀਂ ਲਿਆਂਦਾ ਜਾ ਸਕਿਆ: %1</translation>
     </message>
@@ -168,28 +165,19 @@
     </message>
     <message>
         <location filename="../qml/pages/EditFeedPage.qml" line="139"/>
-        <source>The server scrapes each article&apos;s own page instead of using what the feed provides.</source>
-        <translation>ਫੀਡ ਜੋ ਦਿੰਦਾ ਹੈ ਉਸ ਦੀ ਥਾਂ ਸਰਵਰ ਹਰ ਲੇਖ ਦਾ ਆਪਣਾ ਸਫ਼ਾ ਪੜ੍ਹਦਾ ਹੈ।</translation>
+        <source>The server downloads each article from its website instead of using the text in the feed.</source>
+        <translation>ਫੀਡ ਵਿਚਲੀ ਲਿਖਤ ਵਰਤਣ ਦੀ ਥਾਂ ਸਰਵਰ ਹਰ ਲੇਖ ਨੂੰ ਉਸ ਦੀ ਵੈੱਬਸਾਈਟ ਤੋਂ ਡਾਊਨਲੋਡ ਕਰਦਾ ਹੈ।</translation>
     </message>
     <message>
-        <location filename="../qml/pages/EditFeedPage.qml" line="149"/>
-        <source>Hide from unread</source>
-        <translation>ਅਣਪੜ੍ਹਿਆਂ ਤੋਂ ਲੁਕਾਓ</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/EditFeedPage.qml" line="150"/>
-        <source>Keep this feed&apos;s articles out of the Unread and All lists. The feed itself still shows them.</source>
-        <translation>ਇਸ ਫੀਡ ਦੇ ਲੇਖ ਅਣਪੜ੍ਹੇ ਅਤੇ ਸਾਰੇ ਸੂਚੀਆਂ ਤੋਂ ਬਾਹਰ ਰੱਖੋ। ਫੀਡ ਵਿੱਚ ਉਹ ਫਿਰ ਵੀ ਦਿਖਣਗੇ।</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/EditFeedPage.qml" line="161"/>
-        <source>Pause updates</source>
-        <translation>ਅੱਪਡੇਟ ਰੋਕੋ</translation>
+        <location filename="../qml/pages/EditFeedPage.qml" line="153"/>
+        <source>Hide from Unread and All</source>
+        <extracomment>The tab names, as this catalog translates them.</extracomment>
+        <translation>“ਅਣਪੜ੍ਹੇ” ਅਤੇ “ਸਾਰੇ” ਤੋਂ ਲੁਕਾਓ</translation>
     </message>
     <message>
         <location filename="../qml/pages/EditFeedPage.qml" line="162"/>
-        <source>The server stops refreshing this feed.</source>
-        <translation>ਸਰਵਰ ਇਸ ਫੀਡ ਨੂੰ ਤਾਜ਼ਾ ਕਰਨਾ ਬੰਦ ਕਰ ਦਿੰਦਾ ਹੈ।</translation>
+        <source>Do not refresh this feed</source>
+        <translation>ਇਸ ਫੀਡ ਨੂੰ ਤਾਜ਼ਾ ਨਾ ਕਰੋ</translation>
     </message>
 </context>
 <context>
@@ -309,8 +297,8 @@
     </message>
     <message>
         <location filename="../qml/components/EntryListView.qml" line="384"/>
-        <source>Star an article to keep it here</source>
-        <translation>ਕੋਈ ਲੇਖ ਪਸੰਦੀਦਾ ਬਣਾਓ ਤਾਂ ਜੋ ਉਹ ਇੱਥੇ ਰਹੇ</translation>
+        <source>Articles you add to favourites appear here</source>
+        <translation>ਪਸੰਦੀਦਾ ਵਿੱਚ ਜੋੜੇ ਗਏ ਲੇਖ ਇੱਥੇ ਦਿਖਦੇ ਹਨ</translation>
     </message>
     <message>
         <location filename="../qml/components/EntryListView.qml" line="385"/>
@@ -321,8 +309,8 @@
         <location filename="../qml/components/EntryListView.qml" line="540"/>
         <source>%n min read</source>
         <translation>
-            <numerusform>%n ਮਿੰਟ ਪੜ੍ਹਨ</numerusform>
-            <numerusform>%n ਮਿੰਟ ਪੜ੍ਹਨ</numerusform>
+            <numerusform>ਪੜ੍ਹਨ ਲਈ %n ਮਿੰਟ</numerusform>
+            <numerusform>ਪੜ੍ਹਨ ਲਈ %n ਮਿੰਟ</numerusform>
         </translation>
     </message>
     <message numerus="yes">
@@ -357,19 +345,19 @@
         <translation>ਫੀਡ</translation>
     </message>
     <message>
-        <location filename="../qml/pages/FeedListPage.qml" line="39"/>
-        <source>Add subscription</source>
-        <translation>ਗਾਹਕੀ ਜੋੜੋ</translation>
-    </message>
-    <message>
         <location filename="../qml/pages/FeedListPage.qml" line="47"/>
         <source>No feeds</source>
         <translation>ਕੋਈ ਫੀਡ ਨਹੀਂ</translation>
     </message>
     <message>
+        <location filename="../qml/pages/FeedListPage.qml" line="39"/>
+        <source>Add feed</source>
+        <translation>ਫੀਡ ਜੋੜੋ</translation>
+    </message>
+    <message>
         <location filename="../qml/pages/FeedListPage.qml" line="48"/>
-        <source>Subscribe from the pulley menu</source>
-        <translation>ਪੁਲੀ ਮੀਨੂ ਤੋਂ ਗਾਹਕ ਬਣੋ</translation>
+        <source>Pull down to add a feed</source>
+        <translation>ਫੀਡ ਜੋੜਨ ਲਈ ਹੇਠਾਂ ਖਿੱਚੋ</translation>
     </message>
     <message>
         <location filename="../qml/pages/FeedListPage.qml" line="146"/>
@@ -493,162 +481,152 @@
         <translation>30 ਸਕਿੰਟ ਬਾਅਦ</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="159"/>
-        <source>The delay counts only while the article is on screen. Marking an article read or unread yourself always wins.</source>
-        <translation>ਦੇਰੀ ਉਦੋਂ ਹੀ ਗਿਣੀ ਜਾਂਦੀ ਹੈ ਜਦੋਂ ਲੇਖ ਪਰਦੇ ਉੱਤੇ ਹੋਵੇ। ਤੁਹਾਡਾ ਆਪ ਪੜ੍ਹਿਆ ਜਾਂ ਅਣਪੜ੍ਹਿਆ ਨਿਸ਼ਾਨ ਲਾਉਣਾ ਹਮੇਸ਼ਾ ਭਾਰੂ ਰਹਿੰਦਾ ਹੈ।</translation>
+        <location filename="../qml/pages/SettingsPage.qml" line="173"/>
+        <source>By default, Miniflux proxies only http:// images. Loading an image directly tells its website your IP address and when you read the article.</source>
+        <translation>ਮੂਲ ਰੂਪ ਵਿੱਚ ਸਿਰਫ਼ http:// ਵਾਲੀਆਂ ਤਸਵੀਰਾਂ ਹੀ Miniflux ਰਾਹੀਂ ਆਉਂਦੀਆਂ ਹਨ। ਕਿਸੇ ਤਸਵੀਰ ਨੂੰ ਸਿੱਧਾ ਲੋਡ ਕਰਨ ਨਾਲ ਉਸ ਦੀ ਵੈੱਬਸਾਈਟ ਨੂੰ ਤੁਹਾਡਾ IP ਪਤਾ ਅਤੇ ਤੁਸੀਂ ਲੇਖ ਕਦੋਂ ਪੜ੍ਹਦੇ ਹੋ, ਇਹ ਪਤਾ ਲੱਗ ਜਾਂਦਾ ਹੈ।</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="162"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="204"/>
+        <source>Vuo syncs only while it is open or on the cover. How often Miniflux checks your feeds is set on the server.</source>
+        <translation>Vuo ਸਿਰਫ਼ ਉਦੋਂ ਸਮਕਾਲੀ ਕਰਦਾ ਹੈ ਜਦੋਂ ਇਹ ਖੁੱਲ੍ਹਾ ਹੋਵੇ ਜਾਂ ਕਵਰ ਉੱਤੇ ਹੋਵੇ। Miniflux ਤੁਹਾਡੇ ਫੀਡ ਕਿੰਨੀ ਵਾਰ ਜਾਂਚਦਾ ਹੈ, ਇਹ ਸਰਵਰ ਉੱਤੇ ਤੈਅ ਹੁੰਦਾ ਹੈ।</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="214"/>
+        <source>Automatic syncs wait for Wi-Fi. A refresh that you start yourself runs on any connection.</source>
+        <translation>ਆਪਣੇ ਆਪ ਹੋਣ ਵਾਲਾ ਸਮਕਾਲੀਕਰਨ Wi-Fi ਦੀ ਉਡੀਕ ਕਰਦਾ ਹੈ। ਜਦੋਂ ਤੁਸੀਂ ਆਪ ਤਾਜ਼ਾ ਕਰਦੇ ਹੋ, ਤਾਂ ਇਹ ਕਿਸੇ ਵੀ ਕਨੈਕਸ਼ਨ ਉੱਤੇ ਹੁੰਦਾ ਹੈ।</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="259"/>
+        <source>Read articles older than this are deleted from this phone, but not from your Miniflux server. Favourites and unread articles are always kept.</source>
+        <translation>ਇਸ ਮਿਆਦ ਤੋਂ ਪੁਰਾਣੇ ਪੜ੍ਹੇ ਲੇਖ ਇਸ ਫ਼ੋਨ ਤੋਂ ਮਿਟਾ ਦਿੱਤੇ ਜਾਂਦੇ ਹਨ, ਪਰ ਤੁਹਾਡੇ Miniflux ਸਰਵਰ ਤੋਂ ਨਹੀਂ। ਪਸੰਦੀਦਾ ਅਤੇ ਅਣਪੜ੍ਹੇ ਲੇਖ ਹਮੇਸ਼ਾ ਰੱਖੇ ਜਾਂਦੇ ਹਨ।</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="281"/>
+        <source>Copy the certificate to ~/.local/share/harbour-vuo/harbour-vuo/ca.pem.</source>
+        <translation>ਸਰਟੀਫਿਕੇਟ ਨੂੰ ~/.local/share/harbour-vuo/harbour-vuo/ca.pem ਉੱਤੇ ਕਾਪੀ ਕਰੋ।</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="282"/>
+        <source>A certificate is used only with an https:// server address.</source>
+        <translation>ਸਰਟੀਫਿਕੇਟ ਸਿਰਫ਼ https:// ਸਰਵਰ ਪਤੇ ਨਾਲ ਹੀ ਵਰਤਿਆ ਜਾਂਦਾ ਹੈ।</translation>
+    </message>
+    <message numerus="yes">
+        <location filename="../qml/pages/SettingsPage.qml" line="294"/>
+        <source>%n change(s) are waiting to be sent to the server.</source>
+        <translation>
+            <numerusform>%n ਤਬਦੀਲੀ ਸਰਵਰ ਨੂੰ ਭੇਜਣ ਦੀ ਉਡੀਕ ਵਿੱਚ ਹੈ।</numerusform>
+            <numerusform>%n ਤਬਦੀਲੀਆਂ ਸਰਵਰ ਨੂੰ ਭੇਜਣ ਦੀ ਉਡੀਕ ਵਿੱਚ ਹਨ।</numerusform>
+        </translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="152"/>
         <source>Images</source>
         <translation>ਤਸਵੀਰਾਂ</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="167"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="157"/>
         <source>Images not proxied by your server</source>
         <translation>ਤੁਹਾਡੇ ਸਰਵਰ ਰਾਹੀਂ ਨਾ ਆਉਣ ਵਾਲੀਆਂ ਤਸਵੀਰਾਂ</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="169"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="159"/>
         <source>Never load</source>
         <translation>ਕਦੇ ਲੋਡ ਨਾ ਕਰੋ</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="170"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="160"/>
         <source>Ask each site</source>
         <translation>ਹਰ ਸਾਈਟ ਲਈ ਪੁੱਛੋ</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="171"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="161"/>
         <source>Always load</source>
         <translation>ਹਮੇਸ਼ਾ ਲੋਡ ਕਰੋ</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="183"/>
-        <source>Miniflux proxies plain-http images only by default, so most images arrive unproxied. Loading them directly tells those sites your IP address and when you read.</source>
-        <translation>Miniflux ਮੂਲ ਰੂਪ ਵਿੱਚ ਸਿਰਫ਼ ਸਾਦੇ HTTP ਦੀਆਂ ਤਸਵੀਰਾਂ ਹੀ ਅੱਗੇ ਭੇਜਦਾ ਹੈ, ਇਸ ਲਈ ਬਹੁਤੀਆਂ ਸਿੱਧੀਆਂ ਆਉਂਦੀਆਂ ਹਨ। ਉਹਨਾਂ ਨੂੰ ਸਿੱਧਾ ਲੋਡ ਕਰਨ ਨਾਲ ਉਹਨਾਂ ਸਾਈਟਾਂ ਨੂੰ ਤੁਹਾਡਾ IP ਪਤਾ ਅਤੇ ਪੜ੍ਹਨ ਦਾ ਸਮਾਂ ਪਤਾ ਲੱਗ ਜਾਂਦਾ ਹੈ।</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="186"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="176"/>
         <source>Synchronisation</source>
         <translation>ਸਮਕਾਲੀਕਰਨ</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="194"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="184"/>
         <source>Sync with server</source>
         <translation>ਸਰਵਰ ਨਾਲ ਸਮਕਾਲੀ ਕਰੋ</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="196"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="186"/>
         <source>Manual only</source>
         <translation>ਸਿਰਫ਼ ਹੱਥੀਂ</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="197"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="187"/>
         <source>Every 15 minutes</source>
         <translation>ਹਰ 15 ਮਿੰਟ</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="198"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="188"/>
         <source>Every 30 minutes</source>
         <translation>ਹਰ 30 ਮਿੰਟ</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="199"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="189"/>
         <source>Hourly</source>
         <translation>ਹਰ ਘੰਟੇ</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="200"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="190"/>
         <source>Every 6 hours</source>
         <translation>ਹਰ 6 ਘੰਟੇ</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="214"/>
-        <source>How often Vuo fetches from your Miniflux server while it is open or on the cover. How often the server itself checks your feeds is set on the server, not here.</source>
-        <translation>Vuo ਖੁੱਲ੍ਹਾ ਹੋਵੇ ਜਾਂ ਕਵਰ ਉੱਤੇ ਹੋਵੇ, ਉਦੋਂ ਤੁਹਾਡੇ Miniflux ਸਰਵਰ ਤੋਂ ਕਿੰਨੀ ਵਾਰ ਲਿਆਉਂਦਾ ਹੈ। ਸਰਵਰ ਆਪ ਫੀਡ ਕਿੰਨੀ ਵਾਰ ਵੇਖਦਾ ਹੈ, ਇਹ ਸਰਵਰ ਉੱਤੇ ਤੈਅ ਹੁੰਦਾ ਹੈ, ਇੱਥੇ ਨਹੀਂ।</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="223"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="213"/>
         <source>Only sync on Wi-Fi</source>
         <translation>ਸਿਰਫ਼ Wi-Fi ਉੱਤੇ ਸਮਕਾਲੀ ਕਰੋ</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="224"/>
-        <source>Vuo syncs on its own only over Wi-Fi, and waits on a mobile connection. A refresh you ask for yourself is always sent.</source>
-        <translation>Vuo ਆਪਣੇ ਆਪ ਸਿਰਫ਼ Wi-Fi ਉੱਤੇ ਸਮਕਾਲੀ ਕਰਦਾ ਹੈ ਅਤੇ ਮੋਬਾਈਲ ਕੁਨੈਕਸ਼ਨ ਉੱਤੇ ਉਡੀਕਦਾ ਹੈ। ਤੁਸੀਂ ਆਪ ਜੋ ਤਾਜ਼ਾ ਕਰਨ ਲਈ ਕਹਿੰਦੇ ਹੋ, ਉਹ ਹਮੇਸ਼ਾ ਭੇਜਿਆ ਜਾਂਦਾ ਹੈ।</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="233"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="223"/>
         <source>Notify about new articles</source>
         <translation>ਨਵੇਂ ਲੇਖਾਂ ਦੀ ਸੂਚਨਾ ਦਿਓ</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="234"/>
-        <source>Shown when a sync finds new articles while Vuo is on the cover. Opening Vuo clears it.</source>
-        <translation>ਜਦੋਂ Vuo ਕਵਰ ਉੱਤੇ ਹੋਵੇ ਅਤੇ ਸਮਕਾਲੀ ਕਰਨ ਨਾਲ ਨਵੇਂ ਲੇਖ ਮਿਲਣ, ਤਾਂ ਸੂਚਨਾ ਦਿਖਦੀ ਹੈ। Vuo ਖੋਲ੍ਹਣ ਨਾਲ ਇਹ ਹਟ ਜਾਂਦੀ ਹੈ।</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="249"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="238"/>
         <source>Keep read articles</source>
         <translation>ਪੜ੍ਹੇ ਲੇਖ ਰੱਖੋ</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="251"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="240"/>
         <source>Forever</source>
         <translation>ਹਮੇਸ਼ਾ ਲਈ</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="252"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="241"/>
         <source>For a month</source>
         <translation>ਇੱਕ ਮਹੀਨਾ</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="253"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="242"/>
         <source>For three months</source>
         <translation>ਤਿੰਨ ਮਹੀਨੇ</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="254"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="243"/>
         <source>For six months</source>
         <translation>ਛੇ ਮਹੀਨੇ</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="255"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="244"/>
         <source>For a year</source>
         <translation>ਇੱਕ ਸਾਲ</translation>
     </message>
     <message>
         <location filename="../qml/pages/SettingsPage.qml" line="270"/>
-        <source>Older articles you have already read are removed from this phone at the end of a sync. Favourites, unread articles and anything not yet sent to the server are always kept, and nothing is removed from your Miniflux server.</source>
-        <translation>ਜਿਹੜੇ ਪੁਰਾਣੇ ਲੇਖ ਤੁਸੀਂ ਪਹਿਲਾਂ ਹੀ ਪੜ੍ਹ ਚੁੱਕੇ ਹੋ, ਉਹ ਸਮਕਾਲੀਕਰਨ ਦੇ ਅੰਤ ਵਿੱਚ ਇਸ ਫ਼ੋਨ ਤੋਂ ਹਟਾ ਦਿੱਤੇ ਜਾਂਦੇ ਹਨ। ਪਸੰਦੀਦਾ, ਅਣਪੜ੍ਹੇ ਲੇਖ ਅਤੇ ਸਰਵਰ ਨੂੰ ਹਾਲੇ ਨਾ ਭੇਜਿਆ ਗਿਆ ਸਭ ਕੁਝ ਹਮੇਸ਼ਾ ਰੱਖਿਆ ਜਾਂਦਾ ਹੈ, ਅਤੇ ਤੁਹਾਡੇ Miniflux ਸਰਵਰ ਤੋਂ ਕੁਝ ਵੀ ਨਹੀਂ ਹਟਾਇਆ ਜਾਂਦਾ।</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="281"/>
         <source>Advanced</source>
         <translation>ਉੱਨਤ</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="285"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="274"/>
         <source>Use a custom CA certificate</source>
         <translation>ਆਪਣਾ CA ਸਰਟੀਫਿਕੇਟ ਵਰਤੋ</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="292"/>
-        <source>For a self-hosted server with a private certificate authority. Place the certificate at ~/.local/share/harbour-vuo/harbour-vuo/ca.pem. Certificate verification is never disabled, and there is no option to disable it.</source>
-        <translation>ਨਿੱਜੀ ਸਰਟੀਫਿਕੇਟ ਅਥਾਰਟੀ ਵਾਲੇ ਆਪਣੇ ਸਰਵਰ ਲਈ। ਸਰਟੀਫਿਕੇਟ ~/.local/share/harbour-vuo/harbour-vuo/ca.pem ਉੱਤੇ ਰੱਖੋ। ਸਰਟੀਫਿਕੇਟ ਦੀ ਜਾਂਚ ਕਦੇ ਬੰਦ ਨਹੀਂ ਹੁੰਦੀ, ਅਤੇ ਇਸ ਨੂੰ ਬੰਦ ਕਰਨ ਦਾ ਕੋਈ ਵਿਕਲਪ ਵੀ ਨਹੀਂ ਹੈ।</translation>
-    </message>
-    <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="293"/>
-        <source>Only applies to an https:// server. This one is not encrypted by TLS, so no certificate is used.</source>
-        <translation>ਇਹ ਸਿਰਫ਼ https:// ਸਰਵਰ ਉੱਤੇ ਲਾਗੂ ਹੁੰਦਾ ਹੈ। ਇਹ TLS ਨਾਲ ਇਨਕ੍ਰਿਪਟ ਨਹੀਂ ਹੈ, ਇਸ ਲਈ ਕੋਈ ਸਰਟੀਫਿਕੇਟ ਨਹੀਂ ਵਰਤਿਆ ਜਾਂਦਾ।</translation>
-    </message>
-    <message numerus="yes">
-        <location filename="../qml/pages/SettingsPage.qml" line="305"/>
-        <source>%n change(s) waiting to be sent to the server.</source>
-        <translation>
-            <numerusform>%n ਤਬਦੀਲੀ ਸਰਵਰ ਨੂੰ ਭੇਜਣ ਦੀ ਉਡੀਕ ਵਿੱਚ ਹੈ।</numerusform>
-            <numerusform>%n ਤਬਦੀਲੀਆਂ ਸਰਵਰ ਨੂੰ ਭੇਜਣ ਦੀ ਉਡੀਕ ਵਿੱਚ ਹਨ।</numerusform>
-        </translation>
     </message>
 </context>
 <context>
@@ -665,8 +643,8 @@
     </message>
     <message>
         <location filename="../qml/pages/SetupDialog.qml" line="112"/>
-        <source>Vuo reads from your own Miniflux instance. It never fetches feeds itself.</source>
-        <translation>Vuo ਤੁਹਾਡੇ ਆਪਣੇ Miniflux ਤੋਂ ਪੜ੍ਹਦਾ ਹੈ। ਇਹ ਕਦੇ ਆਪ ਫੀਡ ਨਹੀਂ ਲਿਆਉਂਦਾ।</translation>
+        <source>Your Miniflux server fetches your feeds, and Vuo shows them.</source>
+        <translation>ਤੁਹਾਡਾ Miniflux ਸਰਵਰ ਤੁਹਾਡੇ ਫੀਡ ਲਿਆਉਂਦਾ ਹੈ, ਅਤੇ Vuo ਉਹਨਾਂ ਨੂੰ ਵਿਖਾਉਂਦਾ ਹੈ।</translation>
     </message>
     <message>
         <location filename="../qml/pages/SetupDialog.qml" line="118"/>

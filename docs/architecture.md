@@ -106,3 +106,47 @@ phone's signal takes.
 `vuo-shim` and `harbour-vuo` are deliberately **not** in the workspace's
 `default-members`, so `cargo build` on a runner without Qt headers does the
 right thing rather than failing for a reason unrelated to the change.
+
+## The words on screen
+
+Every `qsTr()` in `qml/` is translated into 39 languages, so the English is
+not only what a reader sees -- it is the source text a translator works from.
+English that leans on a figure, an idiom or a verbless fragment does not
+survive that trip, and the damage is invisible from here. Four that shipped and
+had to be undone:
+
+- **A figurative verb read literally.** "Marking an article read or unread
+  yourself always *wins*" became *voittaa aina* in Finnish and *az mindig
+  erősebb* ("is always stronger") in Hungarian.
+- **A precise verb flattened.** "The server *scrapes* each article's own page"
+  became plain *reads* in Finnish, Dutch, Russian and Swedish, which loses the
+  one thing the switch does.
+- **A short label resolved the wrong way.** "Hide from unread" became *hide
+  among the unread* in Polish and Swedish.
+- **A loose verb given its other sense.** "Star an article to *keep* it here"
+  became *store* in Dutch and *save* in Swedish.
+
+So a string says what the thing does, once, in a finished sentence:
+
+- One clause with a subject and a verb. No second fragment as a coda, no
+  epigram.
+- Literal verbs. "Downloads", not "scrapes"; "contains", not "carries".
+- Miniflux's label where the control is a Miniflux setting: "Fetch original
+  content", "Do not refresh this feed", "Add feed", "Mark all as read". A
+  string that names a place in Miniflux's web UI quotes Miniflux's own label in
+  each catalog's language -- and English, in a language Miniflux is not
+  translated into, because that is what its reader sees there.
+- "Article", not Miniflux's "entry": it is the reader's word, and the one every
+  catalog already uses.
+- Sentence case, and `…` rather than three dots.
+
+A subtitle under a control earns its place only by saying what the label
+cannot: a consequence that is not obvious (what "Keep read articles" never
+deletes, what loading an unproxied image tells its website) or a thing to do
+(where the CA certificate goes). One that restates its label goes.
+
+Changing a source string orphans its translation in every catalog. `lupdate`
+leaves the new string empty, Qt falls back to English on those phones, and
+nothing fails: `make check` counts messages, not translations (see
+`scripts/check-packaging.sh`). So the cost of getting the English wrong is paid
+39 times, silently. Write it once.

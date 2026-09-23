@@ -36,7 +36,7 @@ Page {
 
         PullDownMenu {
             MenuItem {
-                text: qsTr("Add subscription")
+                text: qsTr("Add feed")
                 onClicked: pageStack.push(Qt.resolvedUrl("AddFeedPage.qml"),
                                           { model: page.model })
             }
@@ -45,7 +45,7 @@ Page {
         ViewPlaceholder {
             enabled: page.model ? page.model.count === 0 : true
             text: qsTr("No feeds")
-            hintText: qsTr("Subscribe from the pulley menu")
+            hintText: qsTr("Pull down to add a feed")
         }
 
         delegate: ListItem {

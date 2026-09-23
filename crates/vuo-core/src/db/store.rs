@@ -415,6 +415,14 @@ pub fn unread_counts_by_feed(
 }
 
 /// How the UI wants entries listed.
+///
+/// `Unread` and `All` leave out every feed the reader has hidden globally --
+/// `hide_globally` on the feed, or on its category -- which is what Miniflux's
+/// own unread list does (`WithGloballyVisible`). The other three do not:
+/// Miniflux keeps a hidden feed's articles on its starred, feed and category
+/// pages, and a feed opened by name that came up empty would read as broken.
+/// An entry whose feed the mirror does not hold is never hidden: `NOT IN` over
+/// the hidden feeds' ids, not `IN` over the visible ones.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EntryFilter {
     Unread,
@@ -470,12 +478,17 @@ pub fn list_entries(
 ) -> Result<Vec<EntryListRow>> {
     const UNREAD: &str = "SELECT id, feed_id, status, starred, title, url, author, published_at, \
         reading_time FROM entries \
-        WHERE status = 'unread' ORDER BY published_at DESC, id DESC LIMIT ?1 OFFSET ?2";
+        WHERE status = 'unread' \
+        AND feed_id NOT IN (SELECT id FROM feeds WHERE hide_globally = 1 \
+        OR category_id IN (SELECT id FROM categories WHERE hide_globally = 1)) \
+        ORDER BY published_at DESC, id DESC LIMIT ?1 OFFSET ?2";
     const STARRED: &str = "SELECT id, feed_id, status, starred, title, url, author, published_at, \
         reading_time FROM entries \
         WHERE starred = 1 ORDER BY published_at DESC, id DESC LIMIT ?1 OFFSET ?2";
     const ALL: &str = "SELECT id, feed_id, status, starred, title, url, author, published_at, \
         reading_time FROM entries \
+        WHERE feed_id NOT IN (SELECT id FROM feeds WHERE hide_globally = 1 \
+        OR category_id IN (SELECT id FROM categories WHERE hide_globally = 1)) \
         ORDER BY published_at DESC, id DESC LIMIT ?1 OFFSET ?2";
     const BY_FEED: &str = "SELECT id, feed_id, status, starred, title, url, author, published_at, \
         reading_time FROM entries \
@@ -542,9 +555,13 @@ pub fn entry_ids_matching(
     conn: &rusqlite::Connection,
     filter: EntryFilter,
 ) -> Result<Vec<EntryId>> {
-    const UNREAD: &str = "SELECT id FROM entries WHERE status = 'unread'";
+    const UNREAD: &str = "SELECT id FROM entries WHERE status = 'unread' \
+        AND feed_id NOT IN (SELECT id FROM feeds WHERE hide_globally = 1 \
+        OR category_id IN (SELECT id FROM categories WHERE hide_globally = 1))";
     const STARRED: &str = "SELECT id FROM entries WHERE starred = 1";
-    const ALL: &str = "SELECT id FROM entries";
+    const ALL: &str = "SELECT id FROM entries \
+        WHERE feed_id NOT IN (SELECT id FROM feeds WHERE hide_globally = 1 \
+        OR category_id IN (SELECT id FROM categories WHERE hide_globally = 1))";
     const BY_FEED: &str = "SELECT id FROM entries WHERE feed_id = ?1";
     const BY_CATEGORY: &str =
         "SELECT id FROM entries WHERE feed_id IN (SELECT id FROM feeds WHERE category_id = ?1)";
@@ -647,9 +664,14 @@ pub fn entry(conn: &rusqlite::Connection, id: EntryId) -> Result<Option<Entry>> 
     Ok(row)
 }
 
+/// What the Unread tab holds, counted: the cover's number, and the total a
+/// new-articles notification states. Hidden feeds are left out for the same
+/// reason as in [`EntryFilter::Unread`], and so that the two never disagree.
 pub fn unread_count(conn: &rusqlite::Connection) -> Result<i64> {
     Ok(conn.query_row(
-        "SELECT COUNT(*) FROM entries WHERE status = 'unread'",
+        "SELECT COUNT(*) FROM entries WHERE status = 'unread' \
+         AND feed_id NOT IN (SELECT id FROM feeds WHERE hide_globally = 1 \
+         OR category_id IN (SELECT id FROM categories WHERE hide_globally = 1))",
         [],
         |r| r.get(0),
     )?)
@@ -663,9 +685,15 @@ pub fn unread_count(conn: &rusqlite::Connection) -> Result<i64> {
 /// "Still unread" is read at the moment of asking rather than at the moment of
 /// arrival, so an article read on another device between the sync that brought
 /// it and the notification that would announce it is simply not counted.
+///
+/// A hidden feed's articles are not announced: a notification that sends the
+/// reader to an Unread tab without them would be announcing nothing. They stay
+/// flagged, and opening Vuo clears them with the rest.
 pub fn arrivals(conn: &rusqlite::Connection) -> Result<Vec<EntryId>> {
     let mut stmt = conn.prepare(
         "SELECT id FROM entries WHERE arrived = 1 AND status = 'unread' \
+         AND feed_id NOT IN (SELECT id FROM feeds WHERE hide_globally = 1 \
+         OR category_id IN (SELECT id FROM categories WHERE hide_globally = 1)) \
          ORDER BY published_at DESC, id DESC",
     )?;
     let rows = stmt.query_map([], |r| Ok(EntryId(r.get(0)?)))?;
@@ -1158,6 +1186,88 @@ mod tests {
              returned an empty list, and nothing noticed."
         );
         assert_eq!(ids(&list(EntryFilter::Category(2))), vec![6, 5]);
+    }
+
+    /// §hide_globally: a hidden feed leaves Unread and All, and nothing else.
+    ///
+    /// The flag was stored, sent to the server and shown as a switch, and read
+    /// by no query at all -- so the switch promised to keep a feed out of the
+    /// Unread and All tabs and changed nothing on this phone. Miniflux hides
+    /// on either flag, the feed's or its category's, so both are exercised.
+    #[test]
+    fn hidden_feeds_leave_unread_and_all_but_nothing_else() {
+        let mut db = populated();
+        db.with_tx(|tx| {
+            // Feed 11 by its own flag; feed 20 by its category's.
+            let mut hidden = feed_in(11, Some(1));
+            hidden.hide_globally = true;
+            upsert_feed(tx, &hidden, 2)?;
+            upsert_category(
+                tx,
+                &Category {
+                    id: CategoryId(2),
+                    title: "Code".to_owned(),
+                    hide_globally: true,
+                },
+                2,
+            )?;
+            // A feed the mirror does not hold yet is not a hidden one.
+            upsert_entry(
+                tx,
+                &entry_at(7, 99, EntryStatus::Unread, false, 700),
+                2,
+                Arrival::Announce,
+            )?;
+            upsert_entry(
+                tx,
+                &entry_at(8, 11, EntryStatus::Unread, false, 800),
+                2,
+                Arrival::Announce,
+            )
+        })
+        .expect("hide");
+        let list = |f| ids(&list_entries(db.conn(), f, 100, 0).expect("list"));
+        let matching = |f| {
+            let mut got = ids_of(&entry_ids_matching(db.conn(), f).expect("ids"));
+            got.sort_unstable();
+            got
+        };
+
+        assert_eq!(list(EntryFilter::Unread), vec![7, 1]);
+        assert_eq!(list(EntryFilter::All), vec![7, 2, 1]);
+        assert_eq!(
+            matching(EntryFilter::Unread),
+            vec![1, 7],
+            "mark all as read on Unread must not reach what Unread does not show"
+        );
+        assert_eq!(matching(EntryFilter::All), vec![1, 2, 7]);
+        assert_eq!(
+            unread_count(db.conn()).expect("count"),
+            2,
+            "the cover's number is the Unread tab's"
+        );
+        assert_eq!(
+            ids_of(&arrivals(db.conn()).expect("arrivals")),
+            vec![7],
+            "a notification announces only what Unread will show"
+        );
+
+        assert_eq!(list(EntryFilter::Starred), vec![3, 2], "starred keeps them");
+        assert_eq!(
+            list(EntryFilter::Feed(11)),
+            vec![8, 4, 3],
+            "so does the feed"
+        );
+        assert_eq!(
+            list(EntryFilter::Category(2)),
+            vec![6, 5],
+            "and the category"
+        );
+        assert_eq!(
+            unread_counts_by_feed(db.conn()).expect("per feed").get(&11),
+            Some(&2),
+            "the feed list's badge counts the feed's own unread"
+        );
     }
 
     #[test]
