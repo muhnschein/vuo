@@ -211,11 +211,37 @@ pub fn delete_feed(tx: &Transaction<'_>, id: FeedId) -> Result<()> {
 
 // ---------------------------------------------------------------- entries
 
+/// Whether an entry reaching the mirror for the FIRST time is news.
+///
+/// Decided by the caller, which is the only one that knows: the pull knows
+/// whether this is the first pass a mirror has ever had, and where its window
+/// began. See [`crate::sync::pull::arrival_for`] for the rule.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Arrival {
+    /// An INSERT marks the entry as having arrived, if it is unread. An update
+    /// of a row already held changes nothing, whatever this says.
+    Announce,
+    /// Insert without marking. Everything that is not the incremental pull.
+    Quiet,
+}
+
 /// Insert or update an entry, honouring pending local intents.
 ///
 /// See the module docs: the conflict rule is per field. A field with a pending
 /// outbox row keeps its local value; every other field takes the server's.
-pub fn upsert_entry(tx: &Transaction<'_>, e: &Entry, generation: i64) -> Result<()> {
+///
+/// `arrival` reaches only the INSERT half of the statement. The `DO UPDATE`
+/// clause deliberately does not name `arrived`, so a row the mirror already
+/// holds keeps whatever it had -- which is the whole mechanism by which "new"
+/// means "new to this phone" rather than "seen again in this pass". The cursor
+/// re-reads a minute of overlap on every pass, and those rows must not come
+/// back as news.
+pub fn upsert_entry(
+    tx: &Transaction<'_>,
+    e: &Entry,
+    generation: i64,
+    arrival: Arrival,
+) -> Result<()> {
     let pending_status = outbox::pending_for(tx, e.id, OutboxField::Status)?;
     let pending_starred = outbox::pending_for(tx, e.id, OutboxField::Starred)?;
 
@@ -230,11 +256,17 @@ pub fn upsert_entry(tx: &Transaction<'_>, e: &Entry, generation: i64) -> Result<
 
     let tags = serde_json::to_string(&e.tags).unwrap_or_else(|_| "[]".to_owned());
 
+    // Only an unread arrival is news. One that arrives already read -- marked
+    // on another device before this phone synced -- is not something to tell
+    // the reader about.
+    let arrived = arrival == Arrival::Announce && status == EntryStatus::Unread;
+
     tx.execute(
         "INSERT INTO entries (id, feed_id, status, starred, title, url, comments_url, author,
                               content, published_at, created_at, changed_at, reading_time, tags,
-                              last_seen_sync)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
+                              last_seen_sync, arrived)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)
+         -- `arrived` is absent below ON PURPOSE: see the doc comment.
          ON CONFLICT(id) DO UPDATE SET
              feed_id = excluded.feed_id,
              status = excluded.status,
@@ -272,6 +304,7 @@ pub fn upsert_entry(tx: &Transaction<'_>, e: &Entry, generation: i64) -> Result<
             i64::from(e.reading_time),
             tags,
             generation,
+            i64::from(arrived),
         ],
     )?;
 
@@ -622,6 +655,58 @@ pub fn unread_count(conn: &rusqlite::Connection) -> Result<i64> {
     )?)
 }
 
+// --------------------------------------------------------------- arrivals
+
+/// The articles that arrived since the reader last looked, and are still
+/// unread, newest first.
+///
+/// "Still unread" is read at the moment of asking rather than at the moment of
+/// arrival, so an article read on another device between the sync that brought
+/// it and the notification that would announce it is simply not counted.
+pub fn arrivals(conn: &rusqlite::Connection) -> Result<Vec<EntryId>> {
+    let mut stmt = conn.prepare(
+        "SELECT id FROM entries WHERE arrived = 1 AND status = 'unread' \
+         ORDER BY published_at DESC, id DESC",
+    )?;
+    let rows = stmt.query_map([], |r| Ok(EntryId(r.get(0)?)))?;
+    Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
+}
+
+/// Stop treating these entries as new.
+///
+/// By id, and only these: what a dismissed notification covered is exactly
+/// what the reader has been told about. Clearing every flag instead would
+/// silently swallow whatever a sync brought in the minutes between the
+/// notification going up and the reader swiping it away.
+pub fn acknowledge_arrivals(tx: &Transaction<'_>, ids: &[EntryId]) -> Result<usize> {
+    let mut stmt = tx.prepare("UPDATE entries SET arrived = 0 WHERE id = ?1 AND arrived = 1")?;
+    let mut cleared = 0usize;
+    for id in ids {
+        cleared += stmt.execute([id.get()])?;
+    }
+    Ok(cleared)
+}
+
+/// Whether anything at all is marked as arrived, read or not.
+///
+/// Asked before [`acknowledge_all_arrivals`], which runs on the Qt thread
+/// every time the mirror changes while Vuo is open. That write almost always
+/// finds nothing to do, and a write transaction that finds nothing still takes
+/// the write lock -- and waits behind the worker for it. This is a read, over a
+/// partial index that is empty in that case.
+pub fn any_arrivals(conn: &rusqlite::Connection) -> Result<bool> {
+    Ok(conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM entries WHERE arrived = 1)",
+        [],
+        |r| r.get(0),
+    )?)
+}
+
+/// Stop treating anything as new: the reader has Vuo open in front of them.
+pub fn acknowledge_all_arrivals(tx: &Transaction<'_>) -> Result<usize> {
+    Ok(tx.execute("UPDATE entries SET arrived = 0 WHERE arrived = 1", [])?)
+}
+
 // ------------------------------------------------------------------ icons
 
 pub fn upsert_icon(tx: &Transaction<'_>, icon: &Icon) -> Result<()> {
@@ -907,12 +992,42 @@ mod tests {
             upsert_feed(tx, &feed_in(20, Some(2)), 1)?;
 
             // published_at ascending with id, so "newest first" is id-descending.
-            upsert_entry(tx, &entry_at(1, 10, EntryStatus::Unread, false, 100), 1)?;
-            upsert_entry(tx, &entry_at(2, 10, EntryStatus::Read, true, 200), 1)?;
-            upsert_entry(tx, &entry_at(3, 11, EntryStatus::Unread, true, 300), 1)?;
-            upsert_entry(tx, &entry_at(4, 11, EntryStatus::Read, false, 400), 1)?;
-            upsert_entry(tx, &entry_at(5, 20, EntryStatus::Unread, false, 500), 1)?;
-            upsert_entry(tx, &entry_at(6, 20, EntryStatus::Read, false, 600), 1)?;
+            upsert_entry(
+                tx,
+                &entry_at(1, 10, EntryStatus::Unread, false, 100),
+                1,
+                Arrival::Quiet,
+            )?;
+            upsert_entry(
+                tx,
+                &entry_at(2, 10, EntryStatus::Read, true, 200),
+                1,
+                Arrival::Quiet,
+            )?;
+            upsert_entry(
+                tx,
+                &entry_at(3, 11, EntryStatus::Unread, true, 300),
+                1,
+                Arrival::Quiet,
+            )?;
+            upsert_entry(
+                tx,
+                &entry_at(4, 11, EntryStatus::Read, false, 400),
+                1,
+                Arrival::Quiet,
+            )?;
+            upsert_entry(
+                tx,
+                &entry_at(5, 20, EntryStatus::Unread, false, 500),
+                1,
+                Arrival::Quiet,
+            )?;
+            upsert_entry(
+                tx,
+                &entry_at(6, 20, EntryStatus::Read, false, 600),
+                1,
+                Arrival::Quiet,
+            )?;
             Ok(())
         })
         .expect("seed");
@@ -1003,7 +1118,7 @@ mod tests {
                 mime_type: "audio/mpeg".to_owned(),
                 size: 1,
             }];
-            upsert_entry(tx, &e, 2)
+            upsert_entry(tx, &e, 2, Arrival::Quiet)
         })
         .expect("enclosure");
 
@@ -1083,7 +1198,7 @@ mod tests {
         db.with_tx(|tx| {
             let mut remote = entry_at(1, 10, EntryStatus::Unread, true, 100);
             remote.title = "remote title".to_owned();
-            upsert_entry(tx, &remote, 2)
+            upsert_entry(tx, &remote, 2, Arrival::Quiet)
         })
         .expect("pull");
         let e = entry(db.conn(), EntryId(1))
@@ -1100,8 +1215,15 @@ mod tests {
         // Pending STARRED, remote changes STATUS. The mirror case.
         db.with_tx(|tx| outbox::queue(tx, EntryId(5), outbox::DesiredValue::Starred(true), 1))
             .expect("queue star");
-        db.with_tx(|tx| upsert_entry(tx, &entry_at(5, 20, EntryStatus::Read, false, 500), 2))
-            .expect("pull");
+        db.with_tx(|tx| {
+            upsert_entry(
+                tx,
+                &entry_at(5, 20, EntryStatus::Read, false, 500),
+                2,
+                Arrival::Quiet,
+            )
+        })
+        .expect("pull");
         let e = entry(db.conn(), EntryId(5))
             .expect("read")
             .expect("present");
@@ -1201,7 +1323,7 @@ mod tests {
             e.url = crate::content::MediaUrl::parse("https://example.test/a");
             // A body far larger than anything the row should carry.
             e.content = "x".repeat(200_000);
-            upsert_entry(tx, &e, 1)
+            upsert_entry(tx, &e, 1, Arrival::Quiet)
         })
         .expect("seed");
 
@@ -1292,16 +1414,97 @@ mod tests {
                 .expect("count")
         };
 
-        db.with_tx(|tx| upsert_entry(tx, &with_two(3), 2))
+        db.with_tx(|tx| upsert_entry(tx, &with_two(3), 2, Arrival::Quiet))
             .expect("first");
         assert_eq!(count(&db), 3);
-        db.with_tx(|tx| upsert_entry(tx, &with_two(1), 3))
+        db.with_tx(|tx| upsert_entry(tx, &with_two(1), 3, Arrival::Quiet))
             .expect("second");
         assert_eq!(
             count(&db),
             1,
             "the previous set must be replaced, not added to"
         );
+    }
+    /// §what a notification reads: unread arrivals, newest first.
+    ///
+    /// Read at the moment of asking, so an arrival read since -- here on
+    /// this phone, or elsewhere and brought back by a sync -- is simply not
+    /// counted any more; the reader is not told about something they have
+    /// already read.
+    #[test]
+    fn arrivals_are_the_unread_ones_newest_first_with_a_few_titles() {
+        let mut db = Database::open_in_memory().expect("mirror");
+        db.with_tx(|tx| {
+            upsert_feed(tx, &feed_in(10, None), 1)?;
+            for (id, published) in [(1, 100), (2, 300), (3, 200), (4, 400)] {
+                upsert_entry(
+                    tx,
+                    &entry_at(id, 10, EntryStatus::Unread, false, published),
+                    1,
+                    Arrival::Announce,
+                )?;
+            }
+            // Held before the reader last looked: not news.
+            upsert_entry(
+                tx,
+                &entry_at(5, 10, EntryStatus::Unread, false, 500),
+                1,
+                Arrival::Quiet,
+            )
+        })
+        .expect("seed");
+
+        // 4 is read after arriving, as a sync from another device would.
+        db.with_tx(|tx| {
+            upsert_entry(
+                tx,
+                &entry_at(4, 10, EntryStatus::Read, false, 400),
+                2,
+                Arrival::Announce,
+            )
+        })
+        .expect("read elsewhere");
+
+        assert_eq!(
+            ids_of(&arrivals(db.conn()).expect("arrivals")),
+            vec![2, 3, 1],
+            "unread arrivals, newest first"
+        );
+    }
+
+    /// §a dismissal acknowledges what it covered, and nothing that came after.
+    #[test]
+    fn acknowledging_clears_exactly_the_ids_given_or_everything() {
+        let mut db = Database::open_in_memory().expect("mirror");
+        db.with_tx(|tx| {
+            upsert_feed(tx, &feed_in(10, None), 1)?;
+            for id in 1..=4 {
+                upsert_entry(
+                    tx,
+                    &entry_at(id, 10, EntryStatus::Unread, false, id * 100),
+                    1,
+                    Arrival::Announce,
+                )?;
+            }
+            Ok(())
+        })
+        .expect("seed");
+
+        // 3 arrived after the notification went up, so it is not in the list
+        // the dismissal carries -- and 99 is not in the mirror at all.
+        let cleared = db
+            .with_tx(|tx| acknowledge_arrivals(tx, &[EntryId(1), EntryId(2), EntryId(99)]))
+            .expect("acknowledge");
+        assert_eq!(cleared, 2);
+        assert_eq!(ids_of(&arrivals(db.conn()).expect("arrivals")), vec![4, 3]);
+
+        assert!(any_arrivals(db.conn()).expect("any"));
+        let cleared = db
+            .with_tx(acknowledge_all_arrivals)
+            .expect("acknowledge all");
+        assert_eq!(cleared, 2);
+        assert!(arrivals(db.conn()).expect("arrivals").is_empty());
+        assert!(!any_arrivals(db.conn()).expect("any"));
     }
 }
 

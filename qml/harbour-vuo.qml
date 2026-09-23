@@ -1,5 +1,6 @@
 import QtQuick 2.6
 import Sailfish.Silica 1.0
+import Nemo.Notifications 1.0
 import Vuo 1.0
 import "pages"
 import "cover"
@@ -69,6 +70,83 @@ ApplicationWindow {
     // be a name no page declares.
     Settings { id: accountSettings }
 
+    // The notification for new articles.
+    //
+    // `arrivals` reads the mirror and decides; `arrivalNotice` is how the
+    // decision reaches the home screen. One notification, replaced in place,
+    // never one per article: a sync that brings forty articles is one piece of
+    // news, not forty.
+    Arrivals { id: arrivals }
+
+    /// What `arrivals.review` answers. Mirrors `arrivals::ANNOUNCE_*`, and
+    /// `arrivals::tests` holds the two to the same numbers.
+    readonly property int announceNothing: 0
+    readonly property int announceBanner: 1
+    readonly property int announceQuiet: 2
+    readonly property int announceWithdraw: 3
+
+    Notification {
+        id: arrivalNotice
+        appName: "Vuo"
+        appIcon: "/usr/share/icons/hicolor/172x172/apps/harbour-vuo.png"
+        // Without an action named "default" the home screen offers nothing to
+        // tap, and `clicked` is never emitted: the plugin raises it only when
+        // that action is invoked. No D-Bus target, because Harbour gives Vuo
+        // no service to be started through -- so a tap does something only
+        // while Vuo is running, which is the only time it can have published.
+        remoteActions: [ { "name": "default" } ]
+        onClicked: app.activate()
+        // Whatever the reason. The plugin's own CloseReason enum starts at 0
+        // (Expired) where lipstick's starts at 1, so `DismissedByUser` there
+        // is lipstick's "expired" -- a comparison against it would be wrong
+        // on a device and right against any stub. It does not matter here:
+        // this notification never expires on its own, and a close Vuo asks
+        // for itself is not reported back, so a close that arrives at all is
+        // the reader's doing.
+        onClosed: arrivals.dismissed()
+    }
+
+    /// Bring the notification for new articles up to date with the mirror.
+    ///
+    /// Called whenever the poll finds that the mirror changed, and on every
+    /// move to the front or to the cover. While Vuo is in front of the reader
+    /// this acknowledges everything and takes the notification down.
+    function announceArrivals() {
+        var action = arrivals.review(Qt.application.active,
+                                     accountSettings.notifyNewArticles)
+        if (action === app.announceWithdraw) {
+            arrivalNotice.close()
+            return
+        }
+        if (action !== app.announceBanner && action !== app.announceQuiet) {
+            return
+        }
+        // Numbers and nothing else: no titles, no body, and no itemCount,
+        // whose default of 1 is what keeps the home screen from drawing a
+        // badge beside a number the summary already says.
+        var count = arrivals.articleCount()
+        var total = arrivals.unreadTotal()
+        var summary = qsTr("%n new article(s)", "", count)
+        // Then the cover's number, so the two screens agree: "11 new
+        // articles · 14 unread". Only when it says something -- every
+        // arrival is unread, so a total no bigger than the count means
+        // nothing else is, and "3 new articles · 3 unread" says it twice.
+        // Joined as the list joins its details, outside the translations.
+        if (total > count) {
+            summary += " \u00b7 " + qsTr("%n unread", "", total)
+        }
+        arrivalNotice.summary = summary
+        // A banner only for news. A quiet update has to EMPTY the preview
+        // rather than leave it unset: the plugin fills an unset preview in
+        // from the summary, and would pop a banner to say that there is now
+        // less to read. Emptying works because a quiet update only ever
+        // follows a banner on this object, which is what set it. The preview
+        // body is never set, so the plugin fills it from the body: empty.
+        var banner = action === app.announceBanner
+        arrivalNotice.previewSummary = banner ? arrivalNotice.summary : ""
+        arrivalNotice.publish()
+    }
+
     // Models observe SQLite, and the worker writes to SQLite from another
     // thread. This is how they find out. A poll rather than a signal because
     // QML owns these objects: Rust has no handle on a live model to call into,
@@ -128,7 +206,9 @@ ApplicationWindow {
         repeat: true
         running: app._watching || accountSettings.coverPollMs > 0
         onTriggered: {
-            app.pollModels()
+            if (app.pollModels()) {
+                app.announceArrivals()
+            }
             // `syncing` reads the worker's flag directly, so this is current
             // whether or not the tick above emitted anything.
             if (app._watchingCoverRefresh && !entries.syncing) {
@@ -154,6 +234,10 @@ ApplicationWindow {
             // a second and a half later.
             app.pollModels()
         }
+        // Both ways. In: the reader is looking, so the notification comes
+        // down. Out: anything that landed in the moment before they left is
+        // theirs to be told about, and the switch was just re-read above.
+        app.announceArrivals()
     }
 
     Component.onCompleted: {
@@ -169,6 +253,15 @@ ApplicationWindow {
         starredEntries.setScope(1, 0)
         allEntries.setScope(2, 0)
         feeds.refresh()
+        // A notification the previous run left up. `arrivalNotice` only knows
+        // the one it published itself, and the home screen keeps them after
+        // the process that raised them has gone -- where a tap on one could
+        // do nothing at all. The reader is opening Vuo, which is what it was
+        // asking them to do.
+        var stale = arrivalNotice.notifications()
+        for (var i = 0; i < stale.length; i++) {
+            stale[i].close()
+        }
     }
 
     Component {

@@ -22,7 +22,7 @@
     clippy::borrow_as_ptr
 )]
 
-use qmetaobject::*;
+use qmetaobject::{QByteArray, QMetaType, QString, QVariant, QmlEngine};
 
 /// Loads the cover at a size, since the stub `CoverBackground` has none of
 /// its own, and reads it back.

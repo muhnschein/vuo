@@ -42,7 +42,7 @@
     clippy::panic,
     clippy::indexing_slicing
 )]
-use qmetaobject::*;
+use qmetaobject::{CompilationMode, ComponentStatus, QString, QUrl, QmlComponent, QmlEngine};
 
 /// Set on the re-executed child to name the one file it should load.
 const CHILD_VAR: &str = "VUO_QML_LOAD_ONE";

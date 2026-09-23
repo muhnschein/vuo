@@ -238,7 +238,7 @@ async fn a_server_change_to_a_locally_mutated_entry_resolves_by_the_stated_rule(
         serde_json::from_value(entry_json(1, 1, "read", false)).unwrap(),
     )
     .unwrap();
-    db.with_tx(|tx| store::upsert_entry(tx, &remote, 1))
+    db.with_tx(|tx| store::upsert_entry(tx, &remote, 1, store::Arrival::Quiet))
         .unwrap();
 
     let stored = store::entry(db.conn(), EntryId(1)).unwrap().expect("entry");

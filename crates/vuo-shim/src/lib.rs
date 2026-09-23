@@ -55,6 +55,7 @@
     )
 )]
 
+pub mod arrivals;
 pub mod article;
 pub mod context;
 pub mod memory;
@@ -63,7 +64,7 @@ pub mod settings;
 pub mod worker;
 
 use cstr::cstr;
-use qmetaobject::*;
+use qmetaobject::qml_register_type;
 
 /// Register Vuo's types with the QML engine.
 ///
@@ -74,6 +75,7 @@ pub fn register_qml_types() {
     qml_register_type::<models::FeedModel>(cstr!("Vuo"), 1, 0, cstr!("FeedModel"));
     qml_register_type::<article::ArticleModel>(cstr!("Vuo"), 1, 0, cstr!("ArticleModel"));
     qml_register_type::<settings::Settings>(cstr!("Vuo"), 1, 0, cstr!("Settings"));
+    qml_register_type::<arrivals::Arrivals>(cstr!("Vuo"), 1, 0, cstr!("Arrivals"));
 }
 
 /// C ABI entry point, for a Sailfish binary whose `main` is C++.
@@ -89,6 +91,9 @@ pub extern "C" fn vuo_register_qml_types() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    // For `row_count`. Here rather than beside `qml_register_type` above,
+    // where the non-test build would find it unused.
+    use qmetaobject::QAbstractListModel;
     use vuo_core::content::{MediaPolicy, TransformContext};
 
     /// The offscreen Qt smoke test §8.1 asks for.
@@ -121,6 +126,7 @@ mod tests {
         assert_eq!(models::FeedModel::default().row_count(), 0);
         assert_eq!(article::ArticleModel::default().row_count(), 0);
         assert_eq!(settings::Settings::default().sync_interval_minutes(), None);
+        let _ = arrivals::Arrivals::default();
     }
 
     #[test]

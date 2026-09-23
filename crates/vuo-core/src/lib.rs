@@ -16,6 +16,8 @@
 //! - [`sync`] — the incremental pull and the idempotent outbox replay.
 //! - [`model`] — the strict domain types.
 //! - [`content`] — the HTML → render-block transform (§9.2, §9.3).
+//! - [`notify`] — deciding what the new-articles notification says, and
+//!   making feed titles fit for a surface Vuo does not control.
 //! - [`redact`] — keeping the API token and credentials out of error paths.
 //! - [`error`] — the error taxonomy, and the retry classification the outbox
 //!   depends on.
@@ -55,6 +57,7 @@ pub mod db;
 pub mod error;
 pub mod model;
 pub mod net;
+pub mod notify;
 pub mod redact;
 pub mod sync;
 

@@ -28,7 +28,10 @@
 
 use std::collections::{HashMap, HashSet};
 
-use qmetaobject::*;
+use qmetaobject::{
+    qt_base_class, qt_method, qt_property, qt_signal, QAbstractListModel, QByteArray, QMetaType,
+    QModelIndex, QObject, QString, QVariant, QVariantList, USER_ROLE,
+};
 use vuo_core::db::store;
 #[allow(unused_imports)]
 use vuo_core::model::FeedId;
@@ -1499,6 +1502,7 @@ mod row_decoration_tests {
                     enclosures: Vec::new(),
                 },
                 1,
+                store::Arrival::Quiet,
             )
         })
         .expect("seed");
@@ -1737,7 +1741,7 @@ mod row_decoration_tests {
     }
 
     fn put(ctx: &AppContext, entry: &Entry) {
-        ctx.write(|db| db.with_tx(|tx| store::upsert_entry(tx, entry, 1)))
+        ctx.write(|db| db.with_tx(|tx| store::upsert_entry(tx, entry, 1, store::Arrival::Quiet)))
             .expect("the mirror")
             .expect("upsert");
     }
@@ -2003,6 +2007,7 @@ mod row_decoration_tests {
                             enclosures: Vec::new(),
                         },
                         1,
+                        store::Arrival::Quiet,
                     )?;
                 }
                 Ok(())

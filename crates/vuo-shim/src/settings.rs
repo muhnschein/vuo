@@ -17,7 +17,7 @@
 // `qt_base_class!(trait QAbstractListModel)`, which expands differently.
 #![allow(clippy::useless_transmute)]
 
-use qmetaobject::*;
+use qmetaobject::{qt_base_class, qt_method, qt_property, qt_signal, QObject, QString};
 
 use crate::context::AppContext;
 use crate::worker::{self, Account, AppPaths, Command};
@@ -119,6 +119,10 @@ pub struct Settings {
     /// How long read articles are kept locally. See [`RETENTION_DAYS`].
     retentionIndex: qt_property!(i32; NOTIFY changed),
     wifiOnly: qt_property!(bool; NOTIFY changed),
+    /// Raise a notification when a sync finds new articles while Vuo is on
+    /// its cover. Read by the root window rather than the worker: the worker
+    /// only writes the mirror, and the notification is the UI's to raise.
+    notifyNewArticles: qt_property!(bool; NOTIFY changed),
     /// How often the root window polls the mirror while the app is NOT
     /// active, in milliseconds; 0 for "do not poll at all".
     ///
@@ -222,6 +226,7 @@ impl Settings {
         self.wifiOnly = account.wifi_only;
         self.markReadDelayIndex = account.mark_read_delay_index;
         self.retentionIndex = account.retention_index;
+        self.notifyNewArticles = account.notify_new_articles;
     }
 
     fn is_configured(&self) -> bool {
@@ -294,6 +299,7 @@ impl Settings {
             wifi_only: self.wifiOnly,
             mark_read_delay_index: self.markReadDelayIndex,
             retention_index: self.retentionIndex,
+            notify_new_articles: self.notifyNewArticles,
         };
         if account.server_url.is_empty() || account.token.is_empty() {
             return;
@@ -578,6 +584,10 @@ mod tests {
             "sync: hourly"
         );
         assert_eq!(s.markReadDelayIndex, MARK_READ_DEFAULT_INDEX);
+        assert!(
+            !s.notifyNewArticles,
+            "notifications: off until the reader asks for them"
+        );
 
         // And what the setup dialog stores. It shows none of these controls,
         // so the account it writes carries whatever this object holds -- which
@@ -594,6 +604,7 @@ mod tests {
         assert_eq!(stored.media_policy, MEDIA_ASK);
         assert_eq!(stored.sync_interval_index, SYNC_INTERVAL_DEFAULT_INDEX);
         assert_eq!(stored.mark_read_delay_index, MARK_READ_DEFAULT_INDEX);
+        assert!(!stored.notify_new_articles);
     }
 
     /// A QML-invoked method emits its signal LAST, and touches `self` no more.
@@ -684,6 +695,7 @@ mod tests {
             mediaPolicy: MEDIA_ALLOW,
             syncIntervalIndex: 3,
             wifiOnly: true,
+            notifyNewArticles: true,
             ..Settings::default()
         };
         written.save_to(&paths);
@@ -697,6 +709,7 @@ mod tests {
         assert_eq!(read.syncIntervalIndex, 3);
         assert!(read.wifiOnly);
         assert!(read.useCustomCa);
+        assert!(read.notifyNewArticles);
     }
 
     #[test]
@@ -709,6 +722,10 @@ mod tests {
         let read = worker::load_account(&path).expect("an older account file must still load");
         assert_eq!(read.media_policy, MEDIA_ASK, "and get the safe default");
         assert!(!read.wifi_only);
+        assert!(
+            !read.notify_new_articles,
+            "an upgrade does not start raising notifications by itself"
+        );
     }
 
     #[test]

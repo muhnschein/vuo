@@ -128,17 +128,17 @@
 <context>
     <name>CoverPage</name>
     <message>
-        <location filename="../qml/cover/CoverPage.qml" line="228"/>
+        <location filename="../qml/cover/CoverPage.qml" line="225"/>
         <source>Sign-in failed</source>
         <translation>સાઇન-ઇન નિષ્ફળ</translation>
     </message>
     <message>
-        <location filename="../qml/cover/CoverPage.qml" line="228"/>
+        <location filename="../qml/cover/CoverPage.qml" line="225"/>
         <source>Refresh failed</source>
         <translation>તાજું કરવું નિષ્ફળ</translation>
     </message>
     <message>
-        <location filename="../qml/cover/CoverPage.qml" line="229"/>
+        <location filename="../qml/cover/CoverPage.qml" line="226"/>
         <source>Refreshing</source>
         <translation>તાજું થાય છે</translation>
     </message>
@@ -413,227 +413,237 @@
 <context>
     <name>SettingsPage</name>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="72"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="73"/>
         <source>Settings</source>
         <translation>સેટિંગ્સ</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="74"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="75"/>
         <source>Account</source>
         <translation>ખાતું</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="79"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="80"/>
         <source>Server address</source>
         <translation>સર્વરનું સરનામું</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="80"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="81"/>
         <source>https://miniflux.example.com</source>
         <translation>https://miniflux.udaharan.com</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="88"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="89"/>
         <source>API key</source>
         <translation>API કી</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="105"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="106"/>
         <source>Create a key in Miniflux under Settings → API Keys.</source>
         <translation>Miniflux માં Settings → API Keys નીચે કી બનાવો.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="110"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="111"/>
         <source>Test connection</source>
         <translation>જોડાણ ચકાસો</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="131"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="132"/>
         <source>Connected as %1</source>
         <translation>%1 તરીકે જોડાયેલ</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="132"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="133"/>
         <source>Test failed: %1</source>
         <translation>ચકાસણી નિષ્ફળ: %1</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="135"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="136"/>
         <source>Reading</source>
         <translation>વાચન</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="140"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="141"/>
         <source>Mark as read when opened</source>
         <translation>ખોલતાં વાંચેલો ગણો</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="142"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="143"/>
         <source>Never</source>
         <translation>કદી નહીં</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="143"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="144"/>
         <source>Immediately</source>
         <translation>તરત</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="144"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="145"/>
         <source>After 5 seconds</source>
         <translation>5 સેકન્ડ પછી</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="145"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="146"/>
         <source>After 15 seconds</source>
         <translation>15 સેકન્ડ પછી</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="146"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="147"/>
         <source>After 30 seconds</source>
         <translation>30 સેકન્ડ પછી</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="158"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="159"/>
         <source>The delay counts only while the article is on screen. Marking an article read or unread yourself always wins.</source>
         <translation>લેખ પડદા પર હોય ત્યારે જ સમય ગણાય છે. તમે જાતે વાંચેલો કે ન વાંચેલો ગણો તે હંમેશાં ઉપર રહે છે.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="161"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="162"/>
         <source>Images</source>
         <translation>છબીઓ</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="166"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="167"/>
         <source>Images not proxied by your server</source>
         <translation>તમારા સર્વર મારફતે ન આવતી છબીઓ</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="168"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="169"/>
         <source>Never load</source>
         <translation>કદી લોડ ન કરો</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="169"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="170"/>
         <source>Ask each site</source>
         <translation>દરેક સાઇટ માટે પૂછો</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="170"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="171"/>
         <source>Always load</source>
         <translation>હંમેશાં લોડ કરો</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="182"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="183"/>
         <source>Miniflux proxies plain-http images only by default, so most images arrive unproxied. Loading them directly tells those sites your IP address and when you read.</source>
         <translation>Miniflux મૂળભૂત રીતે માત્ર સાદા HTTP ની છબીઓ જ આગળ મોકલે છે, તેથી મોટા ભાગની સીધી આવે છે. તેમને સીધી લોડ કરવાથી એ સાઇટોને તમારું IP સરનામું અને વાંચવાનો સમય જાણવા મળે છે.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="185"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="186"/>
         <source>Synchronisation</source>
         <translation>સુમેળ</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="193"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="194"/>
         <source>Sync with server</source>
         <translation>સર્વર સાથે સુમેળ</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="195"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="196"/>
         <source>Manual only</source>
         <translation>ફક્ત જાતે</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="196"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="197"/>
         <source>Every 15 minutes</source>
         <translation>દર 15 મિનિટે</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="197"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="198"/>
         <source>Every 30 minutes</source>
         <translation>દર 30 મિનિટે</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="198"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="199"/>
         <source>Hourly</source>
         <translation>દર કલાકે</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="199"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="200"/>
         <source>Every 6 hours</source>
         <translation>દર 6 કલાકે</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="213"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="214"/>
         <source>How often Vuo fetches from your Miniflux server while it is open or on the cover. How often the server itself checks your feeds is set on the server, not here.</source>
         <translation>Vuo ખુલ્લું હોય કે કવર પર હોય ત્યારે તમારા Miniflux સર્વર પરથી કેટલી વાર લાવે છે. સર્વર પોતે ફીડ કેટલી વાર તપાસે છે તે સર્વર પર નક્કી થાય છે, અહીં નહીં.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="222"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="223"/>
         <source>Only sync on Wi-Fi</source>
         <translation>ફક્ત Wi-Fi પર સુમેળ</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="223"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="224"/>
         <source>Vuo syncs on its own only over Wi-Fi, and waits on a mobile connection. A refresh you ask for yourself is always sent.</source>
         <translation>Vuo જાતે ફક્ત Wi-Fi પર સુમેળ કરે છે અને મોબાઇલ જોડાણ પર રાહ જુએ છે. તમે પોતે માગેલું તાજું કરવું હંમેશાં મોકલાય છે.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="238"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="233"/>
+        <source>Notify about new articles</source>
+        <translation>નવા લેખની સૂચના આપો</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="234"/>
+        <source>Shown when a sync finds new articles while Vuo is on the cover. Opening Vuo clears it.</source>
+        <translation>Vuo કવર પર હોય ત્યારે સુમેળમાં નવા લેખ મળે તો સૂચના દેખાય છે. Vuo ખોલવાથી તે દૂર થાય છે.</translation>
+    </message>
+    <message>
+        <location filename="../qml/pages/SettingsPage.qml" line="249"/>
         <source>Keep read articles</source>
         <translation>વાંચેલા લેખ રાખો</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="240"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="251"/>
         <source>Forever</source>
         <translation>હંમેશાં</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="241"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="252"/>
         <source>For a month</source>
         <translation>એક મહિનો</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="242"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="253"/>
         <source>For three months</source>
         <translation>ત્રણ મહિના</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="243"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="254"/>
         <source>For six months</source>
         <translation>છ મહિના</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="244"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="255"/>
         <source>For a year</source>
         <translation>એક વર્ષ</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="259"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="270"/>
         <source>Older articles you have already read are removed from this phone at the end of a sync. Favourites, unread articles and anything not yet sent to the server are always kept, and nothing is removed from your Miniflux server.</source>
         <translation>તમે વાંચી ચૂક્યા હો તેવા જૂના લેખ સુમેળના અંતે આ ફોનમાંથી કાઢી નખાય છે. પ્રિય, ન વાંચેલા લેખ અને સર્વર પર હજી ન મોકલાયેલું બધું હંમેશાં રહે છે, અને તમારા Miniflux સર્વર પરથી કશું કઢાતું નથી.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="270"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="281"/>
         <source>Advanced</source>
         <translation>અદ્યતન</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="274"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="285"/>
         <source>Use a custom CA certificate</source>
         <translation>પોતાનું CA પ્રમાણપત્ર વાપરો</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="281"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="292"/>
         <source>For a self-hosted server with a private certificate authority. Place the certificate at ~/.local/share/harbour-vuo/harbour-vuo/ca.pem. Certificate verification is never disabled, and there is no option to disable it.</source>
         <translation>ખાનગી પ્રમાણપત્ર સત્તા ધરાવતા પોતાના સર્વર માટે. પ્રમાણપત્ર ~/.local/share/harbour-vuo/harbour-vuo/ca.pem પર મૂકો. પ્રમાણપત્ર ચકાસણી કદી બંધ થતી નથી, અને તે બંધ કરવાનો વિકલ્પ પણ નથી.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/SettingsPage.qml" line="282"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="293"/>
         <source>Only applies to an https:// server. This one is not encrypted by TLS, so no certificate is used.</source>
         <translation>આ ફક્ત https:// સર્વરને લાગુ પડે છે. આ TLS થી એન્ક્રિપ્ટ થયેલો નથી, તેથી કોઈ પ્રમાણપત્ર વપરાતું નથી.</translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/pages/SettingsPage.qml" line="294"/>
+        <location filename="../qml/pages/SettingsPage.qml" line="305"/>
         <source>%n change(s) waiting to be sent to the server.</source>
         <translation>
             <numerusform>%n ફેરફાર સર્વર પર મોકલવાની રાહમાં છે.</numerusform>
@@ -711,6 +721,25 @@
         <location filename="../qml/pages/SitePage.qml" line="73"/>
         <source>Open in browser</source>
         <translation>બ્રાઉઝરમાં ખોલો</translation>
+    </message>
+</context>
+<context>
+    <name>harbour-vuo</name>
+    <message numerus="yes">
+        <location filename="../qml/harbour-vuo.qml" line="129"/>
+        <source>%n new article(s)</source>
+        <translation>
+            <numerusform>%n નવો લેખ</numerusform>
+            <numerusform>%n નવા લેખ</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <location filename="../qml/harbour-vuo.qml" line="136"/>
+        <source>%n unread</source>
+        <translation>
+            <numerusform>%n ન વાંચેલો</numerusform>
+            <numerusform>%n ન વાંચેલા</numerusform>
+        </translation>
     </message>
 </context>
 </TS>

@@ -1336,6 +1336,16 @@ pub struct Account {
     /// `settings::RETENTION_DAYS`; 0 keeps everything.
     #[serde(default)]
     pub retention_index: i32,
+    /// Whether to raise a notification when a sync brings new articles while
+    /// Vuo is on its cover.
+    ///
+    /// Off unless asked for, and off for an account file written before this
+    /// setting existed: an update that starts interrupting the reader because
+    /// the author thought it should is not a setting, it is a surprise -- the
+    /// same reasoning as `settings::RETENTION_DEFAULT_INDEX`, pointed the
+    /// other way.
+    #[serde(default)]
+    pub notify_new_articles: bool,
 }
 
 /// Ask, not Strict. On a stock Miniflux `MEDIA_PROXY_MODE` is `http-only`, so
@@ -1366,6 +1376,7 @@ impl Default for Account {
             wifi_only: false,
             mark_read_delay_index: default_mark_read_delay_index(),
             retention_index: crate::settings::RETENTION_DEFAULT_INDEX,
+            notify_new_articles: false,
         }
     }
 }

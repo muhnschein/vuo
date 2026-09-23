@@ -78,6 +78,20 @@ and its evidence are in [docs/sdk-build.md](sdk-build.md).
   on the worker thread, while the app is open or on its cover; whether
   SailfishOS keeps that thread's timer running through hours of a minimised
   app is exactly the thing that needs a device.
+- **The new-articles notification has been seen on one device, not
+  exercised.** Which articles count as new, when a banner pops and when the
+  notification comes down are all decided in Rust and tested on the host; the
+  QML that hands the result to `Nemo.Notifications` loads against a stub
+  transcribed from the plugin's own header. On a phone it went up and a later
+  sync replaced it in place. Two rounds of that shaped what it says: a digest
+  of titles read as clutter, so it went down to the bare count; then a count of
+  new articles beside the cover's larger unread total read as a contradiction,
+  so it now states that total too when the two differ ("11 new articles · 14
+  unread"). Not yet watched for: the quiet update that keeps that total in step
+  with the cover, that a notification with a bare `"default"` action is
+  tappable, and that emptying the preview on an update really suppresses the
+  banner. It also inherits the long-idle question above -- it can only be as
+  punctual as the sync that finds the articles.
 - **The ephemeral-Miniflux CI job has never run**, and its container images are
   pinned by version tag rather than by digest — see the note at the top of that
   workflow.
@@ -127,6 +141,15 @@ discovered:
   the worker bumps. Correct and simple, but not instant.
 - **Feed unread badges are computed per reload**, not incrementally. Fine at
   the feed counts a phone has; not fine at thousands.
+- **A new-articles notification can trail its sync.** It is raised from the
+  same poll that updates the cover, which runs at a quarter of the sync
+  interval while Vuo is on its cover, so it can arrive up to that long after
+  the sync that found the articles -- fifteen minutes on the hourly default.
+  The cover's count is late by exactly the same amount.
+- **Tapping a notification does nothing once Vuo has exited.** Harbour gives
+  the app no D-Bus service to be started through, so the notification's tap
+  reaches Vuo only while it is running. The next launch sweeps away any
+  notification the previous run left up.
 
 ## Open questions from §11 that are now answered
 

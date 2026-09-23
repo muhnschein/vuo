@@ -716,3 +716,164 @@ async fn unsubscribing_a_feed_takes_its_queued_intents_with_it() {
         "intents for a removed feed's entries can never be confirmed"
     );
 }
+
+/// When `entry_json` says the server created every entry: 2026-01-02T03:04:05Z.
+const FIXTURE_CREATED_AT: i64 = 1_767_323_045;
+
+/// Serve exactly one page of entries for the next pull, replacing whatever the
+/// mock served before.
+async fn serve_entries(server: &MockServer, entries: Vec<serde_json::Value>) {
+    server.reset().await;
+    let total = entries.len() as i64;
+    Mock::given(method("GET"))
+        .and(path("/v1/entries"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(entries_response(entries, total)))
+        .mount(server)
+        .await;
+}
+
+fn arrived(db: &vuo_core::db::Database) -> Vec<i64> {
+    let mut ids: Vec<i64> = store::arrivals(db.conn())
+        .unwrap()
+        .iter()
+        .map(|id| id.get())
+        .collect();
+    ids.sort_unstable();
+    ids
+}
+
+/// §what the new-articles notification counts, decided where the rows land.
+///
+/// Four ways a pulled entry can fail to be news, and one way it is:
+///
+/// - the mirror's FIRST pass, which brings the whole account;
+/// - an entry the mirror already holds, which the cursor's overlap re-reads
+///   on every pass;
+/// - an entry that arrives already read;
+/// - an OLD entry re-entering the mirror -- pruned by retention, then marked
+///   unread on the web -- which is an insert, but not an arrival.
+#[tokio::test]
+async fn only_an_unread_entry_new_to_the_mirror_and_to_the_window_is_an_arrival() {
+    let server = MockServer::start().await;
+    let client = client_for(&server);
+    let mut db = memory_db();
+
+    // The first pass: everything is an insert, and none of it is news.
+    serve_entries(
+        &server,
+        vec![
+            entry_json(1, 1, "unread", false),
+            entry_json(2, 1, "read", false),
+        ],
+    )
+    .await;
+    pull::entries(&mut db, &client, None, 1).await.unwrap();
+    assert_eq!(
+        arrived(&db),
+        Vec::<i64>::new(),
+        "a first sync announces the whole account as new"
+    );
+
+    // A later pass whose window opened an hour before the fixture's entries
+    // were created.
+    let mut returning = entry_json(5, 1, "unread", false);
+    returning["created_at"] = serde_json::Value::from("2025-06-01T00:00:00Z");
+    serve_entries(
+        &server,
+        vec![
+            entry_json(1, 1, "unread", false), // already held
+            entry_json(3, 1, "unread", false), // new, unread: news
+            entry_json(4, 1, "read", false),   // new, but read elsewhere
+            returning,                         // new to the mirror, not to the server
+        ],
+    )
+    .await;
+    pull::entries(&mut db, &client, Some(FIXTURE_CREATED_AT - 3600), 2)
+        .await
+        .unwrap();
+
+    assert_eq!(arrived(&db), vec![3]);
+    assert_eq!(
+        store::local_entry_ids(db.conn()).unwrap().len(),
+        5,
+        "every entry was still written; only the flag is selective"
+    );
+}
+
+/// §a re-read row keeps its flag, in both directions.
+///
+/// The cursor re-reads a minute of overlap on every pass. An arrival the
+/// reader has not been told about yet must survive being seen again -- and one
+/// they HAVE been told about must not come back as news the next time the
+/// overlap brings it round.
+#[tokio::test]
+async fn re_reading_an_entry_neither_raises_nor_clears_its_arrival() {
+    let server = MockServer::start().await;
+    let client = client_for(&server);
+    let mut db = memory_db();
+    let window = Some(FIXTURE_CREATED_AT - 3600);
+
+    serve_entries(
+        &server,
+        vec![
+            entry_json(7, 1, "unread", false),
+            entry_json(8, 1, "unread", false),
+        ],
+    )
+    .await;
+    pull::entries(&mut db, &client, window, 1).await.unwrap();
+    assert_eq!(arrived(&db), vec![7, 8]);
+
+    // The reader dismisses the notification that covered 8.
+    db.with_tx(|tx| store::acknowledge_arrivals(tx, &[EntryId(8)]))
+        .unwrap();
+
+    // The same two, again, in the next pass's overlap.
+    pull::entries(&mut db, &client, window, 2).await.unwrap();
+    assert_eq!(
+        arrived(&db),
+        vec![7],
+        "7 is still unannounced news, and 8 is not news any more"
+    );
+}
+
+/// §an arrival is recorded with its row, not with the pass's report.
+///
+/// A pass commits page by page, and can fail after it has written: a count
+/// carried back in the pass's result would be lost with the result, and the
+/// rows it counted would be held, and so not new, by the time the next pass
+/// looked. That is the reason the flag is a column.
+#[tokio::test]
+async fn a_pass_that_fails_after_its_first_page_keeps_that_pages_arrivals() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/v1/entries"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(entries_response(
+                (1..=250)
+                    .map(|i| entry_json(i, 1, "unread", false))
+                    .collect(),
+                300,
+            )),
+        )
+        .up_to_n_times(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/v1/entries"))
+        .and(query_param("after_entry_id", "250"))
+        .respond_with(ResponseTemplate::new(500))
+        .mount(&server)
+        .await;
+
+    let client = client_for(&server);
+    let mut db = memory_db();
+    let result = pull::entries(&mut db, &client, Some(FIXTURE_CREATED_AT - 3600), 1).await;
+
+    assert!(result.is_err(), "the second page failed");
+    assert_eq!(
+        store::arrivals(db.conn()).unwrap().len(),
+        250,
+        "the first page's arrivals were committed with its rows"
+    );
+}

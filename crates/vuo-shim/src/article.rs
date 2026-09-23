@@ -19,7 +19,10 @@
 
 use std::collections::HashMap;
 
-use qmetaobject::*;
+use qmetaobject::{
+    qt_base_class, qt_method, qt_property, qt_signal, QAbstractListModel, QByteArray, QModelIndex,
+    QObject, QString, QVariant, USER_ROLE,
+};
 use vuo_core::content::{
     BlockKind, MediaFetch, MediaPolicy, RenderBlock, Span, TransformContext, UnproxiedMedia,
 };
@@ -762,7 +765,7 @@ mod tests {
                 },
                 1,
             )?;
-            vuo_core::db::store::upsert_entry(tx, &entry, 1)
+            vuo_core::db::store::upsert_entry(tx, &entry, 1, vuo_core::db::store::Arrival::Quiet)
         })
         .expect("seed");
 

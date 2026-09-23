@@ -53,6 +53,7 @@ Page {
         markReadCombo.currentIndex = settings.markReadDelayIndex
         retentionCombo.currentIndex = settings.retentionIndex
         wifiOnlySwitch.checked = settings.wifiOnly
+        notifySwitch.checked = settings.notifyNewArticles
         caSwitch.checked = settings.useCustomCa
         page.ready = true
     }
@@ -222,6 +223,16 @@ Page {
                 text: qsTr("Only sync on Wi-Fi")
                 description: qsTr("Vuo syncs on its own only over Wi-Fi, and waits on a mobile connection. A refresh you ask for yourself is always sent.")
                 onClicked: settings.wifiOnly = checked
+            }
+
+            // Read by the root window, which raises the notification; the
+            // worker only syncs, and knows nothing about it. Off until the
+            // reader turns it on -- see `Account::notify_new_articles`.
+            TextSwitch {
+                id: notifySwitch
+                text: qsTr("Notify about new articles")
+                description: qsTr("Shown when a sync finds new articles while Vuo is on the cover. Opening Vuo clears it.")
+                onClicked: settings.notifyNewArticles = checked
             }
 
             // The mirror is a cache of the server, and nothing ever removed
