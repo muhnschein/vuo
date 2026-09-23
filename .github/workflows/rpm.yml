@@ -79,6 +79,13 @@ jobs:
       ARCH: ${{ inputs.arch || 'aarch64' }}
       SFOS: ${{ inputs.sfos_version || '5.2.0.15' }}
       ROOTFS: /home/runner/sdk/rootfs
+      # One job, on every run. Builds at any higher count keep stalling, and
+      # a slow build that finishes beats a fast one that has to be restarted.
+      # Cargo reads this for the build in scripts/cross-build.sh, and the cc
+      # crate's C/C++ compiles share cargo's jobserver, so they run one at a
+      # time as well. Set here rather than in the script, so a local cross
+      # build keeps every core.
+      CARGO_BUILD_JOBS: 1
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
