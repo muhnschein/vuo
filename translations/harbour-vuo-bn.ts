@@ -169,12 +169,13 @@
         <translation>ফিডের লেখা ব্যবহার না করে সার্ভার প্রতিটি নিবন্ধ তার ওয়েবসাইট থেকে ডাউনলোড করে।</translation>
     </message>
     <message>
-        <location filename="../qml/pages/EditFeedPage.qml" line="152"/>
-        <source>Hide from the unread list in Miniflux</source>
-        <translation>Miniflux-এর অপঠিত তালিকা থেকে লুকান</translation>
+        <location filename="../qml/pages/EditFeedPage.qml" line="153"/>
+        <source>Hide from Unread and All</source>
+        <extracomment>The tab names, as this catalog translates them.</extracomment>
+        <translation>“অপঠিত” ও “সব” থেকে লুকান</translation>
     </message>
     <message>
-        <location filename="../qml/pages/EditFeedPage.qml" line="161"/>
+        <location filename="../qml/pages/EditFeedPage.qml" line="162"/>
         <source>Do not refresh this feed</source>
         <translation>এই ফিড রিফ্রেশ করবেন না</translation>
     </message>

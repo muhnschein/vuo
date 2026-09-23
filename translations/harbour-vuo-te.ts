@@ -169,12 +169,13 @@
         <translation>ఫీడ్‌లోని పాఠ్యాన్ని వాడే బదులు, సర్వర్ ప్రతి వ్యాసాన్ని దాని వెబ్‌సైట్ నుండి డౌన్‌లోడ్ చేస్తుంది.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/EditFeedPage.qml" line="152"/>
-        <source>Hide from the unread list in Miniflux</source>
-        <translation>Miniflux లోని చదవని వ్యాసాల జాబితా నుండి దాచు</translation>
+        <location filename="../qml/pages/EditFeedPage.qml" line="153"/>
+        <source>Hide from Unread and All</source>
+        <extracomment>The tab names, as this catalog translates them.</extracomment>
+        <translation>“చదవనివి”, “అన్నీ” జాబితాల నుండి దాచు</translation>
     </message>
     <message>
-        <location filename="../qml/pages/EditFeedPage.qml" line="161"/>
+        <location filename="../qml/pages/EditFeedPage.qml" line="162"/>
         <source>Do not refresh this feed</source>
         <translation>ఈ ఫీడ్‌ను రిఫ్రెష్ చేయవద్దు</translation>
     </message>

@@ -169,12 +169,13 @@
         <translation>The server downloads each article from its website instead of using the text in the feed.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/EditFeedPage.qml" line="152"/>
-        <source>Hide from the unread list in Miniflux</source>
-        <translation>Hide from the unread list in Miniflux</translation>
+        <location filename="../qml/pages/EditFeedPage.qml" line="153"/>
+        <source>Hide from Unread and All</source>
+        <extracomment>The tab names, as this catalog translates them.</extracomment>
+        <translation>Hide from Unread and All</translation>
     </message>
     <message>
-        <location filename="../qml/pages/EditFeedPage.qml" line="161"/>
+        <location filename="../qml/pages/EditFeedPage.qml" line="162"/>
         <source>Do not refresh this feed</source>
         <translation>Do not refresh this feed</translation>
     </message>

@@ -169,12 +169,13 @@
         <translation>ഫീഡിലെ ഉള്ളടക്കം ഉപയോഗിക്കുന്നതിനു പകരം സെർവർ ഓരോ ലേഖനവും അതിന്റെ വെബ്‌സൈറ്റിൽ നിന്നു ഡൗൺലോഡ് ചെയ്യുന്നു.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/EditFeedPage.qml" line="152"/>
-        <source>Hide from the unread list in Miniflux</source>
-        <translation>Miniflux ലെ വായിക്കാത്ത ലേഖനങ്ങളുടെ പട്ടികയിൽ നിന്നു മറയ്ക്കുക</translation>
+        <location filename="../qml/pages/EditFeedPage.qml" line="153"/>
+        <source>Hide from Unread and All</source>
+        <extracomment>The tab names, as this catalog translates them.</extracomment>
+        <translation>“വായിക്കാത്തവ”, “എല്ലാം” എന്നിവയിൽ നിന്നു മറയ്ക്കുക</translation>
     </message>
     <message>
-        <location filename="../qml/pages/EditFeedPage.qml" line="161"/>
+        <location filename="../qml/pages/EditFeedPage.qml" line="162"/>
         <source>Do not refresh this feed</source>
         <translation>ഈ ഫീഡ് പുതുക്കരുത്</translation>
     </message>

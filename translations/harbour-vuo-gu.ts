@@ -169,12 +169,13 @@
         <translation>ફીડમાંના લખાણને બદલે સર્વર દરેક લેખ તેની વેબસાઇટ પરથી ડાઉનલોડ કરે છે.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/EditFeedPage.qml" line="152"/>
-        <source>Hide from the unread list in Miniflux</source>
-        <translation>Miniflux માં ન વાંચેલા લેખોની યાદીમાંથી છુપાવો</translation>
+        <location filename="../qml/pages/EditFeedPage.qml" line="153"/>
+        <source>Hide from Unread and All</source>
+        <extracomment>The tab names, as this catalog translates them.</extracomment>
+        <translation>“ન વાંચેલા” અને “બધા” યાદીઓમાંથી છુપાવો</translation>
     </message>
     <message>
-        <location filename="../qml/pages/EditFeedPage.qml" line="161"/>
+        <location filename="../qml/pages/EditFeedPage.qml" line="162"/>
         <source>Do not refresh this feed</source>
         <translation>આ ફીડ તાજું ન કરો</translation>
     </message>

@@ -169,12 +169,13 @@
         <translation>Ο διακομιστής κατεβάζει κάθε άρθρο από τον ιστότοπό του αντί να χρησιμοποιεί το κείμενο της ροής.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/EditFeedPage.qml" line="152"/>
-        <source>Hide from the unread list in Miniflux</source>
-        <translation>Απόκρυψη από τη λίστα αδιάβαστων στο Miniflux</translation>
+        <location filename="../qml/pages/EditFeedPage.qml" line="153"/>
+        <source>Hide from Unread and All</source>
+        <extracomment>The tab names, as this catalog translates them.</extracomment>
+        <translation>Απόκρυψη από τις λίστες Αδιάβαστα και Όλα</translation>
     </message>
     <message>
-        <location filename="../qml/pages/EditFeedPage.qml" line="161"/>
+        <location filename="../qml/pages/EditFeedPage.qml" line="162"/>
         <source>Do not refresh this feed</source>
         <translation>Μη ανανέωση αυτής της ροής</translation>
     </message>

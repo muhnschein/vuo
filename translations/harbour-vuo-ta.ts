@@ -169,12 +169,13 @@
         <translation>ஊட்டத்தில் உள்ள உரையைப் பயன்படுத்துவதற்குப் பதிலாக, சேவையகம் ஒவ்வொரு கட்டுரையையும் அதன் இணையதளத்திலிருந்து பதிவிறக்குகிறது.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/EditFeedPage.qml" line="152"/>
-        <source>Hide from the unread list in Miniflux</source>
-        <translation>Miniflux இல் படிக்காத கட்டுரைகளின் பட்டியலிலிருந்து மறை</translation>
+        <location filename="../qml/pages/EditFeedPage.qml" line="153"/>
+        <source>Hide from Unread and All</source>
+        <extracomment>The tab names, as this catalog translates them.</extracomment>
+        <translation>“படிக்காதவை”, “அனைத்தும்” ஆகியவற்றிலிருந்து மறை</translation>
     </message>
     <message>
-        <location filename="../qml/pages/EditFeedPage.qml" line="161"/>
+        <location filename="../qml/pages/EditFeedPage.qml" line="162"/>
         <source>Do not refresh this feed</source>
         <translation>இந்த ஊட்டத்தைப் புதுப்பிக்க வேண்டாம்</translation>
     </message>

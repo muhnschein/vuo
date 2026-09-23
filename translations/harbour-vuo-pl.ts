@@ -170,12 +170,13 @@
         <translation>Serwer pobiera każdy artykuł z jego strony internetowej, zamiast używać tekstu z kanału.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/EditFeedPage.qml" line="152"/>
-        <source>Hide from the unread list in Miniflux</source>
-        <translation>Ukryj artykuły na liście nieprzeczytanych w Miniflux</translation>
+        <location filename="../qml/pages/EditFeedPage.qml" line="153"/>
+        <source>Hide from Unread and All</source>
+        <extracomment>The tab names, as this catalog translates them.</extracomment>
+        <translation>Ukryj na listach Nieprzeczytane i Wszystko</translation>
     </message>
     <message>
-        <location filename="../qml/pages/EditFeedPage.qml" line="161"/>
+        <location filename="../qml/pages/EditFeedPage.qml" line="162"/>
         <source>Do not refresh this feed</source>
         <translation>Nie aktualizuj tego kanału</translation>
     </message>

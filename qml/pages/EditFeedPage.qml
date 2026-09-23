@@ -145,11 +145,12 @@ Page {
                 }
             }
 
-            // Miniflux's list, and only that: Vuo's own Unread and All do not
-            // read `hide_globally`, so a label promising to hide the feed here
-            // would say something the switch does not do.
+            // Miniflux's `hide_globally`. Vuo's Unread and All leave the feed
+            // out (see `EntryFilter`), as Miniflux's own unread list does;
+            // Favourites and the feed's own page still show its articles.
             TextSwitch {
-                text: qsTr("Hide from the unread list in Miniflux")
+                //: The tab names, as this catalog translates them.
+                text: qsTr("Hide from Unread and All")
                 checked: page.hideGlobally
                 onCheckedChanged: if (page.ready && page.hideGlobally !== checked) {
                     page.hideGlobally = checked

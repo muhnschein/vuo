@@ -169,12 +169,13 @@
         <translation>Palvelin lataa kunkin artikkelin sen omalta sivustolta syötteen tekstin sijaan.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/EditFeedPage.qml" line="152"/>
-        <source>Hide from the unread list in Miniflux</source>
-        <translation>Piilota Minifluxin lukemattomien listasta</translation>
+        <location filename="../qml/pages/EditFeedPage.qml" line="153"/>
+        <source>Hide from Unread and All</source>
+        <extracomment>The tab names, as this catalog translates them.</extracomment>
+        <translation>Piilota Lukematta- ja Kaikki-listoilta</translation>
     </message>
     <message>
-        <location filename="../qml/pages/EditFeedPage.qml" line="161"/>
+        <location filename="../qml/pages/EditFeedPage.qml" line="162"/>
         <source>Do not refresh this feed</source>
         <translation>Älä päivitä tätä syötettä</translation>
     </message>

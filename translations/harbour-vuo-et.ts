@@ -169,12 +169,13 @@
         <translation>Server laadib iga artikli alla artikli enda veebisaidilt ega kasuta voos olevat teksti.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/EditFeedPage.qml" line="152"/>
-        <source>Hide from the unread list in Miniflux</source>
-        <translation>Peida Minifluxi lugemata artiklite loendist</translation>
+        <location filename="../qml/pages/EditFeedPage.qml" line="153"/>
+        <source>Hide from Unread and All</source>
+        <extracomment>The tab names, as this catalog translates them.</extracomment>
+        <translation>Peida Lugemata ja Kõik loenditest</translation>
     </message>
     <message>
-        <location filename="../qml/pages/EditFeedPage.qml" line="161"/>
+        <location filename="../qml/pages/EditFeedPage.qml" line="162"/>
         <source>Do not refresh this feed</source>
         <translation>Ära värskenda seda voogu</translation>
     </message>

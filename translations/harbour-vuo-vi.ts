@@ -168,12 +168,13 @@
         <translation>Máy chủ tải từng bài viết về từ trang web của bài đó thay vì dùng văn bản trong nguồn tin.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/EditFeedPage.qml" line="152"/>
-        <source>Hide from the unread list in Miniflux</source>
-        <translation>Ẩn khỏi danh sách chưa đọc trong Miniflux</translation>
+        <location filename="../qml/pages/EditFeedPage.qml" line="153"/>
+        <source>Hide from Unread and All</source>
+        <extracomment>The tab names, as this catalog translates them.</extracomment>
+        <translation>Ẩn khỏi mục Chưa đọc và Tất cả</translation>
     </message>
     <message>
-        <location filename="../qml/pages/EditFeedPage.qml" line="161"/>
+        <location filename="../qml/pages/EditFeedPage.qml" line="162"/>
         <source>Do not refresh this feed</source>
         <translation>Không làm mới nguồn tin này</translation>
     </message>

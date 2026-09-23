@@ -171,12 +171,13 @@
         <translation>Strežnik prenese vsak članek z njegovega spletišča, namesto da bi uporabil besedilo iz vira.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/EditFeedPage.qml" line="152"/>
-        <source>Hide from the unread list in Miniflux</source>
-        <translation>Skrij s seznama neprebranih v Minifluxu</translation>
+        <location filename="../qml/pages/EditFeedPage.qml" line="153"/>
+        <source>Hide from Unread and All</source>
+        <extracomment>The tab names, as this catalog translates them.</extracomment>
+        <translation>Skrij s seznamov Neprebrani in Vsi</translation>
     </message>
     <message>
-        <location filename="../qml/pages/EditFeedPage.qml" line="161"/>
+        <location filename="../qml/pages/EditFeedPage.qml" line="162"/>
         <source>Do not refresh this feed</source>
         <translation>Ne osvežuj tega vira</translation>
     </message>

@@ -170,12 +170,13 @@
         <translation>Server stahuje každý článek z jeho webu, místo aby použil text z kanálu.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/EditFeedPage.qml" line="152"/>
-        <source>Hide from the unread list in Miniflux</source>
-        <translation>Skrýt ze seznamu nepřečtených v Minifluxu</translation>
+        <location filename="../qml/pages/EditFeedPage.qml" line="153"/>
+        <source>Hide from Unread and All</source>
+        <extracomment>The tab names, as this catalog translates them.</extracomment>
+        <translation>Skrýt ze seznamů Nepřečtené a Vše</translation>
     </message>
     <message>
-        <location filename="../qml/pages/EditFeedPage.qml" line="161"/>
+        <location filename="../qml/pages/EditFeedPage.qml" line="162"/>
         <source>Do not refresh this feed</source>
         <translation>Neaktualizovat tento kanál</translation>
     </message>
