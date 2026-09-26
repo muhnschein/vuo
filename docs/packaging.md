@@ -211,7 +211,7 @@ build needs neither of the tools:
 | `translations/*.qm` | `lrelease` | Qt's linguist tools |
 | `qml/art/onboarding.png` | `make textart` (`scripts/render-textart.sh onboarding`) | a QML runtime and a display (or `xvfb`) |
 | `qml/art/cover/*.png` | `make textart` (`scripts/render-textart.sh cover`) | the same, plus the digits' font; the device's own font if you have it |
-| `qml/art/cover/*-edge.png` | the same run | the same; one outline per count, written beside its pattern |
+| `qml/art/cover/*-edge.png` | the same run | the same; one outline per count, written beside its pattern (none for `none.png`) |
 | `store/cover.png` | `scripts/render-store-cover.sh` | the same, plus two font files |
 
 The art is the texture the cover and the onboarding page wear: nested curves
@@ -235,10 +235,12 @@ On the cover the unread count is **negative space**: the lines of text flow
 around the digits, hug their outline, and a few lines out are the usual
 sweeps again. Nothing is drawn inside the digits. That means the whole
 background depends on the number, so the cover is not one mask but a set,
-`qml/art/cover/0.png` … `99.png` and `99+.png` -- every count from 0 to 99
-and one for everything past that. The cover names the one for its count
-(`CoverPage.qml`, `countKey`) and the count itself is still there as data,
-in an invisible `unreadTotal` label.
+`qml/art/cover/1.png` … `99.png` and `99+.png` -- every count from 1 to 99
+and one for everything past that. Nothing unread has no number at all:
+`none.png` is the sweeps alone, painted at the far lines' strength, with no
+outline. The cover names the one for its count (`CoverPage.qml`, `maskKey`)
+and the count itself is still there as data, zero included, in an invisible
+`unreadTotal` label.
 
 Beside each is `<count>-edge.png`, the same silhouette traced as a thin
 line, which the cover draws OVER the pattern in the ambience's highlight
@@ -261,7 +263,7 @@ Three ways of packaging that were weighed; this is the first:
 
 | | Masks | Installed | Costs on the phone |
 | --- | --- | --- | --- |
-| **0–99 plus "99+"** (chosen) | 101 | about 6.5 MB | nothing: one image load, from Qt's pixmap cache between covers |
+| **1–99, "99+" and none** (chosen) | 101 | about 6.5 MB | nothing: one image load, from Qt's pixmap cache between covers |
 | 0–999 plus "999+" | 1001 | about 70 MB | nothing, but too large for a Harbour package |
 | paint on the device, cache per count | 0 | a cache | a second or so of a core every time the count changes, memory for the field and the canvas, and the device-side painting this art was retired from |
 
@@ -283,7 +285,9 @@ spacings out. The cover draws its masks at an ink of 1.5, so the far lines
 land at the 0.55 everything else is drawn at, and the lines on the digits
 are driven past full: the shader's output saturates there, which makes the
 thin glyphs bolder and brighter than a mask alone could, and the number is
-the brightest thing on the cover.
+the brightest thing on the cover. `none.png` has no digits to be bright
+around, so it is painted at 0.55 / 1.5 throughout -- the far lines'
+strength, everywhere.
 
 The digits are Fira Sans **ExtraBold** (SIL OFL), which `render-textart.sh`
 fetches over TLS into the gitignored `.fonts/` as the store cover's script
@@ -317,11 +321,16 @@ One caveat about the filler's face. Sail Sans Pro ships with SailfishOS and
 is not redistributable, so the script never fetches it and it is never
 committed. Put a copy of `/usr/share/fonts/sail-sans-pro/SailSansPro-Light.ttf`
 from a phone into the font directory by hand and `render-textart.sh` sets
-the filler in it, which is how the cover's set was made; without it, the
+the filler in it, which is how the cover's counts were made; without it, the
 host renders whatever its fontconfig calls "Sail Sans Pro", in practice its
-default sans, which is how `onboarding.png` was made. At these sizes the
-letters are texture rather than reading matter and the pattern is the same
-either way. It does mean two machines need not paint byte-identical masks,
+default sans, which is how `onboarding.png` was made. The default sans is
+NOT close enough on the cover: set in DejaVu Sans, a repainted `4.png` carried
+more than twice the ink of the shipped one. Source Sans 3 Light (SIL OFL) is:
+saved into the font directory under Sail Sans Pro's file name, it repainted
+`4.png` with 98.6% of pixels identical to the shipped one, and it is what
+the cover's `none.png` was painted in. At these sizes the letters are
+texture rather than reading matter and the pattern is the same either way,
+but the weight of the face is not. It does mean two machines need not paint byte-identical masks,
 so regenerate a set only when the painter or its inputs change, and
 regenerate the whole set when you do.
 

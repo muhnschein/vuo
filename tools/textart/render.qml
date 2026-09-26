@@ -1,5 +1,6 @@
 import QtQuick 2.6
 import QtQuick.Window 2.2
+import Sailfish.Silica 1.0
 import "selection.js" as Selection
 
 /*
@@ -15,10 +16,11 @@ import "selection.js" as Selection
  * -- how many glyph heights fit across the width -- is what makes the page's
  * pattern finer than the cover's.
  *
- * The cover is a SET of masters, one per unread count from 0 to 99 and one
+ * The cover is a SET of masters, one per unread count from 1 to 99 and one
  * for "99+": the count is negative space in the pattern (the lines flow
  * around it), so the whole background depends on the number and no two
- * counts can share a file. One painter does them in turn -- a hundred
+ * counts can share a file. Nothing unread is "none", the sweeps with no
+ * number in them at all. One painter does them in turn -- a hundred
  * canvases at once would want a hundred times the memory for no gain.
  *
  * `selection.js` names which sets to paint, and which counts of the cover's;
@@ -54,8 +56,27 @@ Window {
     readonly property int coverWidth: 512
     readonly property int coverHeight: 768
 
-    /// One cover master. `key` is the count, or "99+".
+    /// One cover master. `key` is the count, "99+", or "none".
     function coverJob(key) {
+        if (key === "none") {
+            // Nothing unread, and nothing said about it: no digits, so no
+            // negative space and no outline -- the sweeps alone, at the
+            // cover's density and with its glyphs facing the same way. A
+            // cover with nothing to read is not a cover that reads "0".
+            //
+            // With no digits there is no halo to bake the far lines'
+            // strength into, so it goes in as the painter's own ink
+            // instead: the cover draws every mask at 1.5, and 0.55 / 1.5
+            // of that lands at its usual 0.55, like any other count's far
+            // lines.
+            return {
+                file: "cover/none.png",
+                width: win.coverWidth, height: win.coverHeight, across: 64,
+                levelOffset: 0.6,
+                topsFaceSource: true,
+                ink: 0.55 / 1.5
+            }
+        }
         return {
             file: "cover/" + key + ".png",
             // The digits' outline, written beside the pattern as a mask of
@@ -105,7 +126,8 @@ Window {
             // should not cost a hundred).
             var keys = Selection.keys
             if (keys.length === 0) {
-                for (var n = 0; n <= 99; n++) {
+                keys.push("none")
+                for (var n = 1; n <= 99; n++) {
                     keys.push("" + n)
                 }
                 keys.push("99+")
@@ -145,7 +167,7 @@ Window {
         topsFaceSource: win.job && win.job.topsFaceSource ? true : false
         farInk: win.job && win.job.farInk ? win.job.farInk : 1.0
         haloReach: win.job && win.job.haloReach ? win.job.haloReach : 0
-        ink: 1.0
+        ink: win.job && win.job.ink ? win.job.ink : 1.0
         colour: "white"
         visible: false
 

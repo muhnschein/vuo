@@ -260,6 +260,9 @@ Canvas {
     property var _lobes: []
     property var _obstacle: null
     property string _obstacleKey: ""
+    /// With no obstacle, the coarse grid of the field that `obstacleField`
+    /// would otherwise have sampled: see `sampleField`. Null with one.
+    property var _plain: null
     property var _widths: ({})
     property var _inks: []
 
@@ -699,11 +702,30 @@ Canvas {
             samples: null, sampleCell: 0, sampleCols: 0, sampleRows: 0
         }
 
-        // The field at a coarse grid over the whole canvas, so a ring can
-        // be seeded wherever it runs -- around the digits, inside a
-        // counter -- and not only around the strokes it used to grow from.
-        var cell = spacing * 0.5
-        var cols = Math.floor(w / cell) + 1, rows = Math.floor(h / cell) + 1
+        art.sampleField(L, O, O)
+
+        art._obstacle = O
+        art._obstacleKey = art._key
+        return O
+    }
+
+    /// The field at a coarse grid over the whole canvas, half a spacing
+    /// apart, written onto `into` as `samples`, `sampleCell`, `sampleCols`
+    /// and `sampleRows`, and returned. It is what lets a ring be seeded
+    /// wherever it runs -- around the digits, inside a counter, or closing
+    /// on the point farthest from every stroke -- and not only around the
+    /// strokes it grows from; and what says how far the field reaches.
+    ///
+    /// With an obstacle it hangs off the obstacle (`obstacleField`); without
+    /// one, off `_plain`. The strokes alone were once thought to need
+    /// neither, and on the cover's shape they do: its middle is farther
+    /// from every stroke than any corner, no ray from a stroke meets the
+    /// innermost rings there, and a cover with no number in it came out
+    /// with a bare patch in the middle.
+    function sampleField(L, O, into) {
+        var cell = art.spacing * 0.5
+        var cols = Math.floor(art.width / cell) + 1
+        var rows = Math.floor(art.height / cell) + 1
         var samples = new Float32Array(cols * rows)
         var sc = new Array(3 * L.length)
         var fg = [0, 0, 0]
@@ -713,14 +735,11 @@ Canvas {
                 samples[r * cols + c] = fg[0]
             }
         }
-        O.samples = samples
-        O.sampleCell = cell
-        O.sampleCols = cols
-        O.sampleRows = rows
-
-        art._obstacle = O
-        art._obstacleKey = art._key
-        return O
+        into.samples = samples
+        into.sampleCell = cell
+        into.sampleCols = cols
+        into.sampleRows = rows
+        return into
     }
 
     /// The field and its gradient at one point, written into `out` as
@@ -808,9 +827,9 @@ Canvas {
 
     /// How many rings the field's own reach asks for.
     ///
-    /// The corners are enough for the strokes alone. With an obstacle the
-    /// field is a minimum of two distances, and the farthest point from
-    /// both can be anywhere between them, so a coarse grid is asked too.
+    /// The farthest point from every stroke can be anywhere -- between the
+    /// strokes and the digits, or in the middle of a cover with neither --
+    /// so the coarse grid (`sampleField`) is asked as well as the corners.
     function ringCount(L, O) {
         if (art.width <= 0 || art.height <= 0 || L.length === 0) {
             return 0
@@ -823,9 +842,10 @@ Canvas {
             art.fieldAt(L, O, corners[c][0], corners[c][1], art.softness, sc, fg)
             if (fg[0] > far) { far = fg[0] }
         }
-        if (O) {
-            for (var i = 0; i < O.samples.length; i++) {
-                if (O.samples[i] > far) { far = O.samples[i] }
+        var G = O ? O : art._plain
+        if (G) {
+            for (var i = 0; i < G.samples.length; i++) {
+                if (G.samples[i] > far) { far = G.samples[i] }
             }
         }
         return Math.ceil((far + art.spacing) / art.spacing)
@@ -1061,13 +1081,13 @@ Canvas {
         var maxSteps = Math.ceil((2 * Math.PI * level + 2 * (w + h)) / step) + 64
 
         // Where to start looking for this ring's curves. Eight directions
-        // around each stroke, as always; and, when there is an obstacle,
-        // every point of the coarse grid the field was sampled on that lies
-        // within half a spacing of this level -- which is how a ring that
-        // wraps only the digits, or sits inside the counter of a 4 or a 9,
-        // gets found at all. Seeds that land on a curve already traced are
-        // dropped, so the extra ones cost nothing where the stroke seeds
-        // were enough.
+        // around each stroke, as always; and every point of the coarse grid
+        // the field was sampled on that lies within half a spacing of this
+        // level -- which is how a ring that wraps only the digits, or sits
+        // inside the counter of a 4 or a 9, or closes on the middle of a
+        // cover with no digits at all, gets found at all. Seeds that land
+        // on a curve already traced are dropped, so the extra ones cost
+        // nothing where the stroke seeds were enough.
         var seeds = []
         var si, i
         for (si = 0; si < n * 8; si++) {
@@ -1077,12 +1097,13 @@ Canvas {
             var cy = (L[i].y + L[i].y2) / 2
             seeds.push(cx + level * Math.cos(angle), cy + level * Math.sin(angle))
         }
-        if (O) {
+        var G = O ? O : art._plain
+        if (G) {
             var band = spacing * 0.5
-            for (var r = 0; r < O.sampleRows; r++) {
-                for (var c = 0; c < O.sampleCols; c++) {
-                    if (Math.abs(O.samples[r * O.sampleCols + c] - level) < band) {
-                        seeds.push(c * O.sampleCell, r * O.sampleCell)
+            for (var r = 0; r < G.sampleRows; r++) {
+                for (var c = 0; c < G.sampleCols; c++) {
+                    if (Math.abs(G.samples[r * G.sampleCols + c] - level) < band) {
+                        seeds.push(c * G.sampleCell, r * G.sampleCell)
                     }
                 }
             }
@@ -1452,6 +1473,7 @@ Canvas {
             ctx.textBaseline = "middle"
             art._lobes = art.lobes()
             art._obstacle = art.obstacleField(art._lobes)
+            art._plain = art._obstacle ? null : art.sampleField(art._lobes, null, {})
             art._rings = art.ringCount(art._lobes, art._obstacle)
             art._widths = art.advances(ctx)
             // The ink, in thirty-two steps, so a run does not build a colour

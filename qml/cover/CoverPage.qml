@@ -14,11 +14,15 @@ import "../components"
  * number is not a label, and it is not a hole cut in the pattern. It is what
  * the pattern was painted around.
  *
- * That makes the texture a SET of masks rather than one: every count from 0
+ * That makes the texture a SET of masks rather than one: every count from 1
  * to 99 has its own, and everything past that shares "99+". The digits' ink
  * is centred across the cover, and centred between the top edge and the
  * cover-action strip at the bottom, where the reload button is unchanged.
  * The text is filler and means nothing; the count is the message.
+ *
+ * Nothing unread has NO number: not a 0 the lines flow around, but the
+ * sweeps alone, with nothing in them and no outline over them. A cover that
+ * has nothing to report says so by having nothing to say.
  *
  * Sync has lost the heading it used to speak under, so it says its piece in
  * the strip just above the action area instead: a spinner while refreshing,
@@ -45,13 +49,18 @@ CoverBackground {
     property string syncError: ""
     property bool syncErrorIsAuth: false
 
-    /// The count as the art says it, and as the mask for it is named. Two
-    /// digits is what fits at a size that reads from across a room; an
-    /// unread count in the hundreds is an ordinary week for a feed reader,
-    /// and past a hundred the reader is not counting them off a cover
-    /// anyway. A count below zero cannot happen, and is shown as none.
+    /// The count as the cover gives it. Two digits is what fits at a size that
+    /// reads from across a room; an unread count in the hundreds is an
+    /// ordinary week for a feed reader, and past a hundred the reader is not
+    /// counting them off a cover anyway. A count below zero cannot happen,
+    /// and is shown as none.
     readonly property string countKey:
         cover.unreadCount > 99 ? "99+" : "" + Math.max(0, cover.unreadCount)
+
+    /// The mask the art is painted from: the count's own, or "none" -- the
+    /// pattern with no number in it -- when there is nothing unread. Zero is
+    /// still the count, as data; it is only never drawn.
+    readonly property string maskKey: cover.unreadCount > 0 ? cover.countKey : "none"
 
     /// True for a few seconds after a refresh ends badly.
     ///
@@ -118,18 +127,21 @@ CoverBackground {
         id: art
         objectName: "textArt"
         anchors.fill: parent
-        source: "../art/cover/" + cover.countKey + ".png"
+        source: "../art/cover/" + cover.maskKey + ".png"
         // The count's own outline, drawn over the texture in the ambience's
         // colour. It is a second mask off the same painter rather than a
         // digit set here, because the face the masks were cut in is not on
-        // the phone -- see components/TextArt.qml.
-        edgeSource: "../art/cover/" + cover.countKey + "-edge.png"
+        // the phone -- see components/TextArt.qml. With no number there is
+        // no outline, and no file for one.
+        edgeSource: cover.maskKey === "none"
+                    ? ""
+                    : "../art/cover/" + cover.maskKey + "-edge.png"
         edgeColour: Theme.highlightColor
         // An ink of 1.5, not the usual 0.55: the cover's masks carry their
         // own strength -- full where the lines touch the digits, easing
-        // down to 0.55 / 1.5 a few lines out -- so the far lines land at
-        // 0.55 as everywhere else, and the lines on the digits are driven
-        // past full. The shader's output saturates there, which makes the
+        // down to 0.55 / 1.5 a few lines out, and 0.55 / 1.5 throughout
+        // "none" -- so the far lines land at 0.55 as everywhere else, and
+        // the lines on the digits are driven past full. The shader's output saturates there, which makes the
         // thin glyphs bolder and brighter than a mask alone could; the
         // number is the brightest thing here and the sweeps recede from
         // it. See tools/textart/render.qml.
