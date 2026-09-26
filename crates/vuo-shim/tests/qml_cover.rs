@@ -6,7 +6,8 @@
 //!
 //! The count is NEGATIVE SPACE in the texture: the lines flow around the
 //! digits, so every count has a mask of its own in `qml/art/cover/` and the
-//! cover's one job is to name the right one. `qml_loads.rs` checks the masks
+//! cover's one job is to name the right one. Nothing unread has no number at
+//! all: `none.png`, the pattern alone, with no outline. `qml_loads.rs` checks the masks
 //! the QML names literally; the cover's is computed, so the set is checked
 //! here instead, and so is the naming.
 //!
@@ -84,10 +85,15 @@ fn stubs_dir() -> std::path::PathBuf {
     repo_root().join("qml-stubs")
 }
 
-/// Every mask the cover can name: the counts, and the cap.
+/// The mask the cover names when nothing is unread: no digits in it, and so
+/// no outline beside it.
+const NONE: &str = "none";
+
+/// Every mask the cover can name: the counts, the cap, and nothing unread.
 fn cover_keys() -> Vec<String> {
-    let mut keys: Vec<String> = (0..=99).map(|n| n.to_string()).collect();
+    let mut keys: Vec<String> = (1..=99).map(|n| n.to_string()).collect();
     keys.push("99+".to_owned());
+    keys.push(NONE.to_owned());
     keys
 }
 
@@ -137,13 +143,21 @@ fn the_cover_names_the_mask_for_its_count_and_says_how_sync_is() {
             // pattern with some other count's line over it, and look like
             // a painter bug rather than a binding one.
             let edge = get!("textArt", "edgeSource");
-            let expected_edge = format!("art/cover/{}-edge.png", $key);
-            assert!(
-                edge.ends_with(&expected_edge),
-                "the cover's outline must come from the same count as its \
-                 pattern: expected an edgeSource ending in {expected_edge:?}, \
-                 got {edge:?}"
-            );
+            if $key == NONE {
+                // No number, so no outline of one -- and no file to name.
+                assert_eq!(
+                    edge, "",
+                    "with nothing unread the cover must draw no outline"
+                );
+            } else {
+                let expected_edge = format!("art/cover/{}-edge.png", $key);
+                assert!(
+                    edge.ends_with(&expected_edge),
+                    "the cover's outline must come from the same count as its \
+                     pattern: expected an edgeSource ending in {expected_edge:?}, \
+                     got {edge:?}"
+                );
+            }
         }};
     }
 
@@ -154,14 +168,20 @@ fn the_cover_names_the_mask_for_its_count_and_says_how_sync_is() {
     );
 
     // ------------------------------------------------------------ the count
-    // From the start: a zero says as much as a count, and has a mask of its
-    // own like any other.
-    mask!("0");
+    // From the start: nothing unread draws no number at all -- not a 0 the
+    // lines flow around, but the pattern alone. The zero is still there as
+    // data, for anything that reads the cover rather than looks at it.
+    mask!(NONE);
     assert_eq!(
         get!("unreadTotal", "text"),
         "0",
         "the count must be there as data from the start"
     );
+    assert_eq!(call!("count", 1), "ok");
+    mask!("1");
+    assert_eq!(call!("count", 0), "ok");
+    mask!(NONE);
+    assert_eq!(get!("unreadTotal", "text"), "0");
     assert_eq!(call!("count", 4), "ok");
     mask!("4");
     assert_eq!(get!("unreadTotal", "text"), "4");
@@ -178,9 +198,10 @@ fn the_cover_names_the_mask_for_its_count_and_says_how_sync_is() {
     assert_eq!(get!("unreadTotal", "text"), "99+");
 
     // A count below zero cannot happen; if it did, it would not name a mask
-    // that is not there.
+    // that is not there, and would draw no number.
     assert_eq!(call!("count", -3), "ok");
-    mask!("0");
+    mask!(NONE);
+    assert_eq!(get!("unreadTotal", "text"), "0");
     assert_eq!(call!("count", 4), "ok");
     mask!("4");
 
@@ -303,6 +324,7 @@ fn the_cover_names_the_mask_for_its_count_and_says_how_sync_is() {
 /// the easier one to lose and the harder one to notice -- a missing pattern
 /// is a bare cover, while a missing outline is a cover that merely looks
 /// like every other count's without its line -- so both are checked here.
+/// `none.png` alone has no outline: it has no number to trace.
 ///
 /// The cover computes both sources, so `qml_loads.rs`, which reads literal
 /// sources out of the QML, cannot see them. Qt reports a missing image only
@@ -314,7 +336,11 @@ fn every_mask_the_cover_can_name_exists_and_is_a_mask() {
     let mut problems: Vec<String> = Vec::new();
     let mut expected: std::collections::HashSet<String> = std::collections::HashSet::new();
     for key in cover_keys() {
-        for name in [format!("{key}.png"), format!("{key}-edge.png")] {
+        let mut names = vec![format!("{key}.png")];
+        if key != NONE {
+            names.push(format!("{key}-edge.png"));
+        }
+        for name in names {
             expected.insert(name.clone());
             let Ok(bytes) = std::fs::read(dir.join(&name)) else {
                 problems.push(format!("{name} is missing"));

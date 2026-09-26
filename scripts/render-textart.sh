@@ -11,11 +11,13 @@
 #     scripts/render-textart.sh                 # everything
 #     scripts/render-textart.sh cover           # the cover's set only
 #     scripts/render-textart.sh cover:42,99+    # two of the cover's masters
+#     scripts/render-textart.sh cover:none      # the cover with nothing unread
 #     scripts/render-textart.sh onboarding      # the page's one master
 #
-# The cover's set is one mask per unread count, 0 to 99 and "99+", in
+# The cover's set is one mask per unread count, 1 to 99 and "99+", in
 # qml/art/cover/: the count is negative space in the pattern, so the whole
-# background depends on the number. A partial run (cover:42) overwrites those
+# background depends on the number. "none" is the cover with nothing unread,
+# which has no number in it at all. A partial run (cover:42) overwrites those
 # masks and leaves the rest; a full cover run replaces the directory.
 #
 # It needs a QML runtime with a GL context. On a headless machine `xvfb-run`
@@ -47,8 +49,8 @@ for arg in "$@"; do
             sets+=(cover)
             IFS=',' read -r -a wanted <<< "${arg#cover:}"
             for key in "${wanted[@]}"; do
-                [[ "$key" =~ ^([0-9]{1,2}|99\+)$ ]] \
-                    || { echo "cover key '$key' is not 0..99 or 99+" >&2; exit 1; }
+                [[ "$key" =~ ^([1-9][0-9]?|99\+|none)$ ]] \
+                    || { echo "cover key '$key' is not 1..99, 99+ or none" >&2; exit 1; }
                 keys+=("$key")
             done ;;
         *) echo "unknown set '$arg'; expected onboarding, cover or cover:KEY,..." >&2; exit 1 ;;
