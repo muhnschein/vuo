@@ -99,6 +99,10 @@ if [[ "${GITHUB_ACTIONS:-}" == "true" && "${GITHUB_REF_NAME:-}" == build-publish
     done
     tree=$(git mktree < "$list")
     rm -f "$list"
-    commit=$(git commit-tree "$tree" -m "Test package from ${GITHUB_SHA}")
+    # An identity is passed in rather than configured: the runner has neither
+    # `user.name` nor `user.email`, and `git commit-tree` refuses without one.
+    commit=$(GIT_AUTHOR_NAME="Vuo build" GIT_AUTHOR_EMAIL="noreply@github.com" \
+             GIT_COMMITTER_NAME="Vuo build" GIT_COMMITTER_EMAIL="noreply@github.com" \
+             git commit-tree "$tree" -m "Test package from ${GITHUB_SHA}")
     git push --force origin "$commit:refs/heads/package-delivery"
 fi
