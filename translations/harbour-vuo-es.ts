@@ -376,7 +376,7 @@
         <location filename="../qml/components/EntryListView.qml" line="434"/>
         <extracomment>The hint under the empty search field: what a search looks at.</extracomment>
         <source>Search by title, author or feed name</source>
-        <translation>Busque por título, autor o nombre del feed</translation></translation>
+        <translation>Busque por título, autor o nombre del feed</translation>
     </message>
 </context>
 <context>

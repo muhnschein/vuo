@@ -376,7 +376,7 @@
         <location filename="../qml/components/EntryListView.qml" line="434"/>
         <extracomment>The hint under the empty search field: what a search looks at.</extracomment>
         <source>Search by title, author or feed name</source>
-        <translation>शीर्षक, लेखक या फ़ीड के नाम से खोजें</translation></translation>
+        <translation>शीर्षक, लेखक या फ़ीड के नाम से खोजें</translation>
     </message>
 </context>
 <context>
