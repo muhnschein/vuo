@@ -12,6 +12,7 @@ change; nothing in the second has ever run on a phone.
 | Outbox reconciliation | 9 tests covering each property §8.3 names |
 | Incremental pull and deletion reconcile | 8 tests, including the torn-listing abort |
 | HTML → block transform | 43 unit tests, 6 snapshots, 2 fuzz targets |
+| Entry search (title, author, feed name) | 5 store tests over matching, wildcards and paging; 3 shim tests over the scope |
 | Foreign-input handling (§9) | scheme validation, escaping, caps, icon sniffing — all tested |
 | Schema migrations | machinery tested against a synthetic second migration |
 | Qt shim | compiled and tested against real Qt under `QT_QPA_PLATFORM=offscreen` |

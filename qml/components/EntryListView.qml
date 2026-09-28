@@ -27,11 +27,20 @@ SilicaListView {
     property bool showScopeTabs: false
     /// Which tab this list is. -1 when there is no strip.
     property int tabIndex: -1
-    /// How much vertical room the page's pinned strip needs. This list is
-    /// full-page -- so that the pulley menu comes down from the top of the
-    /// SCREEN -- and reserves the strip's band in its own header instead, so
-    /// that at rest the band holds this spacer rather than a row.
-    property real tabStripHeight: 0
+    /// How much vertical room the page's pinned band at the top needs -- the
+    /// tab strip, or the search field. This list is full-page -- so that the
+    /// pulley menu comes down from the top of the SCREEN -- and reserves the
+    /// band in its own header instead, so that at rest the band holds this
+    /// spacer rather than a row.
+    property real topBandHeight: 0
+    /// This list is a SEARCH RESULT list: the page above it pins a search
+    /// field, the rows are whatever its query matched, and "Mark all as read"
+    /// is not among the things a search's results can be told to do.
+    property bool searching: false
+    /// The query this list was searched for, or empty. The page owns it (it
+    /// binds the search field to it); it is here because an empty search and a
+    /// search that matched nothing want different words from the placeholder.
+    property string query: ""
 
     /// How far this list is scrolled past its own top: positive scrolled down,
     /// NEGATIVE while the pulley is being pulled out.
@@ -175,15 +184,16 @@ SilicaListView {
         width: listView.width
         height: nameLabel.y + (nameLabel.visible ? nameLabel.height : 0)
 
-        // Room for the tab strip, which is pinned by the PAGE rather than
-        // scrolled with this list -- it must not slide away under a scroll,
-        // and it must not travel sideways with a swipe. This reserves the
-        // band it occupies so the first row starts below it.
+        // Room for the page's pinned band -- the tab strip or the search
+        // field -- which is pinned by the PAGE rather than scrolled with this
+        // list: it must not slide away under a scroll, and it must not travel
+        // sideways with a swipe. This reserves the band it occupies so the
+        // first row starts below it.
         Item {
             id: stripSpace
 
             width: 1
-            height: listView.tabStripHeight
+            height: listView.topBandHeight
         }
 
         // Only for the scopes the strip does not cover.
@@ -288,7 +298,31 @@ SilicaListView {
             onClicked: pageStack.push(Qt.resolvedUrl("../pages/FeedListPage.qml"),
                                       { model: listView.hostPage ? listView.hostPage.feedModel : null,
                                         entryModel: listView.hostPage ? listView.hostPage.browseModel : null,
+                                        searchModel: listView.hostPage ? listView.hostPage.searchModel : null,
                                         noticeModel: listView.hostPage ? listView.hostPage.noticeModel : null })
+        }
+        MenuItem {
+            visible: !listView.selecting
+            text: qsTr("Search")
+            // The search page re-scopes whatever entry model it is handed --
+            // on every keystroke -- so it gets the SEARCH model: a fifth
+            // EntryModel at the window, beside the browse one, belonging to no
+            // tab. Handing it this list's own would leave this tab showing the
+            // last thing searched for, exactly as a feed view over it used to.
+            //
+            // It is handed `browseModel`, `feedModel` and `noticeModel` too,
+            // because the page it becomes has a pulley of its own with a Feeds
+            // item on it, and every page down that chain needs all three.
+            onClicked: pageStack.push(Qt.resolvedUrl("../pages/EntryListPage.qml"), {
+                model: listView.hostPage ? listView.hostPage.searchModel : null,
+                searchModel: listView.hostPage ? listView.hostPage.searchModel : null,
+                browseModel: listView.hostPage ? listView.hostPage.browseModel : null,
+                feedModel: listView.hostPage ? listView.hostPage.feedModel : null,
+                noticeModel: listView.hostPage ? listView.hostPage.noticeModel : null,
+                scopeKind: 5,
+                scopeLabel: qsTr("Search results"),
+                searching: true
+            })
         }
         MenuItem {
             // The platform's way to act on many rows at once, as the Gallery
@@ -316,7 +350,13 @@ SilicaListView {
             // bounded by the unread count; on All it is every article ever
             // synced. A mitigation, not a fix -- the Rust wants an id-only
             // projection and an already-read filter before All gets it.
-            visible: !listView.selecting && listView.scopeKind !== 2
+            //
+            // And hidden over a search, for a different reason: the reader
+            // has asked which articles match a word, not said they are done
+            // with them. `EntryModel::markAllRead` refuses a search scope too,
+            // so this is the courtesy rather than the defence.
+            visible: !listView.selecting && !listView.searching
+                     && listView.scopeKind !== 2
             onClicked: {
                 // Capture the scope NOW, not when the countdown fires.
                 // `markAllRead` would read whatever scope the shared model is
@@ -378,11 +418,23 @@ SilicaListView {
         // "Nothing to read / Pull down to refresh" is an Unread string.
         // Under a Favourites tab it reads as a refusal, and refreshing
         // does not create favourites.
-        text: listView.scopeKind === 1 ? qsTr("No favourites")
-                                   : qsTr("Nothing to read")
-        hintText: listView.scopeKind === 1
-                  ? qsTr("Articles you add to favourites appear here")
-                  : qsTr("Pull down to refresh")
+        //
+        // A search gets its own words twice over, because the empty list
+        // means two different things there: nothing matched, or nothing has
+        // been typed yet. And the second of those is where the page says what
+        // IS searched -- the question a search that finds nothing always
+        // raises, and one the field itself has no room for.
+        text: listView.searching
+              ? (listView.query.trim().length > 0 ? qsTr("No matches")
+                                                 : qsTr("Search your articles"))
+              : (listView.scopeKind === 1 ? qsTr("No favourites")
+                                          : qsTr("Nothing to read"))
+        hintText: listView.searching
+              ? (listView.query.trim().length > 0 ? qsTr("Try a different word")
+                                                 : qsTr("Search by title, author or feed name"))
+              : (listView.scopeKind === 1
+                 ? qsTr("Articles you add to favourites appear here")
+                 : qsTr("Pull down to refresh"))
     }
 
     /// Measures the detail line, so it can be shortened before it overflows.

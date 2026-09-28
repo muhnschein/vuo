@@ -57,6 +57,12 @@ ApplicationWindow {
     // restarted. This model is the only one a pushed view ever re-scopes, and
     // no tab is bound to it.
     EntryModel { id: browseEntries }
+    // And a fifth for SEARCH, for the same reason and with the same rule: the
+    // search page re-scopes whatever model it is handed, on every keystroke,
+    // so it gets one that belongs to no tab and nothing else is bound to.
+    // Polled below like the rest, so results keep up with a sync or a mark
+    // made on another list while the search is open.
+    EntryModel { id: searchEntries }
     FeedModel { id: feeds }
     // Asked one thing here: whether an account is stored at all. That
     // decides the first page, and it is read from the file on every access,
@@ -180,6 +186,9 @@ ApplicationWindow {
         // Cheap while nothing is being browsed: a model with no scope
         // reloads nothing.
         changed = browseEntries.pollSync() || changed
+        // And while nothing is being searched, for the same reason: the search
+        // model keeps no scope until a query is typed.
+        changed = searchEntries.pollSync() || changed
         if (changed) {
             feeds.pollSync()
         }
@@ -272,6 +281,7 @@ ApplicationWindow {
             scopeModels: [entries, starredEntries, allEntries]
             model: entries
             browseModel: browseEntries
+            searchModel: searchEntries
             feedModel: feeds
             // `entries` is polled first above, so it is the model that takes
             // the sync-failure notice. See EntryListPage.noticeModel.

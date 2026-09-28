@@ -213,35 +213,53 @@ fn publish_rows<M: RowList>(model: &mut M, fresh: Vec<M::Row>) -> bool {
 }
 
 /// Which slice of the mirror a model shows.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+///
+/// `Search` is in this list rather than beside it because that is what it is:
+/// the answer to "what should this list show", held the way the other four are
+/// and turned into a [`store::EntryFilter`] by the one method below. It carries
+/// the query, which is why this enum is `Clone` rather than `Copy` -- and why
+/// QML cannot set it through [`Scope::from_qml`], whose (kind, id) pair has
+/// nowhere to put a string. [`EntryModel::setSearch`] is that door.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Scope {
     Unread,
     Starred,
     All,
     Feed(i64),
     Category(i64),
+    /// The entries whose title, author or feed name contains the query. See
+    /// [`store::EntryFilter::Search`] for what "contains" means.
+    Search(String),
 }
 
 impl Scope {
-    fn to_filter(self) -> store::EntryFilter {
+    fn to_filter(&self) -> store::EntryFilter {
         match self {
             Scope::Unread => store::EntryFilter::Unread,
             Scope::Starred => store::EntryFilter::Starred,
             Scope::All => store::EntryFilter::All,
-            Scope::Feed(id) => store::EntryFilter::Feed(id),
-            Scope::Category(id) => store::EntryFilter::Category(id),
+            Scope::Feed(id) => store::EntryFilter::Feed(*id),
+            Scope::Category(id) => store::EntryFilter::Category(*id),
+            Scope::Search(query) => store::EntryFilter::Search(query.clone()),
         }
     }
 
     /// Decode the integer pair QML passes. Qt 5.6 has no `QEnum` registration
     /// in this crate version, so the scope crosses the boundary as two ints
     /// rather than as a typed enum.
+    ///
+    /// Kind 5 is Search and it decodes to an EMPTY one. The pair carries no
+    /// string, and an empty search matches nothing rather than everything, so
+    /// `setScope(5, 0)` gives a list that is correctly empty instead of one
+    /// showing every article in the mirror. A search with text in it is set
+    /// through [`EntryModel::setSearch`].
     pub fn from_qml(kind: i32, id: i64) -> Scope {
         match kind {
             1 => Scope::Starred,
             2 => Scope::All,
             3 => Scope::Feed(id),
             4 => Scope::Category(id),
+            5 => Scope::Search(String::new()),
             _ => Scope::Unread,
         }
     }
@@ -262,8 +280,16 @@ pub struct EntryModel {
     ready: qt_property!(bool; READ is_ready NOTIFY countChanged),
 
     /// Set the scope and load a fresh list. `kind`: 0 unread, 1 starred,
-    /// 2 all, 3 feed (id), 4 category (id).
+    /// 2 all, 3 feed (id), 4 category (id), 5 search (empty; see below).
     setScope: qt_method!(fn(&mut self, kind: i32, id: i64)),
+    /// Show the entries whose title, author or feed name contains `query`.
+    ///
+    /// The search door into a scope, which `setScope` cannot be: the (kind,
+    /// id) pair it takes has nowhere to carry the text. Called on every
+    /// (debounced) keystroke, so it reloads at once and starts the window over
+    /// -- a new query is a new list. An empty query is an empty list, never the
+    /// whole mirror; see [`store::EntryFilter::Search`].
+    setSearch: qt_method!(fn(&mut self, query: QString)),
     /// Re-read the mirror, keeping the rows on screen. See [`reload`].
     refresh: qt_method!(fn(&mut self)),
     entryIdAt: qt_method!(fn(&self, row: i32) -> i64),
@@ -603,7 +629,9 @@ impl EntryModel {
     }
 
     fn markAllRead(&mut self) {
-        let Some(scope) = self.scope else { return };
+        let Some(scope) = self.scope.clone() else {
+            return;
+        };
         self.mark_all_read_in(scope);
     }
 
@@ -626,6 +654,14 @@ impl EntryModel {
                 .ok()
                 .flatten()
                 .is_some(),
+            // Search results are not a list the reader is done with: this
+            // would mark every article a query happens to match, which is not
+            // what "mark all as read" means over a search and is far more than
+            // a remorse countdown can be read as consenting to. The pulley
+            // does not offer the item here -- EntryListView hides it when
+            // searching -- and this is the backstop for the caller that
+            // reaches this by reading the scope off the model.
+            Scope::Search(_) => return,
             // Unread/Starred/All have no single server-side scope, so expand
             // over every entry in scope -- NOT over `self.rows`, which holds
             // only the page the list is currently showing. Using the rows
@@ -674,6 +710,12 @@ impl EntryModel {
     fn setScope(&mut self, kind: i32, id: i64) {
         self.scope = Some(Scope::from_qml(kind, id));
         // A new scope is a new list; nothing from the old one belongs on it.
+        self.reload_fresh();
+    }
+
+    fn setSearch(&mut self, query: QString) {
+        self.scope = Some(Scope::Search(query.to_string()));
+        // A new query is a new list, exactly as a new scope is.
         self.reload_fresh();
     }
 
@@ -754,7 +796,7 @@ impl EntryModel {
         let Some(ctx) = self.context() else {
             return false;
         };
-        let Some(scope) = self.scope else {
+        let Some(scope) = self.scope.as_ref() else {
             return false;
         };
 
@@ -2071,5 +2113,174 @@ mod row_decoration_tests {
             model.limit, PAGE_SIZE,
             "a new scope is a new list, and it opens at one page"
         );
+    }
+}
+
+#[cfg(test)]
+mod search_tests {
+    //! The search door into a scope, which `setScope` cannot be.
+    //!
+    //! Which rows a query matches is `store`'s business and is tested there.
+    //! What is tested here is the part only this crate can get wrong: that the
+    //! query reaches the mirror at all, that a new one replaces the old, and
+    //! that "mark all as read" refuses to run over a search's results.
+
+    use super::*;
+    use vuo_core::model::{Entry, EntryStatus, Feed, FeedId};
+
+    /// Two feeds and four entries, with the three searched fields each saying
+    /// something different: one entry findable by its title, two by their
+    /// author, and a whole feed by its name.
+    fn seeded() -> (tempfile::TempDir, std::rc::Rc<AppContext>) {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("m.sqlite");
+        let mut db = vuo_core::db::Database::open(&path).expect("mirror");
+
+        db.with_tx(|tx| {
+            for (id, title) in [(1i64, "Laiva Weekly"), (2, "Tietokone Daily")] {
+                store::upsert_feed(
+                    tx,
+                    &Feed {
+                        id: FeedId(id),
+                        category_id: None,
+                        title: title.to_owned(),
+                        site_url: None,
+                        feed_url: None,
+                        icon_id: None,
+                        checked_at: None,
+                        parsing_error_message: String::new(),
+                        parsing_error_count: 0,
+                        disabled: false,
+                        hide_globally: false,
+                        crawler: false,
+                    },
+                    1,
+                )?;
+            }
+            // (id, feed, title, author). Nothing is published-dated, so the
+            // mirror's own newest-first order is id-descending and the
+            // expectations below can name exact lists.
+            let rows = [
+                (11i64, 1i64, "A kernel year in review", "Matti Virtanen"),
+                (12, 1, "Harbour submission notes", "Matti Virtanen"),
+                (13, 2, "Nothing memorable", ""),
+                (14, 2, "Battery life, measured", ""),
+            ];
+            for (id, feed, title, author) in rows {
+                store::upsert_entry(
+                    tx,
+                    &Entry {
+                        id: EntryId(id),
+                        feed_id: FeedId(feed),
+                        status: EntryStatus::Unread,
+                        starred: false,
+                        title: title.to_owned(),
+                        url: None,
+                        comments_url: None,
+                        author: author.to_owned(),
+                        content: String::new(),
+                        published_at: None,
+                        created_at: None,
+                        changed_at: None,
+                        reading_time: 1,
+                        tags: Vec::new(),
+                        enclosures: Vec::new(),
+                    },
+                    1,
+                    store::Arrival::Quiet,
+                )?;
+            }
+            Ok(())
+        })
+        .expect("seed");
+
+        let instance = url::Url::parse("https://miniflux.example/").expect("url");
+        let ctx = crate::context::context_for_test(db, instance);
+        (dir, ctx)
+    }
+
+    fn titles(model: &EntryModel) -> Vec<String> {
+        model.rows().iter().map(|r| r.title.clone()).collect()
+    }
+
+    /// §the query reaches the mirror, and a new one replaces the old.
+    #[test]
+    fn setSearch_scopes_the_model_to_the_matches() {
+        let (_dir, ctx) = seeded();
+        let mut model = EntryModel::default();
+        model.attach(std::rc::Rc::clone(&ctx));
+
+        model.setSearch(QString::from("kernel"));
+        assert_eq!(titles(&model), vec!["A kernel year in review".to_owned()]);
+
+        model.setSearch(QString::from("virtanen"));
+        assert_eq!(
+            titles(&model),
+            vec![
+                "Harbour submission notes".to_owned(),
+                "A kernel year in review".to_owned()
+            ],
+            "an author matches across feeds"
+        );
+
+        model.setSearch(QString::from("laiva"));
+        assert_eq!(
+            titles(&model),
+            vec![
+                "Harbour submission notes".to_owned(),
+                "A kernel year in review".to_owned()
+            ],
+            "and so does a feed name"
+        );
+    }
+
+    /// §a search for nothing is a list of nothing, not of everything.
+    ///
+    /// The search page opens on an empty field. `LIKE '%%'` would answer that
+    /// with the whole mirror -- see `store::list_entries` -- and the placeholder
+    /// asking the reader to type would never be seen.
+    #[test]
+    fn an_empty_search_shows_nothing() {
+        let (_dir, ctx) = seeded();
+        let mut model = EntryModel::default();
+        model.attach(std::rc::Rc::clone(&ctx));
+
+        model.setSearch(QString::from("  "));
+        assert_eq!(titles(&model), Vec::<String>::new());
+        assert!(
+            model.is_ready(),
+            "an empty list is a list, not a missing scope"
+        );
+
+        // Nor does a query that matches nothing leave the old one showing.
+        model.setSearch(QString::from("virtanen"));
+        model.setSearch(QString::from("no such words"));
+        assert_eq!(titles(&model), Vec::<String>::new());
+    }
+
+    /// §mark all as read refuses to run over a search's results.
+    ///
+    /// Over a search it would mark every article a query happens to match --
+    /// every "Virtanen" here, five hundred on a real mirror -- which is not
+    /// what the reader asked for and far more than a remorse countdown can be
+    /// read as consenting to. The pulley hides the item; this is the backstop.
+    #[test]
+    fn mark_all_as_read_leaves_search_results_alone() {
+        let (_dir, ctx) = seeded();
+        let mut model = EntryModel::default();
+        model.attach(std::rc::Rc::clone(&ctx));
+        model.setSearch(QString::from("virtanen"));
+        assert_eq!(
+            model.row_count(),
+            2,
+            "the fixture must have matches to lose"
+        );
+
+        model.markAllRead();
+
+        let unread = ctx
+            .read(|db| store::unread_count(db.conn()).unwrap_or(0))
+            .unwrap_or(0);
+        assert_eq!(unread, 4, "not one of the four was marked read");
     }
 }

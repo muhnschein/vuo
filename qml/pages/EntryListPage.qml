@@ -12,9 +12,28 @@ Page {
     /// A feed or category name when browsing one. FOREIGN TEXT: rendered only
     /// through an explicit Text.PlainText Label, never through PageHeader.
     property string title: ""
-    /// 0 unread, 1 starred, 2 all, 3 feed, 4 category. See models::Scope.
+    /// 0 unread, 1 starred, 2 all, 3 feed, 4 category, 5 search.
+    /// See models::Scope.
     property int scopeKind: 0
     property int scopeId: 0
+
+    /// A SEARCH page: one list of matches, a search field pinned where the tab
+    /// strip would be, and no `setScope` -- what it shows is typed into it
+    /// rather than fixed at the push, and the query is re-applied instead.
+    property bool searching: false
+
+    /// What the field holds. The FIELD is the source of truth and is never
+    /// written to from here; this mirrors it so `applyScope` can re-apply the
+    /// query and the list's placeholder can tell an empty field from a query
+    /// that matched nothing.
+    property string query: ""
+
+    /// The model a SEARCH page re-scopes, handed down at the window exactly as
+    /// `browseModel` is, and for the same reason: `setSearch` overwrites on
+    /// every keystroke, so the model it is given must be one no tab is bound
+    /// to. Passed on to everything this page pushes, so a search opened from a
+    /// feed opened from a search has one too.
+    property var searchModel: null
 
     /// The scopes the tab strip offers, in strip order. The index-to-kind
     /// mapping lives HERE and nowhere else: the strip's `currentIndex` is
@@ -71,13 +90,19 @@ Page {
     // nothing at all. The cost is one extra query against an already-open
     // SQLite connection.
     //
+    // SEARCH pages share `searchModel` the same way and re-assert the same
+    // way, for the same reason: a second search opened from the first one's
+    // pulley leaves the first showing the second's results until it is shown
+    // again and its own query is put back. (Its FIELD never lost the query --
+    // only the shared model did.)
+    //
     // The reload it causes is wanted for its own sake, too: marking an article
     // read from the article view changes the mirror but not this page's rows,
     // so without a reload on the way back the entry would still be listed as
     // unread until the next sync.
     onStatusChanged: if (status === PageStatus.Activating) page.applyScope()
 
-    /// Scope the browse model this feed or category view was given.
+    /// Scope the browse or search model this page was given.
     ///
     /// The tab scopes are NOT set here: each tab's model is scoped once, by
     /// the list that owns it, and never re-scoped. Re-scoping a shared model
@@ -86,9 +111,17 @@ Page {
         // Not in selection mode either: the model is a tab's, scoped once
         // for the life of the app, and `setScope` starts a fresh list --
         // which would drop the read rows the reader may be selecting.
-        if (page.model && !page.showScopeTabs && !page.selecting) {
-            page.model.setScope(page.scopeKind, page.scopeId)
+        if (!page.model || page.showScopeTabs || page.selecting) {
+            return
         }
+        if (page.searching) {
+            // The QUERY, and never `setScope(5, 0)`: the pair reaches Rust as
+            // an EMPTY search, which is a correctly empty list rather than
+            // what the reader typed into the field above.
+            page.model.setSearch(page.query)
+            return
+        }
+        page.model.setScope(page.scopeKind, page.scopeId)
     }
 
     /// Move to the tab at `index`, from a tap on the strip.
@@ -123,8 +156,24 @@ Page {
 
     allowedOrientations: Orientation.All
 
-    /// The band across the top of the page that the strip occupies.
-    readonly property real stripBand: page.showScopeTabs ? scopeTabs.height : 0
+    /// The band across the top of the page that the pinned strip occupies --
+    /// the tab strip, or the search field. Everything else on the page works
+    /// off this one number: see `viewport` below and `topBandHeight` on the
+    /// list, which is what reserves the room in the rows' own header.
+    readonly property real stripBand: page.showScopeTabs ? scopeTabs.height
+                                      : (page.searching ? searchBand.height : 0)
+
+    /// Runs the search the field is holding, a beat after the last keystroke.
+    ///
+    /// Armed by the field on every keystroke and run here: one query per word
+    /// typed rather than one per character, since each is a scan over every
+    /// title, author and feed name in the mirror.
+    Timer {
+        id: searchDebounce
+
+        interval: 250
+        onTriggered: page.applyScope()
+    }
 
     /*
      * The tab strip, pinned -- and the pulley menu still owns the top edge.
@@ -167,6 +216,50 @@ Page {
         titles: [qsTr("Unread"), qsTr("Favourites"), qsTr("All")]
         currentIndex: pager.currentIndex
         onTabClicked: page.selectTab(index)
+    }
+
+    /*
+     * The search field, pinned where the strip would be.
+     *
+     * It takes the strip's treatment above -- `y` and `z` off `yOffset`, the
+     * same three states -- for the same reasons, and the comment up there
+     * applies to this item as much as to the strip. All that is worth adding
+     * is why it is PINNED at all, when some apps make the search field the
+     * first item of the list's header: a reader fifty results down who wants
+     * to add a word should not have to scroll back to the top to do it, and a
+     * field that has scrolled away is a query they cannot see.
+     *
+     * The field takes the text back the other way on every keystroke, into
+     * `page.query`, and `searchDebounce` runs the search a beat later. It is
+     * focused on the way in, because pushing Search is the reader saying they
+     * want to type.
+     */
+    Item {
+        id: searchBand
+
+        anchors { left: parent.left; right: parent.right }
+        y: Math.max(0, -page.yOffset)
+        visible: page.searching
+        height: visible ? searchField.height : 0
+        z: page.yOffset < 0 ? -1 : 1
+
+        SearchField {
+            id: searchField
+
+            anchors { left: parent.left; right: parent.right }
+            placeholderText: qsTr("Search")
+            // The field is the source of truth; `page.query` is its mirror.
+            // Nothing writes the field's `text`.
+            onTextChanged: {
+                page.query = text
+                searchDebounce.restart()
+            }
+            // The FIELD rather than a bare `forceActiveFocus()`: an id is a
+            // name the QML itself declares, and a bare camelCase word in a
+            // value position is taken for a model role by
+            // `qml_api_contract`'s role check.
+            Component.onCompleted: searchField.forceActiveFocus()
+        }
     }
 
     /*
@@ -279,10 +372,12 @@ Page {
             scopeId: page.showScopeTabs ? 0 : page.scopeId
             showScopeTabs: page.showScopeTabs
             tabIndex: page.showScopeTabs ? index : -1
-            tabStripHeight: page.stripBand
+            topBandHeight: page.stripBand
             scopeLabel: page.scopeLabel
             title: page.title
             selecting: page.selecting
+            searching: page.searching
+            query: page.query
             }
         }
     }

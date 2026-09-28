@@ -212,6 +212,12 @@
         <source>Refresh failed: %1</source>
         <translation>重新整理失敗：%1</translation>
     </message>
+    <message>
+        <location filename="../qml/pages/EntryListPage.qml" line="250"/>
+        <extracomment>The search field&apos;s placeholder. An action, so a verb.</extracomment>
+        <source>Search</source>
+        <translation>搜尋</translation>
+    </message>
 </context>
 <context>
     <name>EntryListView</name>
@@ -330,6 +336,42 @@
         <location filename="../qml/components/EntryListView.qml" line="627"/>
         <source>Open in browser</source>
         <translation>在瀏覽器中開啟</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="306"/>
+        <extracomment>The pulley menu item that opens search. An action, so a verb.</extracomment>
+        <source>Search</source>
+        <translation>搜尋</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="323"/>
+        <extracomment>The search page&apos;s title.</extracomment>
+        <source>Search results</source>
+        <translation>搜尋結果</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="428"/>
+        <extracomment>Shown when a search matched nothing.</extracomment>
+        <source>No matches</source>
+        <translation>沒有符合的結果</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="429"/>
+        <extracomment>Shown while the search field is still empty.</extracomment>
+        <source>Search your articles</source>
+        <translation>搜尋你的文章</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="433"/>
+        <extracomment>The hint under a search that matched nothing.</extracomment>
+        <source>Try a different word</source>
+        <translation>試試另一個詞</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="434"/>
+        <extracomment>The hint under the empty search field: what a search looks at.</extracomment>
+        <source>Search by title, author or feed name</source>
+        <translation>按標題、作者或訂閱源名稱搜尋</translation></translation>
     </message>
 </context>
 <context>
