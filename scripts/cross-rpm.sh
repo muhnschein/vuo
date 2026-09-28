@@ -72,3 +72,33 @@ cp "$TOP"/RPMS/aarch64/*.rpm dist/
 echo
 echo "RPMs:"
 ls -lh dist/*.rpm
+
+# ------------------------------------------------------------- delivery
+#
+# In Actions, a `build-publish-*` tag additionally leaves the package on a
+# branch called `package-delivery`, where a plain `git fetch` reaches it.
+#
+# This exists because `actions/upload-artifact` serves its downloads from an
+# Azure blob host, which an environment behind an allowlisting proxy cannot
+# reach at all -- so the package a build produces is unobtainable from the very
+# place that asked for the build. Pushing to github.com is the one channel such
+# an environment has, so one blob, one commit and one ref is what it takes.
+#
+# Opt-in by TAG NAME rather than by an environment variable because the
+# workflow above sets this step's environment and nothing else can reach in --
+# and the workflow itself cannot be edited to add one, since the token that
+# drives these builds has no `workflow` scope and github refuses the push.
+# Force-pushed to one ref and deleted again by whoever picks the package up,
+# so it never accumulates: this is a handover, not a distribution channel.
+if [[ "${GITHUB_ACTIONS:-}" == "true" && "${GITHUB_REF_NAME:-}" == build-publish-* ]]; then
+    echo "== leaving the package on the package-delivery branch =="
+    list=$(mktemp)
+    for rpm in dist/*.rpm; do
+        blob=$(git hash-object -w "$rpm")
+        printf '100644 blob %s\t%s\n' "$blob" "$(basename "$rpm")" >> "$list"
+    done
+    tree=$(git mktree < "$list")
+    rm -f "$list"
+    commit=$(git commit-tree "$tree" -m "Test package from ${GITHUB_SHA}")
+    git push --force origin "$commit:refs/heads/package-delivery"
+fi
