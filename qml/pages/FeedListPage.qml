@@ -10,6 +10,11 @@ Page {
     /// a feed view over the Unread tab's model left that tab listing the feed
     /// until the app was restarted. See harbour-vuo.qml's `browseEntries`.
     property var entryModel
+    /// The SEARCH entry model, handed on rather than used here: this page's
+    /// own pulley has no search, but every entry page it pushes has one, and
+    /// a search needs a model no tab is bound to. See
+    /// EntryListPage.searchModel.
+    property var searchModel
     /// The model that carries refresh failures. Handed straight on; see
     /// EntryListPage.noticeModel.
     property var noticeModel: null
@@ -141,6 +146,7 @@ Page {
                 // Passed on so the feed view's own pulley can open Feeds
                 // again, and the feed opened from THERE has a model too.
                 browseModel: page.entryModel,
+                searchModel: page.searchModel,
                 feedModel: page.model,
                 noticeModel: page.noticeModel,
                 scopeLabel: qsTr("Feed"),

@@ -423,13 +423,75 @@ pub fn unread_counts_by_feed(
 /// pages, and a feed opened by name that came up empty would read as broken.
 /// An entry whose feed the mirror does not hold is never hidden: `NOT IN` over
 /// the hidden feeds' ids, not `IN` over the visible ones.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+///
+/// `Search` belongs with the second group, and for the same reason: the reader
+/// has asked for a particular article, and an answer of "nothing" when it is
+/// sitting in a hidden feed's pages would read as the app failing rather than
+/// as the feed being hidden.
+///
+/// Not `Copy`, because [`Search`](EntryFilter::Search) carries the query. That
+/// is a `String` rather than a `&str` so a filter is a complete answer to
+/// "what should this list show" and can be held, cloned and compared like the
+/// other four.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EntryFilter {
     Unread,
     Starred,
     All,
     Feed(i64),
     Category(i64),
+    /// Everything whose title, author or feed name contains the query.
+    ///
+    /// A SUBSTRING match, not a word or a prefix one: "kernel" finds "kernel"
+    /// and "kernelnewbies", which is what a reader typing into a search field
+    /// expects as they type. Matching is `LIKE`, so ASCII letters fold case
+    /// and everything else does not -- SQLite has no case folding beyond that
+    /// without ICU, and shipping one for a search over three columns is not a
+    /// trade worth making. See [`like_pattern`] for the wildcard escaping and
+    /// [`list_entries`] for why an EMPTY query matches nothing.
+    Search(String),
+}
+
+/// The `LIKE` pattern a search query becomes: a substring match, with the
+/// query's own wildcards matched literally.
+///
+/// `%`, `_` and the escape character itself are prefixed with `\`, and every
+/// statement that takes a pattern says `ESCAPE '\'`. Without that, a reader
+/// searching for `100%` or `snake_case` silently searches for something else
+/// entirely -- and a query of `%` returns the whole mirror.
+///
+/// The trim is here rather than at the call sites: " kernel " is the reader's
+/// way of typing "kernel", and a search that quietly disagreed about leading
+/// spaces would be a search that finds nothing for no visible reason. Interior
+/// spacing is preserved, so a two-word query still means exactly that
+/// substring.
+///
+/// A query that is empty after trimming yields `%` -- which matches
+/// everything -- so this is NOT where emptiness is decided. [`list_entries`]
+/// and [`entry_ids_matching`] refuse an empty query themselves.
+fn like_pattern(query: &str) -> String {
+    let query = query.trim();
+    let mut pattern = String::with_capacity(query.len() + 2);
+    pattern.push('%');
+    for ch in query.chars() {
+        if matches!(ch, '%' | '_' | '\\') {
+            pattern.push('\\');
+        }
+        pattern.push(ch);
+    }
+    pattern.push('%');
+    pattern
+}
+
+/// Whether a query is worth running at all.
+///
+/// An empty search matches NOTHING rather than everything. `LIKE '%%'` matches
+/// every row including the ones with no title at all, so a search page whose
+/// field is still blank would open on a copy of the All list -- and the
+/// placeholder that is supposed to invite the reader to type would never be
+/// seen.
+fn search_is_empty(query: &str) -> bool {
+    query.trim().is_empty()
 }
 
 /// A row as an entry LIST needs it: everything the list draws, and not the
@@ -497,6 +559,18 @@ pub fn list_entries(
         published_at, reading_time FROM entries \
         WHERE feed_id IN (SELECT id FROM feeds WHERE category_id = ?3) \
         ORDER BY published_at DESC, id DESC LIMIT ?1 OFFSET ?2";
+    // The three columns a row is identified by in the list, and nothing else.
+    // The BODY is deliberately not searched: it is tens of kilobytes of HTML
+    // per row, so a substring scan over it is a multi-second stall of the UI
+    // thread on a mirror of any size -- and matching raw markup would answer
+    // with rows whose TAGS happen to contain the query. Titles, authors and
+    // feed names are what tell a reader which article this is.
+    const SEARCH: &str = "SELECT id, feed_id, status, starred, title, url, author, published_at, \
+        reading_time FROM entries \
+        WHERE title LIKE ?3 ESCAPE '\\' \
+        OR author LIKE ?3 ESCAPE '\\' \
+        OR feed_id IN (SELECT id FROM feeds WHERE title LIKE ?3 ESCAPE '\\') \
+        ORDER BY published_at DESC, id DESC LIMIT ?1 OFFSET ?2";
 
     let mut out = Vec::new();
     match filter {
@@ -520,6 +594,16 @@ pub fn list_entries(
             };
             let mut stmt = conn.prepare(sql)?;
             let mut rows = stmt.query(rusqlite::params![limit, offset, id])?;
+            while let Some(row) = rows.next()? {
+                out.push(row_to_list_row(row)?);
+            }
+        }
+        // An empty query is refused here rather than being run as `%`, which
+        // is what `like_pattern` would hand back: see [`search_is_empty`].
+        EntryFilter::Search(ref query) if search_is_empty(query) => {}
+        EntryFilter::Search(ref query) => {
+            let mut stmt = conn.prepare(SEARCH)?;
+            let mut rows = stmt.query(rusqlite::params![limit, offset, like_pattern(query)])?;
             while let Some(row) = rows.next()? {
                 out.push(row_to_list_row(row)?);
             }
@@ -565,6 +649,12 @@ pub fn entry_ids_matching(
     const BY_FEED: &str = "SELECT id FROM entries WHERE feed_id = ?1";
     const BY_CATEGORY: &str =
         "SELECT id FROM entries WHERE feed_id IN (SELECT id FROM feeds WHERE category_id = ?1)";
+    // The same three columns, and the same refusal of an empty query, as
+    // `list_entries`' statement above. Kept identical by keeping both short.
+    const SEARCH: &str = "SELECT id FROM entries \
+        WHERE title LIKE ?1 ESCAPE '\\' \
+        OR author LIKE ?1 ESCAPE '\\' \
+        OR feed_id IN (SELECT id FROM feeds WHERE title LIKE ?1 ESCAPE '\\')";
 
     let mut out = Vec::new();
     match filter {
@@ -588,6 +678,14 @@ pub fn entry_ids_matching(
             };
             let mut stmt = conn.prepare(sql)?;
             let mut rows = stmt.query([id])?;
+            while let Some(row) = rows.next()? {
+                out.push(EntryId(row.get(0)?));
+            }
+        }
+        EntryFilter::Search(ref query) if search_is_empty(query) => {}
+        EntryFilter::Search(ref query) => {
+            let mut stmt = conn.prepare(SEARCH)?;
+            let mut rows = stmt.query([like_pattern(query)])?;
             while let Some(row) = rows.next()? {
                 out.push(EntryId(row.get(0)?));
             }
@@ -1280,6 +1378,192 @@ mod tests {
         assert_eq!(page(2, 2), vec![4, 3]);
         assert_eq!(page(2, 4), vec![2, 1]);
         assert_eq!(page(2, 6), Vec::<i64>::new());
+    }
+
+    /// §search answers "which article was that?", over the three fields a row
+    /// is identified by.
+    ///
+    /// The body is deliberately not among them: see the `SEARCH` statement in
+    /// [`list_entries`]. What is tested here is that all three of the fields
+    /// that ARE searched are searched, since a missing one is invisible in a
+    /// demo and is exactly the bug a reader hits when they remember an article
+    /// by its author rather than its headline.
+    #[test]
+    fn search_matches_titles_authors_and_feed_names() {
+        let mut db = populated();
+        db.with_tx(|tx| {
+            // One entry identifiable by each of the three fields.
+            let mut by_title = entry_at(11, 10, EntryStatus::Unread, false, 1_100);
+            by_title.title = "A kernel year in review".to_owned();
+            upsert_entry(tx, &by_title, 2, Arrival::Quiet)?;
+
+            let mut by_author = entry_at(12, 11, EntryStatus::Read, true, 1_200);
+            by_author.title = "Nothing memorable".to_owned();
+            by_author.author = "Matti Virtanen".to_owned();
+            upsert_entry(tx, &by_author, 2, Arrival::Quiet)?;
+
+            upsert_feed(
+                tx,
+                &Feed {
+                    id: FeedId(30),
+                    title: "Laiva Weekly".to_owned(),
+                    ..feed_in(30, None)
+                },
+                2,
+            )?;
+            upsert_entry(
+                tx,
+                &entry_at(13, 30, EntryStatus::Unread, false, 1_300),
+                2,
+                Arrival::Quiet,
+            )
+        })
+        .expect("seed");
+        let search = |q: &str| {
+            ids(&list_entries(db.conn(), EntryFilter::Search(q.to_owned()), 100, 0).expect("list"))
+        };
+
+        assert_eq!(search("kernel"), vec![11], "a title");
+        assert_eq!(search("virtanen"), vec![12], "an author");
+        assert_eq!(search("laiva"), vec![13], "a feed name");
+        assert_eq!(
+            search("MEMORABLE"),
+            vec![12],
+            "and case folds, in both directions"
+        );
+        assert_eq!(
+            search("entry 3"),
+            vec![3],
+            "a query is a substring, not a whole word"
+        );
+        assert_eq!(
+            search("nonexistent"),
+            Vec::<i64>::new(),
+            "and something that is there in none of the three fields is not a match"
+        );
+    }
+
+    /// §a search query is text the reader typed, not a pattern they wrote.
+    ///
+    /// `%` and `_` are `LIKE`'s own wildcards. Passed through unescaped, a
+    /// query of `100%` searches for "100" followed by anything, and a single
+    /// `%` returns the whole mirror -- a search box that quietly turns into a
+    /// SQL pattern is a search box that lies about what it found.
+    #[test]
+    fn search_treats_like_wildcards_as_plain_text() {
+        let mut db = populated();
+        db.with_tx(|tx| {
+            let mut literal = entry_at(11, 10, EntryStatus::Unread, false, 1_100);
+            literal.title = "Battery at 100% at last".to_owned();
+            upsert_entry(tx, &literal, 2, Arrival::Quiet)?;
+            let mut other = entry_at(12, 10, EntryStatus::Unread, false, 1_200);
+            other.title = "Battery at 100 units".to_owned();
+            upsert_entry(tx, &other, 2, Arrival::Quiet)?;
+            let mut underscore = entry_at(13, 10, EntryStatus::Unread, false, 1_300);
+            underscore.title = "cat_sat".to_owned();
+            upsert_entry(tx, &underscore, 2, Arrival::Quiet)?;
+            let mut not_underscore = entry_at(14, 10, EntryStatus::Unread, false, 1_400);
+            not_underscore.title = "cat sat".to_owned();
+            upsert_entry(tx, &not_underscore, 2, Arrival::Quiet)
+        })
+        .expect("seed");
+        let search = |q: &str| {
+            ids(&list_entries(db.conn(), EntryFilter::Search(q.to_owned()), 100, 0).expect("list"))
+        };
+
+        assert_eq!(search("100%"), vec![11], "`%` matches a percent sign");
+        assert_eq!(search("cat_sat"), vec![13], "`_` matches an underscore");
+        assert_eq!(
+            search("%"),
+            vec![11],
+            "a bare `%` is a percent sign too, not the whole mirror"
+        );
+        assert_eq!(
+            search("\\"),
+            Vec::<i64>::new(),
+            "and the escape character itself is matched literally"
+        );
+        assert_eq!(
+            search("   "),
+            Vec::<i64>::new(),
+            "a query of nothing but spaces is an empty query"
+        );
+    }
+
+    /// §an empty search answers nothing, not everything.
+    ///
+    /// `LIKE '%%'` matches every row in the mirror, so a search page whose
+    /// field is still blank would open on a copy of the All list -- and its
+    /// "type to search" placeholder would never be seen.
+    #[test]
+    fn an_empty_search_matches_nothing() {
+        let db = populated();
+        let empty = EntryFilter::Search(String::new());
+
+        assert_eq!(
+            ids(&list_entries(db.conn(), empty.clone(), 100, 0).expect("list")),
+            Vec::<i64>::new()
+        );
+        assert_eq!(
+            ids_of(&entry_ids_matching(db.conn(), empty).expect("ids")),
+            Vec::<i64>::new()
+        );
+    }
+
+    /// §a search finds what a hidden feed holds.
+    ///
+    /// The same reasoning as Starred, a feed's own page and a category: the
+    /// reader has asked for one particular article, and "nothing" when it is
+    /// sitting in a feed hidden from the unread list reads as the app failing
+    /// rather than as the feed being hidden. (Without this, search would have
+    /// been the fifth place `hide_globally` had to be remembered.)
+    #[test]
+    fn search_keeps_what_hidden_feeds_hold() {
+        let mut db = populated();
+        db.with_tx(|tx| {
+            let mut hidden = feed_in(11, Some(1));
+            hidden.hide_globally = true;
+            upsert_feed(tx, &hidden, 2)
+        })
+        .expect("hide");
+        // Entry 3 is in feed 11, and Unread no longer lists it.
+        assert_eq!(
+            ids(&list_entries(db.conn(), EntryFilter::Unread, 100, 0).expect("list")),
+            vec![5, 1],
+            "the fixture's premise: Unread leaves the hidden feed out"
+        );
+        assert_eq!(
+            ids(
+                &list_entries(db.conn(), EntryFilter::Search("entry 3".to_owned()), 100, 0)
+                    .expect("list")
+            ),
+            vec![3]
+        );
+    }
+
+    /// §search pages like every other filter, and its ids are all of them.
+    #[test]
+    fn search_pages_and_reports_ids_like_every_other_filter() {
+        let db = populated();
+        let page = |limit, offset| {
+            ids(&list_entries(
+                db.conn(),
+                EntryFilter::Search("entry".to_owned()),
+                limit,
+                offset,
+            )
+            .expect("list"))
+        };
+        assert_eq!(page(2, 0), vec![6, 5], "newest first");
+        assert_eq!(page(2, 2), vec![4, 3]);
+        assert_eq!(page(2, 4), vec![2, 1]);
+        assert_eq!(page(2, 6), Vec::<i64>::new());
+
+        let mut all = ids_of(
+            &entry_ids_matching(db.conn(), EntryFilter::Search("entry".to_owned())).expect("ids"),
+        );
+        all.sort_unstable();
+        assert_eq!(all, vec![1, 2, 3, 4, 5, 6]);
     }
 
     #[test]

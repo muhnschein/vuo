@@ -124,8 +124,37 @@ fi
 #    Untranslated entries are NOT an error. Qt falls back to the source string,
 #    which is English and correct; a check that failed on them would mean no UI
 #    string could be added without 39 translations in the same commit.
+#
+#    Well-formedness IS an error, and it is checked before any of that, because
+#    `lrelease` parses every catalogue in `scripts/cross-rpm.sh` under `set -e`
+#    -- so a malformed one fails the DEVICE BUILD, forty minutes in, and
+#    nothing closer. Counting `<message` cannot see it: a duplicated closing
+#    tag still counts. This shipped: one hand-edited translation left
+#    `</translation></translation>` in all 40 catalogues, `make check` was
+#    green, and the SDK build was red with a parser error in a file nothing had
+#    parsed. Python rather than `xmllint`, which is not installed everywhere
+#    python3 is.
 missing_qm=""
 drifted=""
+malformed=""
+command -v python3 >/dev/null 2>&1 \
+    || bad "python3 is needed to check the catalogues are well-formed"
+if command -v python3 >/dev/null 2>&1; then
+    malformed=$(python3 - translations/*.ts <<'PY'
+import sys
+import xml.etree.ElementTree as ET
+
+bad = []
+for path in sys.argv[1:]:
+    try:
+        ET.parse(path)
+    except ET.ParseError:
+        bad.append(path.rsplit("/", 1)[-1])
+print(" ".join(bad))
+PY
+)
+    [[ -z "$malformed" ]] || bad "not well-formed XML, and lrelease will refuse to compile them:$malformed"
+fi
 reference=$(grep -c "<message" translations/harbour-vuo-en.ts 2>/dev/null || echo 0)
 if [[ "$reference" -eq 0 ]]; then
     bad "translations/harbour-vuo-en.ts is missing; it is the reference catalogue"
