@@ -58,6 +58,7 @@ fn update_bodies(requests: &[Request]) -> Vec<Value> {
 #[tokio::test]
 async fn replay_is_idempotent() {
     let server = MockServer::start().await;
+    mount_version(&server, "2.3.3").await;
     Mock::given(method("PUT"))
         .and(path("/v1/entries"))
         .respond_with(ResponseTemplate::new(204))
@@ -116,6 +117,7 @@ async fn a_process_killed_mid_flight_resumes_without_losing_or_double_applying()
     //     `confirm` compares before deleting -- `a_retoggle_during_the_request_
     //     is_not_lost`.
     let server = MockServer::start().await;
+    mount_version(&server, "2.3.3").await;
     Mock::given(method("PUT"))
         .and(path("/v1/entries"))
         .respond_with(ResponseTemplate::new(204))
@@ -164,6 +166,7 @@ async fn a_process_killed_mid_flight_resumes_without_losing_or_double_applying()
 #[tokio::test]
 async fn an_offline_burst_reconciles_on_reconnect() {
     let server = MockServer::start().await;
+    mount_version(&server, "2.3.3").await;
     Mock::given(method("PUT"))
         .and(path("/v1/entries"))
         .respond_with(ResponseTemplate::new(204))
@@ -264,6 +267,7 @@ async fn the_servers_toggle_endpoints_are_never_called() {
     // flips the value back, so it must never appear in a replay path. This is
     // the single most important thing to get wrong, so it gets its own test.
     let server = MockServer::start().await;
+    mount_version(&server, "2.3.3").await;
     Mock::given(method("PUT"))
         .and(path("/v1/entries"))
         .respond_with(ResponseTemplate::new(204))
@@ -295,6 +299,7 @@ async fn the_servers_toggle_endpoints_are_never_called() {
 #[tokio::test]
 async fn a_transient_failure_keeps_the_intent_queued() {
     let server = MockServer::start().await;
+    mount_version(&server, "2.3.3").await;
     Mock::given(method("PUT"))
         .and(path("/v1/entries"))
         .respond_with(ResponseTemplate::new(503))
@@ -337,6 +342,7 @@ async fn a_misconfigured_server_url_never_discards_queued_work() {
     // change: restoring the exact historical bug in `flush` leaves all nine of
     // them green. Only a real failure through `flush` distinguishes them.
     let server = MockServer::start().await;
+    mount_version(&server, "2.3.3").await;
     Mock::given(method("PUT"))
         .and(path("/v1/entries"))
         .respond_with(
@@ -381,6 +387,7 @@ async fn a_misconfigured_server_url_never_discards_queued_work() {
 #[tokio::test]
 async fn revoked_credentials_stop_the_flush_without_dropping_work() {
     let server = MockServer::start().await;
+    mount_version(&server, "2.3.3").await;
     Mock::given(method("PUT"))
         .and(path("/v1/entries"))
         .respond_with(ResponseTemplate::new(401).set_body_json(serde_json::json!({
@@ -416,6 +423,7 @@ async fn revoked_credentials_stop_the_flush_without_dropping_work() {
 #[tokio::test]
 async fn a_permanent_rejection_is_dropped_rather_than_blocking_the_queue() {
     let server = MockServer::start().await;
+    mount_version(&server, "2.3.3").await;
     Mock::given(method("PUT"))
         .and(path("/v1/entries"))
         .respond_with(ResponseTemplate::new(400).set_body_json(serde_json::json!({
@@ -439,9 +447,57 @@ async fn a_permanent_rejection_is_dropped_rather_than_blocking_the_queue() {
 }
 
 #[tokio::test]
+async fn a_pre_2_3_2_server_keeps_intents_queued_instead_of_dropping_them() {
+    // The regression the 2.3.2 write floor exists for. On a 2.2.13 the
+    // starred half of `PUT /v1/entries` is not merely unsupported -- the
+    // request 400s ("invalid entry status"), and a 400 is exactly what
+    // `would_discard` reads as "the payload is malformed forever", so the
+    // user's star was DELETED from the outbox. Verified against a real
+    // 2.2.13 on 2026-10-05, which is what the live contract tests are for.
+    //
+    // The client now refuses before sending, and the refusal is neither
+    // transient nor a permanent payload rejection: the intent stays queued
+    // until the instance is upgraded, and nothing reaches the wire.
+    let server = MockServer::start().await;
+    mount_version(&server, "2.2.13").await;
+    Mock::given(method("PUT"))
+        .and(path("/v1/entries"))
+        .respond_with(ResponseTemplate::new(400).set_body_json(serde_json::json!({
+            "error_message": "invalid entry status, valid status values are: \"read\", \"unread\" and \"removed\""
+        })))
+        .mount(&server)
+        .await;
+    let client = client_for(&server);
+    let mut db = seeded_db(1);
+
+    db.with_tx(|tx| {
+        outbox::queue(tx, EntryId(1), DesiredValue::Starred(true), 1)?;
+        outbox::queue(tx, EntryId(1), DesiredValue::Status(EntryStatus::Read), 2)
+    })
+    .unwrap();
+
+    let outcome = replay::flush(&mut db, &client).await.unwrap();
+    assert_eq!(outcome.dropped, 0, "an old server must not cost user data");
+    assert_eq!(outcome.confirmed, 0);
+    assert_eq!(
+        outcome.deferred, 2,
+        "both intents stay queued: a server upgrade later replays them"
+    );
+    assert_eq!(outbox::len(db.conn()).unwrap(), 2);
+
+    let sent = update_bodies(&server.received_requests().await.unwrap());
+    assert!(
+        sent.is_empty(),
+        "the refusal happens before anything is sent; the 400 must never \
+         reach the outbox's discard rule"
+    );
+}
+
+#[tokio::test]
 async fn a_retoggle_during_the_request_is_not_lost() {
     // The compare-and-delete case, end to end.
     let server = MockServer::start().await;
+    mount_version(&server, "2.3.3").await;
     Mock::given(method("PUT"))
         .and(path("/v1/entries"))
         .respond_with(ResponseTemplate::new(204))

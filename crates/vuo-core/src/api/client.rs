@@ -201,12 +201,18 @@ pub enum EntryMutation {
 #[derive(Debug, Clone)]
 pub struct MinifluxClient {
     transport: Transport,
+    /// The server version, once known. Written by [`MinifluxClient::version`]
+    /// and read by the entry-write floor; see `write_capable_version`.
+    server_version: std::sync::OnceLock<ServerVersion>,
 }
 
 impl MinifluxClient {
     #[must_use]
     pub fn new(transport: Transport) -> Self {
-        MinifluxClient { transport }
+        MinifluxClient {
+            transport,
+            server_version: std::sync::OnceLock::new(),
+        }
     }
 
     #[must_use]
@@ -266,11 +272,48 @@ impl MinifluxClient {
 
     // ------------------------------------------------------------ discovery
 
-    /// `GET /v1/version`. Called once at connect: several request-building
-    /// rules branch on the answer.
+    /// `GET /v1/version`. Several request-building rules branch on the answer,
+    /// and [`Self::update_entries`] consults the result before writing.
+    ///
+    /// Each call refetches and refreshes the cache: the answer changes when
+    /// the instance's owner upgrades their Miniflux, and `sync` calls this on
+    /// its version-check TTL precisely to notice that.
     pub async fn version(&self) -> Result<ServerVersion> {
         let w: wire::VersionResponse = self.get_json(self.url("/v1/version")?).await?;
-        Ok(ServerVersion::parse(&w.version).unwrap_or_default())
+        let version = ServerVersion::parse(&w.version).unwrap_or_default();
+        let _ = self.server_version.set(version.clone());
+        Ok(version)
+    }
+
+    /// The version entry-state writes must be checked against.
+    ///
+    /// Known already (a sync pass has asked)? Use it. Otherwise ask now: the
+    /// floor is a data-loss guard, so it never guesses its way past an unknown
+    /// server. A failed fetch propagates as that failure — transient, so the
+    /// intent stays queued and the next flush tries again.
+    async fn write_capable_version(&self) -> Result<ServerVersion> {
+        match self.server_version.get() {
+            Some(v) => Ok(v.clone()),
+            None => self.version().await,
+        }
+    }
+
+    /// Refuse an entry-state write the server cannot apply as an absolute set.
+    ///
+    /// `Error::Config` on purpose: not transient (a retry replays the
+    /// refusal), and not a permanent payload rejection (the payload is fine —
+    /// the SERVER is too old), so the outbox keeps the intent queued instead
+    /// of discarding it. See `ServerVersion::supports_entry_state_writes`.
+    async fn refuse_entry_writes_before_floor(&self) -> Result<()> {
+        let version = self.write_capable_version().await?;
+        if version.supports_entry_state_writes() {
+            return Ok(());
+        }
+        Err(Error::Config(format!(
+            "Miniflux {} predates absolute entry-state writes (Vuo needs 2.3.2+); \
+             actions stay queued until the server is upgraded",
+            version.raw
+        )))
     }
 
     /// `GET /v1/me`. Used to verify that an API key works during setup.
@@ -353,6 +396,18 @@ impl MinifluxClient {
     ///
     /// Unknown ids are silently ignored by the server (there is no
     /// rows-affected check), so a 204 does not mean every id existed.
+    ///
+    /// # The 2.3.2 floor
+    ///
+    /// Before 2.3.2 this endpoint knew only `status`, and a starred-only body
+    /// came back 400 ("invalid entry status"). That 400 would reach the
+    /// outbox's `would_discard` rule and DROP the user's star as a malformed
+    /// payload — verified against a real 2.2.13 on 2026-10-05, which is what
+    /// the live contract tests exist for. So on an older server this refuses
+    /// before sending: the error is neither transient nor a permanent
+    /// payload rejection, so every intent stays queued, visible as stuck,
+    /// until the instance is upgraded. Status writes those servers *would*
+    /// accept are refused too — half-working writes are how stars vanished.
     pub async fn update_entries(&self, ids: &[EntryId], mutation: EntryMutation) -> Result<()> {
         if ids.is_empty() {
             // A hard 400 server-side; refuse locally so it is not mistaken for
@@ -361,6 +416,7 @@ impl MinifluxClient {
                 "refusing to send an empty entry id list".to_owned(),
             ));
         }
+        self.refuse_entry_writes_before_floor().await?;
 
         let (status, starred) = match mutation {
             EntryMutation::Status(s) => (Some(s.as_api_str()), None),
@@ -390,12 +446,18 @@ impl MinifluxClient {
     /// queued one later marks strictly more entries than the user saw — which
     /// is why the outbox expands mark-all into concrete entry ids instead of
     /// queueing this call. See [`crate::outbox`].
+    ///
+    /// Refused below the 2.3.2 write floor like every entry-state write; see
+    /// [`Self::update_entries`].
     pub async fn mark_feed_read(&self, feed_id: i64) -> Result<()> {
+        self.refuse_entry_writes_before_floor().await?;
         self.put_empty(&format!("/v1/feeds/{feed_id}/mark-all-as-read"))
             .await
     }
 
+    /// As [`Self::mark_feed_read`], for one category.
     pub async fn mark_category_read(&self, category_id: i64) -> Result<()> {
+        self.refuse_entry_writes_before_floor().await?;
         self.put_empty(&format!("/v1/categories/{category_id}/mark-all-as-read"))
             .await
     }

@@ -273,7 +273,11 @@ pub struct ApiError {
 ///
 /// Both fields are absolute sets, not deltas, which is what makes outbox
 /// replay safe. `status` and `starred` are independent; sending neither is a
-/// 400, and so is an empty `entry_ids`.
+/// 400 ("either the status or the starred field must be specified", verified
+/// on 2.3.2+), and so is an empty `entry_ids`. `starred` itself only exists
+/// from 2.3.2; on older servers the field is unknown and a starred-only body
+/// 400s, which is why the client refuses writes below that floor rather than
+/// sending this.
 ///
 /// The `/star` and `/bookmark` routes are *not* usable here: they map to a
 /// handler whose SQL is `SET starred = NOT starred`, a true toggle that flips

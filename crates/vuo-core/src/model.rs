@@ -266,6 +266,23 @@ impl ServerVersion {
     pub fn enforces_entry_limit_cap(&self) -> bool {
         self.at_least(2, 3, 0)
     }
+
+    /// `PUT /v1/entries` takes an absolute `starred` set from 2.3.2.
+    ///
+    /// Verified against real servers by the live contract tests on 2026-10-05
+    /// and by reading the handler source either side of the boundary: 2.2.13
+    /// and 2.3.1 reject a starred-only body with a 400 ("invalid entry
+    /// status"), 2.3.2 and 2.3.3 accept it. Below this floor the outbox's
+    /// absolute-set design cannot be honoured, so Vuo refuses entry-state
+    /// writes ENTIRELY -- status included, which those servers do accept --
+    /// and leaves every intent queued. Partial support is what made stars
+    /// vanish: the 400 from a star write matched `would_discard`, and the
+    /// user's intent was dropped as a malformed payload. Refusing keeps it
+    /// queued until the instance is upgraded. See `api::client::update_entries`.
+    #[must_use]
+    pub fn supports_entry_state_writes(&self) -> bool {
+        self.at_least(2, 3, 2)
+    }
 }
 
 /// An unbuilt "development" version string reports as this.
@@ -327,19 +344,28 @@ mod tests {
 
         assert!(new.enforces_entry_limit_cap());
         assert!(!old.enforces_entry_limit_cap());
+
+        assert!(new.supports_entry_state_writes());
+        assert!(
+            !older.supports_entry_state_writes(),
+            "absolute starred lands in 2.3.2, same boundary as the id listing"
+        );
+        assert!(!old.supports_entry_state_writes());
     }
 
     #[test]
     fn unknown_version_assumes_the_oldest_supported_behaviour() {
         // Assert the DEFAULT, not one consequence of it. `ServerVersion` gates
-        // two behaviours -- has_entry_ids_endpoint() at >= 2.3.2 and
+        // three behaviours -- has_entry_ids_endpoint() and
+        // supports_entry_state_writes() at >= 2.3.2, and
         // enforces_entry_limit_cap() at >= 2.3.0 -- and checking only the first
         // left any default in [2.3.0, 2.3.2) passing while silently flipping
-        // the second.
+        // the others.
         // Guessing high would mean calling endpoints that 404.
         let v = ServerVersion::default();
         assert_eq!((v.major, v.minor, v.patch), (2, 0, 0));
         assert!(!v.has_entry_ids_endpoint());
         assert!(!v.enforces_entry_limit_cap());
+        assert!(!v.supports_entry_state_writes());
     }
 }

@@ -28,7 +28,7 @@
 # time with an error nobody could interpret. Before treating this job's result
 # as authoritative, run:
 #
-#     docker manifest inspect miniflux/miniflux:2.2.13-distroless \
+#     docker manifest inspect miniflux/miniflux:2.3.3-distroless \
 #       | jq -r '.manifests[0].digest'
 #
 # and replace each `image:` with `name@sha256:...`. The check-pins step below
@@ -104,8 +104,14 @@ jobs:
 
       - name: Start Miniflux
         env:
+          # 2.3.3, and not an older pin: Vuo's write floor is 2.3.2 (absolute
+          # `starred` in `PUT /v1/entries`), so the starred half of the bulk
+          # contract test only runs against this or newer. The 2.2.13 this
+          # originally pinned is what discovered the floor -- its 400 is the
+          # finding of 2026-10-05 -- but a job pinned below it can no longer
+          # verify what Vuo now depends on.
           # TODO(pin): replace with an @sha256: digest. See the note at the top.
-          MINIFLUX_IMAGE: miniflux/miniflux:2.2.13-distroless
+          MINIFLUX_IMAGE: miniflux/miniflux:2.3.3-distroless
         run: |
           docker run -d --name miniflux --network host \
             -e DATABASE_URL="postgres://miniflux@localhost/miniflux?sslmode=disable" \
@@ -114,6 +120,7 @@ jobs:
             -e ADMIN_USERNAME=vuo \
             -e ADMIN_PASSWORD=vuo-test-password \
             -e LISTEN_ADDR=127.0.0.1:8080 \
+            -e FETCHER_ALLOW_PRIVATE_NETWORKS=1 \
             "$MINIFLUX_IMAGE"
 
       - name: Wait for readiness
@@ -136,6 +143,13 @@ jobs:
         # Miniflux runs with --network host, so it reaches the runner's
         # 127.0.0.1 directly. Serving the feed locally makes the seed
         # deterministic and independent of the runner's outbound network.
+        #
+        # It also needs FETCHER_ALLOW_PRIVATE_NETWORKS=1 above: since 2.3.x
+        # the fetcher refuses private and loopback hosts outright (an SSRF
+        # guard), so without that flag feed creation 500s with "refusing to
+        # access private network host". The flag is honest here -- the guard
+        # protects a real instance from attacker-supplied feed URLs, and this
+        # instance is ephemeral and exists to be pointed at exactly this URL.
         run: |
           (cd tests/fixtures && python3 -m http.server 8099 --bind 127.0.0.1 >/dev/null 2>&1 &)
           for i in $(seq 1 20); do
@@ -214,7 +228,13 @@ jobs:
         env:
           VUO_LIVE_BASE_URL: http://127.0.0.1:8080
           VUO_LIVE_TOKEN: ${{ steps.seed.outputs.token }}
-        run: make live-test
+        # SKIP_QT=1 because this job installs no Qt, and `live-test` needs
+        # none: it is pure Rust against a HTTP API. The Makefile's qmake guard
+        # is scoped to the Qt-bearing goals now, but say it here anyway, so a
+        # future tightening of that guard cannot cost this job another five
+        # weeks of silent failures. Every previous run died at parse time on
+        # that guard, in under a second, having asserted nothing.
+        run: make live-test SKIP_QT=1
 
       - name: Miniflux logs
         if: failure()

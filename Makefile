@@ -30,13 +30,29 @@ ARCH ?= aarch64
 #
 # `make check SKIP_QT=1` is the explicit opt-out for a machine that genuinely
 # has no Qt, and it says so in the summary.
+#
+# The refusal fires only for the goals that bear on Qt. It used to fire for
+# EVERY goal, so `make live-test` on a Qt-less runner died at parse time with a
+# qmake complaint -- before its own `test -n` guards, before cargo ran. That is
+# how the Miniflux integration job failed every week for five weeks: its step
+# "Run the opt-in live tests" aborted in under a second, having asserted
+# nothing, and no live test has ever actually run in CI. The Qt-free opt-in
+# gates -- live-test, vendor-check, msrv, fuzz-quick and the rest listed below
+# -- need no Qt and must run anywhere.
 SKIP_QT ?=
 HAVE_QT := $(shell test -x "$(QMAKE)" && echo yes)
+# Goals whose result bears on Qt: the shim and its clippy, the QML tests, and
+# every aggregate that pulls them in. Everything else is Qt-free on the host.
+QT_FREE_GOALS := fmt fmt-check fuzz-check lockfile deny vendor-check msrv \
+                 fuzz-quick live-test icons rpm vendor clean help
+QT_GOALS := $(filter-out $(QT_FREE_GOALS),$(if $(MAKECMDGOALS),$(MAKECMDGOALS),all))
 ifneq ($(HAVE_QT),yes)
+ifneq ($(QT_GOALS),)
 ifndef SKIP_QT
 $(error qmake not found at $(QMAKE), so the shim, the QML load test and shim clippy \
 cannot run. Install qtbase5-dev qtdeclarative5-dev qtdeclarative5-dev-tools \
 qml-module-qtquick2, or run `make $(MAKECMDGOALS) SKIP_QT=1` to skip them knowingly)
+endif
 endif
 endif
 

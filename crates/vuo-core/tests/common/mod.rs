@@ -21,7 +21,8 @@
 use vuo_core::api::{MinifluxClient, Transport, TransportConfig};
 use vuo_core::db::Database;
 use vuo_core::redact::ApiToken;
-use wiremock::MockServer;
+use wiremock::matchers::{method, path};
+use wiremock::{Mock, MockServer, ResponseTemplate};
 
 /// Build a client pointed at a mock server.
 pub fn client_for(server: &MockServer) -> MinifluxClient {
@@ -33,6 +34,20 @@ pub fn client_for(server: &MockServer) -> MinifluxClient {
     )
     .expect("transport");
     MinifluxClient::new(transport)
+}
+
+/// Answer `GET /v1/version`, which the client asks before any entry-state
+/// write: Vuo refuses those below 2.3.2 (see
+/// `ServerVersion::supports_entry_state_writes`), so every test that mounts a
+/// write endpoint must also say what the server is.
+pub async fn mount_version(server: &MockServer, version: &str) {
+    Mock::given(method("GET"))
+        .and(path("/v1/version"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "version": version
+        })))
+        .mount(server)
+        .await;
 }
 
 pub fn memory_db() -> Database {
