@@ -120,6 +120,7 @@ jobs:
             -e ADMIN_USERNAME=vuo \
             -e ADMIN_PASSWORD=vuo-test-password \
             -e LISTEN_ADDR=127.0.0.1:8080 \
+            -e FETCHER_ALLOW_PRIVATE_NETWORKS=1 \
             "$MINIFLUX_IMAGE"
 
       - name: Wait for readiness
@@ -142,6 +143,13 @@ jobs:
         # Miniflux runs with --network host, so it reaches the runner's
         # 127.0.0.1 directly. Serving the feed locally makes the seed
         # deterministic and independent of the runner's outbound network.
+        #
+        # It also needs FETCHER_ALLOW_PRIVATE_NETWORKS=1 above: since 2.3.x
+        # the fetcher refuses private and loopback hosts outright (an SSRF
+        # guard), so without that flag feed creation 500s with "refusing to
+        # access private network host". The flag is honest here -- the guard
+        # protects a real instance from attacker-supplied feed URLs, and this
+        # instance is ephemeral and exists to be pointed at exactly this URL.
         run: |
           (cd tests/fixtures && python3 -m http.server 8099 --bind 127.0.0.1 >/dev/null 2>&1 &)
           for i in $(seq 1 20); do
