@@ -432,9 +432,21 @@ discover the answer after copying a page.
   "changed since" pull without gaps or unbounded re-fetching, and how are
   server-side deletions detected? Resolve against the API docs in
   milestone 1; this determines the mirror's schema.
+  **Resolved 2026-10-05** by the live contract tests: `order=id&direction=asc`
+  with `after_entry_id` is a true keyset cursor with no ties, and a mutation
+  bumps `changed_at`, so the pull sees its own writes come back as echoes.
+  Server-side deletions leave no cursor trace at all; the id listing
+  (`/v1/entries/ids`, 2.3.2+) is the only signal, backed by the counters.
 - **Batch mutation semantics.** Confirm the exact endpoints and payload
   shapes for bulk status changes and bookmark toggling, and whether they are
   idempotent under replay. The outbox design depends on the answer.
+  **Resolved 2026-10-05**: `PUT /v1/entries` with `{entry_ids, status?, starred?}`
+  is an absolute set and idempotent under replay -- but `starred` is a 2.3.2
+  addition. Below that the endpoint knows only `status`, a starred-only body
+  400s, and the toggle routes (`/star`, `/bookmark`) are true toggles. Vuo
+  therefore requires 2.3.2+ for entry-state writes and refuses (queueing the
+  intent, never dropping it) on older servers. Held by
+  `api::client::update_entries` and the `live_miniflux` contract tests.
 - **Async runtime under Qt 5.6.** Whisperfish's approach to driving async
   Rust from Qt's event loop has evolved; establish what the current
   recommended pattern is in `qmetaobject-rs` before writing the shim.

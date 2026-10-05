@@ -28,7 +28,7 @@
 # time with an error nobody could interpret. Before treating this job's result
 # as authoritative, run:
 #
-#     docker manifest inspect miniflux/miniflux:2.2.13-distroless \
+#     docker manifest inspect miniflux/miniflux:2.3.3-distroless \
 #       | jq -r '.manifests[0].digest'
 #
 # and replace each `image:` with `name@sha256:...`. The check-pins step below
@@ -104,8 +104,14 @@ jobs:
 
       - name: Start Miniflux
         env:
+          # 2.3.3, and not an older pin: Vuo's write floor is 2.3.2 (absolute
+          # `starred` in `PUT /v1/entries`), so the starred half of the bulk
+          # contract test only runs against this or newer. The 2.2.13 this
+          # originally pinned is what discovered the floor -- its 400 is the
+          # finding of 2026-10-05 -- but a job pinned below it can no longer
+          # verify what Vuo now depends on.
           # TODO(pin): replace with an @sha256: digest. See the note at the top.
-          MINIFLUX_IMAGE: miniflux/miniflux:2.2.13-distroless
+          MINIFLUX_IMAGE: miniflux/miniflux:2.3.3-distroless
         run: |
           docker run -d --name miniflux --network host \
             -e DATABASE_URL="postgres://miniflux@localhost/miniflux?sslmode=disable" \

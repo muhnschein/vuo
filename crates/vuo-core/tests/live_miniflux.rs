@@ -98,7 +98,14 @@ async fn the_server_reports_a_version_we_can_parse() {
         "server version: {} (parsed {}.{}.{})",
         version.raw, version.major, version.minor, version.patch
     );
-    assert!(version.major >= 2, "Vuo targets Miniflux 2.x");
+    // The write floor, not just "2.x": below 2.3.2 Vuo refuses entry-state
+    // writes entirely (see `ServerVersion::supports_entry_state_writes`), so
+    // an instance older than that can mirror but never sync user actions.
+    assert!(
+        version.supports_entry_state_writes(),
+        "Vuo needs Miniflux 2.3.2+; this instance says {}",
+        version.raw
+    );
 }
 
 #[tokio::test]
@@ -178,7 +185,13 @@ async fn bulk_status_updates_are_absolute_and_idempotent() {
     );
 
     // And the same for starred, which is the field the server's other
-    // endpoints implement as a toggle.
+    // endpoints implement as a toggle. This half is the one that produced the
+    // first real answer this job ever found (2026-10-05): `starred` is a field
+    // of `PUT /v1/entries` only from Miniflux 2.3.2. Below that the body 400s
+    // ("invalid entry status") and the outbox would have DROPPED the intent as
+    // malformed. The client now refuses entry-state writes below the floor
+    // before sending; `outbox_reconciliation` holds that, and this test holds
+    // the absolute-set semantics the refusal is preserving.
     client
         .update_entries(&[id], EntryMutation::Starred(true))
         .await

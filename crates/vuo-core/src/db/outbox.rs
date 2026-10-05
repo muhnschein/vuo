@@ -23,6 +23,14 @@
 //! upserts: star, unstar, star again while offline collapses to a single row
 //! holding `true`.
 //!
+//! The `starred` half of that is a **2.3.2 feature**, verified against real
+//! servers on 2026-10-05: older ones know only `status` and answer 400. A 400
+//! is what the replay's discard rule reads as "malformed forever", so on those
+//! servers stars used to be dropped, not queued. The client now refuses
+//! entry-state writes below the floor before sending, which turns a would-be
+//! data loss into an intent that stays queued and visible. See
+//! `api::client::update_entries` and `ServerVersion::supports_entry_state_writes`.
+//!
 //! Three properties fall out, and they are exactly the ones §5 asks for:
 //!
 //! - **Idempotent replay.** What goes on the wire is a final value, so

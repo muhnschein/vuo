@@ -38,13 +38,19 @@ use vuo_core::sync::{self, SyncOptions};
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-/// A server that answers every endpoint one pass touches.
-async fn quiet_server() -> MockServer {
+/// A server that answers every endpoint one pass touches, at `version`.
+///
+/// The version is load-bearing: at 2.2.0 the pass takes its legacy branches
+/// (no id listing, no deletion reconcile), and at 2.3.3 its modern ones. The
+/// id listing is mounted either way, so a version bump cannot fail by 404.
+async fn server_with_version(version: &str) -> MockServer {
     let server = MockServer::start().await;
+    mount_version(&server, version).await;
     Mock::given(method("GET"))
-        .and(path("/v1/version"))
+        .and(path("/v1/entries/ids"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-            "version": "2.2.0"
+            "total": 1,
+            "entry_ids": [1]
         })))
         .mount(&server)
         .await;
@@ -81,6 +87,18 @@ async fn quiet_server() -> MockServer {
         .mount(&server)
         .await;
     server
+}
+
+/// The legacy fixture: a pre-2.3.2 server. Vuo refuses entry-state writes
+/// below the floor, so only passes with an empty outbox belong here.
+async fn quiet_server() -> MockServer {
+    server_with_version("2.2.0").await
+}
+
+/// A server Vuo actually writes to: 2.3.2+, where `PUT /v1/entries` honours
+/// absolute sets. Tests that queue user actions use this one.
+async fn modern_server() -> MockServer {
+    server_with_version("2.3.3").await
 }
 
 #[tokio::test]
@@ -128,7 +146,7 @@ async fn a_pass_sends_the_users_queued_actions_before_pulling() {
     // Order matters: replaying first means the pull's echo of our own write
     // arrives with the value we already set, rather than the pull overwriting
     // an intent we had not sent yet.
-    let server = quiet_server().await;
+    let server = modern_server().await;
     let client = client_for(&server);
     let mut db = Database::open_in_memory().expect("mirror");
 
@@ -181,6 +199,7 @@ async fn an_auth_failure_stops_the_pass_rather_than_pulling_anyway() {
     // Pulling would fail identically, and burying a credential problem under a
     // network error is what makes "sync does nothing" unreportable.
     let server = MockServer::start().await;
+    mount_version(&server, "2.3.3").await;
     Mock::given(method("PUT"))
         .and(path("/v1/entries"))
         .respond_with(ResponseTemplate::new(401))
