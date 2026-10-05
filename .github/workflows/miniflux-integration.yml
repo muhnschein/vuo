@@ -214,7 +214,13 @@ jobs:
         env:
           VUO_LIVE_BASE_URL: http://127.0.0.1:8080
           VUO_LIVE_TOKEN: ${{ steps.seed.outputs.token }}
-        run: make live-test
+        # SKIP_QT=1 because this job installs no Qt, and `live-test` needs
+        # none: it is pure Rust against a HTTP API. The Makefile's qmake guard
+        # is scoped to the Qt-bearing goals now, but say it here anyway, so a
+        # future tightening of that guard cannot cost this job another five
+        # weeks of silent failures. Every previous run died at parse time on
+        # that guard, in under a second, having asserted nothing.
+        run: make live-test SKIP_QT=1
 
       - name: Miniflux logs
         if: failure()
