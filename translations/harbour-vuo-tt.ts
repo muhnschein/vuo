@@ -91,12 +91,12 @@
         <translation>Чыганак мәкаләсе алына…</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="507"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="530"/>
         <source>The original article was loaded.</source>
         <translation>Чыганак мәкаләсе йөкләнде.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="514"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="537"/>
         <source>This feed already contains the full article.</source>
         <translation>Бу тасмада мәкалә инде тулысынча бар.</translation>
     </message>
@@ -106,17 +106,17 @@
         <translation>%1 сайтыннан рәсемнәрне йөкләү өчен басыгыз</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="511"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="534"/>
         <source>The server could not extract the original article.</source>
         <translation>Сервер чыганак мәкаләсен ала алмады.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="516"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="539"/>
         <source>The server rejected the API key.</source>
         <translation>Сервер API ачкычын кире какты.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="520"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="543"/>
         <source>Could not fetch the original article: %1</source>
         <translation>Чыганак мәкаләсен алып булмады: %1</translation>
     </message>
@@ -124,17 +124,17 @@
 <context>
     <name>CoverPage</name>
     <message>
-        <location filename="../qml/cover/CoverPage.qml" line="225"/>
+        <location filename="../qml/cover/CoverPage.qml" line="237"/>
         <source>Sign-in failed</source>
         <translation>Керү уңышсыз</translation>
     </message>
     <message>
-        <location filename="../qml/cover/CoverPage.qml" line="225"/>
+        <location filename="../qml/cover/CoverPage.qml" line="237"/>
         <source>Refresh failed</source>
         <translation>Яңарту уңышсыз</translation>
     </message>
     <message>
-        <location filename="../qml/cover/CoverPage.qml" line="226"/>
+        <location filename="../qml/cover/CoverPage.qml" line="238"/>
         <source>Refreshing</source>
         <translation>Яңартыла</translation>
     </message>
@@ -183,32 +183,32 @@
     <name>EntryListPage</name>
     <message>
         <location filename="../qml/pages/EntryListPage.qml" line="11"/>
-        <location filename="../qml/pages/EntryListPage.qml" line="167"/>
+        <location filename="../qml/pages/EntryListPage.qml" line="176"/>
         <source>Unread</source>
         <translation>Укылмаган</translation>
     </message>
     <message>
-        <location filename="../qml/pages/EntryListPage.qml" line="167"/>
+        <location filename="../qml/pages/EntryListPage.qml" line="176"/>
         <source>Favourites</source>
         <translation>Сайланма</translation>
     </message>
     <message>
-        <location filename="../qml/pages/EntryListPage.qml" line="167"/>
+        <location filename="../qml/pages/EntryListPage.qml" line="176"/>
         <source>All</source>
         <translation>Барысы</translation>
     </message>
     <message>
-        <location filename="../qml/pages/EntryListPage.qml" line="317"/>
+        <location filename="../qml/pages/EntryListPage.qml" line="327"/>
         <source>The server rejected the API key.</source>
         <translation>Сервер API ачкычын кире какты.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/EntryListPage.qml" line="318"/>
+        <location filename="../qml/pages/EntryListPage.qml" line="328"/>
         <source>Open settings</source>
         <translation>Көйләүләрне ачу</translation>
     </message>
     <message>
-        <location filename="../qml/pages/EntryListPage.qml" line="320"/>
+        <location filename="../qml/pages/EntryListPage.qml" line="330"/>
         <source>Refresh failed: %1</source>
         <translation>Яңарту уңышсыз: %1</translation>
     </message>
@@ -216,118 +216,153 @@
 <context>
     <name>EntryListView</name>
     <message numerus="yes">
-        <location filename="../qml/components/EntryListView.qml" line="204"/>
+        <location filename="../qml/components/EntryListView.qml" line="229"/>
         <source>%n selected</source>
         <translation>
             <numerusform>%n сайланды</numerusform>
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/components/EntryListView.qml" line="206"/>
+        <location filename="../qml/components/EntryListView.qml" line="231"/>
         <source>%n article(s)</source>
         <translation>
             <numerusform>%n мәкалә</numerusform>
         </translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="261"/>
+        <location filename="../qml/components/EntryListView.qml" line="265"/>
+        <source>Search articles</source>
+        <extracomment>Placeholder in the empty search field.</extracomment>
+        <translation>Мәкаләләр эзлә</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="318"/>
         <source>Select all</source>
         <translation>Барысын сайлау</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="262"/>
+        <location filename="../qml/components/EntryListView.qml" line="319"/>
         <source>Deselect all</source>
         <translation>Сайлауны алу</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="267"/>
-        <location filename="../qml/components/EntryListView.qml" line="619"/>
+        <location filename="../qml/components/EntryListView.qml" line="324"/>
+        <location filename="../qml/components/EntryListView.qml" line="706"/>
         <source>Mark as unread</source>
         <translation>Укылмаган дип билгеләү</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="272"/>
-        <location filename="../qml/components/EntryListView.qml" line="619"/>
+        <location filename="../qml/components/EntryListView.qml" line="329"/>
+        <location filename="../qml/components/EntryListView.qml" line="706"/>
         <source>Mark as read</source>
         <translation>Укылган дип билгеләү</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="279"/>
+        <location filename="../qml/components/EntryListView.qml" line="336"/>
         <source>Settings</source>
         <translation>Көйләүләр</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="284"/>
+        <location filename="../qml/components/EntryListView.qml" line="341"/>
         <source>Feeds</source>
         <translation>Тасмалар</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="299"/>
-        <location filename="../qml/components/EntryListView.qml" line="306"/>
+        <location filename="../qml/components/EntryListView.qml" line="356"/>
+        <location filename="../qml/components/EntryListView.qml" line="363"/>
         <source>Select articles</source>
         <translation>Мәкаләләрне сайлау</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="311"/>
+        <location filename="../qml/components/EntryListView.qml" line="368"/>
         <source>Mark all as read</source>
         <translation>Барысын укылган дип билгеләү</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="330"/>
+        <location filename="../qml/components/EntryListView.qml" line="388"/>
         <source>Marking all as read</source>
         <translation>Барысы укылган дип билгеләнә</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="337"/>
+        <location filename="../qml/components/EntryListView.qml" line="399"/>
+        <source>Search</source>
+        <comment>menu item</comment>
+        <extracomment>Pulley menu item. A verb: it opens the search page.</extracomment>
+        <translation>Эзлә</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="409"/>
+        <source>Search</source>
+        <comment>page title</comment>
+        <extracomment>The search page&apos;s title. A noun.</extracomment>
+        <translation>Эзләү</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="415"/>
         <source>Refresh</source>
         <translation>Яңарту</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="381"/>
+        <location filename="../qml/components/EntryListView.qml" line="461"/>
+        <source>Search the articles on this device</source>
+        <translation>Бу җайланмадагы мәкаләләрне эзлә</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="462"/>
+        <source>No articles found</source>
+        <translation>Мәкаләләр табылмады</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="463"/>
         <source>No favourites</source>
         <translation>Сайланма юк</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="382"/>
+        <location filename="../qml/components/EntryListView.qml" line="464"/>
         <source>Nothing to read</source>
         <translation>Укыр әйбер юк</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="384"/>
+        <location filename="../qml/components/EntryListView.qml" line="469"/>
+        <source>Vuo searches the title, author, feed name and text of every article on this device.</source>
+        <translation>Vuo бу җайланмадагы һәр мәкаләнең исемен, авторын, тасма атамасын һәм текстын эзли.</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="471"/>
         <source>Articles you add to favourites appear here</source>
         <translation>Сайланмага өстәлгән мәкаләләр монда күренә</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="385"/>
+        <location filename="../qml/components/EntryListView.qml" line="472"/>
         <source>Pull down to refresh</source>
         <translation>Яңарту өчен аска тартыгыз</translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/components/EntryListView.qml" line="540"/>
+        <location filename="../qml/components/EntryListView.qml" line="627"/>
         <source>%n min read</source>
         <translation>
             <numerusform>%n мин уку</numerusform>
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/components/EntryListView.qml" line="541"/>
+        <location filename="../qml/components/EntryListView.qml" line="628"/>
         <source>%n min</source>
         <translation>
             <numerusform>%n мин</numerusform>
         </translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="623"/>
+        <location filename="../qml/components/EntryListView.qml" line="710"/>
         <source>Remove favourite</source>
         <translation>Сайланмадан алу</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="623"/>
+        <location filename="../qml/components/EntryListView.qml" line="710"/>
         <source>Add favourite</source>
         <translation>Сайланмага өстәү</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="627"/>
+        <location filename="../qml/components/EntryListView.qml" line="714"/>
         <source>Open in browser</source>
         <translation>Браузерда ачу</translation>
     </message>
@@ -378,6 +413,14 @@
         <location filename="../qml/pages/FeedListPage.qml" line="174"/>
         <source>Unsubscribing</source>
         <translation>Язылудан баш тартыла</translation>
+    </message>
+</context>
+<context>
+    <name>ImageViewerPage</name>
+    <message>
+        <location filename="../qml/pages/ImageViewerPage.qml" line="143"/>
+        <source>The image could not be loaded.</source>
+        <translation>Рәсемне йөкләп булмады.</translation>
     </message>
 </context>
 <context>
@@ -698,14 +741,14 @@
 <context>
     <name>harbour-vuo</name>
     <message numerus="yes">
-        <location filename="../qml/harbour-vuo.qml" line="129"/>
+        <location filename="../qml/harbour-vuo.qml" line="132"/>
         <source>%n new article(s)</source>
         <translation>
             <numerusform>%n яңа мәкалә</numerusform>
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/harbour-vuo.qml" line="136"/>
+        <location filename="../qml/harbour-vuo.qml" line="139"/>
         <source>%n unread</source>
         <translation>
             <numerusform>%n укылмаган</numerusform>

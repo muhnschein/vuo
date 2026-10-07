@@ -92,12 +92,12 @@
         <translation>Γίνεται λήψη του αρχικού άρθρου…</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="507"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="530"/>
         <source>The original article was loaded.</source>
         <translation>Το αρχικό άρθρο φορτώθηκε.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="514"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="537"/>
         <source>This feed already contains the full article.</source>
         <translation>Αυτή η ροή περιέχει ήδη ολόκληρο το άρθρο.</translation>
     </message>
@@ -107,17 +107,17 @@
         <translation>Πατήστε για να φορτωθούν οι εικόνες από %1</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="511"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="534"/>
         <source>The server could not extract the original article.</source>
         <translation>Ο διακομιστής δεν μπόρεσε να εξαγάγει το αρχικό άρθρο.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="516"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="539"/>
         <source>The server rejected the API key.</source>
         <translation>Ο διακομιστής απέρριψε το κλειδί API.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="520"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="543"/>
         <source>Could not fetch the original article: %1</source>
         <translation>Δεν ήταν δυνατή η λήψη του αρχικού άρθρου: %1</translation>
     </message>
@@ -125,17 +125,17 @@
 <context>
     <name>CoverPage</name>
     <message>
-        <location filename="../qml/cover/CoverPage.qml" line="225"/>
+        <location filename="../qml/cover/CoverPage.qml" line="237"/>
         <source>Sign-in failed</source>
         <translation>Αποτυχία σύνδεσης</translation>
     </message>
     <message>
-        <location filename="../qml/cover/CoverPage.qml" line="225"/>
+        <location filename="../qml/cover/CoverPage.qml" line="237"/>
         <source>Refresh failed</source>
         <translation>Αποτυχία ανανέωσης</translation>
     </message>
     <message>
-        <location filename="../qml/cover/CoverPage.qml" line="226"/>
+        <location filename="../qml/cover/CoverPage.qml" line="238"/>
         <source>Refreshing</source>
         <translation>Ανανέωση</translation>
     </message>
@@ -184,32 +184,32 @@
     <name>EntryListPage</name>
     <message>
         <location filename="../qml/pages/EntryListPage.qml" line="11"/>
-        <location filename="../qml/pages/EntryListPage.qml" line="167"/>
+        <location filename="../qml/pages/EntryListPage.qml" line="176"/>
         <source>Unread</source>
         <translation>Αδιάβαστα</translation>
     </message>
     <message>
-        <location filename="../qml/pages/EntryListPage.qml" line="167"/>
+        <location filename="../qml/pages/EntryListPage.qml" line="176"/>
         <source>Favourites</source>
         <translation>Αγαπημένα</translation>
     </message>
     <message>
-        <location filename="../qml/pages/EntryListPage.qml" line="167"/>
+        <location filename="../qml/pages/EntryListPage.qml" line="176"/>
         <source>All</source>
         <translation>Όλα</translation>
     </message>
     <message>
-        <location filename="../qml/pages/EntryListPage.qml" line="317"/>
+        <location filename="../qml/pages/EntryListPage.qml" line="327"/>
         <source>The server rejected the API key.</source>
         <translation>Ο διακομιστής απέρριψε το κλειδί API.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/EntryListPage.qml" line="318"/>
+        <location filename="../qml/pages/EntryListPage.qml" line="328"/>
         <source>Open settings</source>
         <translation>Άνοιγμα ρυθμίσεων</translation>
     </message>
     <message>
-        <location filename="../qml/pages/EntryListPage.qml" line="320"/>
+        <location filename="../qml/pages/EntryListPage.qml" line="330"/>
         <source>Refresh failed: %1</source>
         <translation>Αποτυχία ανανέωσης: %1</translation>
     </message>
@@ -217,7 +217,7 @@
 <context>
     <name>EntryListView</name>
     <message numerus="yes">
-        <location filename="../qml/components/EntryListView.qml" line="204"/>
+        <location filename="../qml/components/EntryListView.qml" line="229"/>
         <source>%n selected</source>
         <translation>
             <numerusform>%n επιλεγμένο</numerusform>
@@ -225,7 +225,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/components/EntryListView.qml" line="206"/>
+        <location filename="../qml/components/EntryListView.qml" line="231"/>
         <source>%n article(s)</source>
         <translation>
             <numerusform>%n άρθρο</numerusform>
@@ -233,80 +233,115 @@
         </translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="261"/>
+        <location filename="../qml/components/EntryListView.qml" line="265"/>
+        <source>Search articles</source>
+        <extracomment>Placeholder in the empty search field.</extracomment>
+        <translation>Αναζήτηση άρθρων</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="318"/>
         <source>Select all</source>
         <translation>Επιλογή όλων</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="262"/>
+        <location filename="../qml/components/EntryListView.qml" line="319"/>
         <source>Deselect all</source>
         <translation>Αποεπιλογή όλων</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="267"/>
-        <location filename="../qml/components/EntryListView.qml" line="619"/>
+        <location filename="../qml/components/EntryListView.qml" line="324"/>
+        <location filename="../qml/components/EntryListView.qml" line="706"/>
         <source>Mark as unread</source>
         <translation>Σήμανση ως αδιάβαστο</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="272"/>
-        <location filename="../qml/components/EntryListView.qml" line="619"/>
+        <location filename="../qml/components/EntryListView.qml" line="329"/>
+        <location filename="../qml/components/EntryListView.qml" line="706"/>
         <source>Mark as read</source>
         <translation>Σήμανση ως αναγνωσμένο</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="279"/>
+        <location filename="../qml/components/EntryListView.qml" line="336"/>
         <source>Settings</source>
         <translation>Ρυθμίσεις</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="284"/>
+        <location filename="../qml/components/EntryListView.qml" line="341"/>
         <source>Feeds</source>
         <translation>Ροές</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="299"/>
-        <location filename="../qml/components/EntryListView.qml" line="306"/>
+        <location filename="../qml/components/EntryListView.qml" line="356"/>
+        <location filename="../qml/components/EntryListView.qml" line="363"/>
         <source>Select articles</source>
         <translation>Επιλογή άρθρων</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="311"/>
+        <location filename="../qml/components/EntryListView.qml" line="368"/>
         <source>Mark all as read</source>
         <translation>Σήμανση όλων ως αναγνωσμένων</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="330"/>
+        <location filename="../qml/components/EntryListView.qml" line="388"/>
         <source>Marking all as read</source>
         <translation>Σήμανση όλων ως αναγνωσμένων</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="337"/>
+        <location filename="../qml/components/EntryListView.qml" line="399"/>
+        <source>Search</source>
+        <comment>menu item</comment>
+        <extracomment>Pulley menu item. A verb: it opens the search page.</extracomment>
+        <translation>Αναζήτηση</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="409"/>
+        <source>Search</source>
+        <comment>page title</comment>
+        <extracomment>The search page&apos;s title. A noun.</extracomment>
+        <translation>Αναζήτηση</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="415"/>
         <source>Refresh</source>
         <translation>Ανανέωση</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="381"/>
+        <location filename="../qml/components/EntryListView.qml" line="461"/>
+        <source>Search the articles on this device</source>
+        <translation>Αναζήτηση στα άρθρα αυτής της συσκευής</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="462"/>
+        <source>No articles found</source>
+        <translation>Δεν βρέθηκαν άρθρα</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="463"/>
         <source>No favourites</source>
         <translation>Χωρίς αγαπημένα</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="382"/>
+        <location filename="../qml/components/EntryListView.qml" line="464"/>
         <source>Nothing to read</source>
         <translation>Τίποτα για ανάγνωση</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="384"/>
+        <location filename="../qml/components/EntryListView.qml" line="469"/>
+        <source>Vuo searches the title, author, feed name and text of every article on this device.</source>
+        <translation>Το Vuo αναζητά στον τίτλο, τον συντάκτη, το όνομα της ροής και το κείμενο κάθε άρθρου σε αυτή τη συσκευή.</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="471"/>
         <source>Articles you add to favourites appear here</source>
         <translation>Τα άρθρα που προσθέτετε στα αγαπημένα εμφανίζονται εδώ</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="385"/>
+        <location filename="../qml/components/EntryListView.qml" line="472"/>
         <source>Pull down to refresh</source>
         <translation>Τραβήξτε προς τα κάτω για ανανέωση</translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/components/EntryListView.qml" line="540"/>
+        <location filename="../qml/components/EntryListView.qml" line="627"/>
         <source>%n min read</source>
         <translation>
             <numerusform>%n λεπτό ανάγνωσης</numerusform>
@@ -314,7 +349,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/components/EntryListView.qml" line="541"/>
+        <location filename="../qml/components/EntryListView.qml" line="628"/>
         <source>%n min</source>
         <translation>
             <numerusform>%n λεπτό</numerusform>
@@ -322,17 +357,17 @@
         </translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="623"/>
+        <location filename="../qml/components/EntryListView.qml" line="710"/>
         <source>Remove favourite</source>
         <translation>Αφαίρεση από αγαπημένα</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="623"/>
+        <location filename="../qml/components/EntryListView.qml" line="710"/>
         <source>Add favourite</source>
         <translation>Προσθήκη στα αγαπημένα</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="627"/>
+        <location filename="../qml/components/EntryListView.qml" line="714"/>
         <source>Open in browser</source>
         <translation>Άνοιγμα στο πρόγραμμα περιήγησης</translation>
     </message>
@@ -383,6 +418,14 @@
         <location filename="../qml/pages/FeedListPage.qml" line="174"/>
         <source>Unsubscribing</source>
         <translation>Κατάργηση εγγραφής</translation>
+    </message>
+</context>
+<context>
+    <name>ImageViewerPage</name>
+    <message>
+        <location filename="../qml/pages/ImageViewerPage.qml" line="143"/>
+        <source>The image could not be loaded.</source>
+        <translation>Η εικόνα δεν μπόρεσε να φορτωθεί.</translation>
     </message>
 </context>
 <context>
@@ -704,7 +747,7 @@
 <context>
     <name>harbour-vuo</name>
     <message numerus="yes">
-        <location filename="../qml/harbour-vuo.qml" line="129"/>
+        <location filename="../qml/harbour-vuo.qml" line="132"/>
         <source>%n new article(s)</source>
         <translation>
             <numerusform>%n νέο άρθρο</numerusform>
@@ -712,7 +755,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/harbour-vuo.qml" line="136"/>
+        <location filename="../qml/harbour-vuo.qml" line="139"/>
         <source>%n unread</source>
         <translation>
             <numerusform>%n αδιάβαστο</numerusform>

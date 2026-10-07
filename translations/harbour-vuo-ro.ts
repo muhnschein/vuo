@@ -93,12 +93,12 @@
         <translation>Se aduce articolul original…</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="507"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="530"/>
         <source>The original article was loaded.</source>
         <translation>Articolul original a fost încărcat.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="514"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="537"/>
         <source>This feed already contains the full article.</source>
         <translation>Acest flux conține deja articolul întreg.</translation>
     </message>
@@ -108,17 +108,17 @@
         <translation>Atinge pentru a încărca imaginile de la %1</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="511"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="534"/>
         <source>The server could not extract the original article.</source>
         <translation>Serverul nu a putut extrage articolul original.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="516"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="539"/>
         <source>The server rejected the API key.</source>
         <translation>Serverul a respins cheia API.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="520"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="543"/>
         <source>Could not fetch the original article: %1</source>
         <translation>Articolul original nu a putut fi adus: %1</translation>
     </message>
@@ -126,17 +126,17 @@
 <context>
     <name>CoverPage</name>
     <message>
-        <location filename="../qml/cover/CoverPage.qml" line="225"/>
+        <location filename="../qml/cover/CoverPage.qml" line="237"/>
         <source>Sign-in failed</source>
         <translation>Autentificare eșuată</translation>
     </message>
     <message>
-        <location filename="../qml/cover/CoverPage.qml" line="225"/>
+        <location filename="../qml/cover/CoverPage.qml" line="237"/>
         <source>Refresh failed</source>
         <translation>Actualizare eșuată</translation>
     </message>
     <message>
-        <location filename="../qml/cover/CoverPage.qml" line="226"/>
+        <location filename="../qml/cover/CoverPage.qml" line="238"/>
         <source>Refreshing</source>
         <translation>Se actualizează</translation>
     </message>
@@ -185,32 +185,32 @@
     <name>EntryListPage</name>
     <message>
         <location filename="../qml/pages/EntryListPage.qml" line="11"/>
-        <location filename="../qml/pages/EntryListPage.qml" line="167"/>
+        <location filename="../qml/pages/EntryListPage.qml" line="176"/>
         <source>Unread</source>
         <translation>Necitite</translation>
     </message>
     <message>
-        <location filename="../qml/pages/EntryListPage.qml" line="167"/>
+        <location filename="../qml/pages/EntryListPage.qml" line="176"/>
         <source>Favourites</source>
         <translation>Favorite</translation>
     </message>
     <message>
-        <location filename="../qml/pages/EntryListPage.qml" line="167"/>
+        <location filename="../qml/pages/EntryListPage.qml" line="176"/>
         <source>All</source>
         <translation>Toate</translation>
     </message>
     <message>
-        <location filename="../qml/pages/EntryListPage.qml" line="317"/>
+        <location filename="../qml/pages/EntryListPage.qml" line="327"/>
         <source>The server rejected the API key.</source>
         <translation>Serverul a respins cheia API.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/EntryListPage.qml" line="318"/>
+        <location filename="../qml/pages/EntryListPage.qml" line="328"/>
         <source>Open settings</source>
         <translation>Deschide setările</translation>
     </message>
     <message>
-        <location filename="../qml/pages/EntryListPage.qml" line="320"/>
+        <location filename="../qml/pages/EntryListPage.qml" line="330"/>
         <source>Refresh failed: %1</source>
         <translation>Actualizare eșuată: %1</translation>
     </message>
@@ -218,7 +218,7 @@
 <context>
     <name>EntryListView</name>
     <message numerus="yes">
-        <location filename="../qml/components/EntryListView.qml" line="204"/>
+        <location filename="../qml/components/EntryListView.qml" line="229"/>
         <source>%n selected</source>
         <translation>
             <numerusform>%n selectat</numerusform>
@@ -227,7 +227,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/components/EntryListView.qml" line="206"/>
+        <location filename="../qml/components/EntryListView.qml" line="231"/>
         <source>%n article(s)</source>
         <translation>
             <numerusform>%n articol</numerusform>
@@ -236,80 +236,115 @@
         </translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="261"/>
+        <location filename="../qml/components/EntryListView.qml" line="265"/>
+        <source>Search articles</source>
+        <extracomment>Placeholder in the empty search field.</extracomment>
+        <translation>Caută articole</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="318"/>
         <source>Select all</source>
         <translation>Selectează tot</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="262"/>
+        <location filename="../qml/components/EntryListView.qml" line="319"/>
         <source>Deselect all</source>
         <translation>Deselectează tot</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="267"/>
-        <location filename="../qml/components/EntryListView.qml" line="619"/>
+        <location filename="../qml/components/EntryListView.qml" line="324"/>
+        <location filename="../qml/components/EntryListView.qml" line="706"/>
         <source>Mark as unread</source>
         <translation>Marchează ca necitit</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="272"/>
-        <location filename="../qml/components/EntryListView.qml" line="619"/>
+        <location filename="../qml/components/EntryListView.qml" line="329"/>
+        <location filename="../qml/components/EntryListView.qml" line="706"/>
         <source>Mark as read</source>
         <translation>Marchează ca citit</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="279"/>
+        <location filename="../qml/components/EntryListView.qml" line="336"/>
         <source>Settings</source>
         <translation>Setări</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="284"/>
+        <location filename="../qml/components/EntryListView.qml" line="341"/>
         <source>Feeds</source>
         <translation>Fluxuri</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="299"/>
-        <location filename="../qml/components/EntryListView.qml" line="306"/>
+        <location filename="../qml/components/EntryListView.qml" line="356"/>
+        <location filename="../qml/components/EntryListView.qml" line="363"/>
         <source>Select articles</source>
         <translation>Selectează articole</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="311"/>
+        <location filename="../qml/components/EntryListView.qml" line="368"/>
         <source>Mark all as read</source>
         <translation>Marchează tot ca citit</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="330"/>
+        <location filename="../qml/components/EntryListView.qml" line="388"/>
         <source>Marking all as read</source>
         <translation>Se marchează tot ca citit</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="337"/>
+        <location filename="../qml/components/EntryListView.qml" line="399"/>
+        <source>Search</source>
+        <comment>menu item</comment>
+        <extracomment>Pulley menu item. A verb: it opens the search page.</extracomment>
+        <translation>Caută</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="409"/>
+        <source>Search</source>
+        <comment>page title</comment>
+        <extracomment>The search page&apos;s title. A noun.</extracomment>
+        <translation>Căutare</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="415"/>
         <source>Refresh</source>
         <translation>Actualizează</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="381"/>
+        <location filename="../qml/components/EntryListView.qml" line="461"/>
+        <source>Search the articles on this device</source>
+        <translation>Caută în articolele de pe acest dispozitiv</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="462"/>
+        <source>No articles found</source>
+        <translation>Nu s-a găsit niciun articol</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="463"/>
         <source>No favourites</source>
         <translation>Niciun favorit</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="382"/>
+        <location filename="../qml/components/EntryListView.qml" line="464"/>
         <source>Nothing to read</source>
         <translation>Nimic de citit</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="384"/>
+        <location filename="../qml/components/EntryListView.qml" line="469"/>
+        <source>Vuo searches the title, author, feed name and text of every article on this device.</source>
+        <translation>Vuo caută în titlul, autorul, numele fluxului și textul fiecărui articol de pe acest dispozitiv.</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="471"/>
         <source>Articles you add to favourites appear here</source>
         <translation>Articolele pe care le adaugi la favorite apar aici</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="385"/>
+        <location filename="../qml/components/EntryListView.qml" line="472"/>
         <source>Pull down to refresh</source>
         <translation>Trage în jos pentru a actualiza</translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/components/EntryListView.qml" line="540"/>
+        <location filename="../qml/components/EntryListView.qml" line="627"/>
         <source>%n min read</source>
         <translation>
             <numerusform>%n min de citit</numerusform>
@@ -318,7 +353,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/components/EntryListView.qml" line="541"/>
+        <location filename="../qml/components/EntryListView.qml" line="628"/>
         <source>%n min</source>
         <translation>
             <numerusform>%n min</numerusform>
@@ -327,17 +362,17 @@
         </translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="623"/>
+        <location filename="../qml/components/EntryListView.qml" line="710"/>
         <source>Remove favourite</source>
         <translation>Scoate de la favorite</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="623"/>
+        <location filename="../qml/components/EntryListView.qml" line="710"/>
         <source>Add favourite</source>
         <translation>Adaugă la favorite</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="627"/>
+        <location filename="../qml/components/EntryListView.qml" line="714"/>
         <source>Open in browser</source>
         <translation>Deschide în navigator</translation>
     </message>
@@ -388,6 +423,14 @@
         <location filename="../qml/pages/FeedListPage.qml" line="174"/>
         <source>Unsubscribing</source>
         <translation>Se dezabonează</translation>
+    </message>
+</context>
+<context>
+    <name>ImageViewerPage</name>
+    <message>
+        <location filename="../qml/pages/ImageViewerPage.qml" line="143"/>
+        <source>The image could not be loaded.</source>
+        <translation>Imaginea nu a putut fi încărcată.</translation>
     </message>
 </context>
 <context>
@@ -710,7 +753,7 @@
 <context>
     <name>harbour-vuo</name>
     <message numerus="yes">
-        <location filename="../qml/harbour-vuo.qml" line="129"/>
+        <location filename="../qml/harbour-vuo.qml" line="132"/>
         <source>%n new article(s)</source>
         <translation>
             <numerusform>%n articol nou</numerusform>
@@ -719,7 +762,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/harbour-vuo.qml" line="136"/>
+        <location filename="../qml/harbour-vuo.qml" line="139"/>
         <source>%n unread</source>
         <translation>
             <numerusform>%n necitit</numerusform>

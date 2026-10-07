@@ -92,12 +92,12 @@
         <translation>Haetaan alkuperäistä artikkelia…</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="507"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="530"/>
         <source>The original article was loaded.</source>
         <translation>Alkuperäinen artikkeli on ladattu.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="514"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="537"/>
         <source>This feed already contains the full article.</source>
         <translation>Tämä syöte sisältää jo koko artikkelin.</translation>
     </message>
@@ -107,17 +107,17 @@
         <translation>Napauta ladataksesi kuvat sivustolta %1</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="511"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="534"/>
         <source>The server could not extract the original article.</source>
         <translation>Palvelin ei saanut poimittua alkuperäistä artikkelia.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="516"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="539"/>
         <source>The server rejected the API key.</source>
         <translation>Palvelin hylkäsi API-avaimen.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="520"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="543"/>
         <source>Could not fetch the original article: %1</source>
         <translation>Alkuperäistä artikkelia ei voitu hakea: %1</translation>
     </message>
@@ -125,17 +125,17 @@
 <context>
     <name>CoverPage</name>
     <message>
-        <location filename="../qml/cover/CoverPage.qml" line="225"/>
+        <location filename="../qml/cover/CoverPage.qml" line="237"/>
         <source>Sign-in failed</source>
         <translation>Kirjautuminen epäonnistui</translation>
     </message>
     <message>
-        <location filename="../qml/cover/CoverPage.qml" line="225"/>
+        <location filename="../qml/cover/CoverPage.qml" line="237"/>
         <source>Refresh failed</source>
         <translation>Päivitys epäonnistui</translation>
     </message>
     <message>
-        <location filename="../qml/cover/CoverPage.qml" line="226"/>
+        <location filename="../qml/cover/CoverPage.qml" line="238"/>
         <source>Refreshing</source>
         <translation>Päivitetään</translation>
     </message>
@@ -184,32 +184,32 @@
     <name>EntryListPage</name>
     <message>
         <location filename="../qml/pages/EntryListPage.qml" line="11"/>
-        <location filename="../qml/pages/EntryListPage.qml" line="167"/>
+        <location filename="../qml/pages/EntryListPage.qml" line="176"/>
         <source>Unread</source>
         <translation>Lukematta</translation>
     </message>
     <message>
-        <location filename="../qml/pages/EntryListPage.qml" line="167"/>
+        <location filename="../qml/pages/EntryListPage.qml" line="176"/>
         <source>Favourites</source>
         <translation>Suosikit</translation>
     </message>
     <message>
-        <location filename="../qml/pages/EntryListPage.qml" line="167"/>
+        <location filename="../qml/pages/EntryListPage.qml" line="176"/>
         <source>All</source>
         <translation>Kaikki</translation>
     </message>
     <message>
-        <location filename="../qml/pages/EntryListPage.qml" line="317"/>
+        <location filename="../qml/pages/EntryListPage.qml" line="327"/>
         <source>The server rejected the API key.</source>
         <translation>Palvelin hylkäsi API-avaimen.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/EntryListPage.qml" line="318"/>
+        <location filename="../qml/pages/EntryListPage.qml" line="328"/>
         <source>Open settings</source>
         <translation>Avaa asetukset</translation>
     </message>
     <message>
-        <location filename="../qml/pages/EntryListPage.qml" line="320"/>
+        <location filename="../qml/pages/EntryListPage.qml" line="330"/>
         <source>Refresh failed: %1</source>
         <translation>Päivitys epäonnistui: %1</translation>
     </message>
@@ -217,7 +217,7 @@
 <context>
     <name>EntryListView</name>
     <message numerus="yes">
-        <location filename="../qml/components/EntryListView.qml" line="204"/>
+        <location filename="../qml/components/EntryListView.qml" line="229"/>
         <source>%n selected</source>
         <translation>
             <numerusform>%n valittu</numerusform>
@@ -225,7 +225,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/components/EntryListView.qml" line="206"/>
+        <location filename="../qml/components/EntryListView.qml" line="231"/>
         <source>%n article(s)</source>
         <translation>
             <numerusform>%n artikkeli</numerusform>
@@ -233,80 +233,115 @@
         </translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="261"/>
+        <location filename="../qml/components/EntryListView.qml" line="265"/>
+        <source>Search articles</source>
+        <extracomment>Placeholder in the empty search field.</extracomment>
+        <translation>Hae artikkeleita</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="318"/>
         <source>Select all</source>
         <translation>Valitse kaikki</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="262"/>
+        <location filename="../qml/components/EntryListView.qml" line="319"/>
         <source>Deselect all</source>
         <translation>Poista valinnat</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="267"/>
-        <location filename="../qml/components/EntryListView.qml" line="619"/>
+        <location filename="../qml/components/EntryListView.qml" line="324"/>
+        <location filename="../qml/components/EntryListView.qml" line="706"/>
         <source>Mark as unread</source>
         <translation>Merkitse lukemattomaksi</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="272"/>
-        <location filename="../qml/components/EntryListView.qml" line="619"/>
+        <location filename="../qml/components/EntryListView.qml" line="329"/>
+        <location filename="../qml/components/EntryListView.qml" line="706"/>
         <source>Mark as read</source>
         <translation>Merkitse luetuksi</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="279"/>
+        <location filename="../qml/components/EntryListView.qml" line="336"/>
         <source>Settings</source>
         <translation>Asetukset</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="284"/>
+        <location filename="../qml/components/EntryListView.qml" line="341"/>
         <source>Feeds</source>
         <translation>Syötteet</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="299"/>
-        <location filename="../qml/components/EntryListView.qml" line="306"/>
+        <location filename="../qml/components/EntryListView.qml" line="356"/>
+        <location filename="../qml/components/EntryListView.qml" line="363"/>
         <source>Select articles</source>
         <translation>Valitse artikkeleita</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="311"/>
+        <location filename="../qml/components/EntryListView.qml" line="368"/>
         <source>Mark all as read</source>
         <translation>Merkitse kaikki luetuiksi</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="330"/>
+        <location filename="../qml/components/EntryListView.qml" line="388"/>
         <source>Marking all as read</source>
         <translation>Merkitään kaikki luetuiksi</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="337"/>
+        <location filename="../qml/components/EntryListView.qml" line="399"/>
+        <source>Search</source>
+        <comment>menu item</comment>
+        <extracomment>Pulley menu item. A verb: it opens the search page.</extracomment>
+        <translation>Hae</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="409"/>
+        <source>Search</source>
+        <comment>page title</comment>
+        <extracomment>The search page&apos;s title. A noun.</extracomment>
+        <translation>Haku</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="415"/>
         <source>Refresh</source>
         <translation>Päivitä</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="381"/>
+        <location filename="../qml/components/EntryListView.qml" line="461"/>
+        <source>Search the articles on this device</source>
+        <translation>Hae tämän laitteen artikkeleista</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="462"/>
+        <source>No articles found</source>
+        <translation>Artikkeleita ei löytynyt</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="463"/>
         <source>No favourites</source>
         <translation>Ei suosikkeja</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="382"/>
+        <location filename="../qml/components/EntryListView.qml" line="464"/>
         <source>Nothing to read</source>
         <translation>Ei luettavaa</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="384"/>
+        <location filename="../qml/components/EntryListView.qml" line="469"/>
+        <source>Vuo searches the title, author, feed name and text of every article on this device.</source>
+        <translation>Vuo hakee tämän laitteen jokaisen artikkelin otsikosta, tekijästä, syötteen nimestä ja tekstistä.</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="471"/>
         <source>Articles you add to favourites appear here</source>
         <translation>Suosikkeihin lisäämäsi artikkelit näytetään täällä</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="385"/>
+        <location filename="../qml/components/EntryListView.qml" line="472"/>
         <source>Pull down to refresh</source>
         <translation>Vedä alas päivittääksesi</translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/components/EntryListView.qml" line="540"/>
+        <location filename="../qml/components/EntryListView.qml" line="627"/>
         <source>%n min read</source>
         <translation>
             <numerusform>%n min lukuaika</numerusform>
@@ -314,7 +349,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/components/EntryListView.qml" line="541"/>
+        <location filename="../qml/components/EntryListView.qml" line="628"/>
         <source>%n min</source>
         <translation>
             <numerusform>%n min</numerusform>
@@ -322,17 +357,17 @@
         </translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="623"/>
+        <location filename="../qml/components/EntryListView.qml" line="710"/>
         <source>Remove favourite</source>
         <translation>Poista suosikeista</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="623"/>
+        <location filename="../qml/components/EntryListView.qml" line="710"/>
         <source>Add favourite</source>
         <translation>Lisää suosikkeihin</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="627"/>
+        <location filename="../qml/components/EntryListView.qml" line="714"/>
         <source>Open in browser</source>
         <translation>Avaa selaimessa</translation>
     </message>
@@ -383,6 +418,14 @@
         <location filename="../qml/pages/FeedListPage.qml" line="174"/>
         <source>Unsubscribing</source>
         <translation>Lopetetaan tilausta</translation>
+    </message>
+</context>
+<context>
+    <name>ImageViewerPage</name>
+    <message>
+        <location filename="../qml/pages/ImageViewerPage.qml" line="143"/>
+        <source>The image could not be loaded.</source>
+        <translation>Kuvaa ei voitu ladata.</translation>
     </message>
 </context>
 <context>
@@ -704,7 +747,7 @@
 <context>
     <name>harbour-vuo</name>
     <message numerus="yes">
-        <location filename="../qml/harbour-vuo.qml" line="129"/>
+        <location filename="../qml/harbour-vuo.qml" line="132"/>
         <source>%n new article(s)</source>
         <translation>
             <numerusform>%n uusi artikkeli</numerusform>
@@ -712,7 +755,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/harbour-vuo.qml" line="136"/>
+        <location filename="../qml/harbour-vuo.qml" line="139"/>
         <source>%n unread</source>
         <translation>
             <numerusform>%n lukematta</numerusform>

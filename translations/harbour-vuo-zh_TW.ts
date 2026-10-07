@@ -91,12 +91,12 @@
         <translation>正在取得原文…</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="507"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="530"/>
         <source>The original article was loaded.</source>
         <translation>原文已載入。</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="514"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="537"/>
         <source>This feed already contains the full article.</source>
         <translation>該來源本身已包含全文。</translation>
     </message>
@@ -106,17 +106,17 @@
         <translation>輕觸以載入來自 %1 的圖片</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="511"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="534"/>
         <source>The server could not extract the original article.</source>
         <translation>伺服器無法擷取原文。</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="516"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="539"/>
         <source>The server rejected the API key.</source>
         <translation>伺服器拒絕了該 API 金鑰。</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="520"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="543"/>
         <source>Could not fetch the original article: %1</source>
         <translation>無法取得原文：%1</translation>
     </message>
@@ -124,17 +124,17 @@
 <context>
     <name>CoverPage</name>
     <message>
-        <location filename="../qml/cover/CoverPage.qml" line="225"/>
+        <location filename="../qml/cover/CoverPage.qml" line="237"/>
         <source>Sign-in failed</source>
         <translation>登入失敗</translation>
     </message>
     <message>
-        <location filename="../qml/cover/CoverPage.qml" line="225"/>
+        <location filename="../qml/cover/CoverPage.qml" line="237"/>
         <source>Refresh failed</source>
         <translation>重新整理失敗</translation>
     </message>
     <message>
-        <location filename="../qml/cover/CoverPage.qml" line="226"/>
+        <location filename="../qml/cover/CoverPage.qml" line="238"/>
         <source>Refreshing</source>
         <translation>正在重新整理</translation>
     </message>
@@ -183,32 +183,32 @@
     <name>EntryListPage</name>
     <message>
         <location filename="../qml/pages/EntryListPage.qml" line="11"/>
-        <location filename="../qml/pages/EntryListPage.qml" line="167"/>
+        <location filename="../qml/pages/EntryListPage.qml" line="176"/>
         <source>Unread</source>
         <translation>未讀</translation>
     </message>
     <message>
-        <location filename="../qml/pages/EntryListPage.qml" line="167"/>
+        <location filename="../qml/pages/EntryListPage.qml" line="176"/>
         <source>Favourites</source>
         <translation>收藏</translation>
     </message>
     <message>
-        <location filename="../qml/pages/EntryListPage.qml" line="167"/>
+        <location filename="../qml/pages/EntryListPage.qml" line="176"/>
         <source>All</source>
         <translation>全部</translation>
     </message>
     <message>
-        <location filename="../qml/pages/EntryListPage.qml" line="317"/>
+        <location filename="../qml/pages/EntryListPage.qml" line="327"/>
         <source>The server rejected the API key.</source>
         <translation>伺服器拒絕了該 API 金鑰。</translation>
     </message>
     <message>
-        <location filename="../qml/pages/EntryListPage.qml" line="318"/>
+        <location filename="../qml/pages/EntryListPage.qml" line="328"/>
         <source>Open settings</source>
         <translation>開啟設定</translation>
     </message>
     <message>
-        <location filename="../qml/pages/EntryListPage.qml" line="320"/>
+        <location filename="../qml/pages/EntryListPage.qml" line="330"/>
         <source>Refresh failed: %1</source>
         <translation>重新整理失敗：%1</translation>
     </message>
@@ -216,118 +216,153 @@
 <context>
     <name>EntryListView</name>
     <message numerus="yes">
-        <location filename="../qml/components/EntryListView.qml" line="204"/>
+        <location filename="../qml/components/EntryListView.qml" line="229"/>
         <source>%n selected</source>
         <translation>
             <numerusform>已選 %n 項</numerusform>
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/components/EntryListView.qml" line="206"/>
+        <location filename="../qml/components/EntryListView.qml" line="231"/>
         <source>%n article(s)</source>
         <translation>
             <numerusform>%n 篇文章</numerusform>
         </translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="261"/>
+        <location filename="../qml/components/EntryListView.qml" line="265"/>
+        <source>Search articles</source>
+        <extracomment>Placeholder in the empty search field.</extracomment>
+        <translation>搜尋文章</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="318"/>
         <source>Select all</source>
         <translation>全選</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="262"/>
+        <location filename="../qml/components/EntryListView.qml" line="319"/>
         <source>Deselect all</source>
         <translation>取消全選</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="267"/>
-        <location filename="../qml/components/EntryListView.qml" line="619"/>
+        <location filename="../qml/components/EntryListView.qml" line="324"/>
+        <location filename="../qml/components/EntryListView.qml" line="706"/>
         <source>Mark as unread</source>
         <translation>標為未讀</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="272"/>
-        <location filename="../qml/components/EntryListView.qml" line="619"/>
+        <location filename="../qml/components/EntryListView.qml" line="329"/>
+        <location filename="../qml/components/EntryListView.qml" line="706"/>
         <source>Mark as read</source>
         <translation>標為已讀</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="279"/>
+        <location filename="../qml/components/EntryListView.qml" line="336"/>
         <source>Settings</source>
         <translation>設定</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="284"/>
+        <location filename="../qml/components/EntryListView.qml" line="341"/>
         <source>Feeds</source>
         <translation>來源</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="299"/>
-        <location filename="../qml/components/EntryListView.qml" line="306"/>
+        <location filename="../qml/components/EntryListView.qml" line="356"/>
+        <location filename="../qml/components/EntryListView.qml" line="363"/>
         <source>Select articles</source>
         <translation>選擇文章</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="311"/>
+        <location filename="../qml/components/EntryListView.qml" line="368"/>
         <source>Mark all as read</source>
         <translation>全部標為已讀</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="330"/>
+        <location filename="../qml/components/EntryListView.qml" line="388"/>
         <source>Marking all as read</source>
         <translation>正在全部標為已讀</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="337"/>
+        <location filename="../qml/components/EntryListView.qml" line="399"/>
+        <source>Search</source>
+        <comment>menu item</comment>
+        <extracomment>Pulley menu item. A verb: it opens the search page.</extracomment>
+        <translation>搜尋</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="409"/>
+        <source>Search</source>
+        <comment>page title</comment>
+        <extracomment>The search page&apos;s title. A noun.</extracomment>
+        <translation>搜尋</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="415"/>
         <source>Refresh</source>
         <translation>重新整理</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="381"/>
+        <location filename="../qml/components/EntryListView.qml" line="461"/>
+        <source>Search the articles on this device</source>
+        <translation>搜尋此裝置上的文章</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="462"/>
+        <source>No articles found</source>
+        <translation>找不到文章</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="463"/>
         <source>No favourites</source>
         <translation>尚無收藏</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="382"/>
+        <location filename="../qml/components/EntryListView.qml" line="464"/>
         <source>Nothing to read</source>
         <translation>沒有可讀的內容</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="384"/>
+        <location filename="../qml/components/EntryListView.qml" line="469"/>
+        <source>Vuo searches the title, author, feed name and text of every article on this device.</source>
+        <translation>Vuo 會搜尋此裝置上每篇文章的標題、作者、來源名稱和內文。</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="471"/>
         <source>Articles you add to favourites appear here</source>
         <translation>你加入收藏的文章會顯示在這裡</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="385"/>
+        <location filename="../qml/components/EntryListView.qml" line="472"/>
         <source>Pull down to refresh</source>
         <translation>下拉以重新整理</translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/components/EntryListView.qml" line="540"/>
+        <location filename="../qml/components/EntryListView.qml" line="627"/>
         <source>%n min read</source>
         <translation>
             <numerusform>閱讀 %n 分鐘</numerusform>
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/components/EntryListView.qml" line="541"/>
+        <location filename="../qml/components/EntryListView.qml" line="628"/>
         <source>%n min</source>
         <translation>
             <numerusform>%n 分鐘</numerusform>
         </translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="623"/>
+        <location filename="../qml/components/EntryListView.qml" line="710"/>
         <source>Remove favourite</source>
         <translation>取消收藏</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="623"/>
+        <location filename="../qml/components/EntryListView.qml" line="710"/>
         <source>Add favourite</source>
         <translation>加入收藏</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="627"/>
+        <location filename="../qml/components/EntryListView.qml" line="714"/>
         <source>Open in browser</source>
         <translation>在瀏覽器中開啟</translation>
     </message>
@@ -378,6 +413,14 @@
         <location filename="../qml/pages/FeedListPage.qml" line="174"/>
         <source>Unsubscribing</source>
         <translation>正在取消訂閱</translation>
+    </message>
+</context>
+<context>
+    <name>ImageViewerPage</name>
+    <message>
+        <location filename="../qml/pages/ImageViewerPage.qml" line="143"/>
+        <source>The image could not be loaded.</source>
+        <translation>無法載入圖片。</translation>
     </message>
 </context>
 <context>
@@ -698,14 +741,14 @@
 <context>
     <name>harbour-vuo</name>
     <message numerus="yes">
-        <location filename="../qml/harbour-vuo.qml" line="129"/>
+        <location filename="../qml/harbour-vuo.qml" line="132"/>
         <source>%n new article(s)</source>
         <translation>
             <numerusform>%n 篇新文章</numerusform>
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/harbour-vuo.qml" line="136"/>
+        <location filename="../qml/harbour-vuo.qml" line="139"/>
         <source>%n unread</source>
         <translation>
             <numerusform>%n 篇未讀</numerusform>
