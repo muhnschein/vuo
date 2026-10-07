@@ -135,7 +135,7 @@ impl Span {
 /// `&` must be escaped first by virtue of being handled in the same pass;
 /// quotes are escaped so the function is equally safe inside an attribute
 /// value, which is how the `href` above uses it.
-fn escape_into(raw: &str, out: &mut String) {
+pub(crate) fn escape_into(raw: &str, out: &mut String) {
     for ch in raw.chars() {
         match ch {
             '&' => out.push_str("&amp;"),

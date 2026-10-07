@@ -23,6 +23,7 @@ use crate::error::Result;
 use crate::model::{
     Category, CategoryId, Entry, EntryId, EntryStatus, Feed, FeedId, Icon, IconId, ImageFormat,
 };
+use crate::search::MatchKind;
 
 fn ts(t: Option<chrono::DateTime<chrono::Utc>>) -> Option<i64> {
     t.map(|t| t.timestamp())
@@ -542,38 +543,120 @@ pub fn entry_list_row(conn: &rusqlite::Connection, id: EntryId) -> Result<Option
     Ok(row)
 }
 
-/// List the entries a search matches, newest first.
+/// One article a search found, with what its row needs to say why.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SearchHit {
+    pub row: EntryListRow,
+    /// Where it matched, which is the group it is listed in.
+    pub kind: MatchKind,
+    /// FOREIGN TEXT: the name of the feed it came from, empty for a feed the
+    /// mirror no longer has.
+    pub feed_title: String,
+    /// The lines of the body around the match, as plain text -- for a
+    /// [`MatchKind::Text`] hit only, since for the others the row itself
+    /// shows the match. See [`crate::search::SearchQuery::excerpt`].
+    pub excerpt: Option<String>,
+}
+
+/// How many articles a search matched in each group, across the whole
+/// mirror rather than the page that was read.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct SearchCounts {
+    pub title: usize,
+    pub feed: usize,
+    pub text: usize,
+}
+
+impl SearchCounts {
+    #[must_use]
+    pub fn total(&self) -> usize {
+        self.title + self.feed + self.text
+    }
+}
+
+/// A page of what a search found, and how much it found in all.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct SearchResults {
+    pub hits: Vec<SearchHit>,
+    pub counts: SearchCounts,
+}
+
+/// The articles a search matches: grouped by where they matched -- title,
+/// then feed name, then body text -- and newest first within each group.
 ///
-/// What matches is [`crate::search::SearchQuery::matches`]: every term in the
-/// title, the author, the feed's name or the text of the body. A query with
-/// no terms matches nothing -- an empty search field is not a request for the
+/// What matches is [`crate::search::SearchQuery::classify`]. A query with no
+/// terms matches nothing: an empty search field is not a request for the
 /// whole mirror.
 ///
 /// Every feed is searched, including the ones hidden from the Unread and All
 /// tabs: a search is the reader asking for something by name, and an article
 /// that exists but is not found reads as one that does not exist.
+///
+/// Two steps. The first classifies every article and keeps the id, date and
+/// kind of the ones that match -- a few bytes each, so the whole result is
+/// held to count the groups and to sort by them. The second reads the page's
+/// rows by id, and reads a body only for a hit whose excerpt needs it.
 pub fn search_entries(
     conn: &rusqlite::Connection,
     query: &str,
     limit: i64,
     offset: i64,
-) -> Result<Vec<EntryListRow>> {
-    if crate::search::SearchQuery::parse(query).is_none() {
-        return Ok(Vec::new());
-    }
+) -> Result<SearchResults> {
+    let Some(parsed) = crate::search::SearchQuery::parse(query) else {
+        return Ok(SearchResults::default());
+    };
     let mut stmt = conn.prepare(
-        "SELECT e.id, e.feed_id, e.status, e.starred, e.title, e.url, e.author, \
-         e.published_at, e.reading_time \
-         FROM entries e LEFT JOIN feeds f ON f.id = e.feed_id \
-         WHERE vuo_search_match(?3, e.title, e.author, COALESCE(f.title, ''), e.content) \
-         ORDER BY e.published_at DESC, e.id DESC LIMIT ?1 OFFSET ?2",
+        "SELECT e.id, e.published_at, \
+         vuo_search_kind(?1, e.title, COALESCE(f.title, ''), e.content) \
+         FROM entries e LEFT JOIN feeds f ON f.id = e.feed_id",
     )?;
-    let mut rows = stmt.query(rusqlite::params![limit, offset, query])?;
-    let mut out = Vec::new();
+    let mut rows = stmt.query([query])?;
+    let mut found: Vec<(MatchKind, Option<i64>, i64)> = Vec::new();
+    let mut counts = SearchCounts::default();
     while let Some(row) = rows.next()? {
-        out.push(row_to_list_row(row)?);
+        let Some(kind) = MatchKind::from_sql(row.get(2)?) else {
+            continue;
+        };
+        match kind {
+            MatchKind::Title => counts.title += 1,
+            MatchKind::Feed => counts.feed += 1,
+            MatchKind::Text => counts.text += 1,
+        }
+        found.push((kind, row.get(1)?, row.get(0)?));
     }
-    Ok(out)
+    // The list's own order within a group: newest first, an undated article
+    // after every dated one, and the id to settle a tie.
+    found.sort_unstable_by_key(|&(kind, published, id)| {
+        (kind, std::cmp::Reverse(published), std::cmp::Reverse(id))
+    });
+
+    let mut read = conn.prepare_cached(
+        "SELECT e.id, e.feed_id, e.status, e.starred, e.title, e.url, e.author, \
+         e.published_at, e.reading_time, COALESCE(f.title, ''), \
+         CASE WHEN ?2 THEN e.content END \
+         FROM entries e LEFT JOIN feeds f ON f.id = e.feed_id WHERE e.id = ?1",
+    )?;
+    let skip = usize::try_from(offset).unwrap_or(0);
+    let take = usize::try_from(limit).unwrap_or(0);
+    let mut hits = Vec::new();
+    for &(kind, _, id) in found.iter().skip(skip).take(take) {
+        let wants_excerpt = kind == MatchKind::Text;
+        let hit = read
+            .query_row(rusqlite::params![id, wants_excerpt], |r| {
+                Ok(SearchHit {
+                    row: row_to_list_row(r)?,
+                    kind,
+                    feed_title: r.get(9)?,
+                    excerpt: r
+                        .get::<_, Option<String>>(10)?
+                        .and_then(|body| parsed.excerpt(&body)),
+                })
+            })
+            .optional()?;
+        // Gone between the two reads -- a sync landed -- is not an error.
+        hits.extend(hit);
+    }
+    Ok(SearchResults { hits, counts })
 }
 
 /// The ids of every entry a filter matches, and nothing else.
@@ -1316,13 +1399,15 @@ mod tests {
         assert_eq!(page(2, 6), Vec::<i64>::new());
     }
 
-    /// §search finds articles by what the reader saw, newest first.
+    /// §search finds articles by what the reader saw, grouped by where it
+    /// saw it, newest first within each group.
     #[test]
-    fn search_matches_title_body_text_and_feed_newest_first() {
+    fn search_groups_by_where_it_matched_newest_first() {
         let mut db = populated();
         db.with_tx(|tx| {
             let mut a = entry_at(7, 10, EntryStatus::Read, false, 700);
             a.title = "Harbour at dusk".to_owned();
+            a.content = "<p>A quiet evening.</p>".to_owned();
             upsert_entry(tx, &a, 1, Arrival::Quiet)?;
             let mut b = entry_at(8, 20, EntryStatus::Unread, false, 800);
             b.content =
@@ -1337,33 +1422,92 @@ mod tests {
             upsert_feed(tx, &hidden, 1)?;
             let mut d = entry_at(10, 30, EntryStatus::Unread, false, 900);
             d.title = "Hidden HARBOUR".to_owned();
-            upsert_entry(tx, &d, 1, Arrival::Quiet)
+            upsert_entry(tx, &d, 1, Arrival::Quiet)?;
+            // The newest of them all, but found by its feed's name only.
+            let mut port = feed_in(40, None);
+            port.title = "Harbour Gazette".to_owned();
+            upsert_feed(tx, &port, 1)?;
+            let mut e = entry_at(11, 40, EntryStatus::Unread, false, 1000);
+            e.content = "<p>harbour</p>".to_owned();
+            upsert_entry(tx, &e, 1, Arrival::Quiet)
         })
         .expect("seed");
-        let search = |q: &str| ids(&search_entries(db.conn(), q, 100, 0).expect("search"));
+        let search = |q: &str| search_entries(db.conn(), q, 100, 0).expect("search");
+        let ids = |r: &SearchResults| r.hits.iter().map(|h| h.row.id.get()).collect::<Vec<_>>();
+
+        let found = search("harbour");
+        assert_eq!(
+            ids(&found),
+            vec![10, 7, 11, 8],
+            "titles, then feed names, then body text, any case, newest first within \
+             each -- and markup does not match"
+        );
+        assert_eq!(
+            found.hits.iter().map(|h| h.kind).collect::<Vec<_>>(),
+            vec![
+                MatchKind::Title,
+                MatchKind::Title,
+                MatchKind::Feed,
+                MatchKind::Text
+            ]
+        );
+        assert_eq!(
+            found.counts,
+            SearchCounts {
+                title: 2,
+                feed: 1,
+                text: 1
+            }
+        );
+        let by_id = |id: i64| {
+            found
+                .hits
+                .iter()
+                .find(|h| h.row.id.get() == id)
+                .expect("hit")
+        };
+        assert_eq!(by_id(11).feed_title, "Harbour Gazette");
+        assert_eq!(
+            by_id(8).excerpt.as_deref(),
+            Some("A walk by the harbour."),
+            "a body hit says what the body says around the match"
+        );
+        assert_eq!(
+            by_id(7).excerpt,
+            None,
+            "a title hit shows its match in the title; its body is not read"
+        );
+        assert_eq!(by_id(11).excerpt, None);
 
         assert_eq!(
-            search("harbour"),
-            vec![10, 8, 7],
-            "title and body text match, any case, newest first -- and markup does not"
+            ids(&search("harbour walk")),
+            vec![8],
+            "every term must match"
         );
-        assert_eq!(search("harbour walk"), vec![8], "every term must match");
         assert_eq!(
-            search("href"),
+            ids(&search("harbour evening")),
+            vec![7],
+            "terms may match in different places, and the title decides the group"
+        );
+        assert_eq!(
+            ids(&search("href")),
             Vec::<i64>::new(),
             "an attribute is not text"
         );
         assert_eq!(
-            search("feed 20"),
+            ids(&search("feed 20")),
             vec![8, 6, 5],
             "the feed's name is searched"
         );
-        assert_eq!(search("   "), Vec::<i64>::new(), "no terms, no results");
         assert_eq!(
-            ids(&search_entries(db.conn(), "harbour", 2, 1).expect("page")),
-            vec![8, 7],
-            "and it pages like every other list"
+            search("   "),
+            SearchResults::default(),
+            "no terms, no results"
         );
+
+        let page = search_entries(db.conn(), "harbour", 2, 1).expect("page");
+        assert_eq!(ids(&page), vec![7, 11], "it pages like every other list");
+        assert_eq!(page.counts, found.counts, "and counts the whole of it");
     }
 
     /// LIKE's wildcards are not this search's: a `%` is a percent sign.
@@ -1376,7 +1520,14 @@ mod tests {
             upsert_entry(tx, &a, 1, Arrival::Quiet)
         })
         .expect("seed");
-        let search = |q: &str| ids(&search_entries(db.conn(), q, 100, 0).expect("search"));
+        let search = |q: &str| {
+            search_entries(db.conn(), q, 100, 0)
+                .expect("search")
+                .hits
+                .iter()
+                .map(|h| h.row.id.get())
+                .collect::<Vec<_>>()
+        };
         assert_eq!(search("50%"), vec![7]);
         assert_eq!(search("%"), vec![7]);
         assert_eq!(search("_"), Vec::<i64>::new());

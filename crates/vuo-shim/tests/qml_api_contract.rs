@@ -770,6 +770,18 @@ fn qml_declared_identifiers(files: &[PathBuf]) -> BTreeSet<String> {
                             names.insert(name);
                         }
                     }
+                    // A function's parameters are JavaScript locals too:
+                    // `function zoomAt(target, viewX, viewY)`.
+                    let params = code
+                        .split_once('(')
+                        .and_then(|(_, rest)| rest.split_once(')'))
+                        .map(|(params, _)| params);
+                    for param in params.unwrap_or_default().split(',') {
+                        let param = param.trim();
+                        if !param.is_empty() {
+                            names.insert(param.to_owned());
+                        }
+                    }
                 }
                 Some("id:") => {
                     if let Some(name) = words.next() {
@@ -834,6 +846,28 @@ fn every_role_the_delegates_use_is_exposed_by_a_model() {
 
     for file in &files {
         let source = std::fs::read_to_string(file).expect("read qml");
+        // The one place a role is named in a STRING: a view's section
+        // property, `section.property: searching ? "matchKind" : ""`. A typo
+        // there is a list that silently stops grouping.
+        for (lineno, line) in source.lines().enumerate() {
+            let Some((_, value)) = line.trim_start().split_once("section.property:") else {
+                continue;
+            };
+            for name in value.split('"').skip(1).step_by(2) {
+                if name.is_empty() {
+                    continue;
+                }
+                if roles.contains(name) {
+                    used.insert(name.to_owned());
+                } else {
+                    unknown.push(format!(
+                        "{}:{} — `{name}` is a section property but no model exposes it",
+                        file.strip_prefix(&root).unwrap_or(file).display(),
+                        lineno + 1
+                    ));
+                }
+            }
+        }
         // Comments are prose, and strings are text. Naming a role while
         // explaining why the code does what it does is not a reference to it.
         // Blanked rather than removed so the reported line numbers still point

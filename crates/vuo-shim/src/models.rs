@@ -36,6 +36,7 @@ use vuo_core::db::store;
 #[allow(unused_imports)]
 use vuo_core::model::FeedId;
 use vuo_core::model::{EntryId, EntryStatus};
+use vuo_core::search::{MatchKind, SearchQuery};
 
 use crate::context::AppContext;
 use crate::worker::{self, Command};
@@ -76,6 +77,18 @@ pub const ROLE_URL: i32 = USER_ROLE + 8;
 pub const ROLE_FEED_NAME: i32 = USER_ROLE + 9;
 /// A `data:` URI for the feed's icon, or empty when the mirror has none.
 pub const ROLE_FEED_ICON: i32 = USER_ROLE + 10;
+/// Where a search result matched: `title`, `feed` or `text` -- the group it
+/// is listed under. Empty outside a search.
+pub const ROLE_MATCH_KIND: i32 = USER_ROLE + 11;
+/// A search result's title with the terms in bold. `StyledText` built and
+/// ESCAPED in Rust (`SearchQuery::highlight`), so QML may render it as
+/// such (§9.3). Empty outside a search.
+pub const ROLE_TITLE_STYLED: i32 = USER_ROLE + 12;
+/// The feed's name, likewise. Empty outside a search.
+pub const ROLE_FEED_NAME_STYLED: i32 = USER_ROLE + 13;
+/// For a result found in its body text, the lines around the match, with
+/// the terms in bold; `StyledText` as above. Empty for every other row.
+pub const ROLE_EXCERPT: i32 = USER_ROLE + 14;
 
 /// A row as the UI needs it.
 ///
@@ -105,6 +118,36 @@ pub struct EntryRow {
     pub published: i64,
     pub reading_time: i32,
     pub url: String,
+    /// What a search result shows of why it was found. Empty strings -- no
+    /// allocation -- on every other list. See [`ROLE_MATCH_KIND`] and the
+    /// roles after it.
+    pub match_kind: &'static str,
+    pub title_styled: String,
+    pub feed_styled: String,
+    pub excerpt: String,
+}
+
+impl EntryRow {
+    /// A search result's row: the list row, and why it was found, marked up
+    /// for the reader.
+    fn found(hit: &store::SearchHit, query: Option<&SearchQuery>) -> Self {
+        let mut row = EntryRow::from(&hit.row);
+        row.match_kind = match hit.kind {
+            MatchKind::Title => "title",
+            MatchKind::Feed => "feed",
+            MatchKind::Text => "text",
+        };
+        if let Some(query) = query {
+            row.title_styled = query.highlight(&row.title);
+            row.feed_styled = query.highlight(&hit.feed_title);
+            row.excerpt = hit
+                .excerpt
+                .as_deref()
+                .map(|text| query.highlight(text))
+                .unwrap_or_default();
+        }
+        row
+    }
 }
 
 impl From<&store::EntryListRow> for EntryRow {
@@ -119,6 +162,7 @@ impl From<&store::EntryListRow> for EntryRow {
             published: e.published_at.unwrap_or(0),
             reading_time: e.reading_time,
             url: e.url.clone().unwrap_or_default(),
+            ..EntryRow::default()
         }
     }
 }
@@ -366,8 +410,17 @@ pub struct EntryModel {
     /// searching. Setting the text it already has does nothing, so a binding
     /// that re-fires costs a comparison rather than a query.
     setSearch: qt_method!(fn(&mut self, text: QString)),
+    /// How many articles the search found in each group -- see
+    /// [`MatchKind`] -- across the whole mirror, not only the rows loaded.
+    /// What each group's header says. Zero outside a search.
+    titleMatches: qt_property!(i32; READ title_matches NOTIFY matchesChanged),
+    feedMatches: qt_property!(i32; READ feed_matches NOTIFY matchesChanged),
+    textMatches: qt_property!(i32; READ text_matches NOTIFY matchesChanged),
+    matchesChanged: qt_signal!(),
 
     rows: Vec<EntryRow>,
+    /// See `titleMatches`.
+    matches: store::SearchCounts,
     scope: Option<Scope>,
     /// What a [`Scope::Search`] model looks for. See [`EntryModel::setSearch`].
     search: String,
@@ -619,6 +672,18 @@ impl EntryModel {
             .unwrap_or(0)
     }
 
+    fn title_matches(&self) -> i32 {
+        i32::try_from(self.matches.title).unwrap_or(i32::MAX)
+    }
+
+    fn feed_matches(&self) -> i32 {
+        i32::try_from(self.matches.feed).unwrap_or(i32::MAX)
+    }
+
+    fn text_matches(&self) -> i32 {
+        i32::try_from(self.matches.text).unwrap_or(i32::MAX)
+    }
+
     fn markAllRead(&mut self) {
         let Some(scope) = self.scope else { return };
         self.mark_all_read_in(scope);
@@ -805,39 +870,61 @@ impl EntryModel {
 
         let window = self.window();
         let mut full_window = false;
-        let search = &self.search;
-        let entries = ctx
-            .read(|db| {
-                let mut entries = match scope.to_filter() {
-                    Some(filter) => store::list_entries(db.conn(), filter, window, 0),
-                    None => store::search_entries(db.conn(), search, window, 0),
-                }
+        let mut matches = store::SearchCounts::default();
+        let rows: Vec<EntryRow> = if let Some(filter) = scope.to_filter() {
+            let entries = ctx
+                .read(|db| {
+                    let mut entries =
+                        store::list_entries(db.conn(), filter, window, 0).unwrap_or_default();
+                    // Before the kept rows are appended: those are rows the
+                    // reader has finished with, which the scope no longer
+                    // matches, and counting them would make a part-full window
+                    // look full.
+                    full_window = i64::try_from(entries.len()).unwrap_or(i64::MAX) >= window;
+                    let listed: HashSet<i64> = entries.iter().map(|e| e.id.get()).collect();
+                    // One statement per kept row rather than a built `IN (...)`
+                    // list, as the outbox does (§9.4). There are as many of
+                    // these as the reader has finished with since they last
+                    // refreshed, which is a handful, not a page.
+                    for id in shown {
+                        if listed.contains(&id) {
+                            continue;
+                        }
+                        if let Ok(Some(entry)) = store::entry_list_row(db.conn(), EntryId(id)) {
+                            entries.push(entry);
+                        }
+                    }
+                    entries
+                })
                 .unwrap_or_default();
-                // Before the kept rows are appended: those are rows the reader
-                // has finished with, which the scope no longer matches, and
-                // counting them would make a part-full window look full.
-                full_window = i64::try_from(entries.len()).unwrap_or(i64::MAX) >= window;
-                let listed: HashSet<i64> = entries.iter().map(|e| e.id.get()).collect();
-                // One statement per kept row rather than a built `IN (...)`
-                // list, as the outbox does (§9.4). There are as many of these
-                // as the reader has finished with since they last refreshed,
-                // which is a handful, not a page.
-                for id in shown {
-                    if listed.contains(&id) {
-                        continue;
-                    }
-                    if let Ok(Some(entry)) = store::entry_list_row(db.conn(), EntryId(id)) {
-                        entries.push(entry);
-                    }
-                }
-                entries
-            })
-            .unwrap_or_default();
-        let mut rows: Vec<EntryRow> = entries.iter().map(EntryRow::from).collect();
-        // Back into the mirror's own order, newest first, so a kept row sits
-        // where it did rather than at the bottom. A stable sort, and the
-        // fresh rows arrived sorted, so this only moves the kept ones.
-        rows.sort_by_key(|r| (std::cmp::Reverse(r.published), std::cmp::Reverse(r.id)));
+            let mut rows: Vec<EntryRow> = entries.iter().map(EntryRow::from).collect();
+            // Back into the mirror's own order, newest first, so a kept row
+            // sits where it did rather than at the bottom. A stable sort, and
+            // the fresh rows arrived sorted, so this only moves the kept ones.
+            rows.sort_by_key(|r| (std::cmp::Reverse(r.published), std::cmp::Reverse(r.id)));
+            rows
+        } else {
+            // A search keeps nothing: an article does not stop matching by
+            // being read, and the results are in the search's own order --
+            // grouped by where they matched -- which the date sort above
+            // would undo.
+            let search = &self.search;
+            let found = ctx
+                .read(|db| store::search_entries(db.conn(), search, window, 0).unwrap_or_default())
+                .unwrap_or_default();
+            full_window = found.counts.total() > found.hits.len();
+            matches = found.counts;
+            let query = SearchQuery::parse(search);
+            found
+                .hits
+                .iter()
+                .map(|hit| EntryRow::found(hit, query.as_ref()))
+                .collect()
+        };
+        if matches != self.matches {
+            self.matches = matches;
+            self.matchesChanged();
+        }
 
         // The chrome is not part of a row any more, so a row diff cannot see a
         // feed that was renamed or that finally got an icon. Take the shared
@@ -989,6 +1076,10 @@ impl QAbstractListModel for EntryModel {
                 .map(|c| c.icon_uri.clone())
                 .unwrap_or_default()
                 .into(),
+            ROLE_MATCH_KIND => QString::from(row.match_kind).into(),
+            ROLE_TITLE_STYLED => QString::from(row.title_styled.clone()).into(),
+            ROLE_FEED_NAME_STYLED => QString::from(row.feed_styled.clone()).into(),
+            ROLE_EXCERPT => QString::from(row.excerpt.clone()).into(),
             _ => QVariant::default(),
         }
     }
@@ -1006,6 +1097,10 @@ impl QAbstractListModel for EntryModel {
         names.insert(ROLE_URL, "url".into());
         names.insert(ROLE_FEED_NAME, "feedName".into());
         names.insert(ROLE_FEED_ICON, "feedIcon".into());
+        names.insert(ROLE_MATCH_KIND, "matchKind".into());
+        names.insert(ROLE_TITLE_STYLED, "titleStyled".into());
+        names.insert(ROLE_FEED_NAME_STYLED, "feedNameStyled".into());
+        names.insert(ROLE_EXCERPT, "excerpt".into());
         names
     }
 }
@@ -2132,14 +2227,56 @@ mod row_decoration_tests {
         assert_eq!(ids(&model), Vec::<i64>::new(), "no text, no results");
 
         model.setSearch("HARBOUR".into());
-        assert_eq!(ids(&model), vec![6, 5], "title and body text, newest first");
+        assert_eq!(
+            ids(&model),
+            vec![5, 6],
+            "title hits before body hits, whatever their dates"
+        );
+        assert_eq!(
+            (
+                model.title_matches(),
+                model.feed_matches(),
+                model.text_matches()
+            ),
+            (1, 0, 1)
+        );
+        let found = model.rows();
+        assert_eq!(found[0].match_kind, "title");
+        assert_eq!(found[0].title_styled, "<b>Harbour</b> at dusk");
+        assert_eq!(
+            found[0].excerpt, "",
+            "a title hit shows its match in the title"
+        );
+        assert_eq!(found[1].match_kind, "text");
+        assert_eq!(found[1].title_styled, "entry 6");
+        assert_eq!(
+            found[1].excerpt, "A walk by the <b>harbour</b>",
+            "a body hit shows the text around the match, the match in bold"
+        );
+        assert_eq!(found[1].feed_styled, "Tagesschau");
 
         model.setSearch("harbour walk".into());
         assert_eq!(ids(&model), vec![6], "every term must match");
+        assert_eq!(
+            (
+                model.title_matches(),
+                model.feed_matches(),
+                model.text_matches()
+            ),
+            (0, 0, 1),
+            "and the counts follow the search"
+        );
 
-        // The feed's name is searched too -- the seeded feed is Tagesschau.
+        // The feed's name is searched too -- the seeded feed is Tagesschau --
+        // and a hit there is marked in it.
+        model.setSearch("tagesschau".into());
+        assert_eq!(ids(&model), vec![7, 6, 5]);
+        assert!(model.rows().iter().all(|r| r.match_kind == "feed"));
+        assert_eq!(model.rows()[0].feed_styled, "<b>Tagesschau</b>");
+        assert_eq!(model.feed_matches(), 3);
         model.setSearch("tagesschau island".into());
         assert_eq!(ids(&model), vec![7]);
+        assert_eq!(model.rows()[0].match_kind, "title");
 
         // Text set before the scope is applied when the scope arrives, and
         // re-scoping keeps it: the page re-applies its scope every time it
@@ -2158,6 +2295,13 @@ mod row_decoration_tests {
         unread.setSearch("dusk".into());
         unread.setScope(0, 0);
         assert_eq!(ids(&unread), vec![7, 6, 5]);
+        assert!(
+            unread.rows().iter().all(|r| r.match_kind.is_empty()
+                && r.title_styled.is_empty()
+                && r.excerpt.is_empty()),
+            "and draws no search marks"
+        );
+        assert_eq!(unread.title_matches(), 0);
     }
 
     /// "Mark all as read" has nothing to act on in a search: the list does

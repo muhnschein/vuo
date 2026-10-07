@@ -288,6 +288,11 @@ SilicaListView {
 
     PullDownMenu {
         id: pulley
+        objectName: "pulley"
+
+        // Not on the search page: everything here is about a tab's list, so
+        // all that was left there was a menu with nothing in it.
+        visible: !listView.searching
 
         /// Set by Refresh, acted on once this menu is off the screen.
         property bool refreshPending: false
@@ -351,7 +356,7 @@ SilicaListView {
             // and Email apps do it: a page of the same rows where a tap
             // selects, then the pulley. Over the tab's own model, so the
             // rows are exactly the ones the reader was looking at.
-            visible: !listView.selecting && listView.count > 0
+            visible: !listView.selecting && !listView.searching && listView.count > 0
             text: qsTr("Select articles")
             onClicked: pageStack.push(Qt.resolvedUrl("../pages/EntryListPage.qml"), {
                 model: listView.entryModel,
@@ -465,10 +470,45 @@ SilicaListView {
                   // Said either way: the mirror is all that is searched, so an
                   // article the server holds but this device does not is not
                   // found, and that should not be a surprise.
-                  ? qsTr("Vuo searches the title, author, feed name and text of every article on this device.")
+                  ? qsTr("Vuo searches the title, feed name and text of every article on this device.")
                   : (listView.scopeKind === 1
                      ? qsTr("Articles you add to favourites appear here")
                      : qsTr("Pull down to refresh"))
+    }
+
+    // A search lists its results grouped by where they matched, titles first,
+    // as the model orders them; each group's header says how many there are
+    // in the whole mirror, not only how many are loaded.
+    section.property: listView.searching ? "matchKind" : ""
+    section.delegate: SectionHeader {
+        objectName: "sectionHeader"
+        text: listView.sectionTitle(section)
+    }
+
+    /// The header over one group of search results.
+    function sectionTitle(kind) {
+        if (!listView.entryModel) {
+            return ""
+        }
+        if (kind === "title") {
+            //: Search results: the group of articles whose title matched.
+            //: %1 is how many there are.
+            return qsTr("In titles (%1)").arg(listView.entryModel.titleMatches)
+        }
+        if (kind === "feed") {
+            //: Search results: the group of articles whose feed's name
+            //: matched. %1 is how many there are.
+            return qsTr("In feed names (%1)").arg(listView.entryModel.feedMatches)
+        }
+        //: Search results: the group of articles whose text matched.
+        //: %1 is how many there are.
+        return qsTr("In article text (%1)").arg(listView.entryModel.textMatches)
+    }
+
+    /// Escape text for a StyledText label. Only for text this file builds
+    /// itself -- an age, a reading time -- that sits next to markup Rust made.
+    function escaped(text) {
+        return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
     }
 
     /// Measures the detail line, so it can be shortened before it overflows.
@@ -578,12 +618,15 @@ SilicaListView {
 
                 Label {
                     id: titleLabel
+                    objectName: "titleLabel"
 
                     width: parent.width
                     // §9.3: a feed-supplied title is foreign data. PlainText,
-                    // always, explicitly.
-                    textFormat: Text.PlainText
-                    text: title
+                    // explicitly -- except for a search result's, which Rust
+                    // escaped and marked the search terms in, and which is
+                    // therefore safe to render as StyledText.
+                    textFormat: listView.searching ? Text.StyledText : Text.PlainText
+                    text: listView.searching ? titleStyled : title
                     wrapMode: Text.Wrap
                     maximumLineCount: 3
                     elide: Text.ElideRight
@@ -593,14 +636,17 @@ SilicaListView {
 
                 Label {
                     id: detailLabel
+                    objectName: "detailLabel"
 
                     width: parent.width
                     // Assembled in JavaScript rather than as a Row of Labels
                     // so the separators collapse cleanly when a part is
                     // missing, and so the whole line can be shortened as one
                     // thing when it will not fit. PlainText, explicitly: the
-                    // feed's name is in it and that is foreign text.
-                    textFormat: Text.PlainText
+                    // feed's name is in it and that is foreign text -- unless
+                    // this is a search result, where the name is the one Rust
+                    // escaped and marked (see `styled`).
+                    textFormat: listView.searching ? Text.StyledText : Text.PlainText
                     font.pixelSize: Theme.fontSizeExtraSmall
                     color: item.highlighted ? Theme.secondaryHighlightColor
                                             : Theme.secondaryColor
@@ -684,7 +730,39 @@ SilicaListView {
                         return kept.join("  \u00b7  ")
                     }
 
-                    text: detailLabel.width > 0 ? detailLabel.build() : ""
+                    /// The fitted line as StyledText, for a search result: the
+                    /// feed's name with the search terms in bold, when the
+                    /// name was not shortened -- a shortened one would cut a
+                    /// bold run in half, so it is drawn plain -- and the rest
+                    /// escaped.
+                    function styled(line) {
+                        if (feedName.length > 0 && line.indexOf(feedName) === 0) {
+                            return feedNameStyled
+                                   + listView.escaped(line.substring(feedName.length))
+                        }
+                        return listView.escaped(line)
+                    }
+
+                    text: detailLabel.width <= 0 ? ""
+                          : (listView.searching ? detailLabel.styled(detailLabel.build())
+                                                : detailLabel.build())
+                }
+
+                Label {
+                    // A result found in an article's text: the lines around
+                    // the match, so the reader sees why it is here. StyledText
+                    // built and escaped in Rust (§9.3), with the terms in bold.
+                    objectName: "excerptLabel"
+                    width: parent.width
+                    visible: listView.searching && excerpt.length > 0
+                    textFormat: Text.StyledText
+                    text: listView.searching ? excerpt : ""
+                    wrapMode: Text.Wrap
+                    maximumLineCount: 3
+                    elide: Text.ElideRight
+                    font.pixelSize: Theme.fontSizeExtraSmall
+                    color: item.highlighted ? Theme.secondaryHighlightColor
+                                            : Theme.secondaryColor
                 }
             }
         }

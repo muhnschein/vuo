@@ -7,9 +7,21 @@
 //! # What matches
 //!
 //! A query is split on whitespace into terms, and an article matches when
-//! EVERY term appears somewhere in its title, its author, its feed's name or
-//! the TEXT of its body. Case is ignored. A term is a plain substring: no
-//! wildcards, no operators, so `50%` and `C++` mean what they say.
+//! EVERY term appears somewhere in its title, its feed's name or the TEXT of
+//! its body. Case is ignored. A term is a plain substring: no wildcards, no
+//! operators, so `50%` and `C++` mean what they say.
+//!
+//! The author is not searched. A list row does not show it, so an article
+//! found by its author would be a result with nothing on screen to say why.
+//!
+//! # Where it matched
+//!
+//! Results are grouped by WHERE they matched -- the [`MatchKind`] -- so the
+//! articles a reader is most likely after, the ones whose title says so, come
+//! first. The kind is the first of title, feed name and body text that holds
+//! any term. For the result rows themselves, [`SearchQuery::highlight`] marks
+//! the terms in a title or feed name, and [`SearchQuery::excerpt`] cuts the
+//! lines around a match out of a body.
 //!
 //! "The text of its body" is the point of this module. Bodies are stored as
 //! the HTML Miniflux delivered, and a substring test over the raw markup would
@@ -21,7 +33,7 @@
 //!
 //! # Why a SQL function
 //!
-//! The matching runs inside SQLite as `vuo_search_match(...)`, registered on
+//! The matching runs inside SQLite as `vuo_search_kind(...)`, registered on
 //! every connection by [`crate::db::Database`]. The alternative -- reading
 //! every body out to filter it in Rust -- is the shape `store::EntryListRow`
 //! exists to avoid: it carried every body in the mirror through memory at
@@ -33,7 +45,41 @@ use rusqlite::Connection;
 
 /// The SQL name the matcher is registered under. `store::search_entries`
 /// spells it out in its statement, which is a literal by rule (§9.4).
-const SQL_FUNCTION: &str = "vuo_search_match";
+const SQL_FUNCTION: &str = "vuo_search_kind";
+
+/// Where an article matched a query: the first of these that holds any of
+/// its terms. In the order the results are listed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum MatchKind {
+    /// The title holds a term.
+    Title = 1,
+    /// The feed's name does, and the title does not.
+    Feed = 2,
+    /// Only the body's text does.
+    Text = 3,
+}
+
+impl MatchKind {
+    /// The kind as SQL hands it back: 1, 2 or 3; anything else is no match.
+    #[must_use]
+    pub fn from_sql(value: i64) -> Option<MatchKind> {
+        match value {
+            1 => Some(MatchKind::Title),
+            2 => Some(MatchKind::Feed),
+            3 => Some(MatchKind::Text),
+            _ => None,
+        }
+    }
+}
+
+/// How much of a body an excerpt shows before the match, in characters:
+/// about half a line on a phone, so the match lands on the excerpt's first
+/// line with what leads up to it.
+const EXCERPT_LEAD: usize = 40;
+/// How long an excerpt is at most, in characters. A little more than the
+/// three lines the list shows, so the view rather than this decides where
+/// the text is cut.
+const EXCERPT_LENGTH: usize = 200;
 
 /// A parsed query: its terms, case-folded. Never empty.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -60,33 +106,165 @@ impl SearchQuery {
         &self.terms
     }
 
-    /// Whether an article matches: every term somewhere in its title, its
-    /// author, its feed's name or the text of its body.
+    /// Where an article matches, or `None` when it does not: every term must
+    /// be somewhere in its title, its feed's name or the text of its body.
     ///
     /// The body is the expensive part, so it is stripped and folded only when
     /// the short fields have not already accounted for every term.
     #[must_use]
-    pub fn matches(&self, title: &str, author: &str, feed: &str, content_html: &str) -> bool {
-        let short = fold(&[title, author, feed].join("\n"));
+    pub fn classify(&self, title: &str, feed: &str, content_html: &str) -> Option<MatchKind> {
+        let title = fold(title);
+        let feed = fold(feed);
         let rest: Vec<&String> = self
             .terms
             .iter()
-            .filter(|t| !short.contains(t.as_str()))
+            .filter(|t| !title.contains(t.as_str()) && !feed.contains(t.as_str()))
             .collect();
-        if rest.is_empty() {
-            return true;
+        if !rest.is_empty() {
+            let mut body = html_text(content_html);
+            if rest.iter().all(|t| t.is_ascii()) {
+                // In place, and several times faster than `to_lowercase`. The
+                // same answer for an ASCII term, but for a handful of exotic
+                // code points that `to_lowercase` folds INTO ASCII (the Kelvin
+                // sign becomes `k`), which no reader will miss.
+                body.make_ascii_lowercase();
+            } else {
+                body = fold(&body);
+            }
+            if !rest.iter().all(|t| body.contains(t.as_str())) {
+                return None;
+            }
         }
-        let mut body = html_text(content_html);
-        if rest.iter().all(|t| t.is_ascii()) {
-            // In place, and several times faster than `to_lowercase`. The
-            // same answer for an ASCII term, but for a handful of exotic code
-            // points that `to_lowercase` folds INTO ASCII (the Kelvin sign
-            // becomes `k`), which no reader will miss.
-            body.make_ascii_lowercase();
+        let any_in = |field: &str| self.terms.iter().any(|t| field.contains(t.as_str()));
+        Some(if any_in(&title) {
+            MatchKind::Title
+        } else if any_in(&feed) {
+            MatchKind::Feed
         } else {
-            body = fold(&body);
+            MatchKind::Text
+        })
+    }
+
+    /// `text` as Qt `StyledText`, with every occurrence of a term in bold.
+    ///
+    /// For a title or a feed name in a result row. The text is FOREIGN, so
+    /// it is escaped -- the only markup in the result is the `<b>` added
+    /// here, which is what lets QML render it as `StyledText` (§9.3).
+    #[must_use]
+    pub fn highlight(&self, text: &str) -> String {
+        let mut out = String::with_capacity(text.len() + 16);
+        let mut copied = 0;
+        for (start, end) in self.spans(text) {
+            crate::content::block::escape_into(
+                text.get(copied..start).unwrap_or_default(),
+                &mut out,
+            );
+            out.push_str("<b>");
+            crate::content::block::escape_into(text.get(start..end).unwrap_or_default(), &mut out);
+            out.push_str("</b>");
+            copied = end;
         }
-        rest.iter().all(|t| body.contains(t.as_str()))
+        crate::content::block::escape_into(text.get(copied..).unwrap_or_default(), &mut out);
+        out
+    }
+
+    /// The text around the first match in a body, as plain text, or `None`
+    /// when no term is in its text.
+    ///
+    /// A few words before the match and a few lines after it, cut at word
+    /// boundaries, with an ellipsis where the body goes on. Whitespace is
+    /// collapsed: a body's line breaks are its markup's, not a reader's.
+    #[must_use]
+    pub fn excerpt(&self, content_html: &str) -> Option<String> {
+        let text = html_text(content_html)
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
+        let (first, _) = self.spans(&text).into_iter().next()?;
+
+        // In characters from here on: a byte count would cut a line of
+        // Cyrillic to half the length of one in English.
+        let chars: Vec<(usize, char)> = text.char_indices().collect();
+        let at = chars.iter().position(|&(i, _)| i == first)?;
+        let mut from = at.saturating_sub(EXCERPT_LEAD);
+        if from > 0 {
+            // Forward to the start of a word, but never past the match.
+            from = (from..at)
+                .find(|&i| chars.get(i.wrapping_sub(1)).is_some_and(|&(_, c)| c == ' '))
+                .unwrap_or(at);
+        }
+        let mut to = (from + EXCERPT_LENGTH).min(chars.len());
+        if to < chars.len() {
+            // Back to the end of a word, unless that loses the match.
+            if let Some(space) = (at + 1..to)
+                .rev()
+                .find(|&i| chars.get(i).is_some_and(|&(_, c)| c == ' '))
+            {
+                to = space;
+            }
+        }
+        let byte = |i: usize| chars.get(i).map_or(text.len(), |&(b, _)| b);
+        let mut out = String::new();
+        if from > 0 {
+            out.push('\u{2026}');
+        }
+        out.push_str(text.get(byte(from)..byte(to))?.trim());
+        if to < chars.len() {
+            out.push('\u{2026}');
+        }
+        Some(out)
+    }
+
+    /// Where the terms are in `text`: byte ranges of the ORIGINAL text,
+    /// sorted, with overlapping and touching ones merged.
+    fn spans(&self, text: &str) -> Vec<(usize, usize)> {
+        // The folded text is searched, and every folded byte maps back to the
+        // character it came from. `to_lowercase` folds a character the same
+        // number of bytes whether it does it alone or in a string -- its one
+        // context rule, the Greek final sigma, swaps one two-byte sigma for
+        // another -- so the map built a character at a time fits the string
+        // folded whole. If it ever did not, nothing is marked: a missing bold
+        // is better than a misplaced one.
+        let folded = fold(text);
+        let mut origin = Vec::with_capacity(folded.len() + 1);
+        for (at, ch) in text.char_indices() {
+            let width: usize = ch.to_lowercase().map(char::len_utf8).sum();
+            origin.extend(std::iter::repeat_n(at, width));
+        }
+        origin.push(text.len());
+        if origin.len() != folded.len() + 1 {
+            return Vec::new();
+        }
+
+        let mut found: Vec<(usize, usize)> = Vec::new();
+        for term in &self.terms {
+            let mut from = 0;
+            while let Some(hit) = folded.get(from..).and_then(|rest| rest.find(term.as_str())) {
+                let start = from + hit;
+                let end = start + term.len();
+                // The END maps to the start of the character after the match:
+                // a match that ends inside one character's folding (a dotted
+                // capital I folds to two) stops short of it.
+                if let (Some(&a), Some(&b)) = (origin.get(start), origin.get(end)) {
+                    if a < b {
+                        found.push((a, b));
+                    }
+                }
+                from = start + 1;
+                while !folded.is_char_boundary(from) {
+                    from += 1;
+                }
+            }
+        }
+        found.sort_unstable();
+        let mut merged: Vec<(usize, usize)> = Vec::with_capacity(found.len());
+        for (start, end) in found {
+            match merged.last_mut() {
+                Some(last) if start <= last.1 => last.1 = last.1.max(end),
+                _ => merged.push((start, end)),
+            }
+        }
+        merged
     }
 }
 
@@ -206,34 +384,42 @@ fn decode_entity(s: &str) -> Option<(char, usize)> {
 
 /// Register [`SQL_FUNCTION`] on a connection.
 ///
-/// `vuo_search_match(query, title, author, feed_title, content)` is 1 when the
-/// article matches, 0 when it does not, and 0 for a query with no terms. The
-/// query is parsed once per statement and cached by SQLite, not once per row.
+/// `vuo_search_kind(query, title, feed_title, content)` is the [`MatchKind`]
+/// as a number when the article matches, 0 when it does not, and 0 for a
+/// query with no terms. The query is parsed once per statement and cached by
+/// SQLite, not once per row.
 pub(crate) fn register(conn: &Connection) -> rusqlite::Result<()> {
     conn.create_scalar_function(
         SQL_FUNCTION,
-        5,
+        4,
         FunctionFlags::SQLITE_UTF8 | FunctionFlags::SQLITE_DETERMINISTIC,
         sql_match,
     )
 }
 
-fn sql_match(ctx: &Context<'_>) -> rusqlite::Result<bool> {
+fn sql_match(ctx: &Context<'_>) -> rusqlite::Result<i64> {
     let query = ctx.get_or_create_aux(0, |raw| -> rusqlite::Result<Option<SearchQuery>> {
         Ok(SearchQuery::parse(raw.as_str().unwrap_or_default()))
     })?;
     let Some(query) = query.as_ref() else {
-        return Ok(false);
+        return Ok(0);
     };
     // A NULL or non-text column is no text, not an error: one odd row must
     // not abort the whole search.
     let text = |i: usize| ctx.get_raw(i).as_str().unwrap_or_default();
-    Ok(query.matches(text(1), text(2), text(3), text(4)))
+    Ok(query
+        .classify(text(1), text(2), text(3))
+        .map_or(0, |kind| kind as i64))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Whether an article matches at all.
+    fn hit(q: &SearchQuery, title: &str, feed: &str, body: &str) -> bool {
+        q.classify(title, feed, body).is_some()
+    }
 
     #[test]
     fn an_empty_query_is_no_query() {
@@ -251,8 +437,8 @@ mod tests {
     fn markup_is_not_text() {
         let q = SearchQuery::parse("href").unwrap();
         assert!(
-            !q.matches(
-                "",
+            !hit(
+                &q,
                 "",
                 "",
                 r#"<p><a href="https://x.example/">a link</a></p>"#
@@ -260,39 +446,69 @@ mod tests {
             "an attribute name is not something the reader saw"
         );
         let q = SearchQuery::parse("div").unwrap();
-        assert!(!q.matches("", "", "", "<div>text</div>"));
+        assert!(!hit(&q, "", "", "<div>text</div>"));
     }
 
     #[test]
     fn every_term_must_match_somewhere() {
         let q = SearchQuery::parse("harbour dusk").unwrap();
-        assert!(q.matches("A harbour", "", "", "<p>at dusk</p>"));
-        assert!(!q.matches("A harbour", "", "", "<p>at dawn</p>"));
+        assert!(hit(&q, "A harbour", "", "<p>at dusk</p>"));
+        assert!(!hit(&q, "A harbour", "", "<p>at dawn</p>"));
         // Both terms left for the body, and only one of them in it.
-        assert!(!q.matches("", "", "", "<p>the harbour at dawn</p>"));
-        assert!(q.matches("", "", "", "<p>the harbour at dusk</p>"));
+        assert!(!hit(&q, "", "", "<p>the harbour at dawn</p>"));
+        assert!(hit(&q, "", "", "<p>the harbour at dusk</p>"));
+        // One in the feed's name, the other in the body.
+        assert!(hit(&q, "", "Harbour Gazette", "<p>at dusk</p>"));
+        assert!(!hit(&q, "", "Harbour Gazette", "<p>at dawn</p>"));
     }
 
     #[test]
-    fn author_and_feed_are_searched() {
-        let q = SearchQuery::parse("tagesschau").unwrap();
-        assert!(q.matches("", "", "Tagesschau", ""));
-        let q = SearchQuery::parse("jane").unwrap();
-        assert!(q.matches("", "Jane Doe", "", ""));
+    fn the_first_place_holding_any_term_is_where_it_matched() {
+        let q = SearchQuery::parse("harbour dusk").unwrap();
+        let kind = |title, feed, body| q.classify(title, feed, body);
+        assert_eq!(
+            kind("Dusk", "Harbour Gazette", "harbour"),
+            Some(MatchKind::Title)
+        );
+        assert_eq!(
+            kind("Evening", "Harbour Gazette", "dusk"),
+            Some(MatchKind::Feed)
+        );
+        assert_eq!(
+            kind("Evening", "Gazette", "harbour at dusk"),
+            Some(MatchKind::Text)
+        );
+        assert_eq!(kind("Evening", "Gazette", "harbour"), None);
+    }
+
+    #[test]
+    fn the_author_is_not_searched() {
+        // Not a parameter any more: what a row cannot show, a search does
+        // not find an article by. This pins the SQL function's arity too.
+        let conn = Connection::open_in_memory().unwrap();
+        register(&conn).unwrap();
+        assert!(conn
+            .query_row(
+                "SELECT vuo_search_kind('jane', '', 'Jane Doe', '', '')",
+                [],
+                |r| r.get::<_, i64>(0),
+            )
+            .is_err());
     }
 
     #[test]
     fn case_is_ignored_beyond_ascii() {
         let q = SearchQuery::parse("ÄÄNI").unwrap();
-        assert!(q.matches("Hyvä ääni", "", "", ""));
+        assert!(hit(&q, "Hyvä ääni", "", ""));
+        assert!(hit(&q, "", "", "<p>Hyvä ääni</p>"));
     }
 
     #[test]
     fn character_references_are_decoded() {
         let q = SearchQuery::parse("at&t").unwrap();
-        assert!(q.matches("", "", "", "<p>AT&amp;T</p>"));
+        assert!(hit(&q, "", "", "<p>AT&amp;T</p>"));
         let q = SearchQuery::parse("café").unwrap();
-        assert!(q.matches("", "", "", "<p>Caf&#233;s and caf&#xE9;</p>"));
+        assert!(hit(&q, "", "", "<p>Caf&#233;s and caf&#xE9;</p>"));
     }
 
     #[test]
@@ -300,7 +516,7 @@ mod tests {
         assert_eq!(html_text("<b>Wo</b>rd"), "Word");
         assert_eq!(html_text("<p>one</p><p>two</p>").trim(), "one  two");
         let q = SearchQuery::parse("onetwo").unwrap();
-        assert!(!q.matches("", "", "", "<p>one</p><p>two</p>"));
+        assert!(!hit(&q, "", "", "<p>one</p><p>two</p>"));
     }
 
     #[test]
@@ -315,32 +531,138 @@ mod tests {
     }
 
     #[test]
-    fn the_sql_function_matches_like_the_rust_one() {
+    fn a_highlight_bolds_every_term_in_any_case() {
+        let q = SearchQuery::parse("harbour dusk").unwrap();
+        assert_eq!(
+            q.highlight("Harbour at DUSK, the harbour"),
+            "<b>Harbour</b> at <b>DUSK</b>, the <b>harbour</b>"
+        );
+        assert_eq!(q.highlight("Nothing here"), "Nothing here");
+        assert_eq!(q.highlight(""), "");
+    }
+
+    #[test]
+    fn a_highlight_is_escaped_so_only_its_own_bold_is_markup() {
+        // §9.3: the title is foreign text, and the result is StyledText.
+        let q = SearchQuery::parse("b").unwrap();
+        assert_eq!(
+            q.highlight("<b>A&B</b>"),
+            "&lt;<b>b</b>&gt;A&amp;<b>B</b>&lt;/<b>b</b>&gt;"
+        );
+        let q = SearchQuery::parse("&").unwrap();
+        assert_eq!(q.highlight("AT&T"), "AT<b>&amp;</b>T");
+    }
+
+    #[test]
+    fn overlapping_terms_make_one_bold_run() {
+        let q = SearchQuery::parse("harb bour").unwrap();
+        assert_eq!(q.highlight("Harbour"), "<b>Harbour</b>");
+        // Touching, too: two runs side by side would be one in bold anyway.
+        let q = SearchQuery::parse("har bour").unwrap();
+        assert_eq!(q.highlight("harbour"), "<b>harbour</b>");
+        let q = SearchQuery::parse("aa").unwrap();
+        assert_eq!(q.highlight("aaa"), "<b>aaa</b>");
+    }
+
+    #[test]
+    fn a_highlight_marks_the_original_characters_beyond_ascii() {
+        let q = SearchQuery::parse("ääni").unwrap();
+        assert_eq!(q.highlight("HYVÄ ÄÄNI!"), "HYVÄ <b>ÄÄNI</b>!");
+        // A capital that folds to two characters: a match on the first of
+        // them stops short of it rather than cutting it in half.
+        let q = SearchQuery::parse("i").unwrap();
+        assert_eq!(q.highlight("\u{130}x i"), "\u{130}x <b>i</b>");
+        // The Greek final sigma folds in context, and still lines up.
+        let q = SearchQuery::parse("οδος").unwrap();
+        assert_eq!(q.highlight("ΟΔΟΣ ΟΔΟΣ"), "<b>ΟΔΟΣ</b> <b>ΟΔΟΣ</b>");
+    }
+
+    #[test]
+    fn an_excerpt_is_the_text_around_the_first_match() {
+        let q = SearchQuery::parse("harbour").unwrap();
+        assert_eq!(
+            q.excerpt("<p>A walk by the\n\n   <b>harbour</b>.</p>")
+                .as_deref(),
+            Some("A walk by the harbour."),
+            "short enough to be whole: no ellipsis, and whitespace collapsed"
+        );
+        assert_eq!(q.excerpt("<p>No match in here</p>"), None);
+        assert_eq!(
+            q.excerpt(r#"<a href="harbour">x</a>"#),
+            None,
+            "the markup is not text"
+        );
+
+        let before = "word ".repeat(40);
+        let after = " more".repeat(80);
+        let body = format!("<p>{before}harbour{after}</p>");
+        let cut = q.excerpt(&body).unwrap();
+        assert!(
+            cut.starts_with('\u{2026}'),
+            "the body goes on before: {cut}"
+        );
+        assert!(cut.ends_with('\u{2026}'), "and after: {cut}");
+        let at = cut.find("harbour").expect("the match is in it");
+        let lead = cut.get(..at).unwrap().chars().count();
+        assert!(
+            (2..=EXCERPT_LEAD + 1).contains(&lead),
+            "a few words lead up to the match, not a whole line: {lead} in {cut:?}"
+        );
+        assert!(
+            cut.chars().count() <= EXCERPT_LENGTH + 2,
+            "a few lines, not the body: {cut:?}"
+        );
+        // Cut at word boundaries, so no word is cut in half at either end.
+        let inner = cut.trim_matches('\u{2026}');
+        assert!(inner.starts_with("word "), "{cut:?}");
+        assert!(
+            inner.ends_with(" more") || inner.ends_with("harbour"),
+            "{cut:?}"
+        );
+    }
+
+    #[test]
+    fn an_excerpt_counts_characters_not_bytes() {
+        let q = SearchQuery::parse("цель").unwrap();
+        let body = format!("<p>{}цель{}</p>", "слово ".repeat(30), " ещё".repeat(80));
+        let cut = q.excerpt(&body).unwrap();
+        assert!(cut.chars().count() > EXCERPT_LENGTH / 2, "{cut:?}");
+        assert!(cut.chars().count() <= EXCERPT_LENGTH + 2, "{cut:?}");
+    }
+
+    #[test]
+    fn an_excerpt_of_a_match_at_the_start_has_no_leading_ellipsis() {
+        let q = SearchQuery::parse("harbour").unwrap();
+        let body = format!("<p>Harbour{}</p>", " more".repeat(80));
+        let cut = q.excerpt(&body).unwrap();
+        assert!(cut.starts_with("Harbour more"), "{cut:?}");
+        // One word too long to cut at: shown from the match.
+        let body = format!("<p>{}harbour</p>", "x".repeat(100));
+        assert_eq!(q.excerpt(&body).as_deref(), Some("\u{2026}harbour"));
+    }
+
+    #[test]
+    fn the_sql_function_classifies_like_the_rust_one() {
         let conn = Connection::open_in_memory().unwrap();
         register(&conn).unwrap();
-        let hit: bool = conn
-            .query_row(
-                "SELECT vuo_search_match(?1, ?2, '', '', ?3)",
-                ["dusk", "Title", "<p>At DUSK</p>"],
-                |r| r.get(0),
-            )
+        let kind = |sql: &str, args: [&str; 4]| -> i64 {
+            conn.query_row(sql, args, |r| r.get(0)).unwrap()
+        };
+        let sql = "SELECT vuo_search_kind(?1, ?2, ?3, ?4)";
+        assert_eq!(kind(sql, ["dusk", "Title", "", "<p>At DUSK</p>"]), 3);
+        assert_eq!(kind(sql, ["dusk", "Dusk", "", ""]), 1);
+        assert_eq!(kind(sql, ["dusk", "", "Dusk Daily", ""]), 2);
+        assert_eq!(kind(sql, ["dusk", "", "", "dawn"]), 0);
+        assert_eq!(
+            kind(sql, ["  ", "anything", "", ""]),
+            0,
+            "an empty query matches nothing, not everything"
+        );
+        let null: i64 = conn
+            .query_row("SELECT vuo_search_kind('x', NULL, NULL, NULL)", [], |r| {
+                r.get(0)
+            })
             .unwrap();
-        assert!(hit);
-        let empty: bool = conn
-            .query_row(
-                "SELECT vuo_search_match('  ', 'anything', '', '', '')",
-                [],
-                |r| r.get(0),
-            )
-            .unwrap();
-        assert!(!empty, "an empty query matches nothing, not everything");
-        let null: bool = conn
-            .query_row(
-                "SELECT vuo_search_match('x', NULL, NULL, NULL, NULL)",
-                [],
-                |r| r.get(0),
-            )
-            .unwrap();
-        assert!(!null, "a NULL column is no text, not an error");
+        assert_eq!(null, 0, "a NULL column is no text, not an error");
     }
 }
