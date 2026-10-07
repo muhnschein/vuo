@@ -856,6 +856,10 @@ impl Builder {
                     title,
                     fetch,
                     intrinsic: intrinsic_size(tag),
+                    // Read before nothing else touches it: `flush` above ends
+                    // the current text block but leaves the open `<a>` in
+                    // force, which is exactly what an `<a><img></a>` needs.
+                    link: self.link.clone(),
                 });
             }
         }
@@ -1446,6 +1450,48 @@ mod tests {
             intrinsic_of(r#"<img src="/a.png" width="99999999999999999999" height="1">"#),
             None,
             "and one that does not even fit in the type is not a panic"
+        );
+    }
+
+    /// §an image inside a link carries the link, and only that one.
+    ///
+    /// The article view zooms an image on a tap -- unless the feed made the
+    /// image a link, where a tap has to keep meaning "go there". The block is
+    /// the only place the UI can learn which it is.
+    #[test]
+    fn an_image_knows_the_link_it_sits_in() {
+        let link_of = |html: &str| -> Option<String> {
+            transform(html, &lenient_ctx())
+                .blocks
+                .into_iter()
+                .find_map(|b| match b.kind {
+                    BlockKind::Image { link, .. } => Some(link),
+                    _ => None,
+                })
+                .expect("an image block")
+                .map(|u| u.as_str().to_owned())
+        };
+
+        assert_eq!(
+            link_of(r#"<p><a href="https://site.example/full"><img src="/a.png"></a></p>"#),
+            Some("https://site.example/full".to_owned())
+        );
+        // Relative, resolved like any other link.
+        assert_eq!(
+            link_of(r#"<a href="../big.png"><img src="/a.png"></a>"#),
+            Some("https://blog.example/big.png".to_owned())
+        );
+        // Not linked at all.
+        assert_eq!(link_of(r#"<p><img src="/a.png"></p>"#), None);
+        // A link that CLOSED before the image does not leak onto it.
+        assert_eq!(
+            link_of(r#"<p><a href="https://site.example/">x</a> <img src="/a.png"></p>"#),
+            None
+        );
+        // §9.2: a scheme that is never a link is not one here either.
+        assert_eq!(
+            link_of(r#"<a href="javascript:alert(1)"><img src="/a.png"></a>"#),
+            None
         );
     }
 

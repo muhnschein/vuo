@@ -83,6 +83,9 @@ impl Database {
         // Enclosure rows cascade from entries; without this the constraint is
         // decorative.
         conn.pragma_update(None, "foreign_keys", "ON")?;
+        // Per connection, like the pragmas: a SQL function lives on the
+        // connection that registered it, not in the file.
+        crate::search::register(conn)?;
         Ok(())
     }
 

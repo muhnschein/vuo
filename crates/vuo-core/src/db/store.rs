@@ -542,6 +542,40 @@ pub fn entry_list_row(conn: &rusqlite::Connection, id: EntryId) -> Result<Option
     Ok(row)
 }
 
+/// List the entries a search matches, newest first.
+///
+/// What matches is [`crate::search::SearchQuery::matches`]: every term in the
+/// title, the author, the feed's name or the text of the body. A query with
+/// no terms matches nothing -- an empty search field is not a request for the
+/// whole mirror.
+///
+/// Every feed is searched, including the ones hidden from the Unread and All
+/// tabs: a search is the reader asking for something by name, and an article
+/// that exists but is not found reads as one that does not exist.
+pub fn search_entries(
+    conn: &rusqlite::Connection,
+    query: &str,
+    limit: i64,
+    offset: i64,
+) -> Result<Vec<EntryListRow>> {
+    if crate::search::SearchQuery::parse(query).is_none() {
+        return Ok(Vec::new());
+    }
+    let mut stmt = conn.prepare(
+        "SELECT e.id, e.feed_id, e.status, e.starred, e.title, e.url, e.author, \
+         e.published_at, e.reading_time \
+         FROM entries e LEFT JOIN feeds f ON f.id = e.feed_id \
+         WHERE vuo_search_match(?3, e.title, e.author, COALESCE(f.title, ''), e.content) \
+         ORDER BY e.published_at DESC, e.id DESC LIMIT ?1 OFFSET ?2",
+    )?;
+    let mut rows = stmt.query(rusqlite::params![limit, offset, query])?;
+    let mut out = Vec::new();
+    while let Some(row) = rows.next()? {
+        out.push(row_to_list_row(row)?);
+    }
+    Ok(out)
+}
+
 /// The ids of every entry a filter matches, and nothing else.
 ///
 /// "Mark all as read" is the caller: it has to act on the whole scope rather
@@ -1280,6 +1314,72 @@ mod tests {
         assert_eq!(page(2, 2), vec![4, 3]);
         assert_eq!(page(2, 4), vec![2, 1]);
         assert_eq!(page(2, 6), Vec::<i64>::new());
+    }
+
+    /// §search finds articles by what the reader saw, newest first.
+    #[test]
+    fn search_matches_title_body_text_and_feed_newest_first() {
+        let mut db = populated();
+        db.with_tx(|tx| {
+            let mut a = entry_at(7, 10, EntryStatus::Read, false, 700);
+            a.title = "Harbour at dusk".to_owned();
+            upsert_entry(tx, &a, 1, Arrival::Quiet)?;
+            let mut b = entry_at(8, 20, EntryStatus::Unread, false, 800);
+            b.content =
+                r#"<p>A <a href="https://x.example/">walk</a> by the harbour.</p>"#.to_owned();
+            upsert_entry(tx, &b, 1, Arrival::Quiet)?;
+            let mut c = entry_at(9, 11, EntryStatus::Unread, false, 50);
+            c.content = r#"<div class="harbour">nothing to see</div>"#.to_owned();
+            upsert_entry(tx, &c, 1, Arrival::Quiet)?;
+            // Hidden from Unread and All, but not from a search for it.
+            let mut hidden = feed_in(30, None);
+            hidden.hide_globally = true;
+            upsert_feed(tx, &hidden, 1)?;
+            let mut d = entry_at(10, 30, EntryStatus::Unread, false, 900);
+            d.title = "Hidden HARBOUR".to_owned();
+            upsert_entry(tx, &d, 1, Arrival::Quiet)
+        })
+        .expect("seed");
+        let search = |q: &str| ids(&search_entries(db.conn(), q, 100, 0).expect("search"));
+
+        assert_eq!(
+            search("harbour"),
+            vec![10, 8, 7],
+            "title and body text match, any case, newest first -- and markup does not"
+        );
+        assert_eq!(search("harbour walk"), vec![8], "every term must match");
+        assert_eq!(
+            search("href"),
+            Vec::<i64>::new(),
+            "an attribute is not text"
+        );
+        assert_eq!(
+            search("feed 20"),
+            vec![8, 6, 5],
+            "the feed's name is searched"
+        );
+        assert_eq!(search("   "), Vec::<i64>::new(), "no terms, no results");
+        assert_eq!(
+            ids(&search_entries(db.conn(), "harbour", 2, 1).expect("page")),
+            vec![8, 7],
+            "and it pages like every other list"
+        );
+    }
+
+    /// LIKE's wildcards are not this search's: a `%` is a percent sign.
+    #[test]
+    fn search_terms_are_literal() {
+        let mut db = populated();
+        db.with_tx(|tx| {
+            let mut a = entry_at(7, 10, EntryStatus::Unread, false, 700);
+            a.title = "Up 50% on the year".to_owned();
+            upsert_entry(tx, &a, 1, Arrival::Quiet)
+        })
+        .expect("seed");
+        let search = |q: &str| ids(&search_entries(db.conn(), q, 100, 0).expect("search"));
+        assert_eq!(search("50%"), vec![7]);
+        assert_eq!(search("%"), vec![7]);
+        assert_eq!(search("_"), Vec::<i64>::new());
     }
 
     #[test]

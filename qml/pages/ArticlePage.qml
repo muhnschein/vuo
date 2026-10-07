@@ -444,6 +444,29 @@ Page {
                         sourceSize.height: block.width * 4
                         source: blockKind === "image" && !needsConsent
                                 ? imageSource : ""
+
+                        // A tap zooms -- unless the feed made the image a
+                        // link, in which case the tap goes where the link
+                        // does, exactly as a linked word would. The link was
+                        // validated as http(s) in Rust, like every other.
+                        MouseArea {
+                            anchors.fill: parent
+                            enabled: picture.status === Image.Ready
+                            onClicked: {
+                                if (imageLink.length > 0) {
+                                    Qt.openUrlExternally(imageLink)
+                                } else {
+                                    // A page pushed over this one can take
+                                    // the place of the site attached to its
+                                    // right, so attach it again once the
+                                    // reader is back. pushAttached replaces
+                                    // an attached page; it never adds one.
+                                    page._siteAttached = false
+                                    pageStack.push(Qt.resolvedUrl("ImageViewerPage.qml"),
+                                                   { source: imageSource, alt: imageAlt })
+                                }
+                            }
+                        }
                     }
 
                     Label {

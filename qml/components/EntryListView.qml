@@ -42,10 +42,17 @@ SilicaListView {
     /// (private/TabView.qml:51), and drives the whole strip from it.
     readonly property real yOffset: listView.contentY - listView.originY
 
-    // Scope this tab's own model, once. A feed or category view is scoped by
-    // the page instead, because its scope is a parameter of the push.
-    Component.onCompleted: if (listView.showScopeTabs && listView.entryModel) {
-        listView.entryModel.setScope(listView.scopeKind, listView.scopeId)
+    Component.onCompleted: {
+        // Scope this tab's own model, once. A feed or category view is scoped
+        // by the page instead, because its scope is a parameter of the push.
+        if (listView.showScopeTabs && listView.entryModel) {
+            listView.entryModel.setScope(listView.scopeKind, listView.scopeId)
+        }
+        // A search page opens on an empty field, so it must not open on the
+        // last search's results either: the model outlives the page.
+        if (listView.searching && listView.entryModel) {
+            listView.entryModel.setSearch("")
+        }
     }
 
     /// True once the user has moved this list themselves.
@@ -83,6 +90,23 @@ SilicaListView {
     /// does not announce what happened inside it.
     property var selectedIds: ({})
     property int selectedCount: 0
+
+    /// Search mode: the header carries a search field, and the model -- a
+    /// scope-5 EntryModel no tab shows -- lists what the field matches.
+    property bool searching: false
+    /// What the search field holds. Handed to the model a moment after the
+    /// reader stops typing, by `searchDelay`, rather than on every key: each
+    /// search reads every article body in the mirror.
+    property string searchText: ""
+
+    Timer {
+        id: searchDelay
+        interval: 300
+        onTriggered: if (listView.entryModel) {
+            listView.entryModel.setSearch(listView.searchText)
+        }
+    }
+    onSearchTextChanged: searchDelay.restart()
 
     function toggleSelected(id) {
         var next = {}
@@ -173,7 +197,7 @@ SilicaListView {
         id: head
 
         width: listView.width
-        height: nameLabel.y + (nameLabel.visible ? nameLabel.height : 0)
+        height: searchField.y + (searchField.visible ? searchField.height : 0)
 
         // Room for the tab strip, which is pinned by the PAGE rather than
         // scrolled with this list -- it must not slide away under a scroll,
@@ -228,6 +252,38 @@ SilicaListView {
             font.pixelSize: Theme.fontSizeLarge
             color: Theme.highlightColor
         }
+
+        SearchField {
+            id: searchField
+
+            y: nameLabel.y + (nameLabel.visible ? nameLabel.height : 0)
+            width: parent.width
+            visible: listView.searching
+            height: visible ? implicitHeight : 0
+            //: Placeholder in the empty search field.
+            placeholderText: qsTr("Search articles")
+            // Predictive input holds a word back until it is committed, so a
+            // search would trail one word behind what is on screen.
+            inputMethodHints: Qt.ImhNoPredictiveText
+            onTextChanged: listView.searchText = searchField.text
+
+            /// Whether the keyboard has been raised for the reader once.
+            property bool _focused: false
+
+            // Raise the keyboard when the page arrives, not while it is still
+            // sliding in -- and only the first time: coming back from an
+            // article should land on the results, not on the keyboard.
+            Connections {
+                target: listView.hostPage
+                onStatusChanged: {
+                    if (listView.searching && !searchField._focused
+                            && listView.hostPage.status === PageStatus.Active) {
+                        searchField._focused = true
+                        searchField.forceActiveFocus()
+                    }
+                }
+            }
+        }
     }
 
     PullDownMenu {
@@ -275,12 +331,12 @@ SilicaListView {
 
         // ------------------------------------------------------ the list
         MenuItem {
-            visible: !listView.selecting
+            visible: !listView.selecting && !listView.searching
             text: qsTr("Settings")
             onClicked: pageStack.push(Qt.resolvedUrl("../pages/SettingsPage.qml"))
         }
         MenuItem {
-            visible: !listView.selecting
+            visible: !listView.selecting && !listView.searching
             text: qsTr("Feeds")
             // `browseModel`, NOT this list's own: opening a feed re-scopes
             // whatever model it is handed, and handing it a tab's model left
@@ -316,7 +372,8 @@ SilicaListView {
             // bounded by the unread count; on All it is every article ever
             // synced. A mitigation, not a fix -- the Rust wants an id-only
             // projection and an already-read filter before All gets it.
-            visible: !listView.selecting && listView.scopeKind !== 2
+            visible: !listView.selecting && !listView.searching
+                     && listView.scopeKind !== 2
             onClicked: {
                 // Capture the scope NOW, not when the countdown fires.
                 // `markAllRead` would read whatever scope the shared model is
@@ -333,7 +390,27 @@ SilicaListView {
             }
         }
         MenuItem {
-            visible: !listView.selecting
+            // Across the whole mirror, from the main lists only. A search
+            // offered inside a feed would read as searching that feed.
+            visible: !listView.selecting && !listView.searching
+                     && listView.showScopeTabs
+            //: Pulley menu item. A verb: it opens the search page.
+            text: qsTr("Search", "menu item")
+            onClicked: pageStack.push(Qt.resolvedUrl("../pages/EntryListPage.qml"), {
+                model: listView.hostPage ? listView.hostPage.searchModel : null,
+                searchModel: listView.hostPage ? listView.hostPage.searchModel : null,
+                browseModel: listView.hostPage ? listView.hostPage.browseModel : null,
+                feedModel: listView.hostPage ? listView.hostPage.feedModel : null,
+                noticeModel: listView.hostPage ? listView.hostPage.noticeModel : null,
+                // models::Scope::Search
+                scopeKind: 5,
+                //: The search page's title. A noun.
+                scopeLabel: qsTr("Search", "page title"),
+                searching: true
+            })
+        }
+        MenuItem {
+            visible: !listView.selecting && !listView.searching
             text: qsTr("Refresh")
             // Armed here, run when the menu has closed: see
             // `pulley.onActiveChanged`. `requestSync` asks the worker for a
@@ -378,11 +455,20 @@ SilicaListView {
         // "Nothing to read / Pull down to refresh" is an Unread string.
         // Under a Favourites tab it reads as a refusal, and refreshing
         // does not create favourites.
-        text: listView.scopeKind === 1 ? qsTr("No favourites")
-                                   : qsTr("Nothing to read")
-        hintText: listView.scopeKind === 1
-                  ? qsTr("Articles you add to favourites appear here")
-                  : qsTr("Pull down to refresh")
+        text: listView.searching
+              ? (listView.searchText.trim().length === 0
+                 ? qsTr("Search the articles on this device")
+                 : qsTr("No articles found"))
+              : (listView.scopeKind === 1 ? qsTr("No favourites")
+                                          : qsTr("Nothing to read"))
+        hintText: listView.searching
+                  // Said either way: the mirror is all that is searched, so an
+                  // article the server holds but this device does not is not
+                  // found, and that should not be a surprise.
+                  ? qsTr("Vuo searches the title, author, feed name and text of every article on this device.")
+                  : (listView.scopeKind === 1
+                     ? qsTr("Articles you add to favourites appear here")
+                     : qsTr("Pull down to refresh"))
     }
 
     /// Measures the detail line, so it can be shortened before it overflows.

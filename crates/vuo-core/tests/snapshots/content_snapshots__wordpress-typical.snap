@@ -8,3 +8,4 @@ p: Read <a href="https://example.com/more">the rest of it</a>, or see the <i>ear
 li[bullet, indent 0]: One
 li[bullet, indent 0]: Two
 li[bullet, indent 0]: Three
+img[Allowed] https://miniflux.example/proxy/sig/thumb alt="Tap for the full size" link=https://cdn.example/full.jpg

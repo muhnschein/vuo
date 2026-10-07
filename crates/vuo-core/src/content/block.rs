@@ -219,6 +219,13 @@ pub enum BlockKind {
         /// actually felt like. Advisory and untrusted: a feed can say
         /// anything, so it is a ratio hint and never a fetch or decode bound.
         intrinsic: Option<(u32, u32)>,
+        /// The link the image sits inside, when it is wrapped in an `<a>`.
+        ///
+        /// A linked image is a button the feed author drew: a tap on it means
+        /// "go there", not "show me this bigger". The UI uses this to choose
+        /// between the two. Always `http`/`https`, for the same reason
+        /// [`Span::link`] is.
+        link: Option<MediaUrl>,
     },
     /// Fixed three-level nesting: rows of cells of spans. Not self-referential,
     /// so the drop-recursion argument above does not apply.

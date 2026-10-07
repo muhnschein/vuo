@@ -57,6 +57,9 @@ ApplicationWindow {
     // restarted. This model is the only one a pushed view ever re-scopes, and
     // no tab is bound to it.
     EntryModel { id: browseEntries }
+    // And a fifth for SEARCH, for the same reason as the fourth: the search
+    // page re-scopes the model it is handed, so it gets one no tab shows.
+    EntryModel { id: searchEntries }
     FeedModel { id: feeds }
     // Asked one thing here: whether an account is stored at all. That
     // decides the first page, and it is read from the file on every access,
@@ -159,7 +162,7 @@ ApplicationWindow {
     // configured, it made no difference. A tick is individually cheap
     // (`pollSync` is an atomic load and an early return while nothing has
     // changed), but the wakeup itself is the cost: it enters the JS engine,
-    // walks five models, and denies the CPU the deep idle states it would
+    // walks six models, and denies the CPU the deep idle states it would
     // otherwise reach between them.
     //
     // While the app is active, 1.5 seconds: the reader is looking at a list
@@ -180,6 +183,8 @@ ApplicationWindow {
         // Cheap while nothing is being browsed: a model with no scope
         // reloads nothing.
         changed = browseEntries.pollSync() || changed
+        // Likewise: with no search open, nothing is scoped and nothing runs.
+        changed = searchEntries.pollSync() || changed
         if (changed) {
             feeds.pollSync()
         }
@@ -272,6 +277,7 @@ ApplicationWindow {
             scopeModels: [entries, starredEntries, allEntries]
             model: entries
             browseModel: browseEntries
+            searchModel: searchEntries
             feedModel: feeds
             // `entries` is polled first above, so it is the model that takes
             // the sync-failure notice. See EntryListPage.noticeModel.

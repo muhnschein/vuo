@@ -220,16 +220,24 @@ pub enum Scope {
     All,
     Feed(i64),
     Category(i64),
+    /// Whatever the model's search text matches -- see
+    /// [`EntryModel::setSearch`]. The text lives on the model rather than in
+    /// here so that `Scope` stays `Copy`, and so that re-scoping a model that
+    /// is already searching keeps what the reader typed.
+    Search,
 }
 
 impl Scope {
-    fn to_filter(self) -> store::EntryFilter {
+    /// The store's filter for this scope. `None` for a search, which is not a
+    /// filter over the mirror's columns and has a query of its own.
+    fn to_filter(self) -> Option<store::EntryFilter> {
         match self {
-            Scope::Unread => store::EntryFilter::Unread,
-            Scope::Starred => store::EntryFilter::Starred,
-            Scope::All => store::EntryFilter::All,
-            Scope::Feed(id) => store::EntryFilter::Feed(id),
-            Scope::Category(id) => store::EntryFilter::Category(id),
+            Scope::Unread => Some(store::EntryFilter::Unread),
+            Scope::Starred => Some(store::EntryFilter::Starred),
+            Scope::All => Some(store::EntryFilter::All),
+            Scope::Feed(id) => Some(store::EntryFilter::Feed(id)),
+            Scope::Category(id) => Some(store::EntryFilter::Category(id)),
+            Scope::Search => None,
         }
     }
 
@@ -242,6 +250,7 @@ impl Scope {
             2 => Scope::All,
             3 => Scope::Feed(id),
             4 => Scope::Category(id),
+            5 => Scope::Search,
             _ => Scope::Unread,
         }
     }
@@ -351,9 +360,17 @@ pub struct EntryModel {
     /// loaded. A no-op when there is nothing more, so an over-eager binding
     /// costs a comparison rather than a query.
     loadMore: qt_method!(fn(&mut self)),
+    /// Set what a [`Scope::Search`] model looks for.
+    ///
+    /// Kept whatever the scope, and applied at once when the model is
+    /// searching. Setting the text it already has does nothing, so a binding
+    /// that re-fires costs a comparison rather than a query.
+    setSearch: qt_method!(fn(&mut self, text: QString)),
 
     rows: Vec<EntryRow>,
     scope: Option<Scope>,
+    /// What a [`Scope::Search`] model looks for. See [`EntryModel::setSearch`].
+    search: String,
     /// How many rows this model is currently asked to hold.
     ///
     /// Zero until the first reload, which is what `Default` leaves it at and
@@ -638,10 +655,13 @@ impl EntryModel {
                 // the mirror -- to read one integer off each. On the corpus
                 // this was reported against that was 54 MB allocated in one
                 // go, on a phone, to mark a list read.
+                // A search has no filter, and the list does not offer it
+                // "mark all as read".
+                let Some(filter) = scope.to_filter() else {
+                    return;
+                };
                 let ids: Vec<EntryId> = ctx
-                    .read(|db| {
-                        store::entry_ids_matching(db.conn(), scope.to_filter()).unwrap_or_default()
-                    })
+                    .read(|db| store::entry_ids_matching(db.conn(), filter).unwrap_or_default())
                     .unwrap_or_default();
                 ctx.write(|db| worker::apply_local_status_bulk(db, &ids, EntryStatus::Read))
                     .transpose()
@@ -679,6 +699,18 @@ impl EntryModel {
 
     fn refresh(&mut self) {
         self.reload();
+    }
+
+    fn setSearch(&mut self, text: QString) {
+        let text = text.to_string();
+        if text == self.search {
+            return;
+        }
+        self.search = text;
+        if self.scope == Some(Scope::Search) {
+            // A new query is a new list, exactly like a new scope.
+            self.reload_fresh();
+        }
     }
 
     fn entryIdAt(&self, row: i32) -> i64 {
@@ -773,10 +805,14 @@ impl EntryModel {
 
         let window = self.window();
         let mut full_window = false;
+        let search = &self.search;
         let entries = ctx
             .read(|db| {
-                let mut entries = store::list_entries(db.conn(), scope.to_filter(), window, 0)
-                    .unwrap_or_default();
+                let mut entries = match scope.to_filter() {
+                    Some(filter) => store::list_entries(db.conn(), filter, window, 0),
+                    None => store::search_entries(db.conn(), search, window, 0),
+                }
+                .unwrap_or_default();
                 // Before the kept rows are appended: those are rows the reader
                 // has finished with, which the scope no longer matches, and
                 // counting them would make a part-full window look full.
@@ -2071,5 +2107,76 @@ mod row_decoration_tests {
             model.limit, PAGE_SIZE,
             "a new scope is a new list, and it opens at one page"
         );
+    }
+
+    /// §search: the list a search opens into, and what it follows.
+    ///
+    /// The search page re-scopes its model as it is pushed and sets the text
+    /// as the reader types, in either order, and the list must show what the
+    /// text matches whichever came first. An empty field lists nothing rather
+    /// than the whole mirror.
+    #[test]
+    fn a_search_model_lists_what_its_text_matches() {
+        let (_dir, ctx) = seeded();
+        let mut harbour = unread_entry(5);
+        harbour.title = "Harbour at dusk".to_owned();
+        put(&ctx, &harbour);
+        let mut walk = unread_entry(6);
+        walk.content = "<p>A walk by the <b>harbour</b></p>".to_owned();
+        put(&ctx, &walk);
+
+        let mut model = EntryModel::default();
+        model.attach(std::rc::Rc::clone(&ctx));
+        model.setScope(5, 0);
+        assert!(model.is_ready(), "a search with no text is still a list");
+        assert_eq!(ids(&model), Vec::<i64>::new(), "no text, no results");
+
+        model.setSearch("HARBOUR".into());
+        assert_eq!(ids(&model), vec![6, 5], "title and body text, newest first");
+
+        model.setSearch("harbour walk".into());
+        assert_eq!(ids(&model), vec![6], "every term must match");
+
+        // The feed's name is searched too -- the seeded feed is Tagesschau.
+        model.setSearch("tagesschau island".into());
+        assert_eq!(ids(&model), vec![7]);
+
+        // Text set before the scope is applied when the scope arrives, and
+        // re-scoping keeps it: the page re-applies its scope every time it
+        // becomes active, and the reader's query must survive that.
+        let mut early = EntryModel::default();
+        early.attach(std::rc::Rc::clone(&ctx));
+        early.setSearch("dusk".into());
+        early.setScope(5, 0);
+        assert_eq!(ids(&early), vec![5]);
+        early.setScope(5, 0);
+        assert_eq!(ids(&early), vec![5]);
+
+        // And a model that is NOT searching ignores the text altogether.
+        let mut unread = EntryModel::default();
+        unread.attach(std::rc::Rc::clone(&ctx));
+        unread.setSearch("dusk".into());
+        unread.setScope(0, 0);
+        assert_eq!(ids(&unread), vec![7, 6, 5]);
+    }
+
+    /// "Mark all as read" has nothing to act on in a search: the list does
+    /// not offer it, and if it is called anyway it must not fall through to
+    /// a scope that marks the whole mirror.
+    #[test]
+    fn mark_all_read_in_a_search_marks_nothing() {
+        let (_dir, ctx) = seeded();
+        put(&ctx, &unread_entry(5));
+        let mut model = EntryModel::default();
+        model.attach(std::rc::Rc::clone(&ctx));
+        model.setScope(5, 0);
+        model.setSearch("entry".into());
+
+        model.markAllReadIn(5, 0);
+
+        let unread = ctx
+            .read(|db| store::unread_count(db.conn()).expect("count"))
+            .expect("the mirror");
+        assert_eq!(unread, 2, "nothing was marked");
     }
 }

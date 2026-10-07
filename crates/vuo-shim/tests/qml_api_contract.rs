@@ -224,6 +224,61 @@ fn a_feed_view_is_never_given_a_tabs_model() {
     );
 }
 
+/// §the search page has a model of its own.
+///
+/// The same trap as a feed view's, one page over: the search page scopes
+/// whatever model it is handed to scope 5, and `setScope` is a plain
+/// overwrite. Handed a tab's model, a search would leave that tab listing the
+/// search's results; handed the browse model, it would re-scope an open feed
+/// view underneath it.
+#[test]
+fn a_search_is_never_given_another_lists_model() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(2)
+        .expect("the workspace root");
+    let window =
+        std::fs::read_to_string(root.join("qml/harbour-vuo.qml")).expect("harbour-vuo.qml");
+    let view = std::fs::read_to_string(root.join("qml/components/EntryListView.qml"))
+        .expect("EntryListView.qml");
+
+    let bound = |name: &str| -> String {
+        window
+            .lines()
+            .find_map(|l| l.trim_start().strip_prefix(name))
+            .unwrap_or_else(|| panic!("the window binds `{name}`"))
+            .trim()
+            .to_owned()
+    };
+    let tabs = bound("scopeModels:");
+    let browse = bound("browseModel:");
+    let search = bound("searchModel:");
+    assert!(
+        !tabs.contains(&search),
+        "the search model `{search}` is also a tab's ({tabs}); a search would leave \
+         that tab listing its results"
+    );
+    assert_ne!(
+        search, browse,
+        "the search model is the browse model; a search would re-scope a feed view"
+    );
+
+    // The pulley's Search item hands that model over as the page's own.
+    let push = view
+        .split_once("searching: true")
+        .and_then(|(before, _)| before.rsplit_once("pageStack.push("))
+        .map(|(_, args)| args)
+        .expect("the pulley opens a search");
+    assert!(
+        push.contains("model: listView.hostPage ? listView.hostPage.searchModel"),
+        "the Search pulley item must hand over the search model, not this tab's: {push}"
+    );
+    assert!(
+        push.contains("scopeKind: 5"),
+        "and scope it to models::Scope::Search: {push}"
+    );
+}
+
 /// §no property is bound to itself.
 ///
 /// `account: account` inside an `OnboardingPage { }` does not mean "the id
@@ -363,6 +418,19 @@ fn every_member_the_qml_uses_is_implemented_in_rust() {
         // either would fail only on a device, only while Vuo was on its cover.
         "accountSettings",
         "arrivals",
+        // Every other name an EntryModel travels under. `entryModel` is what
+        // EntryListView calls every list action through -- mark read, star,
+        // load more, sync, search -- and it was not on this list, so a typo
+        // in any of them passed: `entryModel.setSerch(...)` was tried, and
+        // nothing in the build noticed.
+        "entryModel",
+        "noticeModel",
+        "browseModel",
+        "searchModel",
+        "starredEntries",
+        "allEntries",
+        "browseEntries",
+        "searchEntries",
     ];
 
     let mut files = Vec::new();
