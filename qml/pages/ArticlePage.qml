@@ -463,7 +463,8 @@ Page {
                                     // an attached page; it never adds one.
                                     page._siteAttached = false
                                     pageStack.push(Qt.resolvedUrl("ImageViewerPage.qml"),
-                                                   { source: imageSource, alt: imageAlt })
+                                                   { source: imageSource, alt: imageAlt,
+                                                     previewWidth: block.width })
                                 }
                             }
                         }
