@@ -92,12 +92,12 @@
         <translation>Henter originalartikkelen…</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="530"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="531"/>
         <source>The original article was loaded.</source>
         <translation>Originalartikkelen ble lastet inn.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="537"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="538"/>
         <source>This feed already contains the full article.</source>
         <translation>Denne kilden inneholder allerede hele artikkelen.</translation>
     </message>
@@ -107,17 +107,17 @@
         <translation>Trykk for å laste bilder fra %1</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="534"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="535"/>
         <source>The server could not extract the original article.</source>
         <translation>Tjeneren klarte ikke å hente ut originalartikkelen.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="539"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="540"/>
         <source>The server rejected the API key.</source>
         <translation>Tjeneren avviste API-nøkkelen.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="543"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="544"/>
         <source>Could not fetch the original article: %1</source>
         <translation>Klarte ikke å hente originalartikkelen: %1</translation>
     </message>
@@ -217,7 +217,7 @@
 <context>
     <name>EntryListView</name>
     <message numerus="yes">
-        <location filename="../qml/components/EntryListView.qml" line="229"/>
+        <location filename="../qml/components/EntryListView.qml" line="228"/>
         <source>%n selected</source>
         <translation>
             <numerusform>%n valgt</numerusform>
@@ -225,7 +225,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/components/EntryListView.qml" line="231"/>
+        <location filename="../qml/components/EntryListView.qml" line="230"/>
         <source>%n article(s)</source>
         <translation>
             <numerusform>%n artikkel</numerusform>
@@ -233,115 +233,133 @@
         </translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="265"/>
+        <location filename="../qml/components/EntryListView.qml" line="264"/>
         <source>Search articles</source>
         <extracomment>Placeholder in the empty search field.</extracomment>
         <translation>Søk i artikler</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="318"/>
+        <location filename="../qml/components/EntryListView.qml" line="322"/>
         <source>Select all</source>
         <translation>Velg alle</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="319"/>
+        <location filename="../qml/components/EntryListView.qml" line="323"/>
         <source>Deselect all</source>
         <translation>Fjern alt valg</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="324"/>
-        <location filename="../qml/components/EntryListView.qml" line="706"/>
+        <location filename="../qml/components/EntryListView.qml" line="328"/>
+        <location filename="../qml/components/EntryListView.qml" line="783"/>
         <source>Mark as unread</source>
         <translation>Merk som ulest</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="329"/>
-        <location filename="../qml/components/EntryListView.qml" line="706"/>
+        <location filename="../qml/components/EntryListView.qml" line="333"/>
+        <location filename="../qml/components/EntryListView.qml" line="783"/>
         <source>Mark as read</source>
         <translation>Merk som lest</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="336"/>
+        <location filename="../qml/components/EntryListView.qml" line="340"/>
         <source>Settings</source>
         <translation>Innstillinger</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="341"/>
+        <location filename="../qml/components/EntryListView.qml" line="345"/>
         <source>Feeds</source>
         <translation>Kilder</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="356"/>
-        <location filename="../qml/components/EntryListView.qml" line="363"/>
+        <location filename="../qml/components/EntryListView.qml" line="360"/>
+        <location filename="../qml/components/EntryListView.qml" line="367"/>
         <source>Select articles</source>
         <translation>Velg artikler</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="368"/>
+        <location filename="../qml/components/EntryListView.qml" line="372"/>
         <source>Mark all as read</source>
         <translation>Merk alle som lest</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="388"/>
+        <location filename="../qml/components/EntryListView.qml" line="392"/>
         <source>Marking all as read</source>
         <translation>Merker alle som lest</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="399"/>
+        <location filename="../qml/components/EntryListView.qml" line="403"/>
         <source>Search</source>
         <comment>menu item</comment>
         <extracomment>Pulley menu item. A verb: it opens the search page.</extracomment>
         <translation>Søk</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="409"/>
+        <location filename="../qml/components/EntryListView.qml" line="413"/>
         <source>Search</source>
         <comment>page title</comment>
         <extracomment>The search page&apos;s title. A noun.</extracomment>
         <translation>Søk</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="415"/>
+        <location filename="../qml/components/EntryListView.qml" line="419"/>
         <source>Refresh</source>
         <translation>Oppdater</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="461"/>
+        <location filename="../qml/components/EntryListView.qml" line="465"/>
         <source>Search the articles on this device</source>
         <translation>Søk i artiklene på denne enheten</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="462"/>
+        <location filename="../qml/components/EntryListView.qml" line="466"/>
         <source>No articles found</source>
         <translation>Fant ingen artikler</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="463"/>
+        <location filename="../qml/components/EntryListView.qml" line="467"/>
         <source>No favourites</source>
         <translation>Ingen favoritter</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="464"/>
+        <location filename="../qml/components/EntryListView.qml" line="468"/>
         <source>Nothing to read</source>
         <translation>Ingenting å lese</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="469"/>
-        <source>Vuo searches the title, author, feed name and text of every article on this device.</source>
-        <translation>Vuo søker i tittel, forfatter, kildenavn og tekst i alle artikler på denne enheten.</translation>
+        <location filename="../qml/components/EntryListView.qml" line="473"/>
+        <source>Vuo searches the title, feed name and text of every article on this device.</source>
+        <translation>Vuo søker i tittel, kildenavn og tekst i alle artikler på denne enheten.</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="471"/>
+        <location filename="../qml/components/EntryListView.qml" line="475"/>
         <source>Articles you add to favourites appear here</source>
         <translation>Artikler du legger til i favoritter, vises her</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="472"/>
+        <location filename="../qml/components/EntryListView.qml" line="476"/>
         <source>Pull down to refresh</source>
         <translation>Dra ned for å oppdatere</translation>
     </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="496"/>
+        <source>In titles (%1)</source>
+        <extracomment>Search results: the group of articles whose title matched. %1 is how many there are.</extracomment>
+        <translation>I titler (%1)</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="501"/>
+        <source>In feed names (%1)</source>
+        <extracomment>Search results: the group of articles whose feed&apos;s name matched. %1 is how many there are.</extracomment>
+        <translation>I kildenavn (%1)</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="505"/>
+        <source>In article text (%1)</source>
+        <extracomment>Search results: the group of articles whose text matched. %1 is how many there are.</extracomment>
+        <translation>I artikkeltekst (%1)</translation>
+    </message>
     <message numerus="yes">
-        <location filename="../qml/components/EntryListView.qml" line="627"/>
+        <location filename="../qml/components/EntryListView.qml" line="672"/>
         <source>%n min read</source>
         <translation>
             <numerusform>%n min lesing</numerusform>
@@ -349,7 +367,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/components/EntryListView.qml" line="628"/>
+        <location filename="../qml/components/EntryListView.qml" line="673"/>
         <source>%n min</source>
         <translation>
             <numerusform>%n min</numerusform>
@@ -357,17 +375,17 @@
         </translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="710"/>
+        <location filename="../qml/components/EntryListView.qml" line="787"/>
         <source>Remove favourite</source>
         <translation>Fjern favoritt</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="710"/>
+        <location filename="../qml/components/EntryListView.qml" line="787"/>
         <source>Add favourite</source>
         <translation>Legg til favoritt</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="714"/>
+        <location filename="../qml/components/EntryListView.qml" line="791"/>
         <source>Open in browser</source>
         <translation>Åpne i nettleseren</translation>
     </message>
@@ -423,7 +441,7 @@
 <context>
     <name>ImageViewerPage</name>
     <message>
-        <location filename="../qml/pages/ImageViewerPage.qml" line="143"/>
+        <location filename="../qml/pages/ImageViewerPage.qml" line="235"/>
         <source>The image could not be loaded.</source>
         <translation>Bildet kunne ikke lastes inn.</translation>
     </message>

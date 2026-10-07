@@ -93,12 +93,12 @@
         <translation>Завантажуємо початкову статтю…</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="530"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="531"/>
         <source>The original article was loaded.</source>
         <translation>Початкову статтю завантажено.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="537"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="538"/>
         <source>This feed already contains the full article.</source>
         <translation>Ця стрічка вже містить статтю повністю.</translation>
     </message>
@@ -108,17 +108,17 @@
         <translation>Торкніться, щоб завантажити зображення з %1</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="534"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="535"/>
         <source>The server could not extract the original article.</source>
         <translation>Сервер не зміг видобути початкову статтю.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="539"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="540"/>
         <source>The server rejected the API key.</source>
         <translation>Сервер відхилив ключ API.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="543"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="544"/>
         <source>Could not fetch the original article: %1</source>
         <translation>Не вдалося завантажити початкову статтю: %1</translation>
     </message>
@@ -218,7 +218,7 @@
 <context>
     <name>EntryListView</name>
     <message numerus="yes">
-        <location filename="../qml/components/EntryListView.qml" line="229"/>
+        <location filename="../qml/components/EntryListView.qml" line="228"/>
         <source>%n selected</source>
         <translation>
             <numerusform>%n вибрана</numerusform>
@@ -227,7 +227,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/components/EntryListView.qml" line="231"/>
+        <location filename="../qml/components/EntryListView.qml" line="230"/>
         <source>%n article(s)</source>
         <translation>
             <numerusform>%n стаття</numerusform>
@@ -236,115 +236,133 @@
         </translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="265"/>
+        <location filename="../qml/components/EntryListView.qml" line="264"/>
         <source>Search articles</source>
         <extracomment>Placeholder in the empty search field.</extracomment>
         <translation>Шукати статті</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="318"/>
+        <location filename="../qml/components/EntryListView.qml" line="322"/>
         <source>Select all</source>
         <translation>Вибрати всі</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="319"/>
+        <location filename="../qml/components/EntryListView.qml" line="323"/>
         <source>Deselect all</source>
         <translation>Зняти вибір</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="324"/>
-        <location filename="../qml/components/EntryListView.qml" line="706"/>
+        <location filename="../qml/components/EntryListView.qml" line="328"/>
+        <location filename="../qml/components/EntryListView.qml" line="783"/>
         <source>Mark as unread</source>
         <translation>Позначити непрочитаною</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="329"/>
-        <location filename="../qml/components/EntryListView.qml" line="706"/>
+        <location filename="../qml/components/EntryListView.qml" line="333"/>
+        <location filename="../qml/components/EntryListView.qml" line="783"/>
         <source>Mark as read</source>
         <translation>Позначити прочитаною</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="336"/>
+        <location filename="../qml/components/EntryListView.qml" line="340"/>
         <source>Settings</source>
         <translation>Налаштування</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="341"/>
+        <location filename="../qml/components/EntryListView.qml" line="345"/>
         <source>Feeds</source>
         <translation>Стрічки</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="356"/>
-        <location filename="../qml/components/EntryListView.qml" line="363"/>
+        <location filename="../qml/components/EntryListView.qml" line="360"/>
+        <location filename="../qml/components/EntryListView.qml" line="367"/>
         <source>Select articles</source>
         <translation>Вибрати статті</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="368"/>
+        <location filename="../qml/components/EntryListView.qml" line="372"/>
         <source>Mark all as read</source>
         <translation>Позначити всі прочитаними</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="388"/>
+        <location filename="../qml/components/EntryListView.qml" line="392"/>
         <source>Marking all as read</source>
         <translation>Позначаємо всі прочитаними</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="399"/>
+        <location filename="../qml/components/EntryListView.qml" line="403"/>
         <source>Search</source>
         <comment>menu item</comment>
         <extracomment>Pulley menu item. A verb: it opens the search page.</extracomment>
         <translation>Шукати</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="409"/>
+        <location filename="../qml/components/EntryListView.qml" line="413"/>
         <source>Search</source>
         <comment>page title</comment>
         <extracomment>The search page&apos;s title. A noun.</extracomment>
         <translation>Пошук</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="415"/>
+        <location filename="../qml/components/EntryListView.qml" line="419"/>
         <source>Refresh</source>
         <translation>Оновити</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="461"/>
+        <location filename="../qml/components/EntryListView.qml" line="465"/>
         <source>Search the articles on this device</source>
         <translation>Шукати в статтях на цьому пристрої</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="462"/>
+        <location filename="../qml/components/EntryListView.qml" line="466"/>
         <source>No articles found</source>
         <translation>Статей не знайдено</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="463"/>
+        <location filename="../qml/components/EntryListView.qml" line="467"/>
         <source>No favourites</source>
         <translation>Немає обраного</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="464"/>
+        <location filename="../qml/components/EntryListView.qml" line="468"/>
         <source>Nothing to read</source>
         <translation>Немає чого читати</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="469"/>
-        <source>Vuo searches the title, author, feed name and text of every article on this device.</source>
-        <translation>Vuo шукає в заголовку, авторі, назві стрічки й тексті кожної статті на цьому пристрої.</translation>
+        <location filename="../qml/components/EntryListView.qml" line="473"/>
+        <source>Vuo searches the title, feed name and text of every article on this device.</source>
+        <translation>Vuo шукає в заголовку, назві стрічки й тексті кожної статті на цьому пристрої.</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="471"/>
+        <location filename="../qml/components/EntryListView.qml" line="475"/>
         <source>Articles you add to favourites appear here</source>
         <translation>Статті, які ви додасте до обраного, з&apos;являться тут</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="472"/>
+        <location filename="../qml/components/EntryListView.qml" line="476"/>
         <source>Pull down to refresh</source>
         <translation>Потягніть униз, щоб оновити</translation>
     </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="496"/>
+        <source>In titles (%1)</source>
+        <extracomment>Search results: the group of articles whose title matched. %1 is how many there are.</extracomment>
+        <translation>У заголовках (%1)</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="501"/>
+        <source>In feed names (%1)</source>
+        <extracomment>Search results: the group of articles whose feed&apos;s name matched. %1 is how many there are.</extracomment>
+        <translation>У назвах стрічок (%1)</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="505"/>
+        <source>In article text (%1)</source>
+        <extracomment>Search results: the group of articles whose text matched. %1 is how many there are.</extracomment>
+        <translation>У тексті статей (%1)</translation>
+    </message>
     <message numerus="yes">
-        <location filename="../qml/components/EntryListView.qml" line="627"/>
+        <location filename="../qml/components/EntryListView.qml" line="672"/>
         <source>%n min read</source>
         <translation>
             <numerusform>%n хв читання</numerusform>
@@ -353,7 +371,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/components/EntryListView.qml" line="628"/>
+        <location filename="../qml/components/EntryListView.qml" line="673"/>
         <source>%n min</source>
         <translation>
             <numerusform>%n хв</numerusform>
@@ -362,17 +380,17 @@
         </translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="710"/>
+        <location filename="../qml/components/EntryListView.qml" line="787"/>
         <source>Remove favourite</source>
         <translation>Прибрати з обраного</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="710"/>
+        <location filename="../qml/components/EntryListView.qml" line="787"/>
         <source>Add favourite</source>
         <translation>Додати до обраного</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="714"/>
+        <location filename="../qml/components/EntryListView.qml" line="791"/>
         <source>Open in browser</source>
         <translation>Відкрити у браузері</translation>
     </message>
@@ -428,7 +446,7 @@
 <context>
     <name>ImageViewerPage</name>
     <message>
-        <location filename="../qml/pages/ImageViewerPage.qml" line="143"/>
+        <location filename="../qml/pages/ImageViewerPage.qml" line="235"/>
         <source>The image could not be loaded.</source>
         <translation>Не вдалося завантажити зображення.</translation>
     </message>

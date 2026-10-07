@@ -93,12 +93,12 @@
         <translation>Načítavam pôvodný článok…</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="530"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="531"/>
         <source>The original article was loaded.</source>
         <translation>Pôvodný článok bol načítaný.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="537"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="538"/>
         <source>This feed already contains the full article.</source>
         <translation>Tento kanál už obsahuje celý článok.</translation>
     </message>
@@ -108,17 +108,17 @@
         <translation>Ťuknutím načítate obrázky z %1</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="534"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="535"/>
         <source>The server could not extract the original article.</source>
         <translation>Server nedokázal získať pôvodný článok.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="539"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="540"/>
         <source>The server rejected the API key.</source>
         <translation>Server odmietol kľúč API.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="543"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="544"/>
         <source>Could not fetch the original article: %1</source>
         <translation>Nepodarilo sa načítať pôvodný článok: %1</translation>
     </message>
@@ -218,7 +218,7 @@
 <context>
     <name>EntryListView</name>
     <message numerus="yes">
-        <location filename="../qml/components/EntryListView.qml" line="229"/>
+        <location filename="../qml/components/EntryListView.qml" line="228"/>
         <source>%n selected</source>
         <translation>
             <numerusform>%n vybraný</numerusform>
@@ -227,7 +227,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/components/EntryListView.qml" line="231"/>
+        <location filename="../qml/components/EntryListView.qml" line="230"/>
         <source>%n article(s)</source>
         <translation>
             <numerusform>%n článok</numerusform>
@@ -236,115 +236,133 @@
         </translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="265"/>
+        <location filename="../qml/components/EntryListView.qml" line="264"/>
         <source>Search articles</source>
         <extracomment>Placeholder in the empty search field.</extracomment>
         <translation>Hľadať články</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="318"/>
+        <location filename="../qml/components/EntryListView.qml" line="322"/>
         <source>Select all</source>
         <translation>Vybrať všetko</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="319"/>
+        <location filename="../qml/components/EntryListView.qml" line="323"/>
         <source>Deselect all</source>
         <translation>Zrušiť výber</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="324"/>
-        <location filename="../qml/components/EntryListView.qml" line="706"/>
+        <location filename="../qml/components/EntryListView.qml" line="328"/>
+        <location filename="../qml/components/EntryListView.qml" line="783"/>
         <source>Mark as unread</source>
         <translation>Označiť ako neprečítané</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="329"/>
-        <location filename="../qml/components/EntryListView.qml" line="706"/>
+        <location filename="../qml/components/EntryListView.qml" line="333"/>
+        <location filename="../qml/components/EntryListView.qml" line="783"/>
         <source>Mark as read</source>
         <translation>Označiť ako prečítané</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="336"/>
+        <location filename="../qml/components/EntryListView.qml" line="340"/>
         <source>Settings</source>
         <translation>Nastavenia</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="341"/>
+        <location filename="../qml/components/EntryListView.qml" line="345"/>
         <source>Feeds</source>
         <translation>Kanály</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="356"/>
-        <location filename="../qml/components/EntryListView.qml" line="363"/>
+        <location filename="../qml/components/EntryListView.qml" line="360"/>
+        <location filename="../qml/components/EntryListView.qml" line="367"/>
         <source>Select articles</source>
         <translation>Vybrať články</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="368"/>
+        <location filename="../qml/components/EntryListView.qml" line="372"/>
         <source>Mark all as read</source>
         <translation>Označiť všetko ako prečítané</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="388"/>
+        <location filename="../qml/components/EntryListView.qml" line="392"/>
         <source>Marking all as read</source>
         <translation>Označujem všetko ako prečítané</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="399"/>
+        <location filename="../qml/components/EntryListView.qml" line="403"/>
         <source>Search</source>
         <comment>menu item</comment>
         <extracomment>Pulley menu item. A verb: it opens the search page.</extracomment>
         <translation>Hľadať</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="409"/>
+        <location filename="../qml/components/EntryListView.qml" line="413"/>
         <source>Search</source>
         <comment>page title</comment>
         <extracomment>The search page&apos;s title. A noun.</extracomment>
         <translation>Hľadanie</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="415"/>
+        <location filename="../qml/components/EntryListView.qml" line="419"/>
         <source>Refresh</source>
         <translation>Aktualizovať</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="461"/>
+        <location filename="../qml/components/EntryListView.qml" line="465"/>
         <source>Search the articles on this device</source>
         <translation>Hľadať v článkoch v tomto zariadení</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="462"/>
+        <location filename="../qml/components/EntryListView.qml" line="466"/>
         <source>No articles found</source>
         <translation>Nenašli sa žiadne články</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="463"/>
+        <location filename="../qml/components/EntryListView.qml" line="467"/>
         <source>No favourites</source>
         <translation>Žiadne obľúbené</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="464"/>
+        <location filename="../qml/components/EntryListView.qml" line="468"/>
         <source>Nothing to read</source>
         <translation>Nie je čo čítať</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="469"/>
-        <source>Vuo searches the title, author, feed name and text of every article on this device.</source>
-        <translation>Vuo prehľadáva názov, autora, názov kanála a text každého článku v tomto zariadení.</translation>
+        <location filename="../qml/components/EntryListView.qml" line="473"/>
+        <source>Vuo searches the title, feed name and text of every article on this device.</source>
+        <translation>Vuo prehľadáva názov, názov kanála a text každého článku v tomto zariadení.</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="471"/>
+        <location filename="../qml/components/EntryListView.qml" line="475"/>
         <source>Articles you add to favourites appear here</source>
         <translation>Články, ktoré pridáte do obľúbených, sa zobrazia tu</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="472"/>
+        <location filename="../qml/components/EntryListView.qml" line="476"/>
         <source>Pull down to refresh</source>
         <translation>Potiahnite nadol pre aktualizáciu</translation>
     </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="496"/>
+        <source>In titles (%1)</source>
+        <extracomment>Search results: the group of articles whose title matched. %1 is how many there are.</extracomment>
+        <translation>V názvoch (%1)</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="501"/>
+        <source>In feed names (%1)</source>
+        <extracomment>Search results: the group of articles whose feed&apos;s name matched. %1 is how many there are.</extracomment>
+        <translation>V názvoch kanálov (%1)</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="505"/>
+        <source>In article text (%1)</source>
+        <extracomment>Search results: the group of articles whose text matched. %1 is how many there are.</extracomment>
+        <translation>V texte článkov (%1)</translation>
+    </message>
     <message numerus="yes">
-        <location filename="../qml/components/EntryListView.qml" line="627"/>
+        <location filename="../qml/components/EntryListView.qml" line="672"/>
         <source>%n min read</source>
         <translation>
             <numerusform>%n min čítania</numerusform>
@@ -353,7 +371,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/components/EntryListView.qml" line="628"/>
+        <location filename="../qml/components/EntryListView.qml" line="673"/>
         <source>%n min</source>
         <translation>
             <numerusform>%n min</numerusform>
@@ -362,17 +380,17 @@
         </translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="710"/>
+        <location filename="../qml/components/EntryListView.qml" line="787"/>
         <source>Remove favourite</source>
         <translation>Odobrať z obľúbených</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="710"/>
+        <location filename="../qml/components/EntryListView.qml" line="787"/>
         <source>Add favourite</source>
         <translation>Pridať do obľúbených</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="714"/>
+        <location filename="../qml/components/EntryListView.qml" line="791"/>
         <source>Open in browser</source>
         <translation>Otvoriť v prehliadači</translation>
     </message>
@@ -428,7 +446,7 @@
 <context>
     <name>ImageViewerPage</name>
     <message>
-        <location filename="../qml/pages/ImageViewerPage.qml" line="143"/>
+        <location filename="../qml/pages/ImageViewerPage.qml" line="235"/>
         <source>The image could not be loaded.</source>
         <translation>Obrázok sa nepodarilo načítať.</translation>
     </message>

@@ -92,12 +92,12 @@
         <translation>मूळ लेख आणला जात आहे…</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="530"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="531"/>
         <source>The original article was loaded.</source>
         <translation>मूळ लेख लोड झाला.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="537"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="538"/>
         <source>This feed already contains the full article.</source>
         <translation>या फीडमध्ये पूर्ण लेख आधीच आहे.</translation>
     </message>
@@ -107,17 +107,17 @@
         <translation>%1 वरील प्रतिमा लोड करण्यासाठी टॅप करा</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="534"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="535"/>
         <source>The server could not extract the original article.</source>
         <translation>सर्व्हरला मूळ लेख काढता आला नाही.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="539"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="540"/>
         <source>The server rejected the API key.</source>
         <translation>सर्व्हरने API की नाकारली.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="543"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="544"/>
         <source>Could not fetch the original article: %1</source>
         <translation>मूळ लेख आणता आला नाही: %1</translation>
     </message>
@@ -217,7 +217,7 @@
 <context>
     <name>EntryListView</name>
     <message numerus="yes">
-        <location filename="../qml/components/EntryListView.qml" line="229"/>
+        <location filename="../qml/components/EntryListView.qml" line="228"/>
         <source>%n selected</source>
         <translation>
             <numerusform>%n निवडला</numerusform>
@@ -225,7 +225,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/components/EntryListView.qml" line="231"/>
+        <location filename="../qml/components/EntryListView.qml" line="230"/>
         <source>%n article(s)</source>
         <translation>
             <numerusform>%n लेख</numerusform>
@@ -233,115 +233,133 @@
         </translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="265"/>
+        <location filename="../qml/components/EntryListView.qml" line="264"/>
         <source>Search articles</source>
         <extracomment>Placeholder in the empty search field.</extracomment>
         <translation>लेख शोधा</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="318"/>
+        <location filename="../qml/components/EntryListView.qml" line="322"/>
         <source>Select all</source>
         <translation>सर्व निवडा</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="319"/>
+        <location filename="../qml/components/EntryListView.qml" line="323"/>
         <source>Deselect all</source>
         <translation>निवड रद्द करा</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="324"/>
-        <location filename="../qml/components/EntryListView.qml" line="706"/>
+        <location filename="../qml/components/EntryListView.qml" line="328"/>
+        <location filename="../qml/components/EntryListView.qml" line="783"/>
         <source>Mark as unread</source>
         <translation>न वाचलेले म्हणून खुणा करा</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="329"/>
-        <location filename="../qml/components/EntryListView.qml" line="706"/>
+        <location filename="../qml/components/EntryListView.qml" line="333"/>
+        <location filename="../qml/components/EntryListView.qml" line="783"/>
         <source>Mark as read</source>
         <translation>वाचलेले म्हणून खुणा करा</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="336"/>
+        <location filename="../qml/components/EntryListView.qml" line="340"/>
         <source>Settings</source>
         <translation>सेटिंग्ज</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="341"/>
+        <location filename="../qml/components/EntryListView.qml" line="345"/>
         <source>Feeds</source>
         <translation>फीड</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="356"/>
-        <location filename="../qml/components/EntryListView.qml" line="363"/>
+        <location filename="../qml/components/EntryListView.qml" line="360"/>
+        <location filename="../qml/components/EntryListView.qml" line="367"/>
         <source>Select articles</source>
         <translation>लेख निवडा</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="368"/>
+        <location filename="../qml/components/EntryListView.qml" line="372"/>
         <source>Mark all as read</source>
         <translation>सर्व वाचलेले म्हणून खुणा करा</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="388"/>
+        <location filename="../qml/components/EntryListView.qml" line="392"/>
         <source>Marking all as read</source>
         <translation>सर्व वाचलेले म्हणून खुणा होत आहेत</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="399"/>
+        <location filename="../qml/components/EntryListView.qml" line="403"/>
         <source>Search</source>
         <comment>menu item</comment>
         <extracomment>Pulley menu item. A verb: it opens the search page.</extracomment>
         <translation>शोधा</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="409"/>
+        <location filename="../qml/components/EntryListView.qml" line="413"/>
         <source>Search</source>
         <comment>page title</comment>
         <extracomment>The search page&apos;s title. A noun.</extracomment>
         <translation>शोध</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="415"/>
+        <location filename="../qml/components/EntryListView.qml" line="419"/>
         <source>Refresh</source>
         <translation>रिफ्रेश</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="461"/>
+        <location filename="../qml/components/EntryListView.qml" line="465"/>
         <source>Search the articles on this device</source>
         <translation>या उपकरणावरील लेख शोधा</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="462"/>
+        <location filename="../qml/components/EntryListView.qml" line="466"/>
         <source>No articles found</source>
         <translation>कोणतेही लेख आढळले नाहीत</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="463"/>
+        <location filename="../qml/components/EntryListView.qml" line="467"/>
         <source>No favourites</source>
         <translation>आवडते नाहीत</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="464"/>
+        <location filename="../qml/components/EntryListView.qml" line="468"/>
         <source>Nothing to read</source>
         <translation>वाचण्यासारखे काही नाही</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="469"/>
-        <source>Vuo searches the title, author, feed name and text of every article on this device.</source>
-        <translation>Vuo या उपकरणावरील प्रत्येक लेखाचे शीर्षक, लेखक, फीडचे नाव आणि मजकूर शोधते.</translation>
+        <location filename="../qml/components/EntryListView.qml" line="473"/>
+        <source>Vuo searches the title, feed name and text of every article on this device.</source>
+        <translation>Vuo या उपकरणावरील प्रत्येक लेखाचे शीर्षक, फीडचे नाव आणि मजकूर शोधते.</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="471"/>
+        <location filename="../qml/components/EntryListView.qml" line="475"/>
         <source>Articles you add to favourites appear here</source>
         <translation>आवडत्यांमध्ये जोडलेले लेख इथे दिसतात</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="472"/>
+        <location filename="../qml/components/EntryListView.qml" line="476"/>
         <source>Pull down to refresh</source>
         <translation>रिफ्रेश करण्यासाठी खाली ओढा</translation>
     </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="496"/>
+        <source>In titles (%1)</source>
+        <extracomment>Search results: the group of articles whose title matched. %1 is how many there are.</extracomment>
+        <translation>शीर्षकांमध्ये (%1)</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="501"/>
+        <source>In feed names (%1)</source>
+        <extracomment>Search results: the group of articles whose feed&apos;s name matched. %1 is how many there are.</extracomment>
+        <translation>फीडच्या नावांमध्ये (%1)</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="505"/>
+        <source>In article text (%1)</source>
+        <extracomment>Search results: the group of articles whose text matched. %1 is how many there are.</extracomment>
+        <translation>लेखाच्या मजकुरात (%1)</translation>
+    </message>
     <message numerus="yes">
-        <location filename="../qml/components/EntryListView.qml" line="627"/>
+        <location filename="../qml/components/EntryListView.qml" line="672"/>
         <source>%n min read</source>
         <translation>
             <numerusform>%n मिनिट वाचन</numerusform>
@@ -349,7 +367,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/components/EntryListView.qml" line="628"/>
+        <location filename="../qml/components/EntryListView.qml" line="673"/>
         <source>%n min</source>
         <translation>
             <numerusform>%n मिनिट</numerusform>
@@ -357,17 +375,17 @@
         </translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="710"/>
+        <location filename="../qml/components/EntryListView.qml" line="787"/>
         <source>Remove favourite</source>
         <translation>आवडत्यांमधून काढा</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="710"/>
+        <location filename="../qml/components/EntryListView.qml" line="787"/>
         <source>Add favourite</source>
         <translation>आवडत्यांमध्ये जोडा</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="714"/>
+        <location filename="../qml/components/EntryListView.qml" line="791"/>
         <source>Open in browser</source>
         <translation>ब्राउझरमध्ये उघडा</translation>
     </message>
@@ -423,7 +441,7 @@
 <context>
     <name>ImageViewerPage</name>
     <message>
-        <location filename="../qml/pages/ImageViewerPage.qml" line="143"/>
+        <location filename="../qml/pages/ImageViewerPage.qml" line="235"/>
         <source>The image could not be loaded.</source>
         <translation>प्रतिमा लोड होऊ शकली नाही.</translation>
     </message>
