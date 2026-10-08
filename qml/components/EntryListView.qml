@@ -53,6 +53,15 @@ SilicaListView {
         if (listView.searching && listView.entryModel) {
             listView.entryModel.setSearch("")
         }
+        // No current row on a search page. A ListView gives the focus inside
+        // it to its current row, and picks row 0 as that whenever rows arrive
+        // and it has none -- unless it was told -1 explicitly, which is what
+        // this is. The search field is in this view's header, so without it
+        // every pause in typing, which brings a new set of results, took the
+        // focus off the field and closed the keyboard.
+        if (listView.searching) {
+            listView.currentIndex = -1
+        }
     }
 
     /// True once the user has moved this list themselves.
@@ -255,6 +264,7 @@ SilicaListView {
 
         SearchField {
             id: searchField
+            objectName: "searchField"
 
             y: nameLabel.y + (nameLabel.visible ? nameLabel.height : 0)
             width: parent.width
@@ -512,16 +522,30 @@ SilicaListView {
                                : listView.entryModel.textShown
     }
 
-    /// Whether the group's next "Load more" loads the rest of it.
-    function groupLoadsAll(kind) {
+    /// How many the group's next "Load more" adds; 0 when it loads the rest.
+    function groupNextLoad(kind) {
         if (!listView.entryModel) {
-            return false
+            return 0
         }
         if (kind === "title") {
-            return listView.entryModel.titleLoadsAll
+            return listView.entryModel.titleNextLoad
         }
-        return kind === "feed" ? listView.entryModel.feedLoadsAll
-                               : listView.entryModel.textLoadsAll
+        return kind === "feed" ? listView.entryModel.feedNextLoad
+                               : listView.entryModel.textNextLoad
+    }
+
+    /// What a group's "Load more" says: how many it adds -- no more than
+    /// are left -- or that it loads the rest.
+    function loadMoreText(kind) {
+        var next = listView.groupNextLoad(kind)
+        if (next <= 0) {
+            //: Under a group of search results: shows all the rest of the
+            //: group.
+            return qsTr("Load all results")
+        }
+        var left = listView.groupTotal(kind) - listView.groupShown(kind)
+        //: Under a group of search results: shows %n more of the group.
+        return qsTr("Load %n more", "", Math.min(next, left))
     }
 
     /// The header over one group of search results.
@@ -872,10 +896,9 @@ SilicaListView {
             }
         }
 
-        // Under the last row of a group that has more than it shows: the
-        // next page of it, inserted under this row. Twice, and then the rest:
-        // a reader on a group's third page is looking for something that is
-        // not near the top. See models::SEARCH_GROUP_PAGE.
+        // Under the last row of a group that has more than it shows: more of
+        // it, inserted under this row -- ten, then twenty, then the rest. See
+        // models::SEARCH_LOAD_STEPS.
         BackgroundItem {
             id: moreButton
             objectName: "loadMore"
@@ -889,13 +912,7 @@ SilicaListView {
             Label {
                 objectName: "loadMoreLabel"
                 anchors.centerIn: parent
-                text: listView.groupLoadsAll(matchKind)
-                      //: Under a group of search results: shows all the rest of
-                      //: the group.
-                      ? qsTr("Load all results")
-                      //: Under a group of search results: shows a few more of
-                      //: the group.
-                      : qsTr("Load more")
+                text: listView.loadMoreText(matchKind)
                 color: moreButton.highlighted ? Theme.highlightColor : Theme.primaryColor
             }
 

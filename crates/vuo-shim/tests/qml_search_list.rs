@@ -37,9 +37,9 @@ const PROBE_QML: &str = r#"
             property int titleShown: 2
             property int feedShown: 0
             property int textShown: 1
-            property bool titleLoadsAll: false
-            property bool feedLoadsAll: false
-            property bool textLoadsAll: false
+            property int titleNextLoad: 10
+            property int feedNextLoad: 10
+            property int textNextLoad: 10
             property string loadedMoreIn: ""
             function loadMoreIn(kind) { loadedMoreIn = kind }
             function setSearch(text) {}
@@ -206,16 +206,29 @@ fn a_search_lists_its_results_grouped_and_marked_and_nothing_else_does() {
     );
     assert_eq!(get!("loadMore", 1, "visible"), "true");
     assert_eq!(get!("loadMore", 2, "visible"), "true");
-    assert_eq!(get!("loadMoreLabel", 1, "text"), "Load more");
+    assert_eq!(
+        get!("loadMoreLabel", 1, "text"),
+        "Load 2 more",
+        "the next step, but no more than are left"
+    );
     assert_eq!(
         call!("click", QString::from("loadMore"), 2),
         "text",
         "each asks for more of its own group"
     );
     assert_eq!(call!("click", QString::from("loadMore"), 1), "title");
-    assert_eq!(call!("set", QString::from("titleLoadsAll"), true), "ok");
+    assert_eq!(call!("set", QString::from("textMatches"), 30), "ok");
+    assert_eq!(get!("loadMoreLabel", 2, "text"), "Load 10 more");
+    assert_eq!(call!("set", QString::from("textNextLoad"), 20), "ok");
+    assert_eq!(get!("loadMoreLabel", 2, "text"), "Load 20 more");
+    assert_eq!(call!("set", QString::from("titleNextLoad"), 0), "ok");
     assert_eq!(get!("loadMoreLabel", 1, "text"), "Load all results");
-    assert_eq!(get!("loadMoreLabel", 2, "text"), "Load more");
+    assert_eq!(
+        get!("loadMoreLabel", 2, "text"),
+        "Load 20 more",
+        "per group"
+    );
+    assert_eq!(call!("set", QString::from("textMatches"), 3), "ok");
 
     // A group showing all of itself has nothing more to load.
     assert_eq!(call!("set", QString::from("textShown"), 3), "ok");

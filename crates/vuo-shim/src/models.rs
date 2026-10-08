@@ -64,22 +64,21 @@ use crate::worker::{self, Command};
 /// [`loadMore`](EntryModel::loadMore) extends it by another page when they do.
 pub const PAGE_SIZE: i64 = 150;
 
-/// How many results of each group a search shows at first, and how many more
-/// each "Load more" under the group adds.
+/// How many results of each group a search shows at first.
 ///
 /// Per group rather than one window over the whole list: a group a reader is
 /// not interested in must not push the next one off the screen, and the rows
 /// a search does not show are never read -- see [`store::search_hits`].
-pub const SEARCH_GROUP_PAGE: usize = 10;
-/// How many times "Load more" adds a page to a group before the next one
-/// loads the rest of it. A reader on their third page of a group is looking
-/// for something that is not near the top.
-pub const SEARCH_LOADS_BEFORE_ALL: u8 = 2;
+pub const SEARCH_FIRST_PAGE: usize = 5;
+/// What each "Load more" under a group adds, in turn. After the last of
+/// these, the next one loads the rest: a reader that far into a group is
+/// looking for something that is not near the top.
+pub const SEARCH_LOAD_STEPS: [usize; 2] = [10, 20];
 
 /// What one group of search results shows.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct SearchGroup {
-    /// How many of the group's results to show: [`SEARCH_GROUP_PAGE`] to
+    /// How many of the group's results to show: [`SEARCH_FIRST_PAGE`] to
     /// start with, `usize::MAX` once the reader has asked for them all.
     shown: usize,
     /// How many times the reader has asked for more.
@@ -89,23 +88,22 @@ struct SearchGroup {
 impl Default for SearchGroup {
     fn default() -> Self {
         SearchGroup {
-            shown: SEARCH_GROUP_PAGE,
+            shown: SEARCH_FIRST_PAGE,
             loads: 0,
         }
     }
 }
 
 impl SearchGroup {
-    /// Whether the next "Load more" loads the rest of the group.
-    fn next_loads_all(self) -> bool {
-        self.loads >= SEARCH_LOADS_BEFORE_ALL
+    /// How many the next "Load more" adds, or `None` when it loads the rest.
+    fn next_load(self) -> Option<usize> {
+        SEARCH_LOAD_STEPS.get(usize::from(self.loads)).copied()
     }
 
     fn load_more(&mut self) {
-        self.shown = if self.next_loads_all() {
-            usize::MAX
-        } else {
-            self.shown.saturating_add(SEARCH_GROUP_PAGE)
+        self.shown = match self.next_load() {
+            Some(step) => self.shown.saturating_add(step),
+            None => usize::MAX,
         };
         self.loads = self.loads.saturating_add(1);
     }
@@ -315,20 +313,33 @@ trait RowList: QAbstractListModel + Sized {
 /// Returns true when the model was RESET, which is the thing that costs the
 /// reader their place.
 fn publish_rows<M: RowList>(model: &mut M, fresh: Vec<M::Row>) -> bool {
-    publish_rows_inserting(model, fresh, false)
+    publish_rows_as(model, fresh, Publish::Reset)
 }
 
-/// [`publish_rows`], for a caller that has just ADDED rows: a single run of
-/// them, with everything held still there and in its place, is inserted
-/// rather than reset. That is the shape a search group's "Load more" makes,
-/// and a reset there would throw the reader back to the top of the list from
-/// the bottom of the group they asked to see more of. The range is
-/// [`inserted_run`]'s, which is tested on its own; anything it does not
-/// recognise still resets.
-fn publish_rows_inserting<M: RowList>(model: &mut M, fresh: Vec<M::Row>, insert: bool) -> bool {
+/// How [`publish_rows_as`] tells the view about a different set of rows.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Publish {
+    /// A model reset, as every list but a search's.
+    Reset,
+    /// Never a reset: a single run of ADDED rows, with everything held still
+    /// there and in its place, is inserted; anything else is every held row
+    /// removed and every fresh one inserted.
+    ///
+    /// For a search. A run is the shape a group's "Load more" makes, and a
+    /// reset there would throw the reader back to the top from the bottom
+    /// of the group they asked to see more of. And a reset of any kind --
+    /// the view starting over -- hands the focus inside it to the first row,
+    /// which took it, and the keyboard, off the search field in the view's
+    /// header every time a pause in typing brought new results.
+    Search,
+}
+
+/// [`publish_rows`], told how a different set of rows reaches the view. The
+/// inserted range is [`inserted_run`]'s, which is tested on its own.
+fn publish_rows_as<M: RowList>(model: &mut M, fresh: Vec<M::Row>, how: Publish) -> bool {
     let held_ids: Vec<i64> = model.rows_held().iter().map(M::row_id).collect();
     let fresh_ids: Vec<i64> = fresh.iter().map(M::row_id).collect();
-    let run = if insert {
+    let run = if how == Publish::Search {
         inserted_run(&held_ids, &fresh_ids)
     } else {
         None
@@ -397,6 +408,31 @@ fn publish_rows_inserting<M: RowList>(model: &mut M, fresh: Vec<M::Row>, insert:
         }
         // Emitted either way: `unreadTotal` is the mirror's, not any one
         // list's, so it can move while every row on this one stays put.
+        model.emit_count_changed();
+        return false;
+    }
+
+    if how == Publish::Search {
+        // Out, then in: two changes a view applies to the rows it has, where
+        // a reset makes it start over.
+        if let Some(last) = held_ids
+            .len()
+            .checked_sub(1)
+            .and_then(|n| i32::try_from(n).ok())
+        {
+            model.begin_remove_rows(0, last);
+            model.rows_held_mut().clear();
+            model.end_remove_rows();
+        }
+        if let Some(last) = fresh
+            .len()
+            .checked_sub(1)
+            .and_then(|n| i32::try_from(n).ok())
+        {
+            model.begin_insert_rows(0, last);
+            *model.rows_held_mut() = fresh;
+            model.end_insert_rows();
+        }
         model.emit_count_changed();
         return false;
     }
@@ -585,16 +621,16 @@ pub struct EntryModel {
     titleMatches: qt_property!(i32; READ title_matches NOTIFY matchesChanged),
     feedMatches: qt_property!(i32; READ feed_matches NOTIFY matchesChanged),
     textMatches: qt_property!(i32; READ text_matches NOTIFY matchesChanged),
-    /// How many of each group's results the list shows: the header's "10 of
-    /// 40". See [`SEARCH_GROUP_PAGE`].
+    /// How many of each group's results the list shows: the header's "5 of
+    /// 40". See [`SEARCH_FIRST_PAGE`].
     titleShown: qt_property!(i32; READ title_shown NOTIFY matchesChanged),
     feedShown: qt_property!(i32; READ feed_shown NOTIFY matchesChanged),
     textShown: qt_property!(i32; READ text_shown NOTIFY matchesChanged),
-    /// Whether a group's next "Load more" loads the rest of it -- which is
-    /// what its button then says. See [`SEARCH_LOADS_BEFORE_ALL`].
-    titleLoadsAll: qt_property!(bool; READ title_loads_all NOTIFY matchesChanged),
-    feedLoadsAll: qt_property!(bool; READ feed_loads_all NOTIFY matchesChanged),
-    textLoadsAll: qt_property!(bool; READ text_loads_all NOTIFY matchesChanged),
+    /// How many a group's next "Load more" adds, which its button says; 0
+    /// when it loads the rest. See [`SEARCH_LOAD_STEPS`].
+    titleNextLoad: qt_property!(i32; READ title_next_load NOTIFY matchesChanged),
+    feedNextLoad: qt_property!(i32; READ feed_next_load NOTIFY matchesChanged),
+    textNextLoad: qt_property!(i32; READ text_next_load NOTIFY matchesChanged),
     matchesChanged: qt_signal!(),
     /// Show more of one group of a search: `title`, `feed` or `text`, as the
     /// `matchKind` role names them. The rows already shown stay where they
@@ -893,16 +929,24 @@ impl EntryModel {
         self.shown_in(MatchKind::Text)
     }
 
-    fn title_loads_all(&self) -> bool {
-        self.groups.title.next_loads_all()
+    /// See `titleNextLoad`.
+    fn next_load_in(&self, kind: MatchKind) -> i32 {
+        self.groups
+            .get(kind)
+            .next_load()
+            .map_or(0, |step| i32::try_from(step).unwrap_or(i32::MAX))
     }
 
-    fn feed_loads_all(&self) -> bool {
-        self.groups.feed.next_loads_all()
+    fn title_next_load(&self) -> i32 {
+        self.next_load_in(MatchKind::Title)
     }
 
-    fn text_loads_all(&self) -> bool {
-        self.groups.text.next_loads_all()
+    fn feed_next_load(&self) -> i32 {
+        self.next_load_in(MatchKind::Feed)
+    }
+
+    fn text_next_load(&self) -> i32 {
+        self.next_load_in(MatchKind::Text)
     }
 
     fn loadMoreIn(&mut self, kind: QString) {
@@ -917,7 +961,7 @@ impl EntryModel {
         // From the matches already found: asking for more of a group is not
         // a new search, and the mirror is not scanned again for it.
         let rows = self.search_rows(&ctx);
-        publish_rows_inserting(self, rows, true);
+        publish_rows_as(self, rows, Publish::Search);
         self.matchesChanged();
     }
 
@@ -1196,7 +1240,12 @@ impl EntryModel {
         // Reset only if these are not the rows the list already holds --
         // otherwise the reader loses their place for nothing. See
         // `publish_rows`, which is where that rule lives for both models.
-        let reset = publish_rows(self, rows);
+        let how = if scope == Scope::Search {
+            Publish::Search
+        } else {
+            Publish::Reset
+        };
+        let reset = publish_rows_as(self, rows, how);
         if !reset && chrome_moved {
             self.redraw_all_rows();
         }
@@ -2555,13 +2604,14 @@ mod row_decoration_tests {
         assert_eq!(unread.title_matches(), 0);
     }
 
-    /// §a search shows ten of each group, and more of one group when asked:
-    /// ten at a time twice, then the rest. Only the rows shown are read.
+    /// §a search shows five of each group, and more of one group when asked:
+    /// ten more, then twenty more, then the rest. Only the rows shown are
+    /// read.
     #[test]
     fn a_search_shows_a_page_of_each_group_and_more_on_request() {
         let (_dir, ctx) = seeded();
-        // 35 title hits, newest first by id, and 3 body hits.
-        for id in 100..135 {
+        // 45 title hits, newest first by id, and 3 body hits.
+        for id in 100..145 {
             let mut entry = unread_entry(id);
             entry.title = format!("Harbour {id}");
             put(&ctx, &entry);
@@ -2580,51 +2630,60 @@ mod row_decoration_tests {
 
         assert_eq!(
             model.title_matches(),
-            35,
+            45,
             "the header counts the whole group"
         );
-        assert_eq!(shown(&model), (10, 0, 3), "and the list shows ten of it");
+        assert_eq!(shown(&model), (5, 0, 3), "and the list shows five of it");
         assert_eq!(
             ids(&model),
-            (125..135).rev().chain([202, 201, 200]).collect::<Vec<_>>(),
-            "the newest ten titles, then the body hits"
+            (140..145).rev().chain([202, 201, 200]).collect::<Vec<_>>(),
+            "the newest five titles, then the body hits"
         );
         assert!(!model.hasMore, "a search does not page as a whole");
-        assert!(!model.title_loads_all());
+        assert_eq!(model.title_next_load(), 10, "the button offers ten more");
 
         model.loadMoreIn("title".into());
-        assert_eq!(shown(&model), (20, 0, 3));
-        assert_eq!(model.rows()[19].id, 115, "the next ten, under the first");
-        assert_eq!(model.rows()[20].id, 202, "and the next group after them");
-        assert!(!model.title_loads_all());
-
-        model.loadMoreIn("title".into());
-        assert_eq!(shown(&model), (30, 0, 3));
-        assert!(
-            model.title_loads_all(),
-            "after two pages, the next asks for the rest"
-        );
-        assert!(!model.text_loads_all(), "of that group only");
-
-        // A poll that finds the mirror changed keeps what the reader opened.
-        model.reload();
-        assert_eq!(shown(&model), (30, 0, 3));
+        assert_eq!(shown(&model), (15, 0, 3));
+        assert_eq!(model.rows()[14].id, 130, "the next ten, under the first");
+        assert_eq!(model.rows()[15].id, 202, "and the next group after them");
+        assert_eq!(model.title_next_load(), 20, "then twenty more");
+        assert_eq!(model.text_next_load(), 10, "in that group only");
 
         model.loadMoreIn("title".into());
         assert_eq!(shown(&model), (35, 0, 3));
-        assert_eq!(model.row_count(), 38);
+        assert_eq!(model.title_next_load(), 0, "then the rest");
+
+        // A poll that finds the mirror changed keeps what the reader opened.
+        model.reload();
+        assert_eq!(shown(&model), (35, 0, 3));
+
+        model.loadMoreIn("title".into());
+        assert_eq!(shown(&model), (45, 0, 3));
+        assert_eq!(model.row_count(), 48);
 
         // Nothing for a group that is not one, nor outside a search.
         model.loadMoreIn("author".into());
-        assert_eq!(model.row_count(), 38);
+        assert_eq!(model.row_count(), 48);
+
+        // New results never reset the list: a reset hands the focus to the
+        // first row, off the search field and its keyboard.
+        model.search = "harbour 12".to_owned();
+        assert!(
+            !model.reload_fresh(),
+            "a new search is rows out and rows in"
+        );
+        assert_eq!(model.title_matches(), 11, "112 and 120 to 129");
+        assert_eq!(model.title_shown(), 5, "a new search starts over");
+        assert!(!model.reload(), "and so is a re-read");
 
         // A new search starts every group over.
         // ("entry 201" has its 1 in the title and its harbour in the body,
         // so it is a title hit now.)
+        model.loadMoreIn("title".into());
         model.setSearch("harbour 1".into());
-        assert_eq!(model.title_matches(), 36);
-        assert_eq!(shown(&model), (10, 0, 0));
-        assert!(!model.title_loads_all());
+        assert_eq!(model.title_matches(), 46);
+        assert_eq!(shown(&model), (5, 0, 0));
+        assert_eq!(model.title_next_load(), 10);
 
         let mut unread = EntryModel::default();
         unread.attach(std::rc::Rc::clone(&ctx));
