@@ -217,7 +217,7 @@
 <context>
     <name>EntryListView</name>
     <message numerus="yes">
-        <location filename="../qml/components/EntryListView.qml" line="228"/>
+        <location filename="../qml/components/EntryListView.qml" line="237"/>
         <source>%n selected</source>
         <translation>
             <numerusform>%n valgt</numerusform>
@@ -225,7 +225,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/components/EntryListView.qml" line="230"/>
+        <location filename="../qml/components/EntryListView.qml" line="239"/>
         <source>%n article(s)</source>
         <translation>
             <numerusform>%n artikel</numerusform>
@@ -233,146 +233,155 @@
         </translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="264"/>
+        <location filename="../qml/components/EntryListView.qml" line="274"/>
         <source>Search articles</source>
         <extracomment>Placeholder in the empty search field.</extracomment>
         <translation>Søg i artikler</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="322"/>
+        <location filename="../qml/components/EntryListView.qml" line="332"/>
         <source>Select all</source>
         <translation>Vælg alle</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="323"/>
+        <location filename="../qml/components/EntryListView.qml" line="333"/>
         <source>Deselect all</source>
         <translation>Fravælg alle</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="328"/>
-        <location filename="../qml/components/EntryListView.qml" line="857"/>
+        <location filename="../qml/components/EntryListView.qml" line="338"/>
+        <location filename="../qml/components/EntryListView.qml" line="881"/>
         <source>Mark as unread</source>
         <translation>Markér som ulæst</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="333"/>
-        <location filename="../qml/components/EntryListView.qml" line="857"/>
+        <location filename="../qml/components/EntryListView.qml" line="343"/>
+        <location filename="../qml/components/EntryListView.qml" line="881"/>
         <source>Mark as read</source>
         <translation>Markér som læst</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="340"/>
+        <location filename="../qml/components/EntryListView.qml" line="350"/>
         <source>Settings</source>
         <translation>Indstillinger</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="345"/>
+        <location filename="../qml/components/EntryListView.qml" line="355"/>
         <source>Feeds</source>
         <translation>Feeds</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="360"/>
-        <location filename="../qml/components/EntryListView.qml" line="367"/>
+        <location filename="../qml/components/EntryListView.qml" line="370"/>
+        <location filename="../qml/components/EntryListView.qml" line="377"/>
         <source>Select articles</source>
         <translation>Vælg artikler</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="372"/>
+        <location filename="../qml/components/EntryListView.qml" line="382"/>
         <source>Mark all as read</source>
         <translation>Markér alle som læst</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="392"/>
+        <location filename="../qml/components/EntryListView.qml" line="402"/>
         <source>Marking all as read</source>
         <translation>Markerer alle som læst</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="403"/>
+        <location filename="../qml/components/EntryListView.qml" line="413"/>
         <source>Search</source>
         <comment>menu item</comment>
         <extracomment>Pulley menu item. A verb: it opens the search page.</extracomment>
         <translation>Søg</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="413"/>
+        <location filename="../qml/components/EntryListView.qml" line="423"/>
         <source>Search</source>
         <comment>page title</comment>
         <extracomment>The search page&apos;s title. A noun.</extracomment>
         <translation>Søgning</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="419"/>
+        <location filename="../qml/components/EntryListView.qml" line="429"/>
         <source>Refresh</source>
         <translation>Opdatér</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="468"/>
+        <location filename="../qml/components/EntryListView.qml" line="478"/>
         <source>No articles found</source>
         <translation>Ingen artikler fundet</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="469"/>
+        <location filename="../qml/components/EntryListView.qml" line="479"/>
         <source>No favourites</source>
         <translation>Ingen favoritter</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="470"/>
+        <location filename="../qml/components/EntryListView.qml" line="480"/>
         <source>Nothing to read</source>
         <translation>Intet at læse</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="475"/>
+        <location filename="../qml/components/EntryListView.qml" line="485"/>
         <source>Vuo searches the title, feed name and text of every article on this device.</source>
         <translation>Vuo søger i titel, feednavn og tekst for alle artikler på denne enhed.</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="477"/>
+        <location filename="../qml/components/EntryListView.qml" line="487"/>
         <source>Articles you add to favourites appear here</source>
         <translation>Artikler, du tilføjer til favoritter, vises her</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="478"/>
+        <location filename="../qml/components/EntryListView.qml" line="488"/>
         <source>Pull down to refresh</source>
         <translation>Træk ned for at opdatere</translation>
     </message>
+    <message numerus="yes">
+        <location filename="../qml/components/EntryListView.qml" line="548"/>
+        <source>Load %n more</source>
+        <extracomment>Under a group of search results: shows %n more of the group.</extracomment>
+        <translation>
+            <numerusform>Indlæs %n flere</numerusform>
+            <numerusform>Indlæs %n flere</numerusform>
+        </translation>
+    </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="536"/>
+        <location filename="../qml/components/EntryListView.qml" line="560"/>
         <source>In titles (%1 of %2)</source>
         <extracomment>Search results: the group of articles whose title matched, when only some of them are shown. %1 is how many are shown, %2 how many there are.</extracomment>
         <translation>I titler (%1 af %2)</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="541"/>
+        <location filename="../qml/components/EntryListView.qml" line="565"/>
         <source>In feed names (%1 of %2)</source>
         <extracomment>As &quot;In titles (%1 of %2)&quot;, for the articles whose feed&apos;s name matched.</extracomment>
         <translation>I feednavne (%1 af %2)</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="544"/>
+        <location filename="../qml/components/EntryListView.qml" line="568"/>
         <source>In article text (%1 of %2)</source>
         <extracomment>As &quot;In titles (%1 of %2)&quot;, for the articles whose text matched.</extracomment>
         <translation>I artikeltekst (%1 af %2)</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="549"/>
+        <location filename="../qml/components/EntryListView.qml" line="573"/>
         <source>In titles (%1)</source>
         <extracomment>Search results: the group of articles whose title matched. %1 is how many there are.</extracomment>
         <translation>I titler (%1)</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="554"/>
+        <location filename="../qml/components/EntryListView.qml" line="578"/>
         <source>In feed names (%1)</source>
         <extracomment>Search results: the group of articles whose feed&apos;s name matched. %1 is how many there are.</extracomment>
         <translation>I feednavne (%1)</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="558"/>
+        <location filename="../qml/components/EntryListView.qml" line="582"/>
         <source>In article text (%1)</source>
         <extracomment>Search results: the group of articles whose text matched. %1 is how many there are.</extracomment>
         <translation>I artikeltekst (%1)</translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/components/EntryListView.qml" line="746"/>
+        <location filename="../qml/components/EntryListView.qml" line="770"/>
         <source>%n min read</source>
         <translation>
             <numerusform>%n min læsning</numerusform>
@@ -380,7 +389,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/components/EntryListView.qml" line="747"/>
+        <location filename="../qml/components/EntryListView.qml" line="771"/>
         <source>%n min</source>
         <translation>
             <numerusform>%n min</numerusform>
@@ -388,31 +397,25 @@
         </translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="861"/>
+        <location filename="../qml/components/EntryListView.qml" line="885"/>
         <source>Remove favourite</source>
         <translation>Fjern favorit</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="861"/>
+        <location filename="../qml/components/EntryListView.qml" line="885"/>
         <source>Add favourite</source>
         <translation>Tilføj favorit</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="865"/>
+        <location filename="../qml/components/EntryListView.qml" line="889"/>
         <source>Open in browser</source>
         <translation>Åbn i browseren</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="895"/>
+        <location filename="../qml/components/EntryListView.qml" line="544"/>
         <source>Load all results</source>
         <extracomment>Under a group of search results: shows all the rest of the group.</extracomment>
         <translation>Indlæs alle</translation>
-    </message>
-    <message>
-        <location filename="../qml/components/EntryListView.qml" line="898"/>
-        <source>Load more</source>
-        <extracomment>Under a group of search results: shows a few more of the group.</extracomment>
-        <translation>Indlæs flere</translation>
     </message>
 </context>
 <context>
