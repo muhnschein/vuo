@@ -439,6 +439,7 @@ SilicaListView {
     }
 
     ViewPlaceholder {
+        objectName: "placeholder"
         // Not while syncing: "Nothing to read / Pull down to refresh"
         // under a running spinner reads as a refusal.
         //
@@ -460,10 +461,11 @@ SilicaListView {
         // "Nothing to read / Pull down to refresh" is an Unread string.
         // Under a Favourites tab it reads as a refusal, and refreshing
         // does not create favourites.
+        // An empty search says only what is searched -- the hint below --
+        // under the field the reader is about to type into.
         text: listView.searching
-              ? (listView.searchText.trim().length === 0
-                 ? qsTr("Search the articles on this device")
-                 : qsTr("No articles found"))
+              ? (listView.searchText.trim().length === 0 ? ""
+                                                         : qsTr("No articles found"))
               : (listView.scopeKind === 1 ? qsTr("No favourites")
                                           : qsTr("Nothing to read"))
         hintText: listView.searching
@@ -477,32 +479,92 @@ SilicaListView {
     }
 
     // A search lists its results grouped by where they matched, titles first,
-    // as the model orders them; each group's header says how many there are
-    // in the whole mirror, not only how many are loaded.
+    // as the model orders them. Each group shows a page of its results, with
+    // a "Load more" under it (see the delegate), and its header says how many
+    // of how many there are.
     section.property: listView.searching ? "matchKind" : ""
     section.delegate: SectionHeader {
         objectName: "sectionHeader"
         text: listView.sectionTitle(section)
     }
 
+    /// How many results a group has in the whole mirror.
+    function groupTotal(kind) {
+        if (!listView.entryModel) {
+            return 0
+        }
+        if (kind === "title") {
+            return listView.entryModel.titleMatches
+        }
+        return kind === "feed" ? listView.entryModel.feedMatches
+                               : listView.entryModel.textMatches
+    }
+
+    /// How many of them the list shows.
+    function groupShown(kind) {
+        if (!listView.entryModel) {
+            return 0
+        }
+        if (kind === "title") {
+            return listView.entryModel.titleShown
+        }
+        return kind === "feed" ? listView.entryModel.feedShown
+                               : listView.entryModel.textShown
+    }
+
+    /// Whether the group's next "Load more" loads the rest of it.
+    function groupLoadsAll(kind) {
+        if (!listView.entryModel) {
+            return false
+        }
+        if (kind === "title") {
+            return listView.entryModel.titleLoadsAll
+        }
+        return kind === "feed" ? listView.entryModel.feedLoadsAll
+                               : listView.entryModel.textLoadsAll
+    }
+
     /// The header over one group of search results.
     function sectionTitle(kind) {
-        if (!listView.entryModel) {
-            return ""
+        var total = listView.groupTotal(kind)
+        var shown = listView.groupShown(kind)
+        if (shown < total) {
+            if (kind === "title") {
+                //: Search results: the group of articles whose title matched,
+                //: when only some of them are shown. %1 is how many are
+                //: shown, %2 how many there are.
+                return qsTr("In titles (%1 of %2)").arg(shown).arg(total)
+            }
+            if (kind === "feed") {
+                //: As "In titles (%1 of %2)", for the articles whose feed's
+                //: name matched.
+                return qsTr("In feed names (%1 of %2)").arg(shown).arg(total)
+            }
+            //: As "In titles (%1 of %2)", for the articles whose text matched.
+            return qsTr("In article text (%1 of %2)").arg(shown).arg(total)
         }
         if (kind === "title") {
             //: Search results: the group of articles whose title matched.
             //: %1 is how many there are.
-            return qsTr("In titles (%1)").arg(listView.entryModel.titleMatches)
+            return qsTr("In titles (%1)").arg(total)
         }
         if (kind === "feed") {
             //: Search results: the group of articles whose feed's name
             //: matched. %1 is how many there are.
-            return qsTr("In feed names (%1)").arg(listView.entryModel.feedMatches)
+            return qsTr("In feed names (%1)").arg(total)
         }
         //: Search results: the group of articles whose text matched.
         //: %1 is how many there are.
-        return qsTr("In article text (%1)").arg(listView.entryModel.textMatches)
+        return qsTr("In article text (%1)").arg(total)
+    }
+
+    /// Search-marked StyledText from Rust, with the marks in the theme's
+    /// highlight colour as well as bold: in bold alone they were hard to
+    /// make out on a read row, which is drawn faded. The text was escaped in
+    /// Rust, so every `<b>` in it is a mark Rust made.
+    function marked(styled) {
+        return styled.replace(/<b>/g, "<b><font color=\"" + Theme.highlightColor + "\">")
+                     .replace(/<\/b>/g, "</font></b>")
     }
 
     /// Escape text for a StyledText label. Only for text this file builds
@@ -523,278 +585,321 @@ SilicaListView {
         font.pixelSize: Theme.fontSizeMedium
     }
 
-    delegate: ListItem {
-        id: item
-        contentHeight: column.height + Theme.paddingMedium * 2
-        // The long-press menu is the other way to act on one row, and in
-        // selection mode the tap already is that.
-        showMenuOnPressAndHold: !listView.selecting
+    delegate: Item {
+        id: row
 
-        /// Whether this row is in the selection. Read off `selectedIds`,
-        /// which is replaced on every change so this re-evaluates.
-        readonly property bool selected: listView.selecting
-                                         && listView.selectedIds[entryId] === true
+        width: listView.width
+        height: item.height + moreButton.height
 
-        // Silica's own mark for a selected row: the highlight backing it
-        // paints under a pressed one, kept on. No checkbox column, which
-        // would shift every row's text sideways on entering the mode.
-        Rectangle {
-            anchors.fill: parent
-            visible: item.selected
-            color: Theme.rgba(Theme.highlightBackgroundColor, Theme.highlightBackgroundOpacity)
-        }
+        /// Whether this row is the last of its group of search results,
+        /// which is where the group's "Load more" goes.
+        readonly property bool lastInGroup: listView.searching
+                                            && row.ListView.nextSection !== row.ListView.section
 
-        /// The icon column's width, whether or not there IS an icon.
-        ///
-        /// A fixed gutter, so every row's text starts on the same vertical
-        /// line: sizing it to the icon meant rows with an icon were indented
-        /// and rows without were not, and a list mixing the two looked ragged.
-        ///
-        /// `paddingMedium` after the icon, not `paddingSmall`: at 6px against a
-        /// 32px icon the gap read as the icon touching the headline. 12px is
-        /// the next step Silica offers.
-        readonly property real gutter: Theme.fontSizeMedium + Theme.paddingMedium
+        ListItem {
+            id: item
+            width: parent.width
+            contentHeight: column.height + Theme.paddingMedium * 2
+            // The long-press menu is the other way to act on one row, and in
+            // selection mode the tap already is that.
+            showMenuOnPressAndHold: !listView.selecting
 
-        Row {
-            id: column
+            /// Whether this row is in the selection. Read off `selectedIds`,
+            /// which is replaced on every change so this re-evaluates.
+            readonly property bool selected: listView.selecting
+                                             && listView.selectedIds[entryId] === true
 
-            x: Theme.horizontalPageMargin
-            y: Theme.paddingMedium
-            width: parent.width - Theme.horizontalPageMargin * 2
-            spacing: 0
-            // A read row steps back as a whole -- icon, title and detail line
-            // together -- rather than only swapping the title's colour, which
-            // on the device was too little to tell the two apart at a glance.
-            // Now that a read row stays on the list until the reader
-            // refreshes, telling them apart is what the list is for.
-            opacity: unread ? 1.0 : Theme.opacityLow
-
-            Item {
-                id: iconGutter
-
-                width: item.gutter
-                height: 1
-
-                Image {
-                    // Centred on the title's FIRST LINE BOX, so a headline
-                    // that wraps to three lines does not strand the icon in
-                    // the middle of the block.
-                    //
-                    // Measured against `font.pixelSize` this was always y 0 --
-                    // the icon is itself `fontSizeMedium` tall, so the
-                    // expression could only ever yield zero -- and zero is too
-                    // high, which is what the device reported. A line box is
-                    // taller than the pixel size, and the glyphs sit low in it.
-                    //
-                    // From SailSansPro-Light.ttf itself, at fontSizeMedium (32)
-                    // and pixelRatio 1: ascent 31.49, descent 8.74, so the line
-                    // box is 40.22 and the capital ink runs 10.40..31.49 with
-                    // its centre at 20.94. The old y put the icon's centre at
-                    // 16.0 -- 4.9px high, and more on a device whose pixel
-                    // ratio is above 1. Centring on the line box puts it at
-                    // 20.0, within a pixel of the ink.
-                    y: Math.round((titleMetrics.height - height) / 2)
-                    width: Theme.fontSizeMedium
-                    height: Theme.fontSizeMedium
-                    sourceSize.width: Theme.fontSizeMedium
-                    sourceSize.height: Theme.fontSizeMedium
-                    fillMode: Image.PreserveAspectFit
-                    // A `data:` URI built in Rust from bytes already in the
-                    // mirror -- no network fetch happens here, so a list
-                    // scroll cannot leak the device's IP (§9.3).
-                    source: feedIcon
-                    asynchronous: true
-                    // The mirror stores whatever format the icon arrived in
-                    // and the device ships handlers for only some of them.
-                    // Collapsing on failure keeps a missing handler to a
-                    // missing icon rather than a broken-image glyph.
-                    visible: feedIcon.length > 0 && status === Image.Ready
-                }
+            // Silica's own mark for a selected row: the highlight backing it
+            // paints under a pressed one, kept on. No checkbox column, which
+            // would shift every row's text sideways on entering the mode.
+            Rectangle {
+                anchors.fill: parent
+                visible: item.selected
+                color: Theme.rgba(Theme.highlightBackgroundColor, Theme.highlightBackgroundOpacity)
             }
 
-            Column {
-                width: parent.width - item.gutter
-                spacing: Theme.paddingSmall
+            /// The icon column's width, whether or not there IS an icon.
+            ///
+            /// A fixed gutter, so every row's text starts on the same vertical
+            /// line: sizing it to the icon meant rows with an icon were indented
+            /// and rows without were not, and a list mixing the two looked ragged.
+            ///
+            /// `paddingMedium` after the icon, not `paddingSmall`: at 6px against a
+            /// 32px icon the gap read as the icon touching the headline. 12px is
+            /// the next step Silica offers.
+            readonly property real gutter: Theme.fontSizeMedium + Theme.paddingMedium
 
-                Label {
-                    id: titleLabel
-                    objectName: "titleLabel"
+            Row {
+                id: column
 
-                    width: parent.width
-                    // §9.3: a feed-supplied title is foreign data. PlainText,
-                    // explicitly -- except for a search result's, which Rust
-                    // escaped and marked the search terms in, and which is
-                    // therefore safe to render as StyledText.
-                    textFormat: listView.searching ? Text.StyledText : Text.PlainText
-                    text: listView.searching ? titleStyled : title
-                    wrapMode: Text.Wrap
-                    maximumLineCount: 3
-                    elide: Text.ElideRight
-                    font.pixelSize: Theme.fontSizeMedium
-                    color: unread ? Theme.primaryColor : Theme.secondaryColor
+                x: Theme.horizontalPageMargin
+                y: Theme.paddingMedium
+                width: parent.width - Theme.horizontalPageMargin * 2
+                spacing: 0
+                // A read row steps back as a whole -- icon, title and detail line
+                // together -- rather than only swapping the title's colour, which
+                // on the device was too little to tell the two apart at a glance.
+                // Now that a read row stays on the list until the reader
+                // refreshes, telling them apart is what the list is for.
+                opacity: unread ? 1.0 : Theme.opacityLow
+
+                Item {
+                    id: iconGutter
+
+                    width: item.gutter
+                    height: 1
+
+                    Image {
+                        // Centred on the title's FIRST LINE BOX, so a headline
+                        // that wraps to three lines does not strand the icon in
+                        // the middle of the block.
+                        //
+                        // Measured against `font.pixelSize` this was always y 0 --
+                        // the icon is itself `fontSizeMedium` tall, so the
+                        // expression could only ever yield zero -- and zero is too
+                        // high, which is what the device reported. A line box is
+                        // taller than the pixel size, and the glyphs sit low in it.
+                        //
+                        // From SailSansPro-Light.ttf itself, at fontSizeMedium (32)
+                        // and pixelRatio 1: ascent 31.49, descent 8.74, so the line
+                        // box is 40.22 and the capital ink runs 10.40..31.49 with
+                        // its centre at 20.94. The old y put the icon's centre at
+                        // 16.0 -- 4.9px high, and more on a device whose pixel
+                        // ratio is above 1. Centring on the line box puts it at
+                        // 20.0, within a pixel of the ink.
+                        y: Math.round((titleMetrics.height - height) / 2)
+                        width: Theme.fontSizeMedium
+                        height: Theme.fontSizeMedium
+                        sourceSize.width: Theme.fontSizeMedium
+                        sourceSize.height: Theme.fontSizeMedium
+                        fillMode: Image.PreserveAspectFit
+                        // A `data:` URI built in Rust from bytes already in the
+                        // mirror -- no network fetch happens here, so a list
+                        // scroll cannot leak the device's IP (§9.3).
+                        source: feedIcon
+                        asynchronous: true
+                        // The mirror stores whatever format the icon arrived in
+                        // and the device ships handlers for only some of them.
+                        // Collapsing on failure keeps a missing handler to a
+                        // missing icon rather than a broken-image glyph.
+                        visible: feedIcon.length > 0 && status === Image.Ready
+                    }
                 }
 
-                Label {
-                    id: detailLabel
-                    objectName: "detailLabel"
+                Column {
+                    width: parent.width - item.gutter
+                    spacing: Theme.paddingSmall
 
-                    width: parent.width
-                    // Assembled in JavaScript rather than as a Row of Labels
-                    // so the separators collapse cleanly when a part is
-                    // missing, and so the whole line can be shortened as one
-                    // thing when it will not fit. PlainText, explicitly: the
-                    // feed's name is in it and that is foreign text -- unless
-                    // this is a search result, where the name is the one Rust
-                    // escaped and marked (see `styled`).
-                    textFormat: listView.searching ? Text.StyledText : Text.PlainText
-                    font.pixelSize: Theme.fontSizeExtraSmall
-                    color: item.highlighted ? Theme.secondaryHighlightColor
-                                            : Theme.secondaryColor
-                    truncationMode: TruncationMode.Fade
+                    Label {
+                        id: titleLabel
+                        objectName: "titleLabel"
 
-                    /// Build the line, shortening it a step at a time until
-                    /// it fits.
-                    ///
-                    /// A long feed name or a long elapsed phrase -- both vary
-                    /// by language -- used to run straight off the right edge.
-                    ///
-                    /// The order is the one asked for on the device: trim the
-                    /// FEED NAME first, down to a length it is still
-                    /// recognisable at, and only when that is not enough start
-                    /// abbreviating the other fields. The name is what says
-                    /// where an article came from, so losing its tail costs
-                    /// less than losing a whole field.
-                    function build() {
-                        var date = published > 0 ? new Date(published * 1000) : null
-                        var age = date ? Format.formatDate(date, Formatter.DurationElapsed) : ""
-                        var shortAge = date ? Format.formatDate(date, Formatter.DurationElapsedShort)
-                                            : ""
-                        var readLong = readingTime > 0 ? qsTr("%n min read", "", readingTime) : ""
-                        var readShort = readingTime > 0 ? qsTr("%n min", "", readingTime) : ""
-
-                        // Each rung keeps the fields fuller than the one below
-                        // it. Within a rung the name is trimmed as far as it
-                        // will go before dropping to the next.
-                        var rungs = [
-                            [age, readLong],
-                            [age, readShort],
-                            [shortAge, readShort],
-                            [shortAge, ""]
-                        ]
-
-                        // Short enough that a name is still identifiable, long
-                        // enough that most feed names survive whole.
-                        var minimumName = 14
-
-                        for (var i = 0; i < rungs.length; ++i) {
-                            var fitted = detailLabel.fitName(feedName, rungs[i], minimumName)
-                            if (fitted !== null) {
-                                return fitted
-                            }
-                        }
-                        // Nothing fits even at the bottom rung with the
-                        // shortest name; `truncationMode` fades what is left.
-                        return detailLabel.join([feedName.substring(0, minimumName),
-                                                 shortAge, ""])
+                        width: parent.width
+                        // §9.3: a feed-supplied title is foreign data. PlainText,
+                        // explicitly -- except for a search result's, which Rust
+                        // escaped and marked the search terms in, and which is
+                        // therefore safe to render as StyledText.
+                        textFormat: listView.searching ? Text.StyledText : Text.PlainText
+                        text: listView.searching ? listView.marked(titleStyled) : title
+                        wrapMode: Text.Wrap
+                        maximumLineCount: 3
+                        elide: Text.ElideRight
+                        font.pixelSize: Theme.fontSizeMedium
+                        color: unread ? Theme.primaryColor : Theme.secondaryColor
                     }
 
-                    /// The widest version of this rung whose name still fits,
-                    /// or null when even the shortest name overflows it.
-                    function fitName(name, rung, minimum) {
-                        var candidate = detailLabel.join([name, rung[0], rung[1]])
-                        if (detailMetrics.advanceWidth(candidate) <= detailLabel.width) {
-                            return candidate
+                    Label {
+                        id: detailLabel
+                        objectName: "detailLabel"
+
+                        width: parent.width
+                        // Assembled in JavaScript rather than as a Row of Labels
+                        // so the separators collapse cleanly when a part is
+                        // missing, and so the whole line can be shortened as one
+                        // thing when it will not fit. PlainText, explicitly: the
+                        // feed's name is in it and that is foreign text -- unless
+                        // this is a search result, where the name is the one Rust
+                        // escaped and marked (see `styled`).
+                        textFormat: listView.searching ? Text.StyledText : Text.PlainText
+                        font.pixelSize: Theme.fontSizeExtraSmall
+                        color: item.highlighted ? Theme.secondaryHighlightColor
+                                                : Theme.secondaryColor
+                        truncationMode: TruncationMode.Fade
+
+                        /// Build the line, shortening it a step at a time until
+                        /// it fits.
+                        ///
+                        /// A long feed name or a long elapsed phrase -- both vary
+                        /// by language -- used to run straight off the right edge.
+                        ///
+                        /// The order is the one asked for on the device: trim the
+                        /// FEED NAME first, down to a length it is still
+                        /// recognisable at, and only when that is not enough start
+                        /// abbreviating the other fields. The name is what says
+                        /// where an article came from, so losing its tail costs
+                        /// less than losing a whole field.
+                        function build() {
+                            var date = published > 0 ? new Date(published * 1000) : null
+                            var age = date ? Format.formatDate(date, Formatter.DurationElapsed) : ""
+                            var shortAge = date ? Format.formatDate(date, Formatter.DurationElapsedShort)
+                                                : ""
+                            var readLong = readingTime > 0 ? qsTr("%n min read", "", readingTime) : ""
+                            var readShort = readingTime > 0 ? qsTr("%n min", "", readingTime) : ""
+
+                            // Each rung keeps the fields fuller than the one below
+                            // it. Within a rung the name is trimmed as far as it
+                            // will go before dropping to the next.
+                            var rungs = [
+                                [age, readLong],
+                                [age, readShort],
+                                [shortAge, readShort],
+                                [shortAge, ""]
+                            ]
+
+                            // Short enough that a name is still identifiable, long
+                            // enough that most feed names survive whole.
+                            var minimumName = 14
+
+                            for (var i = 0; i < rungs.length; ++i) {
+                                var fitted = detailLabel.fitName(feedName, rungs[i], minimumName)
+                                if (fitted !== null) {
+                                    return fitted
+                                }
+                            }
+                            // Nothing fits even at the bottom rung with the
+                            // shortest name; `truncationMode` fades what is left.
+                            return detailLabel.join([feedName.substring(0, minimumName),
+                                                     shortAge, ""])
                         }
-                        var trimmed = name
-                        while (trimmed.length > minimum) {
-                            trimmed = trimmed.substring(0, trimmed.length - 1)
-                            candidate = detailLabel.join(
-                                [trimmed + "\u2026", rung[0], rung[1]])
+
+                        /// The widest version of this rung whose name still fits,
+                        /// or null when even the shortest name overflows it.
+                        function fitName(name, rung, minimum) {
+                            var candidate = detailLabel.join([name, rung[0], rung[1]])
                             if (detailMetrics.advanceWidth(candidate) <= detailLabel.width) {
                                 return candidate
                             }
-                        }
-                        return null
-                    }
-
-                    function join(parts) {
-                        var kept = []
-                        for (var i = 0; i < parts.length; ++i) {
-                            if (parts[i] && parts[i].length > 0) {
-                                kept.push(parts[i])
+                            var trimmed = name
+                            while (trimmed.length > minimum) {
+                                trimmed = trimmed.substring(0, trimmed.length - 1)
+                                candidate = detailLabel.join(
+                                    [trimmed + "\u2026", rung[0], rung[1]])
+                                if (detailMetrics.advanceWidth(candidate) <= detailLabel.width) {
+                                    return candidate
+                                }
                             }
+                            return null
                         }
-                        if (starred) {
-                            kept.push("\u2605")
+
+                        function join(parts) {
+                            var kept = []
+                            for (var i = 0; i < parts.length; ++i) {
+                                if (parts[i] && parts[i].length > 0) {
+                                    kept.push(parts[i])
+                                }
+                            }
+                            if (starred) {
+                                kept.push("\u2605")
+                            }
+                            return kept.join("  \u00b7  ")
                         }
-                        return kept.join("  \u00b7  ")
+
+                        /// The fitted line as StyledText, for a search result: the
+                        /// feed's name with the search terms in bold, when the
+                        /// name was not shortened -- a shortened one would cut a
+                        /// bold run in half, so it is drawn plain -- and the rest
+                        /// escaped.
+                        function styled(line) {
+                            if (feedName.length > 0 && line.indexOf(feedName) === 0) {
+                                return listView.marked(feedNameStyled)
+                                       + listView.escaped(line.substring(feedName.length))
+                            }
+                            return listView.escaped(line)
+                        }
+
+                        text: detailLabel.width <= 0 ? ""
+                              : (listView.searching ? detailLabel.styled(detailLabel.build())
+                                                    : detailLabel.build())
                     }
 
-                    /// The fitted line as StyledText, for a search result: the
-                    /// feed's name with the search terms in bold, when the
-                    /// name was not shortened -- a shortened one would cut a
-                    /// bold run in half, so it is drawn plain -- and the rest
-                    /// escaped.
-                    function styled(line) {
-                        if (feedName.length > 0 && line.indexOf(feedName) === 0) {
-                            return feedNameStyled
-                                   + listView.escaped(line.substring(feedName.length))
-                        }
-                        return listView.escaped(line)
+                    Label {
+                        // A result found in an article's text: the lines around
+                        // the match, so the reader sees why it is here. StyledText
+                        // built and escaped in Rust (§9.3), with the terms in bold.
+                        objectName: "excerptLabel"
+                        width: parent.width
+                        visible: listView.searching && excerpt.length > 0
+                        textFormat: Text.StyledText
+                        text: listView.searching ? listView.marked(excerpt) : ""
+                        wrapMode: Text.Wrap
+                        maximumLineCount: 3
+                        elide: Text.ElideRight
+                        font.pixelSize: Theme.fontSizeExtraSmall
+                        color: item.highlighted ? Theme.secondaryHighlightColor
+                                                : Theme.secondaryColor
                     }
-
-                    text: detailLabel.width <= 0 ? ""
-                          : (listView.searching ? detailLabel.styled(detailLabel.build())
-                                                : detailLabel.build())
                 }
+            }
 
-                Label {
-                    // A result found in an article's text: the lines around
-                    // the match, so the reader sees why it is here. StyledText
-                    // built and escaped in Rust (§9.3), with the terms in bold.
-                    objectName: "excerptLabel"
-                    width: parent.width
-                    visible: listView.searching && excerpt.length > 0
-                    textFormat: Text.StyledText
-                    text: listView.searching ? excerpt : ""
-                    wrapMode: Text.Wrap
-                    maximumLineCount: 3
-                    elide: Text.ElideRight
-                    font.pixelSize: Theme.fontSizeExtraSmall
-                    color: item.highlighted ? Theme.secondaryHighlightColor
-                                            : Theme.secondaryColor
+            onClicked: {
+                if (listView.selecting) {
+                    listView.toggleSelected(entryId)
+                } else {
+                    pageStack.push(Qt.resolvedUrl("../pages/ArticlePage.qml"), {
+                        entryId: entryId,
+                        entryTitle: title
+                    })
+                }
+            }
+
+            menu: ContextMenu {
+                MenuItem {
+                    text: unread ? qsTr("Mark as read") : qsTr("Mark as unread")
+                    onClicked: listView.entryModel.setRead(index, unread)
+                }
+                MenuItem {
+                    text: starred ? qsTr("Remove favourite") : qsTr("Add favourite")
+                    onClicked: listView.entryModel.setStarred(index, !starred)
+                }
+                MenuItem {
+                    text: qsTr("Open in browser")
+                    // Hidden rather than disabled: an entry with no link is rare
+                    // enough that a permanently dead row would read as a bug in
+                    // the app rather than a gap in the feed.
+                    visible: url.length > 0
+                    onClicked: Qt.openUrlExternally(url)
                 }
             }
         }
 
-        onClicked: {
-            if (listView.selecting) {
-                listView.toggleSelected(entryId)
-            } else {
-                pageStack.push(Qt.resolvedUrl("../pages/ArticlePage.qml"), {
-                    entryId: entryId,
-                    entryTitle: title
-                })
-            }
-        }
+        // Under the last row of a group that has more than it shows: the
+        // next page of it, inserted under this row. Twice, and then the rest:
+        // a reader on a group's third page is looking for something that is
+        // not near the top. See models::SEARCH_GROUP_PAGE.
+        BackgroundItem {
+            id: moreButton
+            objectName: "loadMore"
 
-        menu: ContextMenu {
-            MenuItem {
-                text: unread ? qsTr("Mark as read") : qsTr("Mark as unread")
-                onClicked: listView.entryModel.setRead(index, unread)
+            y: item.height
+            width: parent.width
+            visible: row.lastInGroup
+                     && listView.groupShown(matchKind) < listView.groupTotal(matchKind)
+            height: visible ? Theme.itemSizeSmall : 0
+
+            Label {
+                objectName: "loadMoreLabel"
+                anchors.centerIn: parent
+                text: listView.groupLoadsAll(matchKind)
+                      //: Under a group of search results: shows all the rest of
+                      //: the group.
+                      ? qsTr("Load all results")
+                      //: Under a group of search results: shows a few more of
+                      //: the group.
+                      : qsTr("Load more")
+                color: moreButton.highlighted ? Theme.highlightColor : Theme.primaryColor
             }
-            MenuItem {
-                text: starred ? qsTr("Remove favourite") : qsTr("Add favourite")
-                onClicked: listView.entryModel.setStarred(index, !starred)
-            }
-            MenuItem {
-                text: qsTr("Open in browser")
-                // Hidden rather than disabled: an entry with no link is rare
-                // enough that a permanently dead row would read as a bug in
-                // the app rather than a gap in the feed.
-                visible: url.length > 0
-                onClicked: Qt.openUrlExternally(url)
-            }
+
+            onClicked: listView.entryModel.loadMoreIn(matchKind)
         }
     }
 
