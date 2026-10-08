@@ -56,6 +56,16 @@ Window {
     readonly property int coverWidth: 512
     readonly property int coverHeight: 768
 
+    /// Counts whose number is moved across by eye after the painter has
+    /// centred it, as a fraction of the digits' font size; negative is left.
+    /// See TextArtPainter's `obstacleNudge` for why there is a list at all.
+    ///
+    /// Set off a device report, not measured: the 1 still read right of
+    /// centre after the painter's half-weight shift, and the 3 and the 4
+    /// read left of it. Single counts only -- a correction is for a shape,
+    /// and an 13 is not a 1 and a 3 side by side as far as the eye goes.
+    readonly property var coverNudge: ({ "1": -0.015, "3": 0.025, "4": 0.012 })
+
     /// One cover master. `key` is the count, "99+", or "none".
     function coverJob(key) {
         if (key === "none") {
@@ -94,6 +104,7 @@ Window {
             // a cover, or it reads as pressed against the edges.
             obstacleMaxWidth: 0.72,
             obstacleMaxHeight: 0.56,
+            obstacleNudge: win.coverNudge[key] || 0,
             // The narrowest cover this must survive being cropped to. A
             // little under the platform's own 0.626, for the digits' sake.
             fitAspect: 0.60,
@@ -160,6 +171,7 @@ Window {
         obstacleMaxWidth: win.job && win.job.obstacleMaxWidth ? win.job.obstacleMaxWidth : 0.80
         obstacleMaxHeight: win.job && win.job.obstacleMaxHeight ? win.job.obstacleMaxHeight : 0.62
         obstacleEdge: win.job && win.job.obstacleEdge ? win.job.obstacleEdge : 0
+        obstacleNudge: win.job && win.job.obstacleNudge ? win.job.obstacleNudge : 0
         fillerFont: filler.status === FontLoader.Ready ? filler.name : Theme.fontFamily
         fitAspect: win.job && win.job.fitAspect ? win.job.fitAspect : 0
         reservedBottom: win.job && win.job.reservedBottom ? win.job.reservedBottom : 0
