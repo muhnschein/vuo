@@ -315,6 +315,33 @@ ApplicationWindow {
 
     initialPage: accountSettings.configured ? entryList : onboarding
 
+    /// Bring the app to the front on its search page: the cover's search
+    /// action. The same page the list's pulley opens, over whatever the
+    /// reader was on -- unless that already is a search, which keeps what was
+    /// typed in it. Nothing before the account is set up: there is no mirror
+    /// to search, and the stack is the onboarding's.
+    function openSearch() {
+        if (!accountSettings.configured) {
+            return
+        }
+        var top = pageStack.currentPage
+        if (!top || top.searching !== true) {
+            pageStack.push(Qt.resolvedUrl("pages/EntryListPage.qml"), {
+                model: searchEntries,
+                searchModel: searchEntries,
+                browseModel: browseEntries,
+                feedModel: feeds,
+                noticeModel: entries,
+                // models::Scope::Search
+                scopeKind: 5,
+                //: The search page's title. A noun.
+                scopeLabel: qsTr("Search", "page title"),
+                searching: true
+            }, PageStackAction.Immediate)
+        }
+        app.activate()
+    }
+
     // The cover is a separate Component so its bindings can reach the models
     // -- the unread count and the feeds it draws -- which a bare URL cover
     // cannot.
@@ -326,6 +353,7 @@ ApplicationWindow {
             // there, rather than spinning until the user reopens the app.
             syncError: entries.syncError
             syncErrorIsAuth: entries.syncErrorIsAuth
+            onSearch: app.openSearch()
             onRefresh: {
                 entries.requestSync()
                 // See `_watchingCoverRefresh`: the poll is stopped while the

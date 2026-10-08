@@ -239,104 +239,104 @@
         <translation>Hae artikkeleita</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="332"/>
+        <location filename="../qml/components/EntryListView.qml" line="356"/>
         <source>Select all</source>
         <translation>Valitse kaikki</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="333"/>
+        <location filename="../qml/components/EntryListView.qml" line="357"/>
         <source>Deselect all</source>
         <translation>Poista valinnat</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="338"/>
-        <location filename="../qml/components/EntryListView.qml" line="881"/>
+        <location filename="../qml/components/EntryListView.qml" line="362"/>
+        <location filename="../qml/components/EntryListView.qml" line="905"/>
         <source>Mark as unread</source>
         <translation>Merkitse lukemattomaksi</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="343"/>
-        <location filename="../qml/components/EntryListView.qml" line="881"/>
+        <location filename="../qml/components/EntryListView.qml" line="367"/>
+        <location filename="../qml/components/EntryListView.qml" line="905"/>
         <source>Mark as read</source>
         <translation>Merkitse luetuksi</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="350"/>
+        <location filename="../qml/components/EntryListView.qml" line="374"/>
         <source>Settings</source>
         <translation>Asetukset</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="355"/>
+        <location filename="../qml/components/EntryListView.qml" line="379"/>
         <source>Feeds</source>
         <translation>Syötteet</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="370"/>
-        <location filename="../qml/components/EntryListView.qml" line="377"/>
+        <location filename="../qml/components/EntryListView.qml" line="394"/>
+        <location filename="../qml/components/EntryListView.qml" line="401"/>
         <source>Select articles</source>
         <translation>Valitse artikkeleita</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="382"/>
+        <location filename="../qml/components/EntryListView.qml" line="406"/>
         <source>Mark all as read</source>
         <translation>Merkitse kaikki luetuiksi</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="402"/>
+        <location filename="../qml/components/EntryListView.qml" line="426"/>
         <source>Marking all as read</source>
         <translation>Merkitään kaikki luetuiksi</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="413"/>
+        <location filename="../qml/components/EntryListView.qml" line="437"/>
         <source>Search</source>
         <comment>menu item</comment>
         <extracomment>Pulley menu item. A verb: it opens the search page.</extracomment>
         <translation>Hae</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="423"/>
+        <location filename="../qml/components/EntryListView.qml" line="447"/>
         <source>Search</source>
         <comment>page title</comment>
         <extracomment>The search page&apos;s title. A noun.</extracomment>
         <translation>Haku</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="429"/>
+        <location filename="../qml/components/EntryListView.qml" line="453"/>
         <source>Refresh</source>
         <translation>Päivitä</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="478"/>
+        <location filename="../qml/components/EntryListView.qml" line="502"/>
         <source>No articles found</source>
         <translation>Artikkeleita ei löytynyt</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="479"/>
+        <location filename="../qml/components/EntryListView.qml" line="503"/>
         <source>No favourites</source>
         <translation>Ei suosikkeja</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="480"/>
+        <location filename="../qml/components/EntryListView.qml" line="504"/>
         <source>Nothing to read</source>
         <translation>Ei luettavaa</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="485"/>
+        <location filename="../qml/components/EntryListView.qml" line="509"/>
         <source>Vuo searches the title, feed name and text of every article on this device.</source>
         <translation>Vuo hakee tämän laitteen jokaisen artikkelin otsikosta, syötteen nimestä ja tekstistä.</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="487"/>
+        <location filename="../qml/components/EntryListView.qml" line="511"/>
         <source>Articles you add to favourites appear here</source>
         <translation>Suosikkeihin lisäämäsi artikkelit näytetään täällä</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="488"/>
+        <location filename="../qml/components/EntryListView.qml" line="512"/>
         <source>Pull down to refresh</source>
         <translation>Vedä alas päivittääksesi</translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/components/EntryListView.qml" line="548"/>
+        <location filename="../qml/components/EntryListView.qml" line="572"/>
         <source>Load %n more</source>
         <extracomment>Under a group of search results: shows %n more of the group.</extracomment>
         <translation>
@@ -345,43 +345,43 @@
         </translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="560"/>
+        <location filename="../qml/components/EntryListView.qml" line="584"/>
         <source>In titles (%1 of %2)</source>
         <extracomment>Search results: the group of articles whose title matched, when only some of them are shown. %1 is how many are shown, %2 how many there are.</extracomment>
         <translation>Otsikoissa (%1/%2)</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="565"/>
+        <location filename="../qml/components/EntryListView.qml" line="589"/>
         <source>In feed names (%1 of %2)</source>
         <extracomment>As &quot;In titles (%1 of %2)&quot;, for the articles whose feed&apos;s name matched.</extracomment>
         <translation>Syötteiden nimissä (%1/%2)</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="568"/>
+        <location filename="../qml/components/EntryListView.qml" line="592"/>
         <source>In article text (%1 of %2)</source>
         <extracomment>As &quot;In titles (%1 of %2)&quot;, for the articles whose text matched.</extracomment>
         <translation>Artikkelien tekstissä (%1/%2)</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="573"/>
+        <location filename="../qml/components/EntryListView.qml" line="597"/>
         <source>In titles (%1)</source>
         <extracomment>Search results: the group of articles whose title matched. %1 is how many there are.</extracomment>
         <translation>Otsikoissa (%1)</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="578"/>
+        <location filename="../qml/components/EntryListView.qml" line="602"/>
         <source>In feed names (%1)</source>
         <extracomment>Search results: the group of articles whose feed&apos;s name matched. %1 is how many there are.</extracomment>
         <translation>Syötteiden nimissä (%1)</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="582"/>
+        <location filename="../qml/components/EntryListView.qml" line="606"/>
         <source>In article text (%1)</source>
         <extracomment>Search results: the group of articles whose text matched. %1 is how many there are.</extracomment>
         <translation>Artikkelien tekstissä (%1)</translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/components/EntryListView.qml" line="770"/>
+        <location filename="../qml/components/EntryListView.qml" line="794"/>
         <source>%n min read</source>
         <translation>
             <numerusform>%n min lukuaika</numerusform>
@@ -389,7 +389,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/components/EntryListView.qml" line="771"/>
+        <location filename="../qml/components/EntryListView.qml" line="795"/>
         <source>%n min</source>
         <translation>
             <numerusform>%n min</numerusform>
@@ -397,22 +397,22 @@
         </translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="885"/>
+        <location filename="../qml/components/EntryListView.qml" line="909"/>
         <source>Remove favourite</source>
         <translation>Poista suosikeista</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="885"/>
+        <location filename="../qml/components/EntryListView.qml" line="909"/>
         <source>Add favourite</source>
         <translation>Lisää suosikkeihin</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="889"/>
+        <location filename="../qml/components/EntryListView.qml" line="913"/>
         <source>Open in browser</source>
         <translation>Avaa selaimessa</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="544"/>
+        <location filename="../qml/components/EntryListView.qml" line="568"/>
         <source>Load all results</source>
         <extracomment>Under a group of search results: shows all the rest of the group.</extracomment>
         <translation>Lataa kaikki</translation>
@@ -807,6 +807,13 @@
             <numerusform>%n lukematta</numerusform>
             <numerusform>%n lukematta</numerusform>
         </translation>
+    </message>
+    <message>
+        <location filename="../qml/harbour-vuo.qml" line="338"/>
+        <source>Search</source>
+        <comment>page title</comment>
+        <extracomment>The search page&apos;s title. A noun.</extracomment>
+        <translation>Haku</translation>
     </message>
 </context>
 </TS>

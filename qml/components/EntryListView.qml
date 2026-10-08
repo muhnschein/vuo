@@ -276,22 +276,46 @@ SilicaListView {
             // search would trail one word behind what is on screen.
             inputMethodHints: Qt.ImhNoPredictiveText
             onTextChanged: listView.searchText = searchField.text
+            // Return is "done typing": search for what is there now, without
+            // waiting out the pause, and put the keyboard away so the results
+            // have the screen. Keys rather than Silica's EnterKey, as in
+            // AddFeedPage.qml: an attached type QML cannot stub.
+            Keys.onReturnPressed: searchField.submit()
+            Keys.onEnterPressed: searchField.submit()
 
             /// Whether the keyboard has been raised for the reader once.
             property bool _focused: false
 
-            // Raise the keyboard when the page arrives, not while it is still
-            // sliding in -- and only the first time: coming back from an
-            // article should land on the results, not on the keyboard.
+            function submit() {
+                searchDelay.stop()
+                if (listView.entryModel) {
+                    listView.entryModel.setSearch(listView.searchText)
+                }
+                searchField.focus = false
+            }
+
+            /// Raise the keyboard once the page is in place and the app is in
+            /// front -- not while the page is still sliding in -- and only the
+            /// first time: coming back from an article should land on the
+            /// results, not on the keyboard. Both conditions, because the
+            /// cover's search action pushes the page while the app is still
+            /// in the background, and a field focused there raises nothing.
+            function raiseKeyboard() {
+                if (listView.searching && !searchField._focused && listView.hostPage
+                        && listView.hostPage.status === PageStatus.Active
+                        && Qt.application.active) {
+                    searchField._focused = true
+                    searchField.forceActiveFocus()
+                }
+            }
+
             Connections {
                 target: listView.hostPage
-                onStatusChanged: {
-                    if (listView.searching && !searchField._focused
-                            && listView.hostPage.status === PageStatus.Active) {
-                        searchField._focused = true
-                        searchField.forceActiveFocus()
-                    }
-                }
+                onStatusChanged: searchField.raiseKeyboard()
+            }
+            Connections {
+                target: Qt.application
+                onActiveChanged: searchField.raiseKeyboard()
             }
         }
     }

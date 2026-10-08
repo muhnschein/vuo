@@ -239,104 +239,104 @@
         <translation>వ్యాసాలను వెతుకు</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="332"/>
+        <location filename="../qml/components/EntryListView.qml" line="356"/>
         <source>Select all</source>
         <translation>అన్నీ ఎంచుకో</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="333"/>
+        <location filename="../qml/components/EntryListView.qml" line="357"/>
         <source>Deselect all</source>
         <translation>ఎంపిక తీసివేయి</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="338"/>
-        <location filename="../qml/components/EntryListView.qml" line="881"/>
+        <location filename="../qml/components/EntryListView.qml" line="362"/>
+        <location filename="../qml/components/EntryListView.qml" line="905"/>
         <source>Mark as unread</source>
         <translation>చదవనిదిగా గుర్తించు</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="343"/>
-        <location filename="../qml/components/EntryListView.qml" line="881"/>
+        <location filename="../qml/components/EntryListView.qml" line="367"/>
+        <location filename="../qml/components/EntryListView.qml" line="905"/>
         <source>Mark as read</source>
         <translation>చదివినదిగా గుర్తించు</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="350"/>
+        <location filename="../qml/components/EntryListView.qml" line="374"/>
         <source>Settings</source>
         <translation>అమరికలు</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="355"/>
+        <location filename="../qml/components/EntryListView.qml" line="379"/>
         <source>Feeds</source>
         <translation>ఫీడ్‌లు</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="370"/>
-        <location filename="../qml/components/EntryListView.qml" line="377"/>
+        <location filename="../qml/components/EntryListView.qml" line="394"/>
+        <location filename="../qml/components/EntryListView.qml" line="401"/>
         <source>Select articles</source>
         <translation>వ్యాసాలు ఎంచుకో</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="382"/>
+        <location filename="../qml/components/EntryListView.qml" line="406"/>
         <source>Mark all as read</source>
         <translation>అన్నీ చదివినవిగా గుర్తించు</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="402"/>
+        <location filename="../qml/components/EntryListView.qml" line="426"/>
         <source>Marking all as read</source>
         <translation>అన్నీ చదివినవిగా గుర్తిస్తోంది</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="413"/>
+        <location filename="../qml/components/EntryListView.qml" line="437"/>
         <source>Search</source>
         <comment>menu item</comment>
         <extracomment>Pulley menu item. A verb: it opens the search page.</extracomment>
         <translation>వెతుకు</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="423"/>
+        <location filename="../qml/components/EntryListView.qml" line="447"/>
         <source>Search</source>
         <comment>page title</comment>
         <extracomment>The search page&apos;s title. A noun.</extracomment>
         <translation>శోధన</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="429"/>
+        <location filename="../qml/components/EntryListView.qml" line="453"/>
         <source>Refresh</source>
         <translation>రిఫ్రెష్</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="478"/>
+        <location filename="../qml/components/EntryListView.qml" line="502"/>
         <source>No articles found</source>
         <translation>వ్యాసాలు ఏవీ కనబడలేదు</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="479"/>
+        <location filename="../qml/components/EntryListView.qml" line="503"/>
         <source>No favourites</source>
         <translation>ఇష్టమైనవి లేవు</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="480"/>
+        <location filename="../qml/components/EntryListView.qml" line="504"/>
         <source>Nothing to read</source>
         <translation>చదవడానికి ఏమీ లేదు</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="485"/>
+        <location filename="../qml/components/EntryListView.qml" line="509"/>
         <source>Vuo searches the title, feed name and text of every article on this device.</source>
         <translation>Vuo ఈ పరికరంలోని ప్రతి వ్యాసం శీర్షిక, ఫీడ్ పేరు, పాఠ్యంలో వెతుకుతుంది.</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="487"/>
+        <location filename="../qml/components/EntryListView.qml" line="511"/>
         <source>Articles you add to favourites appear here</source>
         <translation>ఇష్టమైనవాటిలో చేర్చిన వ్యాసాలు ఇక్కడ కనిపిస్తాయి</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="488"/>
+        <location filename="../qml/components/EntryListView.qml" line="512"/>
         <source>Pull down to refresh</source>
         <translation>రిఫ్రెష్ చేయడానికి కిందికి లాగండి</translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/components/EntryListView.qml" line="548"/>
+        <location filename="../qml/components/EntryListView.qml" line="572"/>
         <source>Load %n more</source>
         <extracomment>Under a group of search results: shows %n more of the group.</extracomment>
         <translation>
@@ -345,43 +345,43 @@
         </translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="560"/>
+        <location filename="../qml/components/EntryListView.qml" line="584"/>
         <source>In titles (%1 of %2)</source>
         <extracomment>Search results: the group of articles whose title matched, when only some of them are shown. %1 is how many are shown, %2 how many there are.</extracomment>
         <translation>శీర్షికలలో (%2 లో %1)</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="565"/>
+        <location filename="../qml/components/EntryListView.qml" line="589"/>
         <source>In feed names (%1 of %2)</source>
         <extracomment>As &quot;In titles (%1 of %2)&quot;, for the articles whose feed&apos;s name matched.</extracomment>
         <translation>ఫీడ్ పేర్లలో (%2 లో %1)</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="568"/>
+        <location filename="../qml/components/EntryListView.qml" line="592"/>
         <source>In article text (%1 of %2)</source>
         <extracomment>As &quot;In titles (%1 of %2)&quot;, for the articles whose text matched.</extracomment>
         <translation>వ్యాసం పాఠ్యంలో (%2 లో %1)</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="573"/>
+        <location filename="../qml/components/EntryListView.qml" line="597"/>
         <source>In titles (%1)</source>
         <extracomment>Search results: the group of articles whose title matched. %1 is how many there are.</extracomment>
         <translation>శీర్షికలలో (%1)</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="578"/>
+        <location filename="../qml/components/EntryListView.qml" line="602"/>
         <source>In feed names (%1)</source>
         <extracomment>Search results: the group of articles whose feed&apos;s name matched. %1 is how many there are.</extracomment>
         <translation>ఫీడ్ పేర్లలో (%1)</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="582"/>
+        <location filename="../qml/components/EntryListView.qml" line="606"/>
         <source>In article text (%1)</source>
         <extracomment>Search results: the group of articles whose text matched. %1 is how many there are.</extracomment>
         <translation>వ్యాసం పాఠ్యంలో (%1)</translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/components/EntryListView.qml" line="770"/>
+        <location filename="../qml/components/EntryListView.qml" line="794"/>
         <source>%n min read</source>
         <translation>
             <numerusform>%n నిమిషం చదవడం</numerusform>
@@ -389,7 +389,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/components/EntryListView.qml" line="771"/>
+        <location filename="../qml/components/EntryListView.qml" line="795"/>
         <source>%n min</source>
         <translation>
             <numerusform>%n నిమిషం</numerusform>
@@ -397,22 +397,22 @@
         </translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="885"/>
+        <location filename="../qml/components/EntryListView.qml" line="909"/>
         <source>Remove favourite</source>
         <translation>ఇష్టమైనవాటి నుండి తీసివేయి</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="885"/>
+        <location filename="../qml/components/EntryListView.qml" line="909"/>
         <source>Add favourite</source>
         <translation>ఇష్టమైనవాటిలో చేర్చు</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="889"/>
+        <location filename="../qml/components/EntryListView.qml" line="913"/>
         <source>Open in browser</source>
         <translation>బ్రౌజర్‌లో తెరువు</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="544"/>
+        <location filename="../qml/components/EntryListView.qml" line="568"/>
         <source>Load all results</source>
         <extracomment>Under a group of search results: shows all the rest of the group.</extracomment>
         <translation>అన్నీ లోడ్ చేయి</translation>
@@ -807,6 +807,13 @@
             <numerusform>%n చదవనిది</numerusform>
             <numerusform>%n చదవనివి</numerusform>
         </translation>
+    </message>
+    <message>
+        <location filename="../qml/harbour-vuo.qml" line="338"/>
+        <source>Search</source>
+        <comment>page title</comment>
+        <extracomment>The search page&apos;s title. A noun.</extracomment>
+        <translation>శోధన</translation>
     </message>
 </context>
 </TS>

@@ -51,8 +51,9 @@ const VIEW_QML: &str = r#"
             property int titleNextLoad: 10
             property int feedNextLoad: 10
             property int textNextLoad: 10
+            property var searches: []
             function loadMoreIn(kind) {}
-            function setSearch(text) {}
+            function setSearch(text) { searches.push(text) }
             function setScope(kind, id) {}
             function requestSync() {}
         }
@@ -93,6 +94,15 @@ const VIEW_QML: &str = r#"
         function fieldHasFocus() {
             return '' + findIn(loader.item, 'searchField').activeFocus
         }
+        // What Return and Enter do, short of a key event, which nothing here
+        // can synthesise: the test checks separately that both keys call it.
+        function submit(text) {
+            var field = findIn(loader.item, 'searchField')
+            field.text = text
+            fake.searches = []
+            field.submit()
+            return fake.searches.join('/') + ' ' + field.activeFocus
+        }
         Component.onCompleted: Probe.target = root
     }
 "#;
@@ -105,6 +115,7 @@ const ROOT_QML: &str = r#"
         function type() { return Probe.target.type() }
         function results() { return Probe.target.results() }
         function fieldHasFocus() { return Probe.target.fieldHasFocus() }
+        function submit(text) { return Probe.target.submit(text) }
     }
 "#;
 
@@ -171,4 +182,32 @@ fn new_results_leave_the_keyboard_with_the_search_field() {
     // And again, as each pause in typing brings a new set.
     assert_eq!(call!("results"), "ok");
     assert_eq!(call!("fieldHasFocus"), "true");
+
+    // Return is "done typing": the search goes out now, for what is in the
+    // field, and the keyboard goes away so the results have the screen.
+    assert_eq!(
+        call!("submit", QString::from("harbour")),
+        "harbour false",
+        "submitting must search for the field's text at once, and only once, \
+         and drop the focus so the keyboard closes"
+    );
+}
+
+/// Both of the keyboard's "done" keys submit: Return is what the virtual
+/// keyboard sends, Enter a hardware keypad's. Read from the source because a
+/// QML probe cannot press a key; what `submit` does is checked above.
+#[test]
+fn return_and_enter_submit_the_search() {
+    let source =
+        std::fs::read_to_string(repo_root().join("qml/components/EntryListView.qml")).unwrap();
+    let field = source
+        .split_once("SearchField {")
+        .map(|(_, rest)| rest)
+        .expect("EntryListView has a SearchField");
+    for key in ["Keys.onReturnPressed", "Keys.onEnterPressed"] {
+        assert!(
+            field.contains(&format!("{key}: searchField.submit()")),
+            "the search field's {key} must call submit()"
+        );
+    }
 }
