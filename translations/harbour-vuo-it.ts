@@ -250,13 +250,13 @@
     </message>
     <message>
         <location filename="../qml/components/EntryListView.qml" line="362"/>
-        <location filename="../qml/components/EntryListView.qml" line="905"/>
+        <location filename="../qml/components/EntryListView.qml" line="950"/>
         <source>Mark as unread</source>
         <translation>Segna come da leggere</translation>
     </message>
     <message>
         <location filename="../qml/components/EntryListView.qml" line="367"/>
-        <location filename="../qml/components/EntryListView.qml" line="905"/>
+        <location filename="../qml/components/EntryListView.qml" line="950"/>
         <source>Mark as read</source>
         <translation>Segna come letto</translation>
     </message>
@@ -322,8 +322,20 @@
     </message>
     <message>
         <location filename="../qml/components/EntryListView.qml" line="509"/>
-        <source>Vuo searches the title, feed name and text of every article on this device.</source>
-        <translation>Vuo cerca nel titolo, nel nome del feed e nel testo di ogni articolo su questo dispositivo.</translation>
+        <source>Vuo searches the title and text of every article on this device, and the names of your feeds.</source>
+        <translation>Vuo cerca nel titolo e nel testo di ogni articolo su questo dispositivo e nei nomi dei tuoi feed.</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="589"/>
+        <source>Feeds (%1 of %2)</source>
+        <extracomment>As &quot;In titles (%1 of %2)&quot;, for the feeds whose name matched.</extracomment>
+        <translation>Feed (%1 di %2)</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="602"/>
+        <source>Feeds (%1)</source>
+        <extracomment>Search results: the group of feeds whose name matched. %1 is how many there are.</extracomment>
+        <translation>Feed (%1)</translation>
     </message>
     <message>
         <location filename="../qml/components/EntryListView.qml" line="511"/>
@@ -351,12 +363,6 @@
         <translation>Nei titoli (%1 di %2)</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="589"/>
-        <source>In feed names (%1 of %2)</source>
-        <extracomment>As &quot;In titles (%1 of %2)&quot;, for the articles whose feed&apos;s name matched.</extracomment>
-        <translation>Nei nomi dei feed (%1 di %2)</translation>
-    </message>
-    <message>
         <location filename="../qml/components/EntryListView.qml" line="592"/>
         <source>In article text (%1 of %2)</source>
         <extracomment>As &quot;In titles (%1 of %2)&quot;, for the articles whose text matched.</extracomment>
@@ -369,19 +375,18 @@
         <translation>Nei titoli (%1)</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="602"/>
-        <source>In feed names (%1)</source>
-        <extracomment>Search results: the group of articles whose feed&apos;s name matched. %1 is how many there are.</extracomment>
-        <translation>Nei nomi dei feed (%1)</translation>
-    </message>
-    <message>
         <location filename="../qml/components/EntryListView.qml" line="606"/>
         <source>In article text (%1)</source>
         <extracomment>Search results: the group of articles whose text matched. %1 is how many there are.</extracomment>
         <translation>Nel testo degli articoli (%1)</translation>
     </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="618"/>
+        <source>Feed</source>
+        <translation>Feed</translation>
+    </message>
     <message numerus="yes">
-        <location filename="../qml/components/EntryListView.qml" line="794"/>
+        <location filename="../qml/components/EntryListView.qml" line="822"/>
         <source>%n min read</source>
         <translation>
             <numerusform>%n min di lettura</numerusform>
@@ -389,7 +394,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/components/EntryListView.qml" line="795"/>
+        <location filename="../qml/components/EntryListView.qml" line="823"/>
         <source>%n min</source>
         <translation>
             <numerusform>%n min</numerusform>
@@ -397,17 +402,17 @@
         </translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="909"/>
+        <location filename="../qml/components/EntryListView.qml" line="954"/>
         <source>Remove favourite</source>
         <translation>Rimuovi dai preferiti</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="909"/>
+        <location filename="../qml/components/EntryListView.qml" line="954"/>
         <source>Add favourite</source>
         <translation>Aggiungi ai preferiti</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="913"/>
+        <location filename="../qml/components/EntryListView.qml" line="958"/>
         <source>Open in browser</source>
         <translation>Apri nel browser</translation>
     </message>

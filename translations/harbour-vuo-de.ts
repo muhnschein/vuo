@@ -301,6 +301,11 @@
         <translation>Nichts zu lesen</translation>
     </message>
     <message>
+        <location filename="../qml/components/EntryListView.qml" line="509"/>
+        <source>Vuo searches the title and text of every article on this device, and the names of your feeds.</source>
+        <translation>Vuo durchsucht Titel und Text aller Artikel auf diesem Gerät sowie die Namen Ihrer Feeds.</translation>
+    </message>
+    <message>
         <location filename="../qml/components/EntryListView.qml" line="512"/>
         <source>Pull down to refresh</source>
         <translation>Zum Aktualisieren herunterziehen</translation>
@@ -314,8 +319,25 @@
             <numerusform>%n weitere laden</numerusform>
         </translation>
     </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="589"/>
+        <source>Feeds (%1 of %2)</source>
+        <extracomment>As &quot;In titles (%1 of %2)&quot;, for the feeds whose name matched.</extracomment>
+        <translation>Feeds (%1 von %2)</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="602"/>
+        <source>Feeds (%1)</source>
+        <extracomment>Search results: the group of feeds whose name matched. %1 is how many there are.</extracomment>
+        <translation>Feeds (%1)</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="618"/>
+        <source>Feed</source>
+        <translation>Feed</translation>
+    </message>
     <message numerus="yes">
-        <location filename="../qml/components/EntryListView.qml" line="794"/>
+        <location filename="../qml/components/EntryListView.qml" line="822"/>
         <source>%n min read</source>
         <translation>
             <numerusform>%n Min. Lesezeit</numerusform>
@@ -323,7 +345,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/components/EntryListView.qml" line="795"/>
+        <location filename="../qml/components/EntryListView.qml" line="823"/>
         <source>%n min</source>
         <translation>
             <numerusform>%n Min.</numerusform>
@@ -332,7 +354,7 @@
     </message>
     <message>
         <location filename="../qml/components/EntryListView.qml" line="367"/>
-        <location filename="../qml/components/EntryListView.qml" line="905"/>
+        <location filename="../qml/components/EntryListView.qml" line="950"/>
         <source>Mark as read</source>
         <translation>Als gelesen markieren</translation>
     </message>
@@ -346,14 +368,9 @@
     </message>
     <message>
         <location filename="../qml/components/EntryListView.qml" line="362"/>
-        <location filename="../qml/components/EntryListView.qml" line="905"/>
+        <location filename="../qml/components/EntryListView.qml" line="950"/>
         <source>Mark as unread</source>
         <translation>Als ungelesen markieren</translation>
-    </message>
-    <message>
-        <location filename="../qml/components/EntryListView.qml" line="509"/>
-        <source>Vuo searches the title, feed name and text of every article on this device.</source>
-        <translation>Vuo durchsucht Titel, Feed-Name und Text jedes Artikels auf diesem Gerät.</translation>
     </message>
     <message>
         <location filename="../qml/components/EntryListView.qml" line="511"/>
@@ -365,12 +382,6 @@
         <source>In titles (%1 of %2)</source>
         <extracomment>Search results: the group of articles whose title matched, when only some of them are shown. %1 is how many are shown, %2 how many there are.</extracomment>
         <translation>In Titeln (%1 von %2)</translation>
-    </message>
-    <message>
-        <location filename="../qml/components/EntryListView.qml" line="589"/>
-        <source>In feed names (%1 of %2)</source>
-        <extracomment>As &quot;In titles (%1 of %2)&quot;, for the articles whose feed&apos;s name matched.</extracomment>
-        <translation>In Feed-Namen (%1 von %2)</translation>
     </message>
     <message>
         <location filename="../qml/components/EntryListView.qml" line="592"/>
@@ -385,29 +396,23 @@
         <translation>In Titeln (%1)</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="602"/>
-        <source>In feed names (%1)</source>
-        <extracomment>Search results: the group of articles whose feed&apos;s name matched. %1 is how many there are.</extracomment>
-        <translation>In Feed-Namen (%1)</translation>
-    </message>
-    <message>
         <location filename="../qml/components/EntryListView.qml" line="606"/>
         <source>In article text (%1)</source>
         <extracomment>Search results: the group of articles whose text matched. %1 is how many there are.</extracomment>
         <translation>Im Artikeltext (%1)</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="909"/>
+        <location filename="../qml/components/EntryListView.qml" line="954"/>
         <source>Remove favourite</source>
         <translation>Favorit entfernen</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="909"/>
+        <location filename="../qml/components/EntryListView.qml" line="954"/>
         <source>Add favourite</source>
         <translation>Zu Favoriten hinzufügen</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="913"/>
+        <location filename="../qml/components/EntryListView.qml" line="958"/>
         <source>Open in browser</source>
         <translation>Im Browser öffnen</translation>
     </message>

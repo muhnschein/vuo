@@ -247,13 +247,13 @@
     </message>
     <message>
         <location filename="../qml/components/EntryListView.qml" line="362"/>
-        <location filename="../qml/components/EntryListView.qml" line="905"/>
+        <location filename="../qml/components/EntryListView.qml" line="950"/>
         <source>Mark as unread</source>
         <translation>Okunmamış olarak işaretle</translation>
     </message>
     <message>
         <location filename="../qml/components/EntryListView.qml" line="367"/>
-        <location filename="../qml/components/EntryListView.qml" line="905"/>
+        <location filename="../qml/components/EntryListView.qml" line="950"/>
         <source>Mark as read</source>
         <translation>Okundu olarak işaretle</translation>
     </message>
@@ -319,8 +319,20 @@
     </message>
     <message>
         <location filename="../qml/components/EntryListView.qml" line="509"/>
-        <source>Vuo searches the title, feed name and text of every article on this device.</source>
-        <translation>Vuo, bu cihazdaki her makalenin başlığında, akış adında ve metninde arar.</translation>
+        <source>Vuo searches the title and text of every article on this device, and the names of your feeds.</source>
+        <translation>Vuo bu cihazdaki her makalenin başlığında ve metninde, ayrıca akışlarınızın adlarında arama yapar.</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="589"/>
+        <source>Feeds (%1 of %2)</source>
+        <extracomment>As &quot;In titles (%1 of %2)&quot;, for the feeds whose name matched.</extracomment>
+        <translation>Akışlar (%2 sonuçtan %1)</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="602"/>
+        <source>Feeds (%1)</source>
+        <extracomment>Search results: the group of feeds whose name matched. %1 is how many there are.</extracomment>
+        <translation>Akışlar (%1)</translation>
     </message>
     <message>
         <location filename="../qml/components/EntryListView.qml" line="511"/>
@@ -347,12 +359,6 @@
         <translation>Başlıklarda (%2 sonuçtan %1)</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="589"/>
-        <source>In feed names (%1 of %2)</source>
-        <extracomment>As &quot;In titles (%1 of %2)&quot;, for the articles whose feed&apos;s name matched.</extracomment>
-        <translation>Akış adlarında (%2 sonuçtan %1)</translation>
-    </message>
-    <message>
         <location filename="../qml/components/EntryListView.qml" line="592"/>
         <source>In article text (%1 of %2)</source>
         <extracomment>As &quot;In titles (%1 of %2)&quot;, for the articles whose text matched.</extracomment>
@@ -365,43 +371,42 @@
         <translation>Başlıklarda (%1)</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="602"/>
-        <source>In feed names (%1)</source>
-        <extracomment>Search results: the group of articles whose feed&apos;s name matched. %1 is how many there are.</extracomment>
-        <translation>Akış adlarında (%1)</translation>
-    </message>
-    <message>
         <location filename="../qml/components/EntryListView.qml" line="606"/>
         <source>In article text (%1)</source>
         <extracomment>Search results: the group of articles whose text matched. %1 is how many there are.</extracomment>
         <translation>Makale metninde (%1)</translation>
     </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="618"/>
+        <source>Feed</source>
+        <translation>Akış</translation>
+    </message>
     <message numerus="yes">
-        <location filename="../qml/components/EntryListView.qml" line="794"/>
+        <location filename="../qml/components/EntryListView.qml" line="822"/>
         <source>%n min read</source>
         <translation>
             <numerusform>%n dk okuma</numerusform>
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/components/EntryListView.qml" line="795"/>
+        <location filename="../qml/components/EntryListView.qml" line="823"/>
         <source>%n min</source>
         <translation>
             <numerusform>%n dk</numerusform>
         </translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="909"/>
+        <location filename="../qml/components/EntryListView.qml" line="954"/>
         <source>Remove favourite</source>
         <translation>Favorilerden çıkar</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="909"/>
+        <location filename="../qml/components/EntryListView.qml" line="954"/>
         <source>Add favourite</source>
         <translation>Favorilere ekle</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="913"/>
+        <location filename="../qml/components/EntryListView.qml" line="958"/>
         <source>Open in browser</source>
         <translation>Tarayıcıda aç</translation>
     </message>
