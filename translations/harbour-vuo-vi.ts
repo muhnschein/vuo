@@ -91,12 +91,12 @@
         <translation>Đang lấy bài viết gốc…</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="507"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="531"/>
         <source>The original article was loaded.</source>
         <translation>Bài viết gốc đã được tải.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="514"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="538"/>
         <source>This feed already contains the full article.</source>
         <translation>Nguồn tin này đã chứa toàn bộ bài viết.</translation>
     </message>
@@ -106,17 +106,17 @@
         <translation>Chạm để tải ảnh từ %1</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="511"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="535"/>
         <source>The server could not extract the original article.</source>
         <translation>Máy chủ không lấy được bài viết gốc.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="516"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="540"/>
         <source>The server rejected the API key.</source>
         <translation>Máy chủ đã từ chối khoá API.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="520"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="544"/>
         <source>Could not fetch the original article: %1</source>
         <translation>Không lấy được bài viết gốc: %1</translation>
     </message>
@@ -124,17 +124,17 @@
 <context>
     <name>CoverPage</name>
     <message>
-        <location filename="../qml/cover/CoverPage.qml" line="225"/>
+        <location filename="../qml/cover/CoverPage.qml" line="237"/>
         <source>Sign-in failed</source>
         <translation>Đăng nhập thất bại</translation>
     </message>
     <message>
-        <location filename="../qml/cover/CoverPage.qml" line="225"/>
+        <location filename="../qml/cover/CoverPage.qml" line="237"/>
         <source>Refresh failed</source>
         <translation>Làm mới thất bại</translation>
     </message>
     <message>
-        <location filename="../qml/cover/CoverPage.qml" line="226"/>
+        <location filename="../qml/cover/CoverPage.qml" line="238"/>
         <source>Refreshing</source>
         <translation>Đang làm mới</translation>
     </message>
@@ -183,32 +183,32 @@
     <name>EntryListPage</name>
     <message>
         <location filename="../qml/pages/EntryListPage.qml" line="11"/>
-        <location filename="../qml/pages/EntryListPage.qml" line="167"/>
+        <location filename="../qml/pages/EntryListPage.qml" line="176"/>
         <source>Unread</source>
         <translation>Chưa đọc</translation>
     </message>
     <message>
-        <location filename="../qml/pages/EntryListPage.qml" line="167"/>
+        <location filename="../qml/pages/EntryListPage.qml" line="176"/>
         <source>Favourites</source>
         <translation>Ưa thích</translation>
     </message>
     <message>
-        <location filename="../qml/pages/EntryListPage.qml" line="167"/>
+        <location filename="../qml/pages/EntryListPage.qml" line="176"/>
         <source>All</source>
         <translation>Tất cả</translation>
     </message>
     <message>
-        <location filename="../qml/pages/EntryListPage.qml" line="317"/>
+        <location filename="../qml/pages/EntryListPage.qml" line="327"/>
         <source>The server rejected the API key.</source>
         <translation>Máy chủ đã từ chối khoá API.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/EntryListPage.qml" line="318"/>
+        <location filename="../qml/pages/EntryListPage.qml" line="328"/>
         <source>Open settings</source>
         <translation>Mở cài đặt</translation>
     </message>
     <message>
-        <location filename="../qml/pages/EntryListPage.qml" line="320"/>
+        <location filename="../qml/pages/EntryListPage.qml" line="330"/>
         <source>Refresh failed: %1</source>
         <translation>Làm mới thất bại: %1</translation>
     </message>
@@ -216,120 +216,205 @@
 <context>
     <name>EntryListView</name>
     <message numerus="yes">
-        <location filename="../qml/components/EntryListView.qml" line="204"/>
+        <location filename="../qml/components/EntryListView.qml" line="237"/>
         <source>%n selected</source>
         <translation>
             <numerusform>Đã chọn %n</numerusform>
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/components/EntryListView.qml" line="206"/>
+        <location filename="../qml/components/EntryListView.qml" line="239"/>
         <source>%n article(s)</source>
         <translation>
             <numerusform>%n bài viết</numerusform>
         </translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="261"/>
+        <location filename="../qml/components/EntryListView.qml" line="274"/>
+        <source>Search articles</source>
+        <extracomment>Placeholder in the empty search field.</extracomment>
+        <translation>Tìm bài viết</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="356"/>
         <source>Select all</source>
         <translation>Chọn tất cả</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="262"/>
+        <location filename="../qml/components/EntryListView.qml" line="357"/>
         <source>Deselect all</source>
         <translation>Bỏ chọn tất cả</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="267"/>
-        <location filename="../qml/components/EntryListView.qml" line="619"/>
+        <location filename="../qml/components/EntryListView.qml" line="362"/>
+        <location filename="../qml/components/EntryListView.qml" line="950"/>
         <source>Mark as unread</source>
         <translation>Đánh dấu chưa đọc</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="272"/>
-        <location filename="../qml/components/EntryListView.qml" line="619"/>
+        <location filename="../qml/components/EntryListView.qml" line="367"/>
+        <location filename="../qml/components/EntryListView.qml" line="950"/>
         <source>Mark as read</source>
         <translation>Đánh dấu đã đọc</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="279"/>
+        <location filename="../qml/components/EntryListView.qml" line="374"/>
         <source>Settings</source>
         <translation>Cài đặt</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="284"/>
+        <location filename="../qml/components/EntryListView.qml" line="379"/>
         <source>Feeds</source>
         <translation>Nguồn tin</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="299"/>
-        <location filename="../qml/components/EntryListView.qml" line="306"/>
+        <location filename="../qml/components/EntryListView.qml" line="394"/>
+        <location filename="../qml/components/EntryListView.qml" line="401"/>
         <source>Select articles</source>
         <translation>Chọn bài viết</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="311"/>
+        <location filename="../qml/components/EntryListView.qml" line="406"/>
         <source>Mark all as read</source>
         <translation>Đánh dấu tất cả đã đọc</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="330"/>
+        <location filename="../qml/components/EntryListView.qml" line="426"/>
         <source>Marking all as read</source>
         <translation>Đang đánh dấu tất cả đã đọc</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="337"/>
+        <location filename="../qml/components/EntryListView.qml" line="437"/>
+        <source>Search</source>
+        <comment>menu item</comment>
+        <extracomment>Pulley menu item. A verb: it opens the search page.</extracomment>
+        <translation>Tìm kiếm</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="447"/>
+        <source>Search</source>
+        <comment>page title</comment>
+        <extracomment>The search page&apos;s title. A noun.</extracomment>
+        <translation>Tìm kiếm</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="453"/>
         <source>Refresh</source>
         <translation>Làm mới</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="381"/>
+        <location filename="../qml/components/EntryListView.qml" line="502"/>
+        <source>No articles found</source>
+        <translation>Không tìm thấy bài viết nào</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="503"/>
         <source>No favourites</source>
         <translation>Chưa có mục ưa thích</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="382"/>
+        <location filename="../qml/components/EntryListView.qml" line="504"/>
         <source>Nothing to read</source>
         <translation>Không có gì để đọc</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="384"/>
+        <location filename="../qml/components/EntryListView.qml" line="509"/>
+        <source>Vuo searches the title and text of every article on this device, and the names of your feeds.</source>
+        <translation>Vuo tìm trong tiêu đề và nội dung của mọi bài viết trên thiết bị này, cũng như tên các nguồn tin của bạn.</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="589"/>
+        <source>Feeds (%1 of %2)</source>
+        <extracomment>As &quot;In titles (%1 of %2)&quot;, for the feeds whose name matched.</extracomment>
+        <translation>Nguồn tin (%1 trên %2)</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="602"/>
+        <source>Feeds (%1)</source>
+        <extracomment>Search results: the group of feeds whose name matched. %1 is how many there are.</extracomment>
+        <translation>Nguồn tin (%1)</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="511"/>
         <source>Articles you add to favourites appear here</source>
         <translation>Các bài viết bạn thêm vào ưa thích sẽ hiển thị ở đây</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="385"/>
+        <location filename="../qml/components/EntryListView.qml" line="512"/>
         <source>Pull down to refresh</source>
         <translation>Kéo xuống để làm mới</translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/components/EntryListView.qml" line="540"/>
+        <location filename="../qml/components/EntryListView.qml" line="572"/>
+        <source>Load %n more</source>
+        <extracomment>Under a group of search results: shows %n more of the group.</extracomment>
+        <translation>
+            <numerusform>Tải thêm %n</numerusform>
+        </translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="584"/>
+        <source>In titles (%1 of %2)</source>
+        <extracomment>Search results: the group of articles whose title matched, when only some of them are shown. %1 is how many are shown, %2 how many there are.</extracomment>
+        <translation>Trong tiêu đề (%1 trên %2)</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="592"/>
+        <source>In article text (%1 of %2)</source>
+        <extracomment>As &quot;In titles (%1 of %2)&quot;, for the articles whose text matched.</extracomment>
+        <translation>Trong nội dung bài viết (%1 trên %2)</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="597"/>
+        <source>In titles (%1)</source>
+        <extracomment>Search results: the group of articles whose title matched. %1 is how many there are.</extracomment>
+        <translation>Trong tiêu đề (%1)</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="606"/>
+        <source>In article text (%1)</source>
+        <extracomment>Search results: the group of articles whose text matched. %1 is how many there are.</extracomment>
+        <translation>Trong nội dung bài viết (%1)</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="618"/>
+        <source>Feed</source>
+        <translation>Nguồn tin</translation>
+    </message>
+    <message numerus="yes">
+        <location filename="../qml/components/EntryListView.qml" line="822"/>
         <source>%n min read</source>
         <translation>
             <numerusform>%n phút đọc</numerusform>
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/components/EntryListView.qml" line="541"/>
+        <location filename="../qml/components/EntryListView.qml" line="823"/>
         <source>%n min</source>
         <translation>
             <numerusform>%n phút</numerusform>
         </translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="623"/>
+        <location filename="../qml/components/EntryListView.qml" line="954"/>
         <source>Remove favourite</source>
         <translation>Bỏ khỏi ưa thích</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="623"/>
+        <location filename="../qml/components/EntryListView.qml" line="954"/>
         <source>Add favourite</source>
         <translation>Thêm vào ưa thích</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="627"/>
+        <location filename="../qml/components/EntryListView.qml" line="958"/>
         <source>Open in browser</source>
         <translation>Mở trong trình duyệt</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="568"/>
+        <source>Load all results</source>
+        <extracomment>Under a group of search results: shows all the rest of the group.</extracomment>
+        <translation>Tải tất cả</translation>
     </message>
 </context>
 <context>
@@ -378,6 +463,14 @@
         <location filename="../qml/pages/FeedListPage.qml" line="174"/>
         <source>Unsubscribing</source>
         <translation>Đang huỷ đăng ký</translation>
+    </message>
+</context>
+<context>
+    <name>ImageViewerPage</name>
+    <message>
+        <location filename="../qml/pages/ImageViewerPage.qml" line="235"/>
+        <source>The image could not be loaded.</source>
+        <translation>Không thể tải ảnh.</translation>
     </message>
 </context>
 <context>
@@ -698,18 +791,25 @@
 <context>
     <name>harbour-vuo</name>
     <message numerus="yes">
-        <location filename="../qml/harbour-vuo.qml" line="129"/>
+        <location filename="../qml/harbour-vuo.qml" line="132"/>
         <source>%n new article(s)</source>
         <translation>
             <numerusform>%n bài viết mới</numerusform>
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/harbour-vuo.qml" line="136"/>
+        <location filename="../qml/harbour-vuo.qml" line="139"/>
         <source>%n unread</source>
         <translation>
             <numerusform>%n chưa đọc</numerusform>
         </translation>
+    </message>
+    <message>
+        <location filename="../qml/harbour-vuo.qml" line="338"/>
+        <source>Search</source>
+        <comment>page title</comment>
+        <extracomment>The search page&apos;s title. A noun.</extracomment>
+        <translation>Tìm kiếm</translation>
     </message>
 </context>
 </TS>

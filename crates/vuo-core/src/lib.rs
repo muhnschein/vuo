@@ -59,6 +59,7 @@ pub mod model;
 pub mod net;
 pub mod notify;
 pub mod redact;
+pub mod search;
 pub mod sync;
 
 pub use error::{Error, Result};

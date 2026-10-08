@@ -74,10 +74,15 @@ fn render(document: &vuo_core::content::Document) -> String {
                 text
             ),
             BlockKind::Image {
-                src, alt, fetch, ..
-            } => {
-                format!("img[{fetch:?}] {src} alt={alt:?}")
-            }
+                src,
+                alt,
+                fetch,
+                link,
+                ..
+            } => match link {
+                Some(link) => format!("img[{fetch:?}] {src} alt={alt:?} link={link}"),
+                None => format!("img[{fetch:?}] {src} alt={alt:?}"),
+            },
             BlockKind::Table { rows } => {
                 // Every cell, not just the row count. `format!("table: {} rows")`
                 // put each cell's text, styling, links and header flag OUTSIDE

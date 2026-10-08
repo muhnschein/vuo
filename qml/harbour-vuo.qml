@@ -57,6 +57,9 @@ ApplicationWindow {
     // restarted. This model is the only one a pushed view ever re-scopes, and
     // no tab is bound to it.
     EntryModel { id: browseEntries }
+    // And a fifth for SEARCH, for the same reason as the fourth: the search
+    // page re-scopes the model it is handed, so it gets one no tab shows.
+    EntryModel { id: searchEntries }
     FeedModel { id: feeds }
     // Asked one thing here: whether an account is stored at all. That
     // decides the first page, and it is read from the file on every access,
@@ -159,7 +162,7 @@ ApplicationWindow {
     // configured, it made no difference. A tick is individually cheap
     // (`pollSync` is an atomic load and an early return while nothing has
     // changed), but the wakeup itself is the cost: it enters the JS engine,
-    // walks five models, and denies the CPU the deep idle states it would
+    // walks six models, and denies the CPU the deep idle states it would
     // otherwise reach between them.
     //
     // While the app is active, 1.5 seconds: the reader is looking at a list
@@ -180,6 +183,8 @@ ApplicationWindow {
         // Cheap while nothing is being browsed: a model with no scope
         // reloads nothing.
         changed = browseEntries.pollSync() || changed
+        // Likewise: with no search open, nothing is scoped and nothing runs.
+        changed = searchEntries.pollSync() || changed
         if (changed) {
             feeds.pollSync()
         }
@@ -272,6 +277,7 @@ ApplicationWindow {
             scopeModels: [entries, starredEntries, allEntries]
             model: entries
             browseModel: browseEntries
+            searchModel: searchEntries
             feedModel: feeds
             // `entries` is polled first above, so it is the model that takes
             // the sync-failure notice. See EntryListPage.noticeModel.
@@ -309,6 +315,33 @@ ApplicationWindow {
 
     initialPage: accountSettings.configured ? entryList : onboarding
 
+    /// Bring the app to the front on its search page: the cover's search
+    /// action. The same page the list's pulley opens, over whatever the
+    /// reader was on -- unless that already is a search, which keeps what was
+    /// typed in it. Nothing before the account is set up: there is no mirror
+    /// to search, and the stack is the onboarding's.
+    function openSearch() {
+        if (!accountSettings.configured) {
+            return
+        }
+        var top = pageStack.currentPage
+        if (!top || top.searching !== true) {
+            pageStack.push(Qt.resolvedUrl("pages/EntryListPage.qml"), {
+                model: searchEntries,
+                searchModel: searchEntries,
+                browseModel: browseEntries,
+                feedModel: feeds,
+                noticeModel: entries,
+                // models::Scope::Search
+                scopeKind: 5,
+                //: The search page's title. A noun.
+                scopeLabel: qsTr("Search", "page title"),
+                searching: true
+            }, PageStackAction.Immediate)
+        }
+        app.activate()
+    }
+
     // The cover is a separate Component so its bindings can reach the models
     // -- the unread count and the feeds it draws -- which a bare URL cover
     // cannot.
@@ -320,6 +353,7 @@ ApplicationWindow {
             // there, rather than spinning until the user reopens the app.
             syncError: entries.syncError
             syncErrorIsAuth: entries.syncErrorIsAuth
+            onSearch: app.openSearch()
             onRefresh: {
                 entries.requestSync()
                 // See `_watchingCoverRefresh`: the poll is stopped while the

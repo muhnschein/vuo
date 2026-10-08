@@ -92,12 +92,12 @@
         <translation>ಮೂಲ ಲೇಖನವನ್ನು ತರಲಾಗುತ್ತಿದೆ…</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="507"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="531"/>
         <source>The original article was loaded.</source>
         <translation>ಮೂಲ ಲೇಖನ ಲೋಡ್ ಆಯಿತು.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="514"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="538"/>
         <source>This feed already contains the full article.</source>
         <translation>ಈ ಫೀಡ್‌ನಲ್ಲಿ ಪೂರ್ಣ ಲೇಖನ ಈಗಾಗಲೇ ಇದೆ.</translation>
     </message>
@@ -107,17 +107,17 @@
         <translation>%1 ನಿಂದ ಚಿತ್ರಗಳನ್ನು ಲೋಡ್ ಮಾಡಲು ತಟ್ಟಿ</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="511"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="535"/>
         <source>The server could not extract the original article.</source>
         <translation>ಸರ್ವರ್‌ಗೆ ಮೂಲ ಲೇಖನವನ್ನು ತೆಗೆಯಲಾಗಲಿಲ್ಲ.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="516"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="540"/>
         <source>The server rejected the API key.</source>
         <translation>ಸರ್ವರ್ API ಕೀಲಿಯನ್ನು ತಿರಸ್ಕರಿಸಿತು.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="520"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="544"/>
         <source>Could not fetch the original article: %1</source>
         <translation>ಮೂಲ ಲೇಖನವನ್ನು ತರಲಾಗಲಿಲ್ಲ: %1</translation>
     </message>
@@ -125,17 +125,17 @@
 <context>
     <name>CoverPage</name>
     <message>
-        <location filename="../qml/cover/CoverPage.qml" line="225"/>
+        <location filename="../qml/cover/CoverPage.qml" line="237"/>
         <source>Sign-in failed</source>
         <translation>ಸೈನ್-ಇನ್ ವಿಫಲ</translation>
     </message>
     <message>
-        <location filename="../qml/cover/CoverPage.qml" line="225"/>
+        <location filename="../qml/cover/CoverPage.qml" line="237"/>
         <source>Refresh failed</source>
         <translation>ರಿಫ್ರೆಶ್ ವಿಫಲ</translation>
     </message>
     <message>
-        <location filename="../qml/cover/CoverPage.qml" line="226"/>
+        <location filename="../qml/cover/CoverPage.qml" line="238"/>
         <source>Refreshing</source>
         <translation>ರಿಫ್ರೆಶ್ ಆಗುತ್ತಿದೆ</translation>
     </message>
@@ -184,32 +184,32 @@
     <name>EntryListPage</name>
     <message>
         <location filename="../qml/pages/EntryListPage.qml" line="11"/>
-        <location filename="../qml/pages/EntryListPage.qml" line="167"/>
+        <location filename="../qml/pages/EntryListPage.qml" line="176"/>
         <source>Unread</source>
         <translation>ಓದದವು</translation>
     </message>
     <message>
-        <location filename="../qml/pages/EntryListPage.qml" line="167"/>
+        <location filename="../qml/pages/EntryListPage.qml" line="176"/>
         <source>Favourites</source>
         <translation>ಮೆಚ್ಚಿನವು</translation>
     </message>
     <message>
-        <location filename="../qml/pages/EntryListPage.qml" line="167"/>
+        <location filename="../qml/pages/EntryListPage.qml" line="176"/>
         <source>All</source>
         <translation>ಎಲ್ಲಾ</translation>
     </message>
     <message>
-        <location filename="../qml/pages/EntryListPage.qml" line="317"/>
+        <location filename="../qml/pages/EntryListPage.qml" line="327"/>
         <source>The server rejected the API key.</source>
         <translation>ಸರ್ವರ್ API ಕೀಲಿಯನ್ನು ತಿರಸ್ಕರಿಸಿತು.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/EntryListPage.qml" line="318"/>
+        <location filename="../qml/pages/EntryListPage.qml" line="328"/>
         <source>Open settings</source>
         <translation>ಸೆಟ್ಟಿಂಗ್‌ಗಳನ್ನು ತೆರೆ</translation>
     </message>
     <message>
-        <location filename="../qml/pages/EntryListPage.qml" line="320"/>
+        <location filename="../qml/pages/EntryListPage.qml" line="330"/>
         <source>Refresh failed: %1</source>
         <translation>ರಿಫ್ರೆಶ್ ವಿಫಲ: %1</translation>
     </message>
@@ -217,7 +217,7 @@
 <context>
     <name>EntryListView</name>
     <message numerus="yes">
-        <location filename="../qml/components/EntryListView.qml" line="204"/>
+        <location filename="../qml/components/EntryListView.qml" line="237"/>
         <source>%n selected</source>
         <translation>
             <numerusform>%n ಆಯ್ಕೆಯಾಗಿದೆ</numerusform>
@@ -225,7 +225,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/components/EntryListView.qml" line="206"/>
+        <location filename="../qml/components/EntryListView.qml" line="239"/>
         <source>%n article(s)</source>
         <translation>
             <numerusform>%n ಲೇಖನ</numerusform>
@@ -233,80 +233,160 @@
         </translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="261"/>
+        <location filename="../qml/components/EntryListView.qml" line="274"/>
+        <source>Search articles</source>
+        <extracomment>Placeholder in the empty search field.</extracomment>
+        <translation>ಲೇಖನಗಳನ್ನು ಹುಡುಕಿ</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="356"/>
         <source>Select all</source>
         <translation>ಎಲ್ಲವನ್ನೂ ಆಯ್ಕೆಮಾಡಿ</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="262"/>
+        <location filename="../qml/components/EntryListView.qml" line="357"/>
         <source>Deselect all</source>
         <translation>ಆಯ್ಕೆ ತೆಗೆ</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="267"/>
-        <location filename="../qml/components/EntryListView.qml" line="619"/>
+        <location filename="../qml/components/EntryListView.qml" line="362"/>
+        <location filename="../qml/components/EntryListView.qml" line="950"/>
         <source>Mark as unread</source>
         <translation>ಓದದ್ದೆಂದು ಗುರುತಿಸಿ</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="272"/>
-        <location filename="../qml/components/EntryListView.qml" line="619"/>
+        <location filename="../qml/components/EntryListView.qml" line="367"/>
+        <location filename="../qml/components/EntryListView.qml" line="950"/>
         <source>Mark as read</source>
         <translation>ಓದಿದ್ದೆಂದು ಗುರುತಿಸಿ</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="279"/>
+        <location filename="../qml/components/EntryListView.qml" line="374"/>
         <source>Settings</source>
         <translation>ಸೆಟ್ಟಿಂಗ್‌ಗಳು</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="284"/>
+        <location filename="../qml/components/EntryListView.qml" line="379"/>
         <source>Feeds</source>
         <translation>ಫೀಡ್‌ಗಳು</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="299"/>
-        <location filename="../qml/components/EntryListView.qml" line="306"/>
+        <location filename="../qml/components/EntryListView.qml" line="394"/>
+        <location filename="../qml/components/EntryListView.qml" line="401"/>
         <source>Select articles</source>
         <translation>ಲೇಖನಗಳನ್ನು ಆಯ್ಕೆಮಾಡಿ</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="311"/>
+        <location filename="../qml/components/EntryListView.qml" line="406"/>
         <source>Mark all as read</source>
         <translation>ಎಲ್ಲವನ್ನೂ ಓದಿದ್ದೆಂದು ಗುರುತಿಸಿ</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="330"/>
+        <location filename="../qml/components/EntryListView.qml" line="426"/>
         <source>Marking all as read</source>
         <translation>ಎಲ್ಲವನ್ನೂ ಓದಿದ್ದೆಂದು ಗುರುತಿಸಲಾಗುತ್ತಿದೆ</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="337"/>
+        <location filename="../qml/components/EntryListView.qml" line="437"/>
+        <source>Search</source>
+        <comment>menu item</comment>
+        <extracomment>Pulley menu item. A verb: it opens the search page.</extracomment>
+        <translation>ಹುಡುಕಿ</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="447"/>
+        <source>Search</source>
+        <comment>page title</comment>
+        <extracomment>The search page&apos;s title. A noun.</extracomment>
+        <translation>ಹುಡುಕಾಟ</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="453"/>
         <source>Refresh</source>
         <translation>ರಿಫ್ರೆಶ್</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="381"/>
+        <location filename="../qml/components/EntryListView.qml" line="502"/>
+        <source>No articles found</source>
+        <translation>ಯಾವುದೇ ಲೇಖನ ಕಂಡುಬಂದಿಲ್ಲ</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="503"/>
         <source>No favourites</source>
         <translation>ಮೆಚ್ಚಿನವು ಇಲ್ಲ</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="382"/>
+        <location filename="../qml/components/EntryListView.qml" line="504"/>
         <source>Nothing to read</source>
         <translation>ಓದಲು ಏನೂ ಇಲ್ಲ</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="384"/>
+        <location filename="../qml/components/EntryListView.qml" line="509"/>
+        <source>Vuo searches the title and text of every article on this device, and the names of your feeds.</source>
+        <translation>Vuo ಈ ಸಾಧನದಲ್ಲಿನ ಪ್ರತಿ ಲೇಖನದ ಶೀರ್ಷಿಕೆ ಮತ್ತು ಪಠ್ಯದಲ್ಲಿ ಹಾಗೂ ನಿಮ್ಮ ಫೀಡ್‌ಗಳ ಹೆಸರುಗಳಲ್ಲಿ ಹುಡುಕುತ್ತದೆ.</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="589"/>
+        <source>Feeds (%1 of %2)</source>
+        <extracomment>As &quot;In titles (%1 of %2)&quot;, for the feeds whose name matched.</extracomment>
+        <translation>ಫೀಡ್‌ಗಳು (%2 ರಲ್ಲಿ %1)</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="602"/>
+        <source>Feeds (%1)</source>
+        <extracomment>Search results: the group of feeds whose name matched. %1 is how many there are.</extracomment>
+        <translation>ಫೀಡ್‌ಗಳು (%1)</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="511"/>
         <source>Articles you add to favourites appear here</source>
         <translation>ಮೆಚ್ಚಿನವುಗಳಿಗೆ ಸೇರಿಸಿದ ಲೇಖನಗಳು ಇಲ್ಲಿ ಕಾಣಿಸುತ್ತವೆ</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="385"/>
+        <location filename="../qml/components/EntryListView.qml" line="512"/>
         <source>Pull down to refresh</source>
         <translation>ರಿಫ್ರೆಶ್ ಮಾಡಲು ಕೆಳಗೆ ಎಳೆಯಿರಿ</translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/components/EntryListView.qml" line="540"/>
+        <location filename="../qml/components/EntryListView.qml" line="572"/>
+        <source>Load %n more</source>
+        <extracomment>Under a group of search results: shows %n more of the group.</extracomment>
+        <translation>
+            <numerusform>ಇನ್ನೂ %n ಲೋಡ್ ಮಾಡಿ</numerusform>
+            <numerusform>ಇನ್ನೂ %n ಲೋಡ್ ಮಾಡಿ</numerusform>
+        </translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="584"/>
+        <source>In titles (%1 of %2)</source>
+        <extracomment>Search results: the group of articles whose title matched, when only some of them are shown. %1 is how many are shown, %2 how many there are.</extracomment>
+        <translation>ಶೀರ್ಷಿಕೆಗಳಲ್ಲಿ (%2 ರಲ್ಲಿ %1)</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="592"/>
+        <source>In article text (%1 of %2)</source>
+        <extracomment>As &quot;In titles (%1 of %2)&quot;, for the articles whose text matched.</extracomment>
+        <translation>ಲೇಖನದ ಪಠ್ಯದಲ್ಲಿ (%2 ರಲ್ಲಿ %1)</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="597"/>
+        <source>In titles (%1)</source>
+        <extracomment>Search results: the group of articles whose title matched. %1 is how many there are.</extracomment>
+        <translation>ಶೀರ್ಷಿಕೆಗಳಲ್ಲಿ (%1)</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="606"/>
+        <source>In article text (%1)</source>
+        <extracomment>Search results: the group of articles whose text matched. %1 is how many there are.</extracomment>
+        <translation>ಲೇಖನದ ಪಠ್ಯದಲ್ಲಿ (%1)</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="618"/>
+        <source>Feed</source>
+        <translation>ಫೀಡ್</translation>
+    </message>
+    <message numerus="yes">
+        <location filename="../qml/components/EntryListView.qml" line="822"/>
         <source>%n min read</source>
         <translation>
             <numerusform>%n ನಿಮಿಷ ಓದು</numerusform>
@@ -314,7 +394,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/components/EntryListView.qml" line="541"/>
+        <location filename="../qml/components/EntryListView.qml" line="823"/>
         <source>%n min</source>
         <translation>
             <numerusform>%n ನಿಮಿಷ</numerusform>
@@ -322,19 +402,25 @@
         </translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="623"/>
+        <location filename="../qml/components/EntryListView.qml" line="954"/>
         <source>Remove favourite</source>
         <translation>ಮೆಚ್ಚಿನವುಗಳಿಂದ ತೆಗೆ</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="623"/>
+        <location filename="../qml/components/EntryListView.qml" line="954"/>
         <source>Add favourite</source>
         <translation>ಮೆಚ್ಚಿನವುಗಳಿಗೆ ಸೇರಿಸಿ</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="627"/>
+        <location filename="../qml/components/EntryListView.qml" line="958"/>
         <source>Open in browser</source>
         <translation>ಬ್ರೌಸರ್‌ನಲ್ಲಿ ತೆರೆ</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="568"/>
+        <source>Load all results</source>
+        <extracomment>Under a group of search results: shows all the rest of the group.</extracomment>
+        <translation>ಎಲ್ಲವನ್ನೂ ಲೋಡ್ ಮಾಡಿ</translation>
     </message>
 </context>
 <context>
@@ -383,6 +469,14 @@
         <location filename="../qml/pages/FeedListPage.qml" line="174"/>
         <source>Unsubscribing</source>
         <translation>ಚಂದಾ ರದ್ದಾಗುತ್ತಿದೆ</translation>
+    </message>
+</context>
+<context>
+    <name>ImageViewerPage</name>
+    <message>
+        <location filename="../qml/pages/ImageViewerPage.qml" line="235"/>
+        <source>The image could not be loaded.</source>
+        <translation>ಚಿತ್ರವನ್ನು ಲೋಡ್ ಮಾಡಲು ಸಾಧ್ಯವಾಗಲಿಲ್ಲ.</translation>
     </message>
 </context>
 <context>
@@ -704,7 +798,7 @@
 <context>
     <name>harbour-vuo</name>
     <message numerus="yes">
-        <location filename="../qml/harbour-vuo.qml" line="129"/>
+        <location filename="../qml/harbour-vuo.qml" line="132"/>
         <source>%n new article(s)</source>
         <translation>
             <numerusform>%n ಹೊಸ ಲೇಖನ</numerusform>
@@ -712,12 +806,19 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/harbour-vuo.qml" line="136"/>
+        <location filename="../qml/harbour-vuo.qml" line="139"/>
         <source>%n unread</source>
         <translation>
             <numerusform>%n ಓದದ್ದು</numerusform>
             <numerusform>%n ಓದದವು</numerusform>
         </translation>
+    </message>
+    <message>
+        <location filename="../qml/harbour-vuo.qml" line="338"/>
+        <source>Search</source>
+        <comment>page title</comment>
+        <extracomment>The search page&apos;s title. A noun.</extracomment>
+        <translation>ಹುಡುಕಾಟ</translation>
     </message>
 </context>
 </TS>

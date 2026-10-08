@@ -92,12 +92,12 @@
         <translation>மூலக் கட்டுரை பெறப்படுகிறது…</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="507"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="531"/>
         <source>The original article was loaded.</source>
         <translation>மூலக் கட்டுரை ஏற்றப்பட்டது.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="514"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="538"/>
         <source>This feed already contains the full article.</source>
         <translation>இந்த ஊட்டத்தில் முழுக் கட்டுரை ஏற்கெனவே உள்ளது.</translation>
     </message>
@@ -107,17 +107,17 @@
         <translation>%1 இலிருந்து படங்களை ஏற்றத் தட்டவும்</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="511"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="535"/>
         <source>The server could not extract the original article.</source>
         <translation>சேவையகத்தால் மூலக் கட்டுரையை எடுக்க முடியவில்லை.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="516"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="540"/>
         <source>The server rejected the API key.</source>
         <translation>சேவையகம் API சாவியை நிராகரித்தது.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="520"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="544"/>
         <source>Could not fetch the original article: %1</source>
         <translation>மூலக் கட்டுரையைப் பெற முடியவில்லை: %1</translation>
     </message>
@@ -125,17 +125,17 @@
 <context>
     <name>CoverPage</name>
     <message>
-        <location filename="../qml/cover/CoverPage.qml" line="225"/>
+        <location filename="../qml/cover/CoverPage.qml" line="237"/>
         <source>Sign-in failed</source>
         <translation>உள்நுழைவு தோல்வி</translation>
     </message>
     <message>
-        <location filename="../qml/cover/CoverPage.qml" line="225"/>
+        <location filename="../qml/cover/CoverPage.qml" line="237"/>
         <source>Refresh failed</source>
         <translation>புதுப்பிப்பு தோல்வி</translation>
     </message>
     <message>
-        <location filename="../qml/cover/CoverPage.qml" line="226"/>
+        <location filename="../qml/cover/CoverPage.qml" line="238"/>
         <source>Refreshing</source>
         <translation>புதுப்பிக்கிறது</translation>
     </message>
@@ -184,32 +184,32 @@
     <name>EntryListPage</name>
     <message>
         <location filename="../qml/pages/EntryListPage.qml" line="11"/>
-        <location filename="../qml/pages/EntryListPage.qml" line="167"/>
+        <location filename="../qml/pages/EntryListPage.qml" line="176"/>
         <source>Unread</source>
         <translation>படிக்காதவை</translation>
     </message>
     <message>
-        <location filename="../qml/pages/EntryListPage.qml" line="167"/>
+        <location filename="../qml/pages/EntryListPage.qml" line="176"/>
         <source>Favourites</source>
         <translation>பிடித்தவை</translation>
     </message>
     <message>
-        <location filename="../qml/pages/EntryListPage.qml" line="167"/>
+        <location filename="../qml/pages/EntryListPage.qml" line="176"/>
         <source>All</source>
         <translation>அனைத்தும்</translation>
     </message>
     <message>
-        <location filename="../qml/pages/EntryListPage.qml" line="317"/>
+        <location filename="../qml/pages/EntryListPage.qml" line="327"/>
         <source>The server rejected the API key.</source>
         <translation>சேவையகம் API சாவியை நிராகரித்தது.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/EntryListPage.qml" line="318"/>
+        <location filename="../qml/pages/EntryListPage.qml" line="328"/>
         <source>Open settings</source>
         <translation>அமைப்புகளைத் திற</translation>
     </message>
     <message>
-        <location filename="../qml/pages/EntryListPage.qml" line="320"/>
+        <location filename="../qml/pages/EntryListPage.qml" line="330"/>
         <source>Refresh failed: %1</source>
         <translation>புதுப்பிப்பு தோல்வி: %1</translation>
     </message>
@@ -217,7 +217,7 @@
 <context>
     <name>EntryListView</name>
     <message numerus="yes">
-        <location filename="../qml/components/EntryListView.qml" line="204"/>
+        <location filename="../qml/components/EntryListView.qml" line="237"/>
         <source>%n selected</source>
         <translation>
             <numerusform>%n தேர்ந்தெடுக்கப்பட்டது</numerusform>
@@ -225,7 +225,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/components/EntryListView.qml" line="206"/>
+        <location filename="../qml/components/EntryListView.qml" line="239"/>
         <source>%n article(s)</source>
         <translation>
             <numerusform>%n கட்டுரை</numerusform>
@@ -233,80 +233,160 @@
         </translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="261"/>
+        <location filename="../qml/components/EntryListView.qml" line="274"/>
+        <source>Search articles</source>
+        <extracomment>Placeholder in the empty search field.</extracomment>
+        <translation>கட்டுரைகளைத் தேடு</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="356"/>
         <source>Select all</source>
         <translation>அனைத்தையும் தேர்ந்தெடு</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="262"/>
+        <location filename="../qml/components/EntryListView.qml" line="357"/>
         <source>Deselect all</source>
         <translation>தேர்வை நீக்கு</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="267"/>
-        <location filename="../qml/components/EntryListView.qml" line="619"/>
+        <location filename="../qml/components/EntryListView.qml" line="362"/>
+        <location filename="../qml/components/EntryListView.qml" line="950"/>
         <source>Mark as unread</source>
         <translation>படிக்காததாகக் குறி</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="272"/>
-        <location filename="../qml/components/EntryListView.qml" line="619"/>
+        <location filename="../qml/components/EntryListView.qml" line="367"/>
+        <location filename="../qml/components/EntryListView.qml" line="950"/>
         <source>Mark as read</source>
         <translation>படித்ததாகக் குறி</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="279"/>
+        <location filename="../qml/components/EntryListView.qml" line="374"/>
         <source>Settings</source>
         <translation>அமைப்புகள்</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="284"/>
+        <location filename="../qml/components/EntryListView.qml" line="379"/>
         <source>Feeds</source>
         <translation>ஊட்டங்கள்</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="299"/>
-        <location filename="../qml/components/EntryListView.qml" line="306"/>
+        <location filename="../qml/components/EntryListView.qml" line="394"/>
+        <location filename="../qml/components/EntryListView.qml" line="401"/>
         <source>Select articles</source>
         <translation>கட்டுரைகளைத் தேர்ந்தெடு</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="311"/>
+        <location filename="../qml/components/EntryListView.qml" line="406"/>
         <source>Mark all as read</source>
         <translation>அனைத்தையும் படித்ததாகக் குறி</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="330"/>
+        <location filename="../qml/components/EntryListView.qml" line="426"/>
         <source>Marking all as read</source>
         <translation>அனைத்தும் படித்ததாகக் குறிக்கப்படுகிறது</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="337"/>
+        <location filename="../qml/components/EntryListView.qml" line="437"/>
+        <source>Search</source>
+        <comment>menu item</comment>
+        <extracomment>Pulley menu item. A verb: it opens the search page.</extracomment>
+        <translation>தேடு</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="447"/>
+        <source>Search</source>
+        <comment>page title</comment>
+        <extracomment>The search page&apos;s title. A noun.</extracomment>
+        <translation>தேடல்</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="453"/>
         <source>Refresh</source>
         <translation>புதுப்பி</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="381"/>
+        <location filename="../qml/components/EntryListView.qml" line="502"/>
+        <source>No articles found</source>
+        <translation>கட்டுரைகள் எதுவும் கிடைக்கவில்லை</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="503"/>
         <source>No favourites</source>
         <translation>பிடித்தவை இல்லை</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="382"/>
+        <location filename="../qml/components/EntryListView.qml" line="504"/>
         <source>Nothing to read</source>
         <translation>படிக்க ஒன்றுமில்லை</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="384"/>
+        <location filename="../qml/components/EntryListView.qml" line="509"/>
+        <source>Vuo searches the title and text of every article on this device, and the names of your feeds.</source>
+        <translation>Vuo இந்தச் சாதனத்திலுள்ள ஒவ்வொரு கட்டுரையின் தலைப்பிலும் உரையிலும், உங்கள் ஊட்டங்களின் பெயர்களிலும் தேடுகிறது.</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="589"/>
+        <source>Feeds (%1 of %2)</source>
+        <extracomment>As &quot;In titles (%1 of %2)&quot;, for the feeds whose name matched.</extracomment>
+        <translation>ஊட்டங்கள் (%2 இல் %1)</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="602"/>
+        <source>Feeds (%1)</source>
+        <extracomment>Search results: the group of feeds whose name matched. %1 is how many there are.</extracomment>
+        <translation>ஊட்டங்கள் (%1)</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="511"/>
         <source>Articles you add to favourites appear here</source>
         <translation>பிடித்தவற்றில் சேர்க்கும் கட்டுரைகள் இங்கே காட்டப்படும்</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="385"/>
+        <location filename="../qml/components/EntryListView.qml" line="512"/>
         <source>Pull down to refresh</source>
         <translation>புதுப்பிக்க கீழே இழுக்கவும்</translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/components/EntryListView.qml" line="540"/>
+        <location filename="../qml/components/EntryListView.qml" line="572"/>
+        <source>Load %n more</source>
+        <extracomment>Under a group of search results: shows %n more of the group.</extracomment>
+        <translation>
+            <numerusform>மேலும் %n ஏற்று</numerusform>
+            <numerusform>மேலும் %n ஏற்று</numerusform>
+        </translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="584"/>
+        <source>In titles (%1 of %2)</source>
+        <extracomment>Search results: the group of articles whose title matched, when only some of them are shown. %1 is how many are shown, %2 how many there are.</extracomment>
+        <translation>தலைப்புகளில் (%2 இல் %1)</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="592"/>
+        <source>In article text (%1 of %2)</source>
+        <extracomment>As &quot;In titles (%1 of %2)&quot;, for the articles whose text matched.</extracomment>
+        <translation>கட்டுரை உரையில் (%2 இல் %1)</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="597"/>
+        <source>In titles (%1)</source>
+        <extracomment>Search results: the group of articles whose title matched. %1 is how many there are.</extracomment>
+        <translation>தலைப்புகளில் (%1)</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="606"/>
+        <source>In article text (%1)</source>
+        <extracomment>Search results: the group of articles whose text matched. %1 is how many there are.</extracomment>
+        <translation>கட்டுரை உரையில் (%1)</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="618"/>
+        <source>Feed</source>
+        <translation>ஊட்டம்</translation>
+    </message>
+    <message numerus="yes">
+        <location filename="../qml/components/EntryListView.qml" line="822"/>
         <source>%n min read</source>
         <translation>
             <numerusform>%n நிமிடம் வாசிப்பு</numerusform>
@@ -314,7 +394,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/components/EntryListView.qml" line="541"/>
+        <location filename="../qml/components/EntryListView.qml" line="823"/>
         <source>%n min</source>
         <translation>
             <numerusform>%n நிமிடம்</numerusform>
@@ -322,19 +402,25 @@
         </translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="623"/>
+        <location filename="../qml/components/EntryListView.qml" line="954"/>
         <source>Remove favourite</source>
         <translation>பிடித்தவற்றிலிருந்து நீக்கு</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="623"/>
+        <location filename="../qml/components/EntryListView.qml" line="954"/>
         <source>Add favourite</source>
         <translation>பிடித்தவற்றில் சேர்</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="627"/>
+        <location filename="../qml/components/EntryListView.qml" line="958"/>
         <source>Open in browser</source>
         <translation>உலாவியில் திற</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="568"/>
+        <source>Load all results</source>
+        <extracomment>Under a group of search results: shows all the rest of the group.</extracomment>
+        <translation>அனைத்தையும் ஏற்று</translation>
     </message>
 </context>
 <context>
@@ -383,6 +469,14 @@
         <location filename="../qml/pages/FeedListPage.qml" line="174"/>
         <source>Unsubscribing</source>
         <translation>சந்தா நீக்கப்படுகிறது</translation>
+    </message>
+</context>
+<context>
+    <name>ImageViewerPage</name>
+    <message>
+        <location filename="../qml/pages/ImageViewerPage.qml" line="235"/>
+        <source>The image could not be loaded.</source>
+        <translation>படத்தை ஏற்ற முடியவில்லை.</translation>
     </message>
 </context>
 <context>
@@ -704,7 +798,7 @@
 <context>
     <name>harbour-vuo</name>
     <message numerus="yes">
-        <location filename="../qml/harbour-vuo.qml" line="129"/>
+        <location filename="../qml/harbour-vuo.qml" line="132"/>
         <source>%n new article(s)</source>
         <translation>
             <numerusform>%n புதிய கட்டுரை</numerusform>
@@ -712,12 +806,19 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/harbour-vuo.qml" line="136"/>
+        <location filename="../qml/harbour-vuo.qml" line="139"/>
         <source>%n unread</source>
         <translation>
             <numerusform>%n படிக்காதது</numerusform>
             <numerusform>%n படிக்காதவை</numerusform>
         </translation>
+    </message>
+    <message>
+        <location filename="../qml/harbour-vuo.qml" line="338"/>
+        <source>Search</source>
+        <comment>page title</comment>
+        <extracomment>The search page&apos;s title. A noun.</extracomment>
+        <translation>தேடல்</translation>
     </message>
 </context>
 </TS>

@@ -135,7 +135,7 @@ impl Span {
 /// `&` must be escaped first by virtue of being handled in the same pass;
 /// quotes are escaped so the function is equally safe inside an attribute
 /// value, which is how the `href` above uses it.
-fn escape_into(raw: &str, out: &mut String) {
+pub(crate) fn escape_into(raw: &str, out: &mut String) {
     for ch in raw.chars() {
         match ch {
             '&' => out.push_str("&amp;"),
@@ -219,6 +219,13 @@ pub enum BlockKind {
         /// actually felt like. Advisory and untrusted: a feed can say
         /// anything, so it is a ratio hint and never a fetch or decode bound.
         intrinsic: Option<(u32, u32)>,
+        /// The link the image sits inside, when it is wrapped in an `<a>`.
+        ///
+        /// A linked image is a button the feed author drew: a tap on it means
+        /// "go there", not "show me this bigger". The UI uses this to choose
+        /// between the two. Always `http`/`https`, for the same reason
+        /// [`Span::link`] is.
+        link: Option<MediaUrl>,
     },
     /// Fixed three-level nesting: rows of cells of spans. Not self-referential,
     /// so the drop-recursion argument above does not apply.

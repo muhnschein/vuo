@@ -92,12 +92,12 @@
         <translation>Récupération de l&apos;article d&apos;origine…</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="507"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="531"/>
         <source>The original article was loaded.</source>
         <translation>L&apos;article d&apos;origine a été chargé.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="514"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="538"/>
         <source>This feed already contains the full article.</source>
         <translation>Ce flux contient déjà l&apos;article complet.</translation>
     </message>
@@ -107,17 +107,17 @@
         <translation>Touchez pour charger les images de %1</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="511"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="535"/>
         <source>The server could not extract the original article.</source>
         <translation>Le serveur n&apos;a pas pu extraire l&apos;article d&apos;origine.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="516"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="540"/>
         <source>The server rejected the API key.</source>
         <translation>Le serveur a rejeté la clé d&apos;API.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/ArticlePage.qml" line="520"/>
+        <location filename="../qml/pages/ArticlePage.qml" line="544"/>
         <source>Could not fetch the original article: %1</source>
         <translation>Impossible de récupérer l&apos;article d&apos;origine : %1</translation>
     </message>
@@ -125,17 +125,17 @@
 <context>
     <name>CoverPage</name>
     <message>
-        <location filename="../qml/cover/CoverPage.qml" line="225"/>
+        <location filename="../qml/cover/CoverPage.qml" line="237"/>
         <source>Sign-in failed</source>
         <translation>Échec de connexion</translation>
     </message>
     <message>
-        <location filename="../qml/cover/CoverPage.qml" line="225"/>
+        <location filename="../qml/cover/CoverPage.qml" line="237"/>
         <source>Refresh failed</source>
         <translation>Échec de l&apos;actualisation</translation>
     </message>
     <message>
-        <location filename="../qml/cover/CoverPage.qml" line="226"/>
+        <location filename="../qml/cover/CoverPage.qml" line="238"/>
         <source>Refreshing</source>
         <translation>Actualisation</translation>
     </message>
@@ -184,32 +184,32 @@
     <name>EntryListPage</name>
     <message>
         <location filename="../qml/pages/EntryListPage.qml" line="11"/>
-        <location filename="../qml/pages/EntryListPage.qml" line="167"/>
+        <location filename="../qml/pages/EntryListPage.qml" line="176"/>
         <source>Unread</source>
         <translation>Non lus</translation>
     </message>
     <message>
-        <location filename="../qml/pages/EntryListPage.qml" line="167"/>
+        <location filename="../qml/pages/EntryListPage.qml" line="176"/>
         <source>Favourites</source>
         <translation>Favoris</translation>
     </message>
     <message>
-        <location filename="../qml/pages/EntryListPage.qml" line="167"/>
+        <location filename="../qml/pages/EntryListPage.qml" line="176"/>
         <source>All</source>
         <translation>Tout</translation>
     </message>
     <message>
-        <location filename="../qml/pages/EntryListPage.qml" line="317"/>
+        <location filename="../qml/pages/EntryListPage.qml" line="327"/>
         <source>The server rejected the API key.</source>
         <translation>Le serveur a rejeté la clé d&apos;API.</translation>
     </message>
     <message>
-        <location filename="../qml/pages/EntryListPage.qml" line="318"/>
+        <location filename="../qml/pages/EntryListPage.qml" line="328"/>
         <source>Open settings</source>
         <translation>Ouvrir les réglages</translation>
     </message>
     <message>
-        <location filename="../qml/pages/EntryListPage.qml" line="320"/>
+        <location filename="../qml/pages/EntryListPage.qml" line="330"/>
         <source>Refresh failed: %1</source>
         <translation>Échec de l&apos;actualisation : %1</translation>
     </message>
@@ -217,7 +217,7 @@
 <context>
     <name>EntryListView</name>
     <message numerus="yes">
-        <location filename="../qml/components/EntryListView.qml" line="204"/>
+        <location filename="../qml/components/EntryListView.qml" line="237"/>
         <source>%n selected</source>
         <translation>
             <numerusform>%n sélectionné</numerusform>
@@ -225,7 +225,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/components/EntryListView.qml" line="206"/>
+        <location filename="../qml/components/EntryListView.qml" line="239"/>
         <source>%n article(s)</source>
         <translation>
             <numerusform>%n article</numerusform>
@@ -233,80 +233,160 @@
         </translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="261"/>
+        <location filename="../qml/components/EntryListView.qml" line="274"/>
+        <source>Search articles</source>
+        <extracomment>Placeholder in the empty search field.</extracomment>
+        <translation>Rechercher des articles</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="356"/>
         <source>Select all</source>
         <translation>Tout sélectionner</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="262"/>
+        <location filename="../qml/components/EntryListView.qml" line="357"/>
         <source>Deselect all</source>
         <translation>Tout désélectionner</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="267"/>
-        <location filename="../qml/components/EntryListView.qml" line="619"/>
+        <location filename="../qml/components/EntryListView.qml" line="362"/>
+        <location filename="../qml/components/EntryListView.qml" line="950"/>
         <source>Mark as unread</source>
         <translation>Marquer comme non lu</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="272"/>
-        <location filename="../qml/components/EntryListView.qml" line="619"/>
+        <location filename="../qml/components/EntryListView.qml" line="367"/>
+        <location filename="../qml/components/EntryListView.qml" line="950"/>
         <source>Mark as read</source>
         <translation>Marquer comme lu</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="279"/>
+        <location filename="../qml/components/EntryListView.qml" line="374"/>
         <source>Settings</source>
         <translation>Réglages</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="284"/>
+        <location filename="../qml/components/EntryListView.qml" line="379"/>
         <source>Feeds</source>
         <translation>Flux</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="299"/>
-        <location filename="../qml/components/EntryListView.qml" line="306"/>
+        <location filename="../qml/components/EntryListView.qml" line="394"/>
+        <location filename="../qml/components/EntryListView.qml" line="401"/>
         <source>Select articles</source>
         <translation>Sélectionner des articles</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="311"/>
+        <location filename="../qml/components/EntryListView.qml" line="406"/>
         <source>Mark all as read</source>
         <translation>Tout marquer comme lu</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="330"/>
+        <location filename="../qml/components/EntryListView.qml" line="426"/>
         <source>Marking all as read</source>
         <translation>Marquage de tout comme lu</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="337"/>
+        <location filename="../qml/components/EntryListView.qml" line="437"/>
+        <source>Search</source>
+        <comment>menu item</comment>
+        <extracomment>Pulley menu item. A verb: it opens the search page.</extracomment>
+        <translation>Rechercher</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="447"/>
+        <source>Search</source>
+        <comment>page title</comment>
+        <extracomment>The search page&apos;s title. A noun.</extracomment>
+        <translation>Recherche</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="453"/>
         <source>Refresh</source>
         <translation>Actualiser</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="381"/>
+        <location filename="../qml/components/EntryListView.qml" line="502"/>
+        <source>No articles found</source>
+        <translation>Aucun article trouvé</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="503"/>
         <source>No favourites</source>
         <translation>Aucun favori</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="382"/>
+        <location filename="../qml/components/EntryListView.qml" line="504"/>
         <source>Nothing to read</source>
         <translation>Rien à lire</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="384"/>
+        <location filename="../qml/components/EntryListView.qml" line="509"/>
+        <source>Vuo searches the title and text of every article on this device, and the names of your feeds.</source>
+        <translation>Vuo recherche dans le titre et le texte de chaque article sur cet appareil, ainsi que dans les noms de vos flux.</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="589"/>
+        <source>Feeds (%1 of %2)</source>
+        <extracomment>As &quot;In titles (%1 of %2)&quot;, for the feeds whose name matched.</extracomment>
+        <translation>Flux (%1 sur %2)</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="602"/>
+        <source>Feeds (%1)</source>
+        <extracomment>Search results: the group of feeds whose name matched. %1 is how many there are.</extracomment>
+        <translation>Flux (%1)</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="511"/>
         <source>Articles you add to favourites appear here</source>
         <translation>Les articles que vous ajoutez aux favoris s&apos;affichent ici</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="385"/>
+        <location filename="../qml/components/EntryListView.qml" line="512"/>
         <source>Pull down to refresh</source>
         <translation>Tirez vers le bas pour actualiser</translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/components/EntryListView.qml" line="540"/>
+        <location filename="../qml/components/EntryListView.qml" line="572"/>
+        <source>Load %n more</source>
+        <extracomment>Under a group of search results: shows %n more of the group.</extracomment>
+        <translation>
+            <numerusform>Charger %n de plus</numerusform>
+            <numerusform>Charger %n de plus</numerusform>
+        </translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="584"/>
+        <source>In titles (%1 of %2)</source>
+        <extracomment>Search results: the group of articles whose title matched, when only some of them are shown. %1 is how many are shown, %2 how many there are.</extracomment>
+        <translation>Dans les titres (%1 sur %2)</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="592"/>
+        <source>In article text (%1 of %2)</source>
+        <extracomment>As &quot;In titles (%1 of %2)&quot;, for the articles whose text matched.</extracomment>
+        <translation>Dans le texte des articles (%1 sur %2)</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="597"/>
+        <source>In titles (%1)</source>
+        <extracomment>Search results: the group of articles whose title matched. %1 is how many there are.</extracomment>
+        <translation>Dans les titres (%1)</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="606"/>
+        <source>In article text (%1)</source>
+        <extracomment>Search results: the group of articles whose text matched. %1 is how many there are.</extracomment>
+        <translation>Dans le texte des articles (%1)</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="618"/>
+        <source>Feed</source>
+        <translation>Flux</translation>
+    </message>
+    <message numerus="yes">
+        <location filename="../qml/components/EntryListView.qml" line="822"/>
         <source>%n min read</source>
         <translation>
             <numerusform>%n min de lecture</numerusform>
@@ -314,7 +394,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/components/EntryListView.qml" line="541"/>
+        <location filename="../qml/components/EntryListView.qml" line="823"/>
         <source>%n min</source>
         <translation>
             <numerusform>%n min</numerusform>
@@ -322,19 +402,25 @@
         </translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="623"/>
+        <location filename="../qml/components/EntryListView.qml" line="954"/>
         <source>Remove favourite</source>
         <translation>Retirer des favoris</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="623"/>
+        <location filename="../qml/components/EntryListView.qml" line="954"/>
         <source>Add favourite</source>
         <translation>Ajouter aux favoris</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="627"/>
+        <location filename="../qml/components/EntryListView.qml" line="958"/>
         <source>Open in browser</source>
         <translation>Ouvrir dans le navigateur</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="568"/>
+        <source>Load all results</source>
+        <extracomment>Under a group of search results: shows all the rest of the group.</extracomment>
+        <translation>Tout charger</translation>
     </message>
 </context>
 <context>
@@ -383,6 +469,14 @@
         <location filename="../qml/pages/FeedListPage.qml" line="174"/>
         <source>Unsubscribing</source>
         <translation>Désabonnement</translation>
+    </message>
+</context>
+<context>
+    <name>ImageViewerPage</name>
+    <message>
+        <location filename="../qml/pages/ImageViewerPage.qml" line="235"/>
+        <source>The image could not be loaded.</source>
+        <translation>L&apos;image n&apos;a pas pu être chargée.</translation>
     </message>
 </context>
 <context>
@@ -704,7 +798,7 @@
 <context>
     <name>harbour-vuo</name>
     <message numerus="yes">
-        <location filename="../qml/harbour-vuo.qml" line="129"/>
+        <location filename="../qml/harbour-vuo.qml" line="132"/>
         <source>%n new article(s)</source>
         <translation>
             <numerusform>%n nouvel article</numerusform>
@@ -712,12 +806,19 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/harbour-vuo.qml" line="136"/>
+        <location filename="../qml/harbour-vuo.qml" line="139"/>
         <source>%n unread</source>
         <translation>
             <numerusform>%n non lu</numerusform>
             <numerusform>%n non lus</numerusform>
         </translation>
+    </message>
+    <message>
+        <location filename="../qml/harbour-vuo.qml" line="338"/>
+        <source>Search</source>
+        <comment>page title</comment>
+        <extracomment>The search page&apos;s title. A noun.</extracomment>
+        <translation>Recherche</translation>
     </message>
 </context>
 </TS>

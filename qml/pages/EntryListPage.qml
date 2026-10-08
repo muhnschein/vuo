@@ -47,6 +47,15 @@ Page {
     /// left that tab showing the feed for the rest of the session.
     property var browseModel: null
 
+    /// The model a search opens into. Like `browseModel`, one no tab shows:
+    /// the search page re-scopes whatever it is handed.
+    property var searchModel: null
+
+    /// Search mode: a search field heads the list, and the list shows what it
+    /// matches across the whole mirror. Entered by pushing an EntryListPage
+    /// with `searching` set, scope 5, over `searchModel`.
+    property bool searching: false
+
     /// The model whose refresh failures the banner speaks for.
     ///
     /// NOT `currentModel`. The worker leaves a failure in a slot that holds
@@ -283,6 +292,7 @@ Page {
             scopeLabel: page.scopeLabel
             title: page.title
             selecting: page.selecting
+            searching: page.searching
             }
         }
     }

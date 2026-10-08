@@ -224,6 +224,61 @@ fn a_feed_view_is_never_given_a_tabs_model() {
     );
 }
 
+/// §the search page has a model of its own.
+///
+/// The same trap as a feed view's, one page over: the search page scopes
+/// whatever model it is handed to scope 5, and `setScope` is a plain
+/// overwrite. Handed a tab's model, a search would leave that tab listing the
+/// search's results; handed the browse model, it would re-scope an open feed
+/// view underneath it.
+#[test]
+fn a_search_is_never_given_another_lists_model() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(2)
+        .expect("the workspace root");
+    let window =
+        std::fs::read_to_string(root.join("qml/harbour-vuo.qml")).expect("harbour-vuo.qml");
+    let view = std::fs::read_to_string(root.join("qml/components/EntryListView.qml"))
+        .expect("EntryListView.qml");
+
+    let bound = |name: &str| -> String {
+        window
+            .lines()
+            .find_map(|l| l.trim_start().strip_prefix(name))
+            .unwrap_or_else(|| panic!("the window binds `{name}`"))
+            .trim()
+            .to_owned()
+    };
+    let tabs = bound("scopeModels:");
+    let browse = bound("browseModel:");
+    let search = bound("searchModel:");
+    assert!(
+        !tabs.contains(&search),
+        "the search model `{search}` is also a tab's ({tabs}); a search would leave \
+         that tab listing its results"
+    );
+    assert_ne!(
+        search, browse,
+        "the search model is the browse model; a search would re-scope a feed view"
+    );
+
+    // The pulley's Search item hands that model over as the page's own.
+    let push = view
+        .split_once("searching: true")
+        .and_then(|(before, _)| before.rsplit_once("pageStack.push("))
+        .map(|(_, args)| args)
+        .expect("the pulley opens a search");
+    assert!(
+        push.contains("model: listView.hostPage ? listView.hostPage.searchModel"),
+        "the Search pulley item must hand over the search model, not this tab's: {push}"
+    );
+    assert!(
+        push.contains("scopeKind: 5"),
+        "and scope it to models::Scope::Search: {push}"
+    );
+}
+
 /// §no property is bound to itself.
 ///
 /// `account: account` inside an `OnboardingPage { }` does not mean "the id
@@ -363,6 +418,19 @@ fn every_member_the_qml_uses_is_implemented_in_rust() {
         // either would fail only on a device, only while Vuo was on its cover.
         "accountSettings",
         "arrivals",
+        // Every other name an EntryModel travels under. `entryModel` is what
+        // EntryListView calls every list action through -- mark read, star,
+        // load more, sync, search -- and it was not on this list, so a typo
+        // in any of them passed: `entryModel.setSerch(...)` was tried, and
+        // nothing in the build noticed.
+        "entryModel",
+        "noticeModel",
+        "browseModel",
+        "searchModel",
+        "starredEntries",
+        "allEntries",
+        "browseEntries",
+        "searchEntries",
     ];
 
     let mut files = Vec::new();
@@ -702,6 +770,18 @@ fn qml_declared_identifiers(files: &[PathBuf]) -> BTreeSet<String> {
                             names.insert(name);
                         }
                     }
+                    // A function's parameters are JavaScript locals too:
+                    // `function zoomAt(target, viewX, viewY)`.
+                    let params = code
+                        .split_once('(')
+                        .and_then(|(_, rest)| rest.split_once(')'))
+                        .map(|(params, _)| params);
+                    for param in params.unwrap_or_default().split(',') {
+                        let param = param.trim();
+                        if !param.is_empty() {
+                            names.insert(param.to_owned());
+                        }
+                    }
                 }
                 Some("id:") => {
                     if let Some(name) = words.next() {
@@ -766,6 +846,28 @@ fn every_role_the_delegates_use_is_exposed_by_a_model() {
 
     for file in &files {
         let source = std::fs::read_to_string(file).expect("read qml");
+        // The one place a role is named in a STRING: a view's section
+        // property, `section.property: searching ? "matchKind" : ""`. A typo
+        // there is a list that silently stops grouping.
+        for (lineno, line) in source.lines().enumerate() {
+            let Some((_, value)) = line.trim_start().split_once("section.property:") else {
+                continue;
+            };
+            for name in value.split('"').skip(1).step_by(2) {
+                if name.is_empty() {
+                    continue;
+                }
+                if roles.contains(name) {
+                    used.insert(name.to_owned());
+                } else {
+                    unknown.push(format!(
+                        "{}:{} — `{name}` is a section property but no model exposes it",
+                        file.strip_prefix(&root).unwrap_or(file).display(),
+                        lineno + 1
+                    ));
+                }
+            }
+        }
         // Comments are prose, and strings are text. Naming a role while
         // explaining why the code does what it does is not a reference to it.
         // Blanked rather than removed so the reported line numbers still point

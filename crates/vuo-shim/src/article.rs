@@ -46,6 +46,7 @@ pub const ROLE_CODE_LANGUAGE: i32 = USER_ROLE + 10;
 pub const ROLE_PLAIN_TEXT: i32 = USER_ROLE + 11;
 pub const ROLE_IMAGE_HOST: i32 = USER_ROLE + 12;
 pub const ROLE_IMAGE_RATIO: i32 = USER_ROLE + 13;
+pub const ROLE_IMAGE_LINK: i32 = USER_ROLE + 14;
 
 /// No scrape has finished (or the last one was acknowledged).
 pub const FETCH_IDLE: i32 = 0;
@@ -94,6 +95,11 @@ pub struct BlockRow {
     /// collapsing the row to nothing, which is what made an article re-flow
     /// under the reader every time an image landed.
     pub image_ratio: f64,
+    /// Where a tap on the image goes, when the feed wrapped it in a link;
+    /// empty otherwise. An image with no link opens in the zoomable viewer
+    /// instead -- a tap on a linked one has to keep meaning "go there".
+    /// Validated as `http`/`https` in the core, like every other link.
+    pub image_link: String,
     pub code_language: String,
 }
 
@@ -170,6 +176,7 @@ fn row_for(block: &RenderBlock) -> BlockRow {
             alt,
             fetch,
             intrinsic,
+            link,
             ..
         } => {
             row.kind = "image".to_owned();
@@ -178,6 +185,10 @@ fn row_for(block: &RenderBlock) -> BlockRow {
             row.image_host = src.as_url().host_str().unwrap_or_default().to_owned();
             row.needs_consent = matches!(fetch, MediaFetch::NeedsConsent);
             row.image_ratio = intrinsic.map(image_ratio).unwrap_or(0.0);
+            row.image_link = link
+                .as_ref()
+                .map(|l| l.as_str().to_owned())
+                .unwrap_or_default();
         }
         BlockKind::Table { rows } => {
             row.kind = "table".to_owned();
@@ -610,6 +621,7 @@ impl QAbstractListModel for ArticleModel {
             ROLE_IMAGE_HOST => QString::from(row.image_host.clone()).into(),
             ROLE_NEEDS_CONSENT => row.needs_consent.into(),
             ROLE_IMAGE_RATIO => row.image_ratio.into(),
+            ROLE_IMAGE_LINK => QString::from(row.image_link.as_str()).into(),
             ROLE_CODE_LANGUAGE => QString::from(row.code_language.clone()).into(),
             _ => QVariant::default(),
         }
@@ -630,6 +642,7 @@ impl QAbstractListModel for ArticleModel {
         names.insert(ROLE_IMAGE_HOST, "imageHost".into());
         names.insert(ROLE_NEEDS_CONSENT, "needsConsent".into());
         names.insert(ROLE_IMAGE_RATIO, "imageRatio".into());
+        names.insert(ROLE_IMAGE_LINK, "imageLink".into());
         names.insert(ROLE_CODE_LANGUAGE, "codeLanguage".into());
         names
     }
@@ -666,6 +679,38 @@ mod tests {
         // no finite height at all. Both of these reached the delegate.
         assert_eq!(image_ratio((0, 100)), 0.0, "no width is no hint");
         assert_eq!(image_ratio((100, 0)), 0.0, "and neither is no height");
+    }
+
+    /// §a tap on an image zooms it, unless the image is a link.
+    ///
+    /// The delegate decides on `imageLink` alone: non-empty opens the link,
+    /// empty opens the viewer. So the row must carry the link the core found,
+    /// and nothing when there was none.
+    #[test]
+    fn an_image_row_carries_the_link_it_sits_in() {
+        let instance = url::Url::parse("https://miniflux.example/").expect("url");
+        let ctx = TransformContext {
+            media: MediaPolicy::ProxyThroughInstance {
+                instance: instance.clone(),
+                extra_trusted: Vec::new(),
+                fallback: UnproxiedMedia::Allow,
+            },
+            ..TransformContext::new(instance)
+        };
+        let doc = vuo_core::content::transform(
+            r#"<a href="https://site.example/big"><img src="https://miniflux.example/a.png"></a>
+               <p><img src="https://miniflux.example/b.png"></p>"#,
+            &ctx,
+        );
+        let images: Vec<BlockRow> = doc
+            .blocks
+            .iter()
+            .map(row_for)
+            .filter(|r| r.kind == "image")
+            .collect();
+        assert_eq!(images.len(), 2, "both images must survive the transform");
+        assert_eq!(images[0].image_link, "https://site.example/big");
+        assert_eq!(images[1].image_link, "", "an unlinked image zooms instead");
     }
 
     /// §9.3's media policy, from the user's setting to the transform context.

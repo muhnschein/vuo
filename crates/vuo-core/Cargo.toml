@@ -40,7 +40,9 @@ tokio = { version = "1", features = ["rt", "macros", "sync", "time"] }
 # device happens to ship. That keeps the mirror's behaviour identical between
 # the host test suite and the phone, which matters because the mirror is the
 # UI's source of truth.
-rusqlite = { version = "0.32", features = ["bundled", "backup"] }
+# "functions" for the one SQL function Vuo registers, the search matcher --
+# see src/search.rs for why searching happens inside the query.
+rusqlite = { version = "0.32", features = ["bundled", "backup", "functions"] }
 
 # --- content transform -------------------------------------------------------
 # Only html5ever's TOKENIZER is used, never its tree builder or RcDom: an
