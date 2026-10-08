@@ -4,7 +4,7 @@
 //! no section header is ever built. This gives it a model shaped like an
 //! `EntryModel` searching -- roles and counts as Rust hands them over -- and
 //! reads back what the reader would see: the groups, the marked title and
-//! feed name, the excerpt, and no pulley. And the same list NOT searching,
+//! feed name, the excerpt, the feeds found, and no pulley. And the same list NOT searching,
 //! which must draw none of it: a feed's title is foreign text, and outside a
 //! search it is rendered plain.
 //!
@@ -32,10 +32,10 @@ const PROBE_QML: &str = r#"
             property bool ready: true
             property bool syncing: false
             property int titleMatches: 4
-            property int feedMatches: 0
+            property int feedMatches: 2
             property int textMatches: 3
             property int titleShown: 2
-            property int feedShown: 0
+            property int feedShown: 1
             property int textShown: 1
             property int titleNextLoad: 10
             property int feedNextLoad: 10
@@ -52,14 +52,22 @@ const PROBE_QML: &str = r#"
                 titleStyled: "<b>Harbour</b> &lt;at&gt; dusk"
                 feedName: "Harbour Gazette"
                 feedNameStyled: "<b>Harbour</b> Gazette"
-                matchKind: "title"; excerpt: ""
+                matchKind: "title"; excerpt: ""; unreadCount: 0
             }
             ListElement {
                 entryId: 3; feedId: 2; author: ""; unread: false; starred: false
                 published: 0; readingTime: 0; url: ""; feedIcon: ""
                 title: "Harbour lights"; titleStyled: "<b>Harbour</b> lights"
                 feedName: "Daily"; feedNameStyled: "Daily"
-                matchKind: "title"; excerpt: ""
+                matchKind: "title"; excerpt: ""; unreadCount: 0
+            }
+            // A feed, found by its name: see models::EntryRow::feed_found.
+            ListElement {
+                entryId: -4; feedId: 4; author: ""; unread: true; starred: false
+                published: 0; readingTime: 0; url: ""; feedIcon: ""
+                title: "Harbour <Gazette>"; titleStyled: "<b>Harbour</b> &lt;Gazette&gt;"
+                feedName: "Harbour <Gazette>"; feedNameStyled: ""
+                matchKind: "feed"; excerpt: ""; unreadCount: 7
             }
             ListElement {
                 entryId: 2; feedId: 2; author: ""; unread: true; starred: false
@@ -67,13 +75,44 @@ const PROBE_QML: &str = r#"
                 title: "entry 2"; titleStyled: "entry 2"
                 feedName: "Daily"; feedNameStyled: "Daily"
                 matchKind: "text"; excerpt: "A walk by the <b>harbour</b>."
+                unreadCount: 0
             }
+        }
+        // The page the list is on, as far as opening a feed reads it.
+        Item {
+            id: host
+            property int status: 0
+            property string browseModel: "browse"
+            property string feedModel: "feeds"
+            property string noticeModel: "notices"
+        }
+        // Silica's pageStack, found by the list the way a page finds the
+        // window's: by name, up the context chain.
+        property QtObject pageStack: QtObject {
+            property string pushed: ""
+            function push(url, props) {
+                var page = ('' + url).split('/').pop()
+                pushed = page === "EntryListPage.qml"
+                    ? [page, props.scopeKind, props.scopeId, props.title, props.model,
+                       props.browseModel, props.feedModel, props.noticeModel].join(' | ')
+                    : [page, props.entryId].join(' | ')
+            }
+        }
+        function tap(nth) {
+            var found = findAll(loader.item, 'listItem', [])
+            found.sort(function(a, b) {
+                return a.mapToItem(loader.item, 0, 0).y - b.mapToItem(loader.item, 0, 0).y
+            })
+            if (nth >= found.length) { return 'missing' }
+            pageStack.pushed = ""
+            found[nth].clicked()
+            return pageStack.pushed
         }
         Loader { id: loader }
         function load(url, searching) {
             loader.source = ""
             loader.setSource(url, { width: 540, height: 960, searching: searching,
-                                    entryModel: fake })
+                                    entryModel: fake, hostPage: host })
             if (loader.status !== Loader.Ready) { return 'load-failed' }
             loader.item.forceLayout()
             return 'ok'
@@ -166,9 +205,10 @@ fn a_search_lists_its_results_grouped_and_marked_and_nothing_else_does() {
     );
     assert_eq!(
         get!("sectionHeader", 1, "text"),
-        "In article text (1 of 3)",
+        "Feeds (1 of 2)",
         "one header per group"
     );
+    assert_eq!(get!("sectionHeader", 2, "text"), "In article text (1 of 3)");
 
     // Bold AND the highlight colour: bold alone was hard to make out on a
     // read row, which is drawn faded.
@@ -190,11 +230,48 @@ fn a_search_lists_its_results_grouped_and_marked_and_nothing_else_does() {
         "false",
         "a title hit has no excerpt"
     );
-    assert_eq!(get!("excerptLabel", 2, "visible"), "true");
-    assert_eq!(get!("excerptLabel", 2, "textFormat"), STYLED);
+    assert_eq!(get!("excerptLabel", 3, "visible"), "true");
+    assert_eq!(get!("excerptLabel", 3, "textFormat"), STYLED);
     assert_eq!(
-        get!("excerptLabel", 2, "text"),
+        get!("excerptLabel", 3, "text"),
         format!("A walk by the {}.", mark("harbour"))
+    );
+
+    // A feed found by its name is drawn as the feed list draws it -- its
+    // name, marked, and its unread count -- and opens as it does there.
+    assert_eq!(get!("titleLabel", 2, "textFormat"), STYLED);
+    assert_eq!(
+        get!("titleLabel", 2, "text"),
+        format!("{} &lt;Gazette&gt;", mark("Harbour"))
+    );
+    assert_eq!(
+        get!("detailLabel", 2, "visible"),
+        "false",
+        "an article's date and reading time are not a feed's"
+    );
+    assert_eq!(get!("detailLabel", 0, "visible"), "true");
+    assert_eq!(get!("feedUnread", 2, "visible"), "true");
+    assert_eq!(get!("feedUnread", 2, "text"), "7");
+    assert_eq!(
+        get!("feedUnread", 0, "visible"),
+        "false",
+        "an article has no count"
+    );
+    assert_eq!(
+        get!("listItem", 2, "showMenuOnPressAndHold"),
+        "false",
+        "an article's menu does nothing for a feed"
+    );
+    assert_eq!(get!("listItem", 0, "showMenuOnPressAndHold"), "true");
+    assert_eq!(
+        call!("tap", 2),
+        "EntryListPage.qml | 3 | 4 | Harbour <Gazette> | browse | browse | feeds | notices",
+        "a feed opens its articles, over the browse model, as from the feed list"
+    );
+    assert_eq!(
+        call!("tap", 0),
+        "ArticlePage.qml | 1",
+        "and an article opens the article"
     );
 
     // "Load more" under the last row of a group with more than it shows,
@@ -206,25 +283,27 @@ fn a_search_lists_its_results_grouped_and_marked_and_nothing_else_does() {
     );
     assert_eq!(get!("loadMore", 1, "visible"), "true");
     assert_eq!(get!("loadMore", 2, "visible"), "true");
+    assert_eq!(get!("loadMore", 3, "visible"), "true");
     assert_eq!(
         get!("loadMoreLabel", 1, "text"),
         "Load 2 more",
         "the next step, but no more than are left"
     );
     assert_eq!(
-        call!("click", QString::from("loadMore"), 2),
+        call!("click", QString::from("loadMore"), 3),
         "text",
         "each asks for more of its own group"
     );
+    assert_eq!(call!("click", QString::from("loadMore"), 2), "feed");
     assert_eq!(call!("click", QString::from("loadMore"), 1), "title");
     assert_eq!(call!("set", QString::from("textMatches"), 30), "ok");
-    assert_eq!(get!("loadMoreLabel", 2, "text"), "Load 10 more");
+    assert_eq!(get!("loadMoreLabel", 3, "text"), "Load 10 more");
     assert_eq!(call!("set", QString::from("textNextLoad"), 20), "ok");
-    assert_eq!(get!("loadMoreLabel", 2, "text"), "Load 20 more");
+    assert_eq!(get!("loadMoreLabel", 3, "text"), "Load 20 more");
     assert_eq!(call!("set", QString::from("titleNextLoad"), 0), "ok");
     assert_eq!(get!("loadMoreLabel", 1, "text"), "Load all results");
     assert_eq!(
-        get!("loadMoreLabel", 2, "text"),
+        get!("loadMoreLabel", 3, "text"),
         "Load 20 more",
         "per group"
     );
@@ -232,14 +311,18 @@ fn a_search_lists_its_results_grouped_and_marked_and_nothing_else_does() {
 
     // A group showing all of itself has nothing more to load.
     assert_eq!(call!("set", QString::from("textShown"), 3), "ok");
-    assert_eq!(get!("sectionHeader", 1, "text"), "In article text (3)");
+    assert_eq!(get!("sectionHeader", 2, "text"), "In article text (3)");
+    assert_eq!(get!("loadMore", 3, "visible"), "false");
+    assert_eq!(call!("set", QString::from("feedShown"), 2), "ok");
+    assert_eq!(get!("sectionHeader", 1, "text"), "Feeds (2)");
     assert_eq!(get!("loadMore", 2, "visible"), "false");
 
     // An empty search says what is searched, and nothing more.
     assert_eq!(get!("placeholder", 0, "text"), "");
     assert_eq!(
         get!("placeholder", 0, "hintText"),
-        "Vuo searches the title, feed name and text of every article on this device."
+        "Vuo searches the title and text of every article on this device, and the \
+         names of your feeds."
     );
     assert_eq!(
         call!("setOnList", QString::from("searchText"), QString::from("x")),
@@ -265,6 +348,12 @@ fn a_search_lists_its_results_grouped_and_marked_and_nothing_else_does() {
         get!("detailLabel", 0, "text"),
         "Harbour Gazette  \u{b7}  3 min read"
     );
-    assert_eq!(get!("excerptLabel", 2, "visible"), "false");
+    assert_eq!(get!("excerptLabel", 3, "visible"), "false");
     assert_eq!(get!("loadMore", 1, "visible"), "false");
+    assert_eq!(
+        get!("feedUnread", 2, "visible"),
+        "false",
+        "outside a search no row is a feed"
+    );
+    assert_eq!(get!("detailLabel", 2, "visible"), "true");
 }

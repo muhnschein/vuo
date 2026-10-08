@@ -506,7 +506,7 @@ SilicaListView {
                   // Said either way: the mirror is all that is searched, so an
                   // article the server holds but this device does not is not
                   // found, and that should not be a surprise.
-                  ? qsTr("Vuo searches the title, feed name and text of every article on this device.")
+                  ? qsTr("Vuo searches the title and text of every article on this device, and the names of your feeds.")
                   : (listView.scopeKind === 1
                      ? qsTr("Articles you add to favourites appear here")
                      : qsTr("Pull down to refresh"))
@@ -584,9 +584,9 @@ SilicaListView {
                 return qsTr("In titles (%1 of %2)").arg(shown).arg(total)
             }
             if (kind === "feed") {
-                //: As "In titles (%1 of %2)", for the articles whose feed's
-                //: name matched.
-                return qsTr("In feed names (%1 of %2)").arg(shown).arg(total)
+                //: As "In titles (%1 of %2)", for the feeds whose name
+                //: matched.
+                return qsTr("Feeds (%1 of %2)").arg(shown).arg(total)
             }
             //: As "In titles (%1 of %2)", for the articles whose text matched.
             return qsTr("In article text (%1 of %2)").arg(shown).arg(total)
@@ -597,13 +597,30 @@ SilicaListView {
             return qsTr("In titles (%1)").arg(total)
         }
         if (kind === "feed") {
-            //: Search results: the group of articles whose feed's name
-            //: matched. %1 is how many there are.
-            return qsTr("In feed names (%1)").arg(total)
+            //: Search results: the group of feeds whose name matched. %1 is
+            //: how many there are.
+            return qsTr("Feeds (%1)").arg(total)
         }
         //: Search results: the group of articles whose text matched.
         //: %1 is how many there are.
         return qsTr("In article text (%1)").arg(total)
+    }
+
+    /// Open a feed a search found, as tapping it in the feed list does: its
+    /// articles, over the browse model -- see FeedListPage.qml.
+    function openFeed(feedId, name) {
+        var host = listView.hostPage
+        pageStack.push(Qt.resolvedUrl("../pages/EntryListPage.qml"), {
+            model: host ? host.browseModel : null,
+            browseModel: host ? host.browseModel : null,
+            feedModel: host ? host.feedModel : null,
+            noticeModel: host ? host.noticeModel : null,
+            scopeLabel: qsTr("Feed"),
+            title: name,
+            // models::Scope::Feed
+            scopeKind: 3,
+            scopeId: feedId
+        })
     }
 
     /// Search-marked StyledText from Rust, with the marks in the theme's
@@ -639,6 +656,10 @@ SilicaListView {
         width: listView.width
         height: item.height + moreButton.height
 
+        /// Whether this row is a FEED a search found by its name, rather than
+        /// an article: drawn as the feed list draws one, and opening it.
+        readonly property bool isFeed: listView.searching && matchKind === "feed"
+
         /// Whether this row is the last of its group of search results,
         /// which is where the group's "Load more" goes.
         readonly property bool lastInGroup: listView.searching
@@ -646,11 +667,13 @@ SilicaListView {
 
         ListItem {
             id: item
+            objectName: "listItem"
             width: parent.width
             contentHeight: column.height + Theme.paddingMedium * 2
             // The long-press menu is the other way to act on one row, and in
-            // selection mode the tap already is that.
-            showMenuOnPressAndHold: !listView.selecting
+            // selection mode the tap already is that. Its actions are an
+            // article's, so a feed has none.
+            showMenuOnPressAndHold: !listView.selecting && !row.isFeed
 
             /// Whether this row is in the selection. Read off `selectedIds`,
             /// which is replaced on every change so this re-evaluates.
@@ -743,6 +766,7 @@ SilicaListView {
                         objectName: "titleLabel"
 
                         width: parent.width
+                               - (feedUnread.visible ? feedUnread.width + Theme.paddingMedium : 0)
                         // §9.3: a feed-supplied title is foreign data. PlainText,
                         // explicitly -- except for a search result's, which Rust
                         // escaped and marked the search terms in, and which is
@@ -761,6 +785,10 @@ SilicaListView {
                         objectName: "detailLabel"
 
                         width: parent.width
+                        // A feed's row is its name and its count, as in the
+                        // feed list: an article's date and reading time are
+                        // not a feed's.
+                        visible: !row.isFeed
                         // Assembled in JavaScript rather than as a Row of Labels
                         // so the separators collapse cleanly when a part is
                         // missing, and so the whole line can be shortened as one
@@ -889,8 +917,25 @@ SilicaListView {
                 }
             }
 
+            // A feed's unread count, where the feed list puts it: at the end
+            // of the name's first line.
+            Label {
+                id: feedUnread
+                objectName: "feedUnread"
+
+                visible: row.isFeed && unreadCount > 0
+                anchors.right: parent.right
+                anchors.rightMargin: Theme.horizontalPageMargin
+                y: column.y + Math.round((titleMetrics.height - height) / 2)
+                text: visible ? unreadCount : ""
+                color: Theme.highlightColor
+                font.pixelSize: Theme.fontSizeSmall
+            }
+
             onClicked: {
-                if (listView.selecting) {
+                if (row.isFeed) {
+                    listView.openFeed(feedId, title)
+                } else if (listView.selecting) {
                     listView.toggleSelected(entryId)
                 } else {
                     pageStack.push(Qt.resolvedUrl("../pages/ArticlePage.qml"), {

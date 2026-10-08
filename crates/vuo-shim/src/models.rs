@@ -175,7 +175,8 @@ pub const ROLE_FEED_NAME: i32 = USER_ROLE + 9;
 /// A `data:` URI for the feed's icon, or empty when the mirror has none.
 pub const ROLE_FEED_ICON: i32 = USER_ROLE + 10;
 /// Where a search result matched: `title`, `feed` or `text` -- the group it
-/// is listed under. Empty outside a search.
+/// is listed under. Empty outside a search. A `feed` row is a FEED, not an
+/// article: see [`EntryRow::feed_found`].
 pub const ROLE_MATCH_KIND: i32 = USER_ROLE + 11;
 /// A search result's title with the terms in bold. `StyledText` built and
 /// ESCAPED in Rust (`SearchQuery::highlight`), so QML may render it as
@@ -186,6 +187,9 @@ pub const ROLE_FEED_NAME_STYLED: i32 = USER_ROLE + 13;
 /// For a result found in its body text, the lines around the match, with
 /// the terms in bold; `StyledText` as above. Empty for every other row.
 pub const ROLE_EXCERPT: i32 = USER_ROLE + 14;
+/// For a feed a search found, how many of its articles are unread, as the
+/// feed list shows it. Zero for every other row.
+pub const ROLE_UNREAD_COUNT: i32 = USER_ROLE + 15;
 
 /// A row as the UI needs it.
 ///
@@ -222,6 +226,8 @@ pub struct EntryRow {
     pub title_styled: String,
     pub feed_styled: String,
     pub excerpt: String,
+    /// See [`ROLE_UNREAD_COUNT`].
+    pub unread_count: i64,
 }
 
 impl EntryRow {
@@ -244,6 +250,32 @@ impl EntryRow {
                 .unwrap_or_default();
         }
         row
+    }
+}
+
+impl EntryRow {
+    /// A FEED a search found by its name: a row in the `feed` group, which
+    /// the list draws as the feed list draws a feed, and which opens that
+    /// feed rather than an article.
+    ///
+    /// Its `id` is the feed's id NEGATED. A row's id is what a reload tells
+    /// rows apart by (see [`publish_rows`]), feeds and articles are numbered
+    /// separately, and an article's id is never below one. Nothing reads it
+    /// as an article: the list offers a feed row neither the article's menu
+    /// nor its page.
+    fn feed_found(feed: &store::FeedMatch, query: Option<&SearchQuery>) -> Self {
+        EntryRow {
+            id: -feed.id.get(),
+            feed_id: feed.id.get(),
+            title: feed.title.clone(),
+            // A feed is not read or unread; it is drawn as an unread row is,
+            // at full strength, as in the feed list.
+            unread: true,
+            match_kind: "feed",
+            title_styled: query.map(|q| q.highlight(&feed.title)).unwrap_or_default(),
+            unread_count: feed.unread,
+            ..EntryRow::default()
+        }
     }
 }
 
@@ -615,8 +647,9 @@ pub struct EntryModel {
     /// searching. Setting the text it already has does nothing, so a binding
     /// that re-fires costs a comparison rather than a query.
     setSearch: qt_method!(fn(&mut self, text: QString)),
-    /// How many articles the search found in each group -- see
-    /// [`MatchKind`] -- across the whole mirror, not only the rows loaded.
+    /// How many results the search found in each group -- see
+    /// [`MatchKind`] -- across the whole mirror, not only the rows loaded:
+    /// articles in `title` and `text`, feeds in `feed`.
     /// What each group's header says. Zero outside a search.
     titleMatches: qt_property!(i32; READ title_matches NOTIFY matchesChanged),
     feedMatches: qt_property!(i32; READ feed_matches NOTIFY matchesChanged),
@@ -642,6 +675,10 @@ pub struct EntryModel {
     /// picked from these, and read when they are. See
     /// [`store::search_matches`].
     search_found: Vec<store::SearchMatch>,
+    /// Every feed the last search found by its name. Held whole: a name and
+    /// a count each, for the few dozen feeds a mirror has. See
+    /// [`store::search_feeds`].
+    search_feeds: Vec<store::FeedMatch>,
     /// See `titleMatches`: counted once per search rather than per read.
     matches: store::SearchCounts,
     /// How much of each group is shown. Back to one page each on a new
@@ -965,8 +1002,9 @@ impl EntryModel {
         self.matchesChanged();
     }
 
-    /// The rows a search shows: the ones [`SearchGroups::pick`] picks from
-    /// the matches found, read and marked up.
+    /// The rows a search shows: the articles [`SearchGroups::pick`] picks
+    /// from the matches found, read and marked up, with the feeds it found
+    /// between the two groups of them -- in [`MatchKind`]'s order.
     fn search_rows(&self, ctx: &AppContext) -> Vec<EntryRow> {
         let picked = self.groups.pick(&self.search_found);
         let search = &self.search;
@@ -974,8 +1012,19 @@ impl EntryModel {
             .read(|db| store::search_hits(db.conn(), search, &picked).unwrap_or_default())
             .unwrap_or_default();
         let query = SearchQuery::parse(search);
-        hits.iter()
-            .map(|hit| EntryRow::found(hit, query.as_ref()))
+        let articles = |kind: MatchKind| {
+            hits.iter()
+                .filter(move |hit| hit.kind == kind)
+                .map(|hit| EntryRow::found(hit, query.as_ref()))
+        };
+        let feeds = self
+            .search_feeds
+            .iter()
+            .take(self.groups.get(MatchKind::Feed).shown)
+            .map(|feed| EntryRow::feed_found(feed, query.as_ref()));
+        articles(MatchKind::Title)
+            .chain(feeds)
+            .chain(articles(MatchKind::Text))
             .collect()
     }
 
@@ -1211,10 +1260,15 @@ impl EntryModel {
                 self.groups = SearchGroups::default();
             }
             let search = &self.search;
-            self.search_found = ctx
-                .read(|db| store::search_matches(db.conn(), search).unwrap_or_default())
+            (self.search_found, self.search_feeds) = ctx
+                .read(|db| {
+                    (
+                        store::search_matches(db.conn(), search).unwrap_or_default(),
+                        store::search_feeds(db.conn(), search).unwrap_or_default(),
+                    )
+                })
                 .unwrap_or_default();
-            self.matches = store::SearchCounts::of(&self.search_found);
+            self.matches = store::SearchCounts::of(&self.search_found, &self.search_feeds);
             self.search_rows(&ctx)
         };
         if before != (self.matches, self.groups) {
@@ -1380,6 +1434,7 @@ impl QAbstractListModel for EntryModel {
             ROLE_TITLE_STYLED => QString::from(row.title_styled.clone()).into(),
             ROLE_FEED_NAME_STYLED => QString::from(row.feed_styled.clone()).into(),
             ROLE_EXCERPT => QString::from(row.excerpt.clone()).into(),
+            ROLE_UNREAD_COUNT => row.unread_count.into(),
             _ => QVariant::default(),
         }
     }
@@ -1401,6 +1456,7 @@ impl QAbstractListModel for EntryModel {
         names.insert(ROLE_TITLE_STYLED, "titleStyled".into());
         names.insert(ROLE_FEED_NAME_STYLED, "feedNameStyled".into());
         names.insert(ROLE_EXCERPT, "excerpt".into());
+        names.insert(ROLE_UNREAD_COUNT, "unreadCount".into());
         names
     }
 }
@@ -2567,16 +2623,47 @@ mod row_decoration_tests {
             "and the counts follow the search"
         );
 
-        // The feed's name is searched too -- the seeded feed is Tagesschau --
-        // and a hit there is marked in it.
+        // A feed's name finds the FEED -- the seeded one is Tagesschau --
+        // and not its articles: one row, which opens the feed.
         model.setSearch("tagesschau".into());
-        assert_eq!(ids(&model), vec![7, 6, 5]);
-        assert!(model.rows().iter().all(|r| r.match_kind == "feed"));
-        assert_eq!(model.rows()[0].feed_styled, "<b>Tagesschau</b>");
-        assert_eq!(model.feed_matches(), 3);
+        assert_eq!(ids(&model), vec![-1], "the feed, not its three articles");
+        let feed = &model.rows()[0];
+        assert_eq!(feed.match_kind, "feed");
+        assert_eq!(feed.feed_id, 1, "what the row opens");
+        assert_eq!(feed.title, "Tagesschau");
+        assert_eq!(feed.title_styled, "<b>Tagesschau</b>");
+        assert_eq!(feed.unread_count, 3, "as the feed list counts it");
+        assert!(feed.unread, "drawn at full strength, as the feed list does");
+        assert_eq!(
+            (
+                model.title_matches(),
+                model.feed_matches(),
+                model.text_matches()
+            ),
+            (0, 1, 0)
+        );
         model.setSearch("tagesschau island".into());
-        assert_eq!(ids(&model), vec![7]);
-        assert_eq!(model.rows()[0].match_kind, "title");
+        assert_eq!(
+            ids(&model),
+            Vec::<i64>::new(),
+            "a feed's name and an article's title do not add up to a match"
+        );
+
+        // The groups in order: titles, then feeds, then body text.
+        model.setSearch("a".into());
+        assert_eq!(
+            model
+                .rows()
+                .iter()
+                .map(|r| (r.match_kind, r.id < 0))
+                .collect::<Vec<_>>(),
+            vec![
+                ("title", false),
+                ("title", false),
+                ("feed", true),
+                ("text", false)
+            ]
+        );
 
         // Text set before the scope is applied when the scope arrives, and
         // re-scoping keeps it: the page re-applies its scope every time it
@@ -2691,6 +2778,51 @@ mod row_decoration_tests {
         let before = unread.row_count();
         unread.loadMoreIn("title".into());
         assert_eq!(unread.row_count(), before);
+    }
+
+    /// §the feeds a search finds are a group like the others: a page of
+    /// them, and more on request, in the feed list's order.
+    #[test]
+    fn a_search_pages_through_the_feeds_it_found() {
+        let (_dir, ctx) = seeded();
+        for id in 300..312 {
+            let feed = Feed {
+                id: FeedId(id),
+                category_id: None,
+                title: format!("Harbour {id}"),
+                site_url: None,
+                feed_url: None,
+                icon_id: None,
+                checked_at: None,
+                parsing_error_message: String::new(),
+                parsing_error_count: 0,
+                disabled: false,
+                hide_globally: id == 300,
+                crawler: false,
+            };
+            ctx.write(|db| db.with_tx(|tx| store::upsert_feed(tx, &feed, 1)))
+                .expect("the mirror")
+                .expect("upsert");
+        }
+        let mut model = EntryModel::default();
+        model.attach(std::rc::Rc::clone(&ctx));
+        model.setScope(5, 0);
+        model.setSearch("harbour".into());
+
+        assert_eq!(model.feed_matches(), 12, "hidden ones too");
+        assert_eq!(model.feed_shown(), 5);
+        assert_eq!(ids(&model), vec![-300, -301, -302, -303, -304]);
+        assert_eq!(model.feed_next_load(), 10);
+
+        model.loadMoreIn("feed".into());
+        assert_eq!(model.feed_shown(), 12, "no more than there are");
+        assert_eq!(ids(&model), (300..312).map(|id| -id).collect::<Vec<_>>());
+        assert_eq!(model.feed_next_load(), 20);
+
+        // A new search starts the group over.
+        model.setSearch("harbour 30".into());
+        assert_eq!(model.feed_matches(), 10);
+        assert_eq!(model.feed_shown(), 5);
     }
 
     /// A run of rows added among the rows held is told apart from every

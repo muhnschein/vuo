@@ -7,21 +7,27 @@
 //! # What matches
 //!
 //! A query is split on whitespace into terms, and an article matches when
-//! EVERY term appears somewhere in its title, its feed's name or the TEXT of
-//! its body. Case is ignored. A term is a plain substring: no wildcards, no
-//! operators, so `50%` and `C++` mean what they say.
+//! EVERY term appears somewhere in its title or the TEXT of its body. Case is
+//! ignored. A term is a plain substring: no wildcards, no operators, so `50%`
+//! and `C++` mean what they say.
 //!
 //! The author is not searched. A list row does not show it, so an article
 //! found by its author would be a result with nothing on screen to say why.
+//!
+//! Nor is the name of an article's feed. A feed's name finds the FEED, which
+//! matches when every term is in its name ([`SearchQuery::matches`]): a
+//! reader typing a feed's name is after that feed, not after its latest
+//! articles, which were all the name used to find.
 //!
 //! # Where it matched
 //!
 //! Results are grouped by WHERE they matched -- the [`MatchKind`] -- so the
 //! articles a reader is most likely after, the ones whose title says so, come
-//! first. The kind is the first of title, feed name and body text that holds
-//! any term. For the result rows themselves, [`SearchQuery::highlight`] marks
-//! the terms in a title or feed name, and [`SearchQuery::excerpt`] cuts the
-//! lines around a match out of a body.
+//! first. For an article the kind is title when its title holds any term, and
+//! body text otherwise; the feeds are a group of their own. For the result
+//! rows themselves, [`SearchQuery::highlight`] marks the terms in a title or
+//! feed name, and [`SearchQuery::excerpt`] cuts the lines around a match out
+//! of a body.
 //!
 //! "The text of its body" is the point of this module. Bodies are stored as
 //! the HTML Miniflux delivered, and a substring test over the raw markup would
@@ -47,25 +53,26 @@ use rusqlite::Connection;
 /// spells it out in its statement, which is a literal by rule (§9.4).
 const SQL_FUNCTION: &str = "vuo_search_kind";
 
-/// Where an article matched a query: the first of these that holds any of
-/// its terms. In the order the results are listed.
+/// Where a search result matched, which is the group it is listed in. In the
+/// order the groups are listed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum MatchKind {
-    /// The title holds a term.
+    /// An article whose title holds a term.
     Title = 1,
-    /// The feed's name does, and the title does not.
+    /// A FEED, whose name holds every term -- see [`SearchQuery::matches`].
+    /// Never an article: [`SearchQuery::classify`] does not return it.
     Feed = 2,
-    /// Only the body's text does.
+    /// An article whose body's text holds a term, and whose title does not.
     Text = 3,
 }
 
 impl MatchKind {
-    /// The kind as SQL hands it back: 1, 2 or 3; anything else is no match.
+    /// The kind as SQL hands it back: 1 or 3 for an article, as
+    /// [`SearchQuery::classify`] does; anything else is no match.
     #[must_use]
     pub fn from_sql(value: i64) -> Option<MatchKind> {
         match value {
             1 => Some(MatchKind::Title),
-            2 => Some(MatchKind::Feed),
             3 => Some(MatchKind::Text),
             _ => None,
         }
@@ -106,19 +113,26 @@ impl SearchQuery {
         &self.terms
     }
 
-    /// Where an article matches, or `None` when it does not: every term must
-    /// be somewhere in its title, its feed's name or the text of its body.
+    /// Whether every term is in `text`. What finds a feed by its name.
+    #[must_use]
+    pub fn matches(&self, text: &str) -> bool {
+        let text = fold(text);
+        self.terms.iter().all(|t| text.contains(t.as_str()))
+    }
+
+    /// Where an article matches -- [`MatchKind::Title`] or
+    /// [`MatchKind::Text`] -- or `None` when it does not: every term must be
+    /// somewhere in its title or the text of its body.
     ///
     /// The body is the expensive part, so it is stripped and folded only when
-    /// the short fields have not already accounted for every term.
+    /// the title has not already accounted for every term.
     #[must_use]
-    pub fn classify(&self, title: &str, feed: &str, content_html: &str) -> Option<MatchKind> {
+    pub fn classify(&self, title: &str, content_html: &str) -> Option<MatchKind> {
         let title = fold(title);
-        let feed = fold(feed);
         let rest: Vec<&String> = self
             .terms
             .iter()
-            .filter(|t| !title.contains(t.as_str()) && !feed.contains(t.as_str()))
+            .filter(|t| !title.contains(t.as_str()))
             .collect();
         if !rest.is_empty() {
             let mut body = html_text(content_html);
@@ -135,11 +149,8 @@ impl SearchQuery {
                 return None;
             }
         }
-        let any_in = |field: &str| self.terms.iter().any(|t| field.contains(t.as_str()));
-        Some(if any_in(&title) {
+        Some(if rest.len() < self.terms.len() {
             MatchKind::Title
-        } else if any_in(&feed) {
-            MatchKind::Feed
         } else {
             MatchKind::Text
         })
@@ -384,14 +395,14 @@ fn decode_entity(s: &str) -> Option<(char, usize)> {
 
 /// Register [`SQL_FUNCTION`] on a connection.
 ///
-/// `vuo_search_kind(query, title, feed_title, content)` is the [`MatchKind`]
-/// as a number when the article matches, 0 when it does not, and 0 for a
+/// `vuo_search_kind(query, title, content)` is the [`MatchKind`] as a number
+/// when the article matches, 0 when it does not, and 0 for a
 /// query with no terms. The query is parsed once per statement and cached by
 /// SQLite, not once per row.
 pub(crate) fn register(conn: &Connection) -> rusqlite::Result<()> {
     conn.create_scalar_function(
         SQL_FUNCTION,
-        4,
+        3,
         FunctionFlags::SQLITE_UTF8 | FunctionFlags::SQLITE_DETERMINISTIC,
         sql_match,
     )
@@ -408,7 +419,7 @@ fn sql_match(ctx: &Context<'_>) -> rusqlite::Result<i64> {
     // not abort the whole search.
     let text = |i: usize| ctx.get_raw(i).as_str().unwrap_or_default();
     Ok(query
-        .classify(text(1), text(2), text(3))
+        .classify(text(1), text(2))
         .map_or(0, |kind| kind as i64))
 }
 
@@ -417,8 +428,8 @@ mod tests {
     use super::*;
 
     /// Whether an article matches at all.
-    fn hit(q: &SearchQuery, title: &str, feed: &str, body: &str) -> bool {
-        q.classify(title, feed, body).is_some()
+    fn hit(q: &SearchQuery, title: &str, body: &str) -> bool {
+        q.classify(title, body).is_some()
     }
 
     #[test]
@@ -437,48 +448,42 @@ mod tests {
     fn markup_is_not_text() {
         let q = SearchQuery::parse("href").unwrap();
         assert!(
-            !hit(
-                &q,
-                "",
-                "",
-                r#"<p><a href="https://x.example/">a link</a></p>"#
-            ),
+            !hit(&q, "", r#"<p><a href="https://x.example/">a link</a></p>"#),
             "an attribute name is not something the reader saw"
         );
         let q = SearchQuery::parse("div").unwrap();
-        assert!(!hit(&q, "", "", "<div>text</div>"));
+        assert!(!hit(&q, "", "<div>text</div>"));
     }
 
     #[test]
     fn every_term_must_match_somewhere() {
         let q = SearchQuery::parse("harbour dusk").unwrap();
-        assert!(hit(&q, "A harbour", "", "<p>at dusk</p>"));
-        assert!(!hit(&q, "A harbour", "", "<p>at dawn</p>"));
+        assert!(hit(&q, "A harbour", "<p>at dusk</p>"));
+        assert!(!hit(&q, "A harbour", "<p>at dawn</p>"));
         // Both terms left for the body, and only one of them in it.
-        assert!(!hit(&q, "", "", "<p>the harbour at dawn</p>"));
-        assert!(hit(&q, "", "", "<p>the harbour at dusk</p>"));
-        // One in the feed's name, the other in the body.
-        assert!(hit(&q, "", "Harbour Gazette", "<p>at dusk</p>"));
-        assert!(!hit(&q, "", "Harbour Gazette", "<p>at dawn</p>"));
+        assert!(!hit(&q, "", "<p>the harbour at dawn</p>"));
+        assert!(hit(&q, "", "<p>the harbour at dusk</p>"));
     }
 
     #[test]
-    fn the_first_place_holding_any_term_is_where_it_matched() {
+    fn a_title_holding_any_term_is_where_an_article_matched() {
         let q = SearchQuery::parse("harbour dusk").unwrap();
-        let kind = |title, feed, body| q.classify(title, feed, body);
-        assert_eq!(
-            kind("Dusk", "Harbour Gazette", "harbour"),
-            Some(MatchKind::Title)
-        );
-        assert_eq!(
-            kind("Evening", "Harbour Gazette", "dusk"),
-            Some(MatchKind::Feed)
-        );
-        assert_eq!(
-            kind("Evening", "Gazette", "harbour at dusk"),
-            Some(MatchKind::Text)
-        );
-        assert_eq!(kind("Evening", "Gazette", "harbour"), None);
+        let kind = |title, body| q.classify(title, body);
+        assert_eq!(kind("Dusk", "harbour"), Some(MatchKind::Title));
+        assert_eq!(kind("Harbour at dusk", ""), Some(MatchKind::Title));
+        assert_eq!(kind("Evening", "harbour at dusk"), Some(MatchKind::Text));
+        assert_eq!(kind("Evening", "harbour"), None);
+        assert_eq!(kind("Dusk", "dawn"), None);
+    }
+
+    #[test]
+    fn a_feed_matches_when_its_name_holds_every_term() {
+        let q = SearchQuery::parse("harbour GAZ").unwrap();
+        assert!(q.matches("The Harbour Gazette"));
+        assert!(!q.matches("The Harbour Times"), "every term, not any");
+        assert!(!q.matches(""));
+        let q = SearchQuery::parse("ääni").unwrap();
+        assert!(q.matches("ÄÄNI ja kuva"), "case is ignored beyond ASCII");
     }
 
     #[test]
@@ -489,7 +494,7 @@ mod tests {
         register(&conn).unwrap();
         assert!(conn
             .query_row(
-                "SELECT vuo_search_kind('jane', '', 'Jane Doe', '', '')",
+                "SELECT vuo_search_kind('jane', '', 'Jane Doe', '')",
                 [],
                 |r| r.get::<_, i64>(0),
             )
@@ -499,16 +504,16 @@ mod tests {
     #[test]
     fn case_is_ignored_beyond_ascii() {
         let q = SearchQuery::parse("ÄÄNI").unwrap();
-        assert!(hit(&q, "Hyvä ääni", "", ""));
-        assert!(hit(&q, "", "", "<p>Hyvä ääni</p>"));
+        assert!(hit(&q, "Hyvä ääni", ""));
+        assert!(hit(&q, "", "<p>Hyvä ääni</p>"));
     }
 
     #[test]
     fn character_references_are_decoded() {
         let q = SearchQuery::parse("at&t").unwrap();
-        assert!(hit(&q, "", "", "<p>AT&amp;T</p>"));
+        assert!(hit(&q, "", "<p>AT&amp;T</p>"));
         let q = SearchQuery::parse("café").unwrap();
-        assert!(hit(&q, "", "", "<p>Caf&#233;s and caf&#xE9;</p>"));
+        assert!(hit(&q, "", "<p>Caf&#233;s and caf&#xE9;</p>"));
     }
 
     #[test]
@@ -516,7 +521,7 @@ mod tests {
         assert_eq!(html_text("<b>Wo</b>rd"), "Word");
         assert_eq!(html_text("<p>one</p><p>two</p>").trim(), "one  two");
         let q = SearchQuery::parse("onetwo").unwrap();
-        assert!(!hit(&q, "", "", "<p>one</p><p>two</p>"));
+        assert!(!hit(&q, "", "<p>one</p><p>two</p>"));
     }
 
     #[test]
@@ -645,23 +650,20 @@ mod tests {
     fn the_sql_function_classifies_like_the_rust_one() {
         let conn = Connection::open_in_memory().unwrap();
         register(&conn).unwrap();
-        let kind = |sql: &str, args: [&str; 4]| -> i64 {
+        let kind = |sql: &str, args: [&str; 3]| -> i64 {
             conn.query_row(sql, args, |r| r.get(0)).unwrap()
         };
-        let sql = "SELECT vuo_search_kind(?1, ?2, ?3, ?4)";
-        assert_eq!(kind(sql, ["dusk", "Title", "", "<p>At DUSK</p>"]), 3);
-        assert_eq!(kind(sql, ["dusk", "Dusk", "", ""]), 1);
-        assert_eq!(kind(sql, ["dusk", "", "Dusk Daily", ""]), 2);
-        assert_eq!(kind(sql, ["dusk", "", "", "dawn"]), 0);
+        let sql = "SELECT vuo_search_kind(?1, ?2, ?3)";
+        assert_eq!(kind(sql, ["dusk", "Title", "<p>At DUSK</p>"]), 3);
+        assert_eq!(kind(sql, ["dusk", "Dusk", ""]), 1);
+        assert_eq!(kind(sql, ["dusk", "", "dawn"]), 0);
         assert_eq!(
-            kind(sql, ["  ", "anything", "", ""]),
+            kind(sql, ["  ", "anything", ""]),
             0,
             "an empty query matches nothing, not everything"
         );
         let null: i64 = conn
-            .query_row("SELECT vuo_search_kind('x', NULL, NULL, NULL)", [], |r| {
-                r.get(0)
-            })
+            .query_row("SELECT vuo_search_kind('x', NULL, NULL)", [], |r| r.get(0))
             .unwrap();
         assert_eq!(null, 0, "a NULL column is no text, not an error");
     }
