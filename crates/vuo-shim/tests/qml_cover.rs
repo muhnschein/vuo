@@ -412,3 +412,114 @@ fn every_mask_the_cover_can_name_exists_and_is_a_mask() {
         problems.join("\n")
     );
 }
+
+/// An 8-bit grayscale PNG, as `scripts/png-mask.py` writes them, read back
+/// to its rows. Nothing else is accepted: the test above already holds the
+/// masks to that format.
+fn read_mask(name: &str) -> (usize, usize, Vec<u8>) {
+    use std::io::Read as _;
+    let bytes = std::fs::read(repo_root().join("qml/art/cover").join(name)).unwrap();
+    let be32 = |at: usize| u32::from_be_bytes(bytes[at..at + 4].try_into().unwrap()) as usize;
+    let (w, h) = (be32(16), be32(20));
+    assert_eq!(
+        (bytes[24], bytes[25]),
+        (8, 0),
+        "{name} is not 8-bit grayscale"
+    );
+    let mut zipped = Vec::new();
+    let mut at = 8;
+    while at + 8 <= bytes.len() {
+        let len = be32(at);
+        if &bytes[at + 4..at + 8] == b"IDAT" {
+            zipped.extend_from_slice(&bytes[at + 8..at + 8 + len]);
+        }
+        at += 12 + len;
+    }
+    let mut raw = Vec::new();
+    flate2::read::ZlibDecoder::new(&zipped[..])
+        .read_to_end(&mut raw)
+        .unwrap();
+    let mut px = vec![0u8; w * h];
+    for y in 0..h {
+        let filter = raw[y * (w + 1)];
+        for x in 0..w {
+            let v = raw[y * (w + 1) + 1 + x];
+            let a = if x > 0 { px[y * w + x - 1] } else { 0 };
+            let b = if y > 0 { px[(y - 1) * w + x] } else { 0 };
+            let c = if x > 0 && y > 0 {
+                px[(y - 1) * w + x - 1]
+            } else {
+                0
+            };
+            let add = match filter {
+                0 => 0,
+                1 => a,
+                2 => b,
+                3 => ((u16::from(a) + u16::from(b)) / 2) as u8,
+                4 => {
+                    let p = i16::from(a) + i16::from(b) - i16::from(c);
+                    let (pa, pb, pc) = (
+                        (p - i16::from(a)).abs(),
+                        (p - i16::from(b)).abs(),
+                        (p - i16::from(c)).abs(),
+                    );
+                    if pa <= pb && pa <= pc {
+                        a
+                    } else if pb <= pc {
+                        b
+                    } else {
+                        c
+                    }
+                }
+                f => panic!("{name}: PNG filter {f}"),
+            };
+            px[y * w + x] = v.wrapping_add(add);
+        }
+    }
+    (w, h, px)
+}
+
+/// Where a count's outline sits across its master: the middle of the
+/// outline's ink box, in pixels right of the master's middle.
+fn outline_offset(key: &str) -> f64 {
+    let (w, h, px) = read_mask(&format!("{key}-edge.png"));
+    let inked: Vec<usize> = (0..w)
+        .filter(|&x| (0..h).any(|y| px[y * w + x] > 0))
+        .collect();
+    let (first, last) = (inked[0], inked[inked.len() - 1]);
+    (first + last) as f64 / 2.0 - (w - 1) as f64 / 2.0
+}
+
+/// The 1, the 3 and the 4 sit where they LOOK centred, which is not where
+/// the painter's weight rule alone put them -- see `coverNudge` in
+/// tools/textart/render.qml. Off a device: the 1 read right of centre, and
+/// the 3 and the 4 left of it.
+///
+/// In pixels of the 512-wide master, on the outline's ink box. The rule
+/// alone left the 1's box 18.5 left of centre, the 3's 9 left and the 4's
+/// 1.5 right; each bound sits past those, so a repaint that drops the
+/// nudge -- or masks that were never repainted -- fails here. The 2 is the
+/// control: nobody asked for it to move, and it has not.
+#[test]
+fn the_one_three_and_four_are_centred_by_eye() {
+    let one = outline_offset("1");
+    let three = outline_offset("3");
+    let four = outline_offset("4");
+    let two = outline_offset("2");
+    assert!(
+        one <= -22.0,
+        "the 1's box is {one:+} px from centre; want 22+ left"
+    );
+    assert!(
+        three >= 1.0,
+        "the 3's box is {three:+} px from centre; want right of it"
+    );
+    assert!(
+        four >= 5.0,
+        "the 4's box is {four:+} px from centre; want 5+ right"
+    );
+    assert!(
+        (two - -5.0).abs() < 1.0,
+        "the 2's box is {two:+} px from centre; it was -5 and should not have moved"
+    );
+}
