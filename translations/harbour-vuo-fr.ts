@@ -250,13 +250,13 @@
     </message>
     <message>
         <location filename="../qml/components/EntryListView.qml" line="328"/>
-        <location filename="../qml/components/EntryListView.qml" line="783"/>
+        <location filename="../qml/components/EntryListView.qml" line="857"/>
         <source>Mark as unread</source>
         <translation>Marquer comme non lu</translation>
     </message>
     <message>
         <location filename="../qml/components/EntryListView.qml" line="333"/>
-        <location filename="../qml/components/EntryListView.qml" line="783"/>
+        <location filename="../qml/components/EntryListView.qml" line="857"/>
         <source>Mark as read</source>
         <translation>Marquer comme lu</translation>
     </message>
@@ -306,60 +306,73 @@
         <translation>Actualiser</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="465"/>
-        <source>Search the articles on this device</source>
-        <translation>Rechercher dans les articles de cet appareil</translation>
-    </message>
-    <message>
-        <location filename="../qml/components/EntryListView.qml" line="466"/>
+        <location filename="../qml/components/EntryListView.qml" line="468"/>
         <source>No articles found</source>
         <translation>Aucun article trouvé</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="467"/>
+        <location filename="../qml/components/EntryListView.qml" line="469"/>
         <source>No favourites</source>
         <translation>Aucun favori</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="468"/>
+        <location filename="../qml/components/EntryListView.qml" line="470"/>
         <source>Nothing to read</source>
         <translation>Rien à lire</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="473"/>
+        <location filename="../qml/components/EntryListView.qml" line="475"/>
         <source>Vuo searches the title, feed name and text of every article on this device.</source>
         <translation>Vuo recherche dans le titre, le nom du flux et le texte de chaque article de cet appareil.</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="475"/>
+        <location filename="../qml/components/EntryListView.qml" line="477"/>
         <source>Articles you add to favourites appear here</source>
         <translation>Les articles que vous ajoutez aux favoris s&apos;affichent ici</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="476"/>
+        <location filename="../qml/components/EntryListView.qml" line="478"/>
         <source>Pull down to refresh</source>
         <translation>Tirez vers le bas pour actualiser</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="496"/>
+        <location filename="../qml/components/EntryListView.qml" line="536"/>
+        <source>In titles (%1 of %2)</source>
+        <extracomment>Search results: the group of articles whose title matched, when only some of them are shown. %1 is how many are shown, %2 how many there are.</extracomment>
+        <translation>Dans les titres (%1 sur %2)</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="541"/>
+        <source>In feed names (%1 of %2)</source>
+        <extracomment>As &quot;In titles (%1 of %2)&quot;, for the articles whose feed&apos;s name matched.</extracomment>
+        <translation>Dans les noms de flux (%1 sur %2)</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="544"/>
+        <source>In article text (%1 of %2)</source>
+        <extracomment>As &quot;In titles (%1 of %2)&quot;, for the articles whose text matched.</extracomment>
+        <translation>Dans le texte des articles (%1 sur %2)</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="549"/>
         <source>In titles (%1)</source>
         <extracomment>Search results: the group of articles whose title matched. %1 is how many there are.</extracomment>
         <translation>Dans les titres (%1)</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="501"/>
+        <location filename="../qml/components/EntryListView.qml" line="554"/>
         <source>In feed names (%1)</source>
         <extracomment>Search results: the group of articles whose feed&apos;s name matched. %1 is how many there are.</extracomment>
         <translation>Dans les noms de flux (%1)</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="505"/>
+        <location filename="../qml/components/EntryListView.qml" line="558"/>
         <source>In article text (%1)</source>
         <extracomment>Search results: the group of articles whose text matched. %1 is how many there are.</extracomment>
         <translation>Dans le texte des articles (%1)</translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/components/EntryListView.qml" line="672"/>
+        <location filename="../qml/components/EntryListView.qml" line="746"/>
         <source>%n min read</source>
         <translation>
             <numerusform>%n min de lecture</numerusform>
@@ -367,7 +380,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/components/EntryListView.qml" line="673"/>
+        <location filename="../qml/components/EntryListView.qml" line="747"/>
         <source>%n min</source>
         <translation>
             <numerusform>%n min</numerusform>
@@ -375,19 +388,31 @@
         </translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="787"/>
+        <location filename="../qml/components/EntryListView.qml" line="861"/>
         <source>Remove favourite</source>
         <translation>Retirer des favoris</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="787"/>
+        <location filename="../qml/components/EntryListView.qml" line="861"/>
         <source>Add favourite</source>
         <translation>Ajouter aux favoris</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="791"/>
+        <location filename="../qml/components/EntryListView.qml" line="865"/>
         <source>Open in browser</source>
         <translation>Ouvrir dans le navigateur</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="895"/>
+        <source>Load all results</source>
+        <extracomment>Under a group of search results: shows all the rest of the group.</extracomment>
+        <translation>Tout charger</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="898"/>
+        <source>Load more</source>
+        <extracomment>Under a group of search results: shows a few more of the group.</extracomment>
+        <translation>Charger plus</translation>
     </message>
 </context>
 <context>

@@ -250,13 +250,13 @@
     </message>
     <message>
         <location filename="../qml/components/EntryListView.qml" line="328"/>
-        <location filename="../qml/components/EntryListView.qml" line="783"/>
+        <location filename="../qml/components/EntryListView.qml" line="857"/>
         <source>Mark as unread</source>
         <translation>ಓದದ್ದೆಂದು ಗುರುತಿಸಿ</translation>
     </message>
     <message>
         <location filename="../qml/components/EntryListView.qml" line="333"/>
-        <location filename="../qml/components/EntryListView.qml" line="783"/>
+        <location filename="../qml/components/EntryListView.qml" line="857"/>
         <source>Mark as read</source>
         <translation>ಓದಿದ್ದೆಂದು ಗುರುತಿಸಿ</translation>
     </message>
@@ -306,60 +306,73 @@
         <translation>ರಿಫ್ರೆಶ್</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="465"/>
-        <source>Search the articles on this device</source>
-        <translation>ಈ ಸಾಧನದಲ್ಲಿರುವ ಲೇಖನಗಳನ್ನು ಹುಡುಕಿ</translation>
-    </message>
-    <message>
-        <location filename="../qml/components/EntryListView.qml" line="466"/>
+        <location filename="../qml/components/EntryListView.qml" line="468"/>
         <source>No articles found</source>
         <translation>ಯಾವುದೇ ಲೇಖನ ಕಂಡುಬಂದಿಲ್ಲ</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="467"/>
+        <location filename="../qml/components/EntryListView.qml" line="469"/>
         <source>No favourites</source>
         <translation>ಮೆಚ್ಚಿನವು ಇಲ್ಲ</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="468"/>
+        <location filename="../qml/components/EntryListView.qml" line="470"/>
         <source>Nothing to read</source>
         <translation>ಓದಲು ಏನೂ ಇಲ್ಲ</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="473"/>
+        <location filename="../qml/components/EntryListView.qml" line="475"/>
         <source>Vuo searches the title, feed name and text of every article on this device.</source>
         <translation>Vuo ಈ ಸಾಧನದಲ್ಲಿರುವ ಪ್ರತಿ ಲೇಖನದ ಶೀರ್ಷಿಕೆ, ಫೀಡ್ ಹೆಸರು ಮತ್ತು ಪಠ್ಯವನ್ನು ಹುಡುಕುತ್ತದೆ.</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="475"/>
+        <location filename="../qml/components/EntryListView.qml" line="477"/>
         <source>Articles you add to favourites appear here</source>
         <translation>ಮೆಚ್ಚಿನವುಗಳಿಗೆ ಸೇರಿಸಿದ ಲೇಖನಗಳು ಇಲ್ಲಿ ಕಾಣಿಸುತ್ತವೆ</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="476"/>
+        <location filename="../qml/components/EntryListView.qml" line="478"/>
         <source>Pull down to refresh</source>
         <translation>ರಿಫ್ರೆಶ್ ಮಾಡಲು ಕೆಳಗೆ ಎಳೆಯಿರಿ</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="496"/>
+        <location filename="../qml/components/EntryListView.qml" line="536"/>
+        <source>In titles (%1 of %2)</source>
+        <extracomment>Search results: the group of articles whose title matched, when only some of them are shown. %1 is how many are shown, %2 how many there are.</extracomment>
+        <translation>ಶೀರ್ಷಿಕೆಗಳಲ್ಲಿ (%2 ರಲ್ಲಿ %1)</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="541"/>
+        <source>In feed names (%1 of %2)</source>
+        <extracomment>As &quot;In titles (%1 of %2)&quot;, for the articles whose feed&apos;s name matched.</extracomment>
+        <translation>ಫೀಡ್ ಹೆಸರುಗಳಲ್ಲಿ (%2 ರಲ್ಲಿ %1)</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="544"/>
+        <source>In article text (%1 of %2)</source>
+        <extracomment>As &quot;In titles (%1 of %2)&quot;, for the articles whose text matched.</extracomment>
+        <translation>ಲೇಖನದ ಪಠ್ಯದಲ್ಲಿ (%2 ರಲ್ಲಿ %1)</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="549"/>
         <source>In titles (%1)</source>
         <extracomment>Search results: the group of articles whose title matched. %1 is how many there are.</extracomment>
         <translation>ಶೀರ್ಷಿಕೆಗಳಲ್ಲಿ (%1)</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="501"/>
+        <location filename="../qml/components/EntryListView.qml" line="554"/>
         <source>In feed names (%1)</source>
         <extracomment>Search results: the group of articles whose feed&apos;s name matched. %1 is how many there are.</extracomment>
         <translation>ಫೀಡ್ ಹೆಸರುಗಳಲ್ಲಿ (%1)</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="505"/>
+        <location filename="../qml/components/EntryListView.qml" line="558"/>
         <source>In article text (%1)</source>
         <extracomment>Search results: the group of articles whose text matched. %1 is how many there are.</extracomment>
         <translation>ಲೇಖನದ ಪಠ್ಯದಲ್ಲಿ (%1)</translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/components/EntryListView.qml" line="672"/>
+        <location filename="../qml/components/EntryListView.qml" line="746"/>
         <source>%n min read</source>
         <translation>
             <numerusform>%n ನಿಮಿಷ ಓದು</numerusform>
@@ -367,7 +380,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../qml/components/EntryListView.qml" line="673"/>
+        <location filename="../qml/components/EntryListView.qml" line="747"/>
         <source>%n min</source>
         <translation>
             <numerusform>%n ನಿಮಿಷ</numerusform>
@@ -375,19 +388,31 @@
         </translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="787"/>
+        <location filename="../qml/components/EntryListView.qml" line="861"/>
         <source>Remove favourite</source>
         <translation>ಮೆಚ್ಚಿನವುಗಳಿಂದ ತೆಗೆ</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="787"/>
+        <location filename="../qml/components/EntryListView.qml" line="861"/>
         <source>Add favourite</source>
         <translation>ಮೆಚ್ಚಿನವುಗಳಿಗೆ ಸೇರಿಸಿ</translation>
     </message>
     <message>
-        <location filename="../qml/components/EntryListView.qml" line="791"/>
+        <location filename="../qml/components/EntryListView.qml" line="865"/>
         <source>Open in browser</source>
         <translation>ಬ್ರೌಸರ್‌ನಲ್ಲಿ ತೆರೆ</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="895"/>
+        <source>Load all results</source>
+        <extracomment>Under a group of search results: shows all the rest of the group.</extracomment>
+        <translation>ಎಲ್ಲವನ್ನೂ ಲೋಡ್ ಮಾಡಿ</translation>
+    </message>
+    <message>
+        <location filename="../qml/components/EntryListView.qml" line="898"/>
+        <source>Load more</source>
+        <extracomment>Under a group of search results: shows a few more of the group.</extracomment>
+        <translation>ಇನ್ನಷ್ಟು ಲೋಡ್ ಮಾಡಿ</translation>
     </message>
 </context>
 <context>
