@@ -297,9 +297,8 @@ SilicaListView {
             /// Raise the keyboard once the page is in place and the app is in
             /// front -- not while the page is still sliding in -- and only the
             /// first time: coming back from an article should land on the
-            /// results, not on the keyboard. Both conditions, because the
-            /// cover's search action pushes the page while the app is still
-            /// in the background, and a field focused there raises nothing.
+            /// results, not on the keyboard. Both conditions, because a field
+            /// focused while the app is in the background raises nothing.
             function raiseKeyboard() {
                 if (listView.searching && !searchField._focused && listView.hostPage
                         && listView.hostPage.status === PageStatus.Active

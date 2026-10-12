@@ -831,12 +831,5 @@
             <numerusform>%n neprebranih</numerusform>
         </translation>
     </message>
-    <message>
-        <location filename="../qml/harbour-vuo.qml" line="338"/>
-        <source>Search</source>
-        <comment>page title</comment>
-        <extracomment>The search page&apos;s title. A noun.</extracomment>
-        <translation>Iskanje</translation>
-    </message>
 </context>
 </TS>

@@ -275,14 +275,7 @@ CoverBackground {
             iconSource: "image://theme/icon-cover-refresh"
             onTriggered: cover.refresh()
         }
-        CoverAction {
-            objectName: "searchAction"
-            iconSource: "image://theme/icon-cover-search"
-            onTriggered: cover.search()
-        }
     }
 
     signal refresh()
-    /// Open the app on its search page.
-    signal search()
 }
