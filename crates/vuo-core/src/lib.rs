@@ -35,6 +35,25 @@
 //! wherever foreign input is shaped into something the UI will draw.
 
 #![forbid(unsafe_code)]
+// More of the same, for what a phone runs and tests do not. The release
+// profile has no overflow checks, so `+` on a length a server chose wraps
+// silently; a string sliced off a char boundary panics; a `let _ =` on a
+// `Result` drops the one diagnosis there was. Here rather than in the
+// workspace lints table because that table cannot leave tests out, and a
+// test indexing into what it just built is fine. Integration tests,
+// examples and build scripts are other crates, or this one under
+// `cfg(test)`.
+#![cfg_attr(
+    not(test),
+    deny(
+        clippy::string_slice,
+        clippy::arithmetic_side_effects,
+        clippy::let_underscore_must_use,
+        clippy::panic_in_result_fn,
+        clippy::unwrap_in_result,
+        clippy::get_unwrap
+    )
+)]
 // The `unwrap`/`expect`/`panic`/indexing denials exist because foreign input
 // reaches production paths and unwinding out of Rust into Qt's C++ frames is
 // undefined behaviour (§9.5). Test code has neither property: a test that

@@ -8,6 +8,9 @@
 //!
 //! Usage: net-probe <server-url> [api-key]
 
+// Its whole output is the report, on stdout, for a person to read.
+#![allow(clippy::print_stdout)]
+
 fn main() {
     let mut args = std::env::args().skip(1);
     let Some(url) = args.next() else {

@@ -1,3 +1,6 @@
+// A build script talks to cargo through `cargo:` lines on stdout.
+#![allow(clippy::print_stdout)]
+
 fn main() {
     // The C++ glue is compiled only for the device build. On a host without
     // the SailfishOS SDK there are no sailfishapp headers, and requiring them

@@ -35,6 +35,7 @@
 use html5ever::tokenizer::states::RawKind;
 use html5ever::tokenizer::{
     BufferQueue, Tag, TagKind, Token, TokenSink, TokenSinkResult, Tokenizer, TokenizerOpts,
+    TokenizerResult,
 };
 use tendril::StrTendril;
 use url::Url;
@@ -123,12 +124,8 @@ pub fn transform(html: &str, ctx: &TransformContext) -> Document {
     // Cap the input BEFORE parsing, not after (§9.2). Slicing on a char
     // boundary keeps the truncation from splitting a UTF-8 sequence.
     let (input, pre_truncated) = if html.len() > ctx.limits.max_input_bytes {
-        let mut cut = ctx.limits.max_input_bytes;
-        while cut > 0 && !html.is_char_boundary(cut) {
-            cut -= 1;
-        }
         (
-            html.get(..cut).unwrap_or(""),
+            clamp_to_char_boundary(html, ctx.limits.max_input_bytes),
             Some(Truncation::InputTooLarge),
         )
     } else {
@@ -164,7 +161,11 @@ fn drive(input: &str, ctx: &TransformContext, pre_truncated: Option<Truncation>)
 
     // `feed` returns `Script(handle)` only if the sink asks for script
     // handling, which this sink never does; looping to `Done` is exhaustive.
-    let _ = tok.feed(&mut queue);
+    let fed = tok.feed(&mut queue);
+    debug_assert!(
+        matches!(fed, TokenizerResult::Done),
+        "the sink never asks for script handling"
+    );
     tok.end();
 
     tok.sink
@@ -523,7 +524,7 @@ impl Builder {
             }
             let taken = clamp_to_char_boundary(text, budget);
             self.pre_text.push_str(taken);
-            self.text_bytes += taken.len();
+            self.text_bytes = self.text_bytes.saturating_add(taken.len());
             return;
         }
 
@@ -562,7 +563,7 @@ impl Builder {
             return;
         }
         let taken = clamp_to_char_boundary(&collapsed, budget).to_owned();
-        self.text_bytes += taken.len();
+        self.text_bytes = self.text_bytes.saturating_add(taken.len());
 
         // Merge into the previous span when the styling is identical; this
         // keeps the span list short for text broken up by ignored tags.
@@ -607,8 +608,7 @@ impl Builder {
         // 2 MiB input cap. §9.2's caps exist to prevent exactly that.
         if self.skip_from.is_some() {
             if !childless && self.open.len() < self.ctx.limits.max_depth {
-                self.peak_open = self.peak_open.max(self.open.len() + 1);
-                self.peak_open = self.peak_open.max(self.open.len() + 1);
+                self.peak_open = self.peak_open.max(self.open.len().saturating_add(1));
                 self.open.push(OpenElement {
                     name,
                     disposition: Disposition::Skip,
@@ -641,7 +641,7 @@ impl Builder {
             }
             self.skip_from = Some(self.open.len());
             let raw = raw_text_kind(&name);
-            self.peak_open = self.peak_open.max(self.open.len() + 1);
+            self.peak_open = self.peak_open.max(self.open.len().saturating_add(1));
             self.open.push(OpenElement {
                 name,
                 disposition: Disposition::Skip,
@@ -694,7 +694,7 @@ impl Builder {
         }
 
         if !childless {
-            self.peak_open = self.peak_open.max(self.open.len() + 1);
+            self.peak_open = self.peak_open.max(self.open.len().saturating_add(1));
             self.open.push(OpenElement {
                 name,
                 disposition,
@@ -1130,10 +1130,11 @@ fn clamp_to_char_boundary(text: &str, budget: usize) -> &str {
     if text.len() <= budget {
         return text;
     }
-    let mut cut = budget;
-    while cut > 0 && !text.is_char_boundary(cut) {
-        cut -= 1;
-    }
+    // A char is at most four bytes, so a boundary is at most three back.
+    let cut = (0..=budget)
+        .rev()
+        .find(|&i| text.is_char_boundary(i))
+        .unwrap_or(0);
     text.get(..cut).unwrap_or("")
 }
 

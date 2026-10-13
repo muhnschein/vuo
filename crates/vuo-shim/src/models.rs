@@ -208,7 +208,7 @@ pub const ROLE_UNREAD_COUNT: i32 = USER_ROLE + 15;
 ///
 /// `PartialEq` so a reload can tell a row that actually moved from one it has
 /// just re-read unchanged -- see [`EntryModel::reload`].
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct EntryRow {
     pub id: i64,
     pub feed_id: i64,
@@ -265,7 +265,7 @@ impl EntryRow {
     /// nor its page.
     fn feed_found(feed: &store::FeedMatch, query: Option<&SearchQuery>) -> Self {
         EntryRow {
-            id: -feed.id.get(),
+            id: feed.id.get().saturating_neg(),
             feed_id: feed.id.get(),
             title: feed.title.clone(),
             // A feed is not read or unread; it is drawn as an unread row is,
@@ -487,10 +487,10 @@ fn inserted_run(held: &[i64], fresh: &[i64]) -> Option<(usize, usize)> {
         .iter()
         .rev()
         .zip(fresh.iter().rev())
-        .take(held.len() - before)
+        .take(held.len().saturating_sub(before))
         .take_while(|(a, b)| a == b)
         .count();
-    (before + after == held.len()).then_some((before, added))
+    (before.saturating_add(after) == held.len()).then_some((before, added))
 }
 
 /// Which slice of the mirror a model shows.
@@ -707,7 +707,7 @@ pub struct EntryModel {
     /// once per generation for all four models. Held rather than fetched in
     /// `data` because `data` is `&self` and is called once per role per
     /// visible delegate.
-    feed_chrome: std::rc::Rc<std::collections::HashMap<i64, crate::context::FeedChrome>>,
+    feed_chrome: std::rc::Rc<HashMap<i64, crate::context::FeedChrome>>,
     /// The spinner state this model last told QML about.
     ///
     /// `syncing` is READ + NOTIFY, so QML re-evaluates it only when
@@ -1331,9 +1331,9 @@ impl EntryModel {
         else {
             return;
         };
-        let first = (self as &mut dyn QAbstractListModel).row_index(0);
-        let last = (self as &mut dyn QAbstractListModel).row_index(last);
-        (self as &mut dyn QAbstractListModel).data_changed(first, last);
+        let first = QAbstractListModel::row_index(self, 0);
+        let last = QAbstractListModel::row_index(self, last);
+        QAbstractListModel::data_changed(self, first, last);
     }
 
     /// Update one row in place after a local mutation, without a full reload.
@@ -1350,8 +1350,8 @@ impl EntryModel {
             }
         }
         let Ok(i) = i32::try_from(index) else { return };
-        let model_index = (self as &mut dyn QAbstractListModel).row_index(i);
-        (self as &mut dyn QAbstractListModel).data_changed(model_index, model_index);
+        let model_index = QAbstractListModel::row_index(self, i);
+        QAbstractListModel::data_changed(self, model_index, model_index);
         // A read/unread change moves `unreadTotal`, and that is what the app
         // cover shows. `countChanged` is its only NOTIFY and used to fire from
         // `reload()` alone, so marking an entry read left the cover's badge
@@ -1482,7 +1482,7 @@ pub const ROLE_FEED_ICON_URI: i32 = USER_ROLE + 8;
 
 /// `PartialEq` for the reason [`EntryRow`] has it: a reload that finds the
 /// list it already holds must not reset the model.
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct FeedRow {
     pub id: i64,
     pub title: String,
@@ -2041,7 +2041,7 @@ mod row_decoration_tests {
         let names = <EntryModel as QAbstractListModel>::role_names(&model);
         for (role, name) in [(ROLE_FEED_NAME, "feedName"), (ROLE_FEED_ICON, "feedIcon")] {
             assert_eq!(
-                names.get(&role).map(std::string::ToString::to_string),
+                names.get(&role).map(ToString::to_string),
                 Some(name.to_owned()),
                 "QML reaches this role by name"
             );

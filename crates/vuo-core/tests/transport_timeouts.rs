@@ -85,8 +85,8 @@ async fn read_timeout_on_silent_server() {
             None,
         )
         .await;
-    println!("silent: {:?} after {:?}", res, start.elapsed());
-    assert!(res.is_err());
+    eprintln!("silent: {:?} after {:?}", res, start.elapsed());
+    res.unwrap_err();
     assert!(
         start.elapsed() < Duration::from_secs(5),
         "read timeout must fire"
@@ -114,7 +114,7 @@ async fn total_timeout_during_slow_body() {
             None,
         )
         .await;
-    println!("dribble: {:?} after {:?}", res, start.elapsed());
+    eprintln!("dribble: {:?} after {:?}", res, start.elapsed());
     assert!(res.is_err(), "total timeout must stop an endless slow body");
     assert!(
         start.elapsed() < Duration::from_secs(5),
@@ -143,12 +143,12 @@ async fn read_timeout_during_slow_body() {
             None,
         )
         .await;
-    println!(
+    eprintln!(
         "slow-body read timeout: {:?} after {:?}",
         res,
         start.elapsed()
     );
-    assert!(res.is_err());
+    res.unwrap_err();
     assert!(
         start.elapsed() < Duration::from_secs(5),
         "took {:?}",

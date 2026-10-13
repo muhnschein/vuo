@@ -117,8 +117,12 @@ fn load_one_and_exit(path: &str) -> ! {
     // The point of the child: evaluate every binding.
     let _ = component.create();
     // Flushed by the newline -- Rust's stdout is line buffered -- so it has
-    // reached the pipe before anything teardown may do.
-    println!("{INSTANTIATED}");
+    // reached the pipe before anything teardown may do. Stdout on purpose:
+    // the parent reads the child's stdout for it, and Qt writes to stderr.
+    #[allow(clippy::print_stdout)]
+    {
+        println!("{INSTANTIATED}");
+    }
     std::process::exit(0);
 }
 

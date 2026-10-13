@@ -42,6 +42,18 @@
 // rather than Rust's. The alternative is QML reading `model.set_read(...)` and
 // a signal handler spelled `onConnection_tested`.
 #![allow(non_snake_case)]
+// Shipped code is held to more than tests are; vuo-core's lib.rs says why.
+#![cfg_attr(
+    not(test),
+    deny(
+        clippy::string_slice,
+        clippy::arithmetic_side_effects,
+        clippy::let_underscore_must_use,
+        clippy::panic_in_result_fn,
+        clippy::unwrap_in_result,
+        clippy::get_unwrap
+    )
+)]
 // The panic denials exist because unwinding out of Rust into Qt's C++ frames
 // is undefined behaviour (§9.5). Test code has neither foreign input nor a Qt
 // frame above it, and a panicking assertion is the entire point of a test.

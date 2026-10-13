@@ -125,10 +125,10 @@ async fn relative_redirect_is_followed_with_token() {
             None,
         )
         .await;
-    println!("result: {res:?}");
+    eprintln!("result: {res:?}");
     let req1 = rx.recv().unwrap();
     let req2 = rx.recv_timeout(Duration::from_secs(5)).unwrap();
-    println!("--- req1 ---\n{req1}\n--- req2 ---\n{req2}");
+    eprintln!("--- req1 ---\n{req1}\n--- req2 ---\n{req2}");
     assert!(
         req2.contains("SECRET-TOKEN"),
         "token should be re-attached same-origin"
@@ -206,9 +206,9 @@ async fn protocol_relative_redirect() {
             None,
         )
         .await;
-    println!("protocol-relative result: {res:?}");
+    eprintln!("protocol-relative result: {res:?}");
     let _ = rx.recv().unwrap();
-    assert!(res.is_err());
+    res.unwrap_err();
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -295,8 +295,8 @@ async fn chunked_no_content_length_over_cap() {
             None,
         )
         .await;
-    println!("chunked result: {:?}", res.as_ref().map(|r| r.body.len()));
-    println!("chunked err: {res:?}");
+    eprintln!("chunked result: {:?}", res.as_ref().map(|r| r.body.len()));
+    eprintln!("chunked err: {res:?}");
     let _ = rx.recv().unwrap();
     assert!(res.is_err(), "chunked body over cap must be refused");
 }
@@ -319,8 +319,8 @@ async fn gzip_bomb() {
             None,
         )
         .await;
-    println!("gzip result len: {:?}", res.as_ref().map(|r| r.body.len()));
-    println!("gzip err: {res:?}");
+    eprintln!("gzip result len: {:?}", res.as_ref().map(|r| r.body.len()));
+    eprintln!("gzip err: {res:?}");
     let _ = rx.recv().unwrap();
     assert!(
         res.is_err(),

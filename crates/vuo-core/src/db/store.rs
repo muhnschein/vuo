@@ -580,9 +580,9 @@ impl SearchCounts {
         };
         for m in matches {
             match m.kind {
-                MatchKind::Title => counts.title += 1,
-                MatchKind::Feed => counts.feed += 1,
-                MatchKind::Text => counts.text += 1,
+                MatchKind::Title => counts.title = counts.title.saturating_add(1),
+                MatchKind::Feed => counts.feed = counts.feed.saturating_add(1),
+                MatchKind::Text => counts.text = counts.text.saturating_add(1),
             }
         }
         counts
@@ -600,7 +600,7 @@ impl SearchCounts {
 }
 
 /// One article a search found, with what its row needs to say why.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SearchHit {
     pub row: EntryListRow,
     /// Where it matched, which is the group it is listed in.
@@ -904,7 +904,7 @@ pub fn acknowledge_arrivals(tx: &Transaction<'_>, ids: &[EntryId]) -> Result<usi
     let mut stmt = tx.prepare("UPDATE entries SET arrived = 0 WHERE id = ?1 AND arrived = 1")?;
     let mut cleared = 0usize;
     for id in ids {
-        cleared += stmt.execute([id.get()])?;
+        cleared = cleared.saturating_add(stmt.execute([id.get()])?);
     }
     Ok(cleared)
 }
@@ -1281,7 +1281,7 @@ mod tests {
             outbox::queue(
                 tx,
                 EntryId(6),
-                outbox::DesiredValue::Status(EntryStatus::Read),
+                DesiredValue::Status(EntryStatus::Read),
                 1_000,
             )
         })
@@ -1663,15 +1663,8 @@ mod tests {
         let mut db = populated();
 
         // Pending STATUS, remote changes STARRED.
-        db.with_tx(|tx| {
-            outbox::queue(
-                tx,
-                EntryId(1),
-                outbox::DesiredValue::Status(EntryStatus::Read),
-                1,
-            )
-        })
-        .expect("queue status");
+        db.with_tx(|tx| outbox::queue(tx, EntryId(1), DesiredValue::Status(EntryStatus::Read), 1))
+            .expect("queue status");
         db.with_tx(|tx| {
             let mut remote = entry_at(1, 10, EntryStatus::Unread, true, 100);
             remote.title = "remote title".to_owned();
@@ -1690,7 +1683,7 @@ mod tests {
         assert_eq!(e.title, "remote title", "as does everything else");
 
         // Pending STARRED, remote changes STATUS. The mirror case.
-        db.with_tx(|tx| outbox::queue(tx, EntryId(5), outbox::DesiredValue::Starred(true), 1))
+        db.with_tx(|tx| outbox::queue(tx, EntryId(5), DesiredValue::Starred(true), 1))
             .expect("queue star");
         db.with_tx(|tx| {
             upsert_entry(

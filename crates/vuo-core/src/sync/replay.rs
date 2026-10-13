@@ -54,13 +54,15 @@ pub async fn flush(db: &mut Database, client: &MinifluxClient) -> Result<ReplayO
                 // Compare-and-delete: a re-toggle during the request leaves a
                 // row with a different value, which must survive.
                 let cleared = db.with_tx(|tx| outbox::confirm(tx, &batch))?;
-                outcome.confirmed += cleared;
-                outcome.deferred += batch.entry_ids.len().saturating_sub(cleared);
+                outcome.confirmed = outcome.confirmed.saturating_add(cleared);
+                outcome.deferred = outcome
+                    .deferred
+                    .saturating_add(batch.entry_ids.len().saturating_sub(cleared));
             }
             Err(e) if e.is_auth_failure() => {
                 // Every remaining batch would fail identically.
                 db.with_tx(|tx| outbox::record_failure(tx, &batch, &e.to_string()))?;
-                outcome.deferred += batch.entry_ids.len();
+                outcome.deferred = outcome.deferred.saturating_add(batch.entry_ids.len());
                 outcome.auth_failed = true;
                 return Ok(outcome);
             }
@@ -76,7 +78,7 @@ pub async fn flush(db: &mut Database, client: &MinifluxClient) -> Result<ReplayO
                 // actually becomes visible, and `ReplayOutcome::dropped`
                 // carries the count to the UI.
                 db.with_tx(|tx| outbox::discard(tx, &batch))?;
-                outcome.dropped += batch.entry_ids.len();
+                outcome.dropped = outcome.dropped.saturating_add(batch.entry_ids.len());
                 tracing::warn!(
                     error = %e,
                     count = batch.entry_ids.len(),
@@ -93,7 +95,7 @@ pub async fn flush(db: &mut Database, client: &MinifluxClient) -> Result<ReplayO
                 // typed the wrong server URL is not a trade this app makes.
                 // They wait for a human to fix the configuration.
                 db.with_tx(|tx| outbox::record_failure(tx, &batch, &e.to_string()))?;
-                outcome.deferred += batch.entry_ids.len();
+                outcome.deferred = outcome.deferred.saturating_add(batch.entry_ids.len());
 
                 // Both cases stay queued, so the DATABASE cannot tell them
                 // apart -- but the user debugging "sync does nothing" very much

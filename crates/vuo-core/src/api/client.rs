@@ -442,7 +442,7 @@ impl MinifluxClient {
             starred,
         };
         let payload = serde_json::to_vec(&body)
-            .map_err(|_| Error::Protocol("could not encode the update request".to_owned()))?;
+            .map_err(|e| Error::Protocol(format!("could not encode the entry-state write: {e}")))?;
 
         let url = self.url("/v1/entries")?;
         let safe = SafeUrl::from(&url);
@@ -504,7 +504,7 @@ impl MinifluxClient {
             feed_url,
             category_id,
         })
-        .map_err(|_| Error::Protocol("could not encode the subscribe request".to_owned()))?;
+        .map_err(|e| Error::Protocol(format!("could not encode the subscribe request: {e}")))?;
         let url = self.url("/v1/feeds")?;
         let safe = SafeUrl::from(&url);
         let response = self
@@ -524,7 +524,7 @@ impl MinifluxClient {
     /// reverting a change made in the web UI in between.
     pub async fn update_feed(&self, feed_id: i64, update: &FeedPatch) -> Result<()> {
         let payload = serde_json::to_vec(update)
-            .map_err(|_| Error::Protocol("could not encode the feed update".to_owned()))?;
+            .map_err(|e| Error::Protocol(format!("could not encode the feed update: {e}")))?;
         let url = self.url(&format!("/v1/feeds/{feed_id}"))?;
         let safe = SafeUrl::from(&url);
         let response = self

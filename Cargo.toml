@@ -69,6 +69,13 @@ unsafe_code = "deny"
 missing_debug_implementations = "warn"
 rust_2018_idioms = { level = "warn", priority = -1 }
 unreachable_pub = "warn"
+# A path spelled out where a `use` already brought the name in, and casts to
+# the type the value already has: noise that hides the casts that matter. Not
+# `trivial_numeric_casts`: whether `x as c_char` is trivial depends on the
+# target (i8 on the x86_64 CI, u8 on the phone), so it could pass CI and fail
+# the device build.
+unused_qualifications = "deny"
+trivial_casts = "deny"
 
 [workspace.lints.clippy]
 # Foreign input reaches this program from arbitrary websites by way of a
@@ -81,6 +88,30 @@ indexing_slicing = "deny"
 integer_division = "warn"
 todo = "deny"
 unimplemented = "deny"
+# Picked from nursery and restriction rather than taken as groups: those move
+# between releases and many of their lints are taste. Each of these is a bug
+# class or a lost diagnosis.
+#
+# A lock guard living through an `if let`/`match` body: how a Qt callback and
+# the sync worker deadlock each other.
+significant_drop_in_scrutinee = "deny"
+redundant_clone = "deny"
+needless_collect = "deny"
+derive_partial_eq_without_eq = "deny"
+# `assert!(r.is_ok())` fails without saying what the error was.
+assertions_on_result_states = "deny"
+# `.map_err(|_| ...)` throws the cause away, which on a phone is often all
+# there was to go on. Where the cause could quote a secret, say what kind of
+# fault it was instead (see `load_account`).
+map_err_ignore = "deny"
+mem_forget = "deny"
+# Debugging leftovers.
+dbg_macro = "deny"
+print_stdout = "deny"
+# The rest of the panic-freedom set -- `arithmetic_side_effects`,
+# `string_slice`, `let_underscore_must_use` and the others -- applies to
+# shipped code only, which this table cannot say. Each crate root denies them
+# under `cfg_attr(not(test), ...)` instead.
 
 # qmetaobject builds its QML engine on `QApplication`, which comes from
 # QtWidgets -- a library Harbour does not allow, since a Silica app is expected
