@@ -430,40 +430,38 @@ fn read_mask(name: &str) -> (usize, usize, Vec<u8>) {
     for y in 0..h {
         let filter = raw[y * (w + 1)];
         for x in 0..w {
-            let v = raw[y * (w + 1) + 1 + x];
-            let a = if x > 0 { px[y * w + x - 1] } else { 0 };
-            let b = if y > 0 { px[(y - 1) * w + x] } else { 0 };
-            let c = if x > 0 && y > 0 {
+            let left = if x > 0 { px[y * w + x - 1] } else { 0 };
+            let up = if y > 0 { px[(y - 1) * w + x] } else { 0 };
+            let up_left = if x > 0 && y > 0 {
                 px[(y - 1) * w + x - 1]
             } else {
                 0
             };
             let add = match filter {
                 0 => 0,
-                1 => a,
-                2 => b,
-                3 => ((u16::from(a) + u16::from(b)) / 2) as u8,
-                4 => {
-                    let p = i16::from(a) + i16::from(b) - i16::from(c);
-                    let (pa, pb, pc) = (
-                        (p - i16::from(a)).abs(),
-                        (p - i16::from(b)).abs(),
-                        (p - i16::from(c)).abs(),
-                    );
-                    if pa <= pb && pa <= pc {
-                        a
-                    } else if pb <= pc {
-                        b
-                    } else {
-                        c
-                    }
-                }
-                f => panic!("{name}: PNG filter {f}"),
+                1 => left,
+                2 => up,
+                3 => u8::midpoint(left, up),
+                4 => paeth(left, up, up_left),
+                other => panic!("{name}: PNG filter {other}"),
             };
-            px[y * w + x] = v.wrapping_add(add);
+            px[y * w + x] = raw[y * (w + 1) + 1 + x].wrapping_add(add);
         }
     }
     (w, h, px)
+}
+
+/// PNG's Paeth predictor: whichever neighbour is nearest their linear guess.
+fn paeth(left: u8, up: u8, up_left: u8) -> u8 {
+    let guess = i16::from(left) + i16::from(up) - i16::from(up_left);
+    let off = |v: u8| (guess - i16::from(v)).abs();
+    if off(left) <= off(up) && off(left) <= off(up_left) {
+        left
+    } else if off(up) <= off(up_left) {
+        up
+    } else {
+        up_left
+    }
 }
 
 /// Where a count's outline sits across its master: the middle of the
@@ -474,7 +472,8 @@ fn outline_offset(key: &str) -> f64 {
         .filter(|&x| (0..h).any(|y| px[y * w + x] > 0))
         .collect();
     let (first, last) = (inked[0], inked[inked.len() - 1]);
-    (first + last) as f64 / 2.0 - (w - 1) as f64 / 2.0
+    let px_f = |n: usize| f64::from(u32::try_from(n).unwrap());
+    px_f(first + last) / 2.0 - px_f(w - 1) / 2.0
 }
 
 /// The 1, the 3 and the 4 sit where they LOOK centred, which is not where
