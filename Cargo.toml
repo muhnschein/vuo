@@ -9,8 +9,9 @@
 # floor is held by a check instead of by the resolver:
 # `scripts/check-lockfile.sh`, run by `make check`.
 #
-# To re-resolve inside the floor after a dependency bump: temporarily set this
-# to "3", run `cargo update`, then set it back to "2" and keep the lockfile.
+# And by .cargo/config.toml, which gives resolver 2 the one behaviour of 3 that
+# matters here: `cargo update` prefers the newest release that still builds on
+# `rust-version`. Cargo 1.84 and later read it; the SDK's 1.75 ignores it.
 resolver = "2"
 members = ["crates/vuo-core", "crates/vuo-shim", "crates/harbour-vuo"]
 
