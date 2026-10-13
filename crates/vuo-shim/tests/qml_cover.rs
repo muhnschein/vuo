@@ -479,34 +479,22 @@ fn outline_offset(key: &str) -> f64 {
 
 /// The 1, the 3 and the 4 sit where they LOOK centred, which is not where
 /// the painter's weight rule alone put them -- see `coverNudge` in
-/// tools/textart/render.qml. Off a device: the 1 read right of centre, and
-/// the 3 and the 4 left of it.
+/// tools/textart/render.qml. Off a device, over two rounds: the 1 and the 4
+/// read right of centre, and the 3 left of it.
 ///
-/// In pixels of the 512-wide master, on the outline's ink box. The rule
-/// alone left the 1's box 18.5 left of centre, the 3's 9 left and the 4's
-/// 1.5 right; each bound sits past those, so a repaint that drops the
-/// nudge -- or masks that were never repainted -- fails here. The 2 is the
-/// control: nobody asked for it to move, and it has not.
+/// In pixels of the 512-wide master, on the outline's ink box, and each
+/// held to within a pixel of where it was settled. The rule alone left the
+/// 1 at -18.5, the 3 at -9 and the 4 at +1.5; the first round on a phone
+/// had them at -25.5, +3 and +7.5. Neither set passes, so a repaint that
+/// drops the nudge, or masks never repainted after it changed, fail here.
+/// The 2 is the control: nobody asked for it to move, and it has not.
 #[test]
 fn the_one_three_and_four_are_centred_by_eye() {
-    let one = outline_offset("1");
-    let three = outline_offset("3");
-    let four = outline_offset("4");
-    let two = outline_offset("2");
-    assert!(
-        one <= -22.0,
-        "the 1's box is {one:+} px from centre; want 22+ left"
-    );
-    assert!(
-        three >= 1.0,
-        "the 3's box is {three:+} px from centre; want right of it"
-    );
-    assert!(
-        four >= 5.0,
-        "the 4's box is {four:+} px from centre; want 5+ right"
-    );
-    assert!(
-        (two - -5.0).abs() < 1.0,
-        "the 2's box is {two:+} px from centre; it was -5 and should not have moved"
-    );
+    for (key, want) in [("1", -30.5), ("3", -2.0), ("4", -4.5), ("2", -5.0)] {
+        let got = outline_offset(key);
+        assert!(
+            (got - want).abs() < 1.0,
+            "the {key}'s box is {got:+} px from centre; want {want:+}"
+        );
+    }
 }

@@ -60,11 +60,13 @@ Window {
     /// centred it, as a fraction of the digits' font size; negative is left.
     /// See TextArtPainter's `obstacleNudge` for why there is a list at all.
     ///
-    /// Set off a device report, not measured: the 1 still read right of
-    /// centre after the painter's half-weight shift, and the 3 and the 4
-    /// read left of it. Single counts only -- a correction is for a shape,
+    /// Set off device reports, not measured: the 1 still read right of
+    /// centre after the painter's half-weight shift, the 4 right of it too,
+    /// and the 3 left of it. Two rounds on a phone: the first moved the 3
+    /// and the 4 right, which was right for the 3 but too far, and the
+    /// wrong way for the 4. Single counts only -- a correction is for a shape,
     /// and an 13 is not a 1 and a 3 side by side as far as the eye goes.
-    readonly property var coverNudge: ({ "1": -0.015, "3": 0.025, "4": 0.012 })
+    readonly property var coverNudge: ({ "1": -0.024, "3": 0.015, "4": -0.012 })
 
     /// One cover master. `key` is the count, "99+", or "none".
     function coverJob(key) {
