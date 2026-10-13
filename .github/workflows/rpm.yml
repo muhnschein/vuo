@@ -88,6 +88,10 @@ jobs:
       CARGO_BUILD_JOBS: 1
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          # The release step publishes through `gh` and GH_TOKEN, not git, so
+          # the token is not left behind in .git/config for the build to find.
+          persist-credentials: false
 
       # By digest, not tag. The SDK image is a third party's and a tag can
       # be repointed at any content by whoever owns it. To add an SDK
@@ -230,13 +234,17 @@ jobs:
 
       # The host's cargo, new enough for the lockfile, with a prebuilt
       # aarch64 std. Only C/C++ compiles and the final link go through the
-      # SDK's compiler; rustc itself is the host's.
-      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
-        with:
-          toolchain: stable
-          targets: aarch64-unknown-linux-gnu
+      # SDK's compiler; rustc itself is the host's -- rust-toolchain.toml's
+      # release, which rustup installs here, the target added to it.
+      - run: rustup target add aarch64-unknown-linux-gnu
 
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      # Not for a release. What a cache holds was written by some earlier
+      # run, and a release is the one build whose binary should come from
+      # nothing but the commit it is tagged on; it pays the cold compile for
+      # that. zizmor cannot read the `if`, which is why its cache-poisoning
+      # finding is ignored here.
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2  # zizmor: ignore[cache-poisoning]
+        if: env.RELEASE_TAG == '' && !inputs.release
         with:
           key: cross-${{ env.TARGET }}
 
