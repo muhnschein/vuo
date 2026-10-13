@@ -46,30 +46,36 @@ use wiremock::{Mock, MockServer, ResponseTemplate};
 async fn server_with_version(version: &str) -> MockServer {
     let server = MockServer::start().await;
     mount_version(&server, version).await;
+    mount_pass_endpoints(&server).await;
+    server
+}
+
+/// Every endpoint a pass touches except the version.
+async fn mount_pass_endpoints(server: &MockServer) {
     Mock::given(method("GET"))
         .and(path("/v1/entries/ids"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
             "total": 1,
             "entry_ids": [1]
         })))
-        .mount(&server)
+        .mount(server)
         .await;
     Mock::given(method("GET"))
         .and(path("/v1/categories"))
         .respond_with(ResponseTemplate::new(200).set_body_json(vec![category_json(1, "News")]))
-        .mount(&server)
+        .mount(server)
         .await;
     Mock::given(method("GET"))
         .and(path("/v1/feeds"))
         .respond_with(ResponseTemplate::new(200).set_body_json(vec![feed_json(1, "Feed", 1)]))
-        .mount(&server)
+        .mount(server)
         .await;
     Mock::given(method("GET"))
         .and(path("/v1/feeds/counters"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
             "reads": {}, "unreads": {}
         })))
-        .mount(&server)
+        .mount(server)
         .await;
     Mock::given(method("GET"))
         .and(path("/v1/entries"))
@@ -79,14 +85,13 @@ async fn server_with_version(version: &str) -> MockServer {
                 .insert_header("Date", "Fri, 02 Jan 2026 03:04:05 GMT")
                 .set_body_json(entries_response(vec![entry_json(1, 1, "unread", false)], 1)),
         )
-        .mount(&server)
+        .mount(server)
         .await;
     Mock::given(method("PUT"))
         .and(path("/v1/entries"))
         .respond_with(ResponseTemplate::new(204))
-        .mount(&server)
+        .mount(server)
         .await;
-    server
 }
 
 /// The legacy fixture: a pre-2.3.2 server. Vuo refuses entry-state writes
@@ -358,6 +363,53 @@ async fn a_recorded_server_version_is_not_asked_for_again_next_pass() {
         version_requests(&server).await,
         after_first + 1,
         "an expired cache must be re-asked, or an upgraded server is never noticed"
+    );
+}
+
+/// A failed version check keeps the version recorded last time.
+///
+/// Falling back to the oldest supported version instead would, for one pass,
+/// skip a due reconcile and record a pre-2.3 era for a server that has not
+/// changed -- all because one request failed.
+#[tokio::test]
+async fn a_failed_version_check_keeps_the_recorded_version() {
+    let server = modern_server().await;
+    let client = client_for(&server);
+    let mut db = Database::open_in_memory().expect("mirror");
+
+    sync::sync(&mut db, &client, SyncOptions::default())
+        .await
+        .expect("first sync");
+    let before = store::sync_state(db.conn()).expect("state");
+    assert_eq!(before.server_version.as_deref(), Some("2.3.3"));
+
+    server.reset().await;
+    Mock::given(method("GET"))
+        .and(path("/v1/version"))
+        .respond_with(ResponseTemplate::new(503))
+        .mount(&server)
+        .await;
+    mount_pass_endpoints(&server).await;
+
+    let report = sync::sync(
+        &mut db,
+        &client,
+        SyncOptions {
+            server_version_ttl_secs: 0,
+            ..SyncOptions::default()
+        },
+    )
+    .await
+    .expect("a failed version check does not fail the pass");
+    assert_eq!(report.server_version.as_deref(), Some("2.3.3"));
+
+    let after = store::sync_state(db.conn()).expect("state");
+    assert_eq!(after.server_version.as_deref(), Some("2.3.3"));
+    assert_eq!(after.server_era, before.server_era);
+    assert_eq!(
+        after.server_version_checked_at, before.server_version_checked_at,
+        "a check that failed must not count as a check, or the next pass \
+         would not ask again"
     );
 }
 

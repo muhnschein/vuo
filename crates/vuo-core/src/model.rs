@@ -333,7 +333,8 @@ impl ServerVersion {
     }
 }
 
-/// An unbuilt "development" version string reports as this.
+/// What a version string with no leading number (such as an unbuilt
+/// "development" build's) is read as: the oldest version Vuo supports.
 impl Default for ServerVersion {
     fn default() -> Self {
         // Assume the oldest behaviour Vuo supports when the server will not
