@@ -41,11 +41,12 @@ fn context() -> TransformContext {
 /// Render a document as compact text, so a snapshot diff is readable rather
 /// than being a wall of derived-Debug output.
 fn render(document: &vuo_core::content::Document) -> String {
+    use std::fmt::Write as _;
     use vuo_core::content::BlockKind;
 
     let mut out = String::new();
     if let Some(t) = document.truncated {
-        out.push_str(&format!("[truncated: {t:?}]\n"));
+        writeln!(out, "[truncated: {t:?}]").unwrap();
     }
     for block in &document.blocks {
         let indent = "  ".repeat(usize::from(block.quote_depth));
@@ -110,7 +111,7 @@ fn render(document: &vuo_core::content::Document) -> String {
                             )
                         })
                         .collect();
-                    s.push_str(&format!("\n{indent}  | {}", cells.join(" | ")));
+                    write!(s, "\n{indent}  | {}", cells.join(" | ")).unwrap();
                 }
                 s
             }

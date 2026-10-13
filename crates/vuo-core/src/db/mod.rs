@@ -42,6 +42,16 @@ pub struct Database {
 
 impl Database {
     /// Open (creating if absent) and migrate the mirror at `path`.
+    ///
+    /// # Errors
+    ///
+    /// - [`Error::Db`](crate::error::Error::Db) if the file cannot be
+    ///   opened, the connection cannot be configured (including when it
+    ///   cannot be put into WAL mode), or the migration transaction fails
+    ///   to begin or commit.
+    /// - [`Error::Migration`](crate::error::Error::Migration) as for
+    ///   [`migrations::migrate`]: the file's schema is newer than this
+    ///   build, or a migration step fails.
     pub fn open(path: &Path) -> Result<Self> {
         let conn = Connection::open(path)?;
         Self::configure(&conn)?;
@@ -51,6 +61,10 @@ impl Database {
     }
 
     /// An in-memory mirror, for tests.
+    ///
+    /// # Errors
+    ///
+    /// As for [`Database::open`], less the file errors.
     pub fn open_in_memory() -> Result<Self> {
         let conn = Connection::open_in_memory()?;
         Self::configure(&conn)?;
@@ -125,7 +139,7 @@ impl Database {
             // Someone else holds the lock. Journal mode is a persistent
             // property of the file, so we do not need to be the one who sets
             // it — only to see it set.
-            if attempt + 1 < ATTEMPTS {
+            if attempt.saturating_add(1) < ATTEMPTS {
                 std::thread::sleep(PAUSE);
             }
         }
@@ -148,6 +162,9 @@ impl Database {
         &mut self.conn
     }
 
+    /// The connection, for reads.
+    ///
+    /// Writes go through [`Database::with_tx`] instead.
     pub fn conn(&self) -> &Connection {
         &self.conn
     }
@@ -178,6 +195,12 @@ impl Database {
     ///
     /// Readers are unaffected — reads in this crate go through
     /// [`Database::conn`] and never open a transaction.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Db`](crate::error::Error::Db) if the transaction cannot be begun (another
+    /// writer holds the lock past the busy timeout) or committed, and passes on
+    /// whatever error `f` returns, after rolling back.
     pub fn with_tx<T>(
         &mut self,
         f: impl FnOnce(&rusqlite::Transaction<'_>) -> Result<T>,
@@ -316,7 +339,7 @@ mod tests {
         // because the `format!` and the keyword land on different lines. It
         // now walks every .rs file under src/ and scans with comments stripped
         // and whitespace collapsed.
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
         let mut files = Vec::new();
         collect_rs(&root, &mut files);
         assert!(
@@ -398,7 +421,7 @@ mod tests {
         None
     }
 
-    fn collect_rs(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+    fn collect_rs(dir: &Path, out: &mut Vec<std::path::PathBuf>) {
         let Ok(entries) = std::fs::read_dir(dir) else {
             return;
         };

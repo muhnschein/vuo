@@ -29,6 +29,12 @@ fn ts(t: Option<chrono::DateTime<chrono::Utc>>) -> Option<i64> {
     t.map(|t| t.timestamp())
 }
 
+/// An INTEGER column the domain holds as an `i32`. SQLite stores 64 bits
+/// whatever was written, so a value out of range clamps instead of wrapping.
+fn saturating_i32(v: i64) -> i32 {
+    i32::try_from(v).unwrap_or(if v < 0 { i32::MIN } else { i32::MAX })
+}
+
 fn from_ts(secs: Option<i64>) -> Option<chrono::DateTime<chrono::Utc>> {
     secs.and_then(|s| chrono::DateTime::from_timestamp(s, 0))
 }
@@ -50,20 +56,17 @@ pub fn name_sort_key(title: &str) -> String {
     let mut key = String::with_capacity(title.len());
     for c in title.to_lowercase().chars() {
         match c {
-            'ä' => key.push('a'),
-            'ö' => key.push('o'),
-            'ü' => key.push('u'),
             // `to_lowercase` already turns 'ß' into itself, not "ss".
             'ß' => key.push_str("ss"),
-            'á' | 'à' | 'â' | 'å' | 'ã' => key.push('a'),
+            'ä' | 'á' | 'à' | 'â' | 'å' | 'ã' => key.push('a'),
             // è é ê ë -- contiguous, so a range says it without a gap.
             'è'..='ë' => key.push('e'),
             // ì í î ï
             'ì'..='ï' => key.push('i'),
-            // ò ó ô õ -- ö is handled above, and F6 is outside this range.
-            'ò'..='õ' => key.push('o'),
-            // ù ú û -- ü likewise handled above, at FC.
-            'ù'..='û' => key.push('u'),
+            // ò ó ô õ, and ö, which is F6 and outside that range.
+            'ò'..='õ' | 'ö' => key.push('o'),
+            // ù ú û, and ü at FC likewise.
+            'ù'..='û' | 'ü' => key.push('u'),
             'ç' => key.push('c'),
             'ñ' => key.push('n'),
             other => key.push(other),
@@ -74,6 +77,12 @@ pub fn name_sort_key(title: &str) -> String {
 
 // ------------------------------------------------------------- categories
 
+/// Insert or update a category from the server, stamping it with the sync
+/// `generation` that saw it.
+///
+/// # Errors
+///
+/// Returns [`Error::Db`](crate::error::Error::Db) if the write fails.
 pub fn upsert_category(tx: &Transaction<'_>, c: &Category, generation: i64) -> Result<()> {
     tx.execute(
         "INSERT INTO categories (id, title, hide_globally, last_seen_sync)
@@ -87,6 +96,11 @@ pub fn upsert_category(tx: &Transaction<'_>, c: &Category, generation: i64) -> R
     Ok(())
 }
 
+/// Every category in the mirror, in [`name_sort_key`] order.
+///
+/// # Errors
+///
+/// Returns [`Error::Db`](crate::error::Error::Db) if the query fails.
 pub fn categories(tx: &rusqlite::Connection) -> Result<Vec<Category>> {
     let mut stmt = tx.prepare("SELECT id, title, hide_globally FROM categories")?;
     let rows = stmt.query_map([], |r| {
@@ -105,6 +119,15 @@ pub fn categories(tx: &rusqlite::Connection) -> Result<Vec<Category>> {
 
 // ------------------------------------------------------------------ feeds
 
+/// Insert or update a feed from the server, stamping it with the sync
+/// `generation` that saw it.
+///
+/// A category the feed names but the mirror does not yet hold is created as a
+/// placeholder with an empty title, so the foreign key cannot abort the sync.
+///
+/// # Errors
+///
+/// Returns [`Error::Db`](crate::error::Error::Db) if either write fails.
 pub fn upsert_feed(tx: &Transaction<'_>, f: &Feed, generation: i64) -> Result<()> {
     // `feeds.category_id` references `categories(id)`, and the two listings
     // are fetched separately: a category created between the two calls is
@@ -139,11 +162,11 @@ pub fn upsert_feed(tx: &Transaction<'_>, f: &Feed, generation: i64) -> Result<()
              last_seen_sync = excluded.last_seen_sync",
         rusqlite::params![
             f.id.get(),
-            f.category_id.map(|c| c.get()),
+            f.category_id.map(CategoryId::get),
             f.title,
-            f.site_url.as_ref().map(|u| u.as_str()),
-            f.feed_url.as_ref().map(|u| u.as_str()),
-            f.icon_id.map(|i| i.get()),
+            f.site_url.as_ref().map(crate::content::MediaUrl::as_str),
+            f.feed_url.as_ref().map(crate::content::MediaUrl::as_str),
+            f.icon_id.map(IconId::get),
             ts(f.checked_at),
             f.parsing_error_message,
             i64::from(f.parsing_error_count),
@@ -156,6 +179,14 @@ pub fn upsert_feed(tx: &Transaction<'_>, f: &Feed, generation: i64) -> Result<()
     Ok(())
 }
 
+/// Every feed in the mirror, in [`name_sort_key`] order.
+///
+/// A stored URL that no longer passes [`MediaUrl::parse`](crate::content::MediaUrl::parse)
+/// is read as `None`.
+///
+/// # Errors
+///
+/// Returns [`Error::Db`](crate::error::Error::Db) if the query fails.
 pub fn feeds(conn: &rusqlite::Connection) -> Result<Vec<Feed>> {
     let mut stmt = conn.prepare(
         "SELECT id, category_id, title, site_url, feed_url, icon_id, checked_at,
@@ -177,7 +208,7 @@ pub fn feeds(conn: &rusqlite::Connection) -> Result<Vec<Feed>> {
             icon_id: r.get::<_, Option<i64>>(5)?.map(IconId),
             checked_at: from_ts(r.get(6)?),
             parsing_error_message: r.get(7)?,
-            parsing_error_count: r.get::<_, i64>(8)? as i32,
+            parsing_error_count: saturating_i32(r.get(8)?),
             disabled: r.get::<_, i64>(9)? != 0,
             hide_globally: r.get::<_, i64>(10)? != 0,
             crawler: r.get::<_, i64>(11)? != 0,
@@ -192,6 +223,10 @@ pub fn feeds(conn: &rusqlite::Connection) -> Result<Vec<Feed>> {
 }
 
 /// Remove a feed, its entries, and any intents queued against them.
+///
+/// # Errors
+///
+/// Returns [`Error::Db`](crate::error::Error::Db) if any of the deletes fails.
 pub fn delete_feed(tx: &Transaction<'_>, id: FeedId) -> Result<()> {
     // The outbox rows go first, and they are not optional: the same rule
     // `delete_entry` states applies here. An intent for an entry the server no
@@ -237,6 +272,11 @@ pub enum Arrival {
 /// means "new to this phone" rather than "seen again in this pass". The cursor
 /// re-reads a minute of overlap on every pass, and those rows must not come
 /// back as news.
+///
+/// # Errors
+///
+/// Returns [`Error::Db`](crate::error::Error::Db) if the pending intents cannot
+/// be read or any write to `entries` or `enclosures` fails.
 pub fn upsert_entry(
     tx: &Transaction<'_>,
     e: &Entry,
@@ -295,8 +335,10 @@ pub fn upsert_entry(
             status.as_api_str(),
             i64::from(starred),
             e.title,
-            e.url.as_ref().map(|u| u.as_str()),
-            e.comments_url.as_ref().map(|u| u.as_str()),
+            e.url.as_ref().map(crate::content::MediaUrl::as_str),
+            e.comments_url
+                .as_ref()
+                .map(crate::content::MediaUrl::as_str),
             e.author,
             e.content,
             ts(e.published_at),
@@ -317,7 +359,7 @@ pub fn upsert_entry(
             rusqlite::params![
                 enc.id,
                 e.id.get(),
-                enc.url.as_ref().map(|u| u.as_str()),
+                enc.url.as_ref().map(crate::content::MediaUrl::as_str),
                 enc.mime_type,
                 enc.size
             ],
@@ -331,6 +373,10 @@ pub fn upsert_entry(
 /// Any pending outbox intent for it goes too: replaying a mutation against an
 /// id the server has deleted is pointless, and Miniflux silently ignores
 /// unknown ids anyway, so the row would never clear.
+///
+/// # Errors
+///
+/// Returns [`Error::Db`](crate::error::Error::Db) if either delete fails.
 pub fn delete_entry(tx: &Transaction<'_>, id: EntryId) -> Result<()> {
     tx.execute("DELETE FROM outbox WHERE entry_id = ?1", [id.get()])?;
     tx.execute("DELETE FROM entries WHERE id = ?1", [id.get()])?;
@@ -363,6 +409,12 @@ pub fn delete_entry(tx: &Transaction<'_>, id: EntryId) -> Result<()> {
 /// which only moves forward, and the reconcile only ever deletes local rows the
 /// server no longer has -- so nothing pruned here comes back on the next pass,
 /// and nothing here makes the reconcile delete something else.
+///
+/// Returns how many entries were removed.
+///
+/// # Errors
+///
+/// Returns [`Error::Db`](crate::error::Error::Db) if the delete fails.
 pub fn prune_entries(tx: &Transaction<'_>, cutoff: i64) -> Result<usize> {
     // Enclosures follow by `ON DELETE CASCADE`; `foreign_keys` is ON for every
     // connection this crate opens (see `db::Database::configure`).
@@ -378,6 +430,10 @@ pub fn prune_entries(tx: &Transaction<'_>, cutoff: i64) -> Result<usize> {
 }
 
 /// Every entry id Vuo holds locally.
+///
+/// # Errors
+///
+/// Returns [`Error::Db`](crate::error::Error::Db) if the query fails.
 pub fn local_entry_ids(conn: &rusqlite::Connection) -> Result<Vec<EntryId>> {
     let mut stmt = conn.prepare("SELECT id FROM entries")?;
     let rows = stmt.query_map([], |r| Ok(EntryId(r.get(0)?)))?;
@@ -386,6 +442,10 @@ pub fn local_entry_ids(conn: &rusqlite::Connection) -> Result<Vec<EntryId>> {
 
 /// Per-feed entry counts, for the cheap divergence check against
 /// `GET /v1/feeds/counters`.
+///
+/// # Errors
+///
+/// Returns [`Error::Db`](crate::error::Error::Db) if the query fails.
 pub fn entry_counts_by_feed(
     conn: &rusqlite::Connection,
 ) -> Result<std::collections::HashMap<i64, i64>> {
@@ -400,6 +460,10 @@ pub fn entry_counts_by_feed(
 }
 
 /// Per-feed unread counts, for the feed list's badges.
+///
+/// # Errors
+///
+/// Returns [`Error::Db`](crate::error::Error::Db) if the query fails.
 pub fn unread_counts_by_feed(
     conn: &rusqlite::Connection,
 ) -> Result<std::collections::HashMap<i64, i64>> {
@@ -426,10 +490,15 @@ pub fn unread_counts_by_feed(
 /// the hidden feeds' ids, not `IN` over the visible ones.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EntryFilter {
+    /// Unread entries in feeds not hidden globally.
     Unread,
+    /// Starred entries, from every feed.
     Starred,
+    /// Every entry in feeds not hidden globally.
     All,
+    /// Every entry in the feed with this id.
     Feed(i64),
+    /// Every entry in a feed of the category with this id.
     Category(i64),
 }
 
@@ -450,16 +519,24 @@ pub enum EntryFilter {
 /// what opening an article already does.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EntryListRow {
+    /// The entry.
     pub id: EntryId,
+    /// The feed it belongs to.
     pub feed_id: FeedId,
+    /// Read or unread, with any pending local change already applied.
     pub status: EntryStatus,
+    /// Whether it is starred.
     pub starred: bool,
     /// FOREIGN TEXT: the feed's own words.
     pub title: String,
+    /// The article's link, re-checked against the URL policy on every read;
+    /// `None` when there is none or it no longer passes.
     pub url: Option<String>,
     /// FOREIGN TEXT.
     pub author: String,
+    /// When the feed says it was published, in Unix seconds.
     pub published_at: Option<i64>,
+    /// The server's estimate of reading time, in minutes.
     pub reading_time: i32,
 }
 
@@ -471,6 +548,10 @@ pub struct EntryListRow {
 /// ever"), and a rule with one blessed exception is a rule that grows more.
 /// The repetition is the price of the guarantee being checkable, and
 /// `db::tests::no_sql_in_this_crate_is_built_by_formatting` checks it.
+///
+/// # Errors
+///
+/// Returns [`Error::Db`](crate::error::Error::Db) if the query fails.
 pub fn list_entries(
     conn: &rusqlite::Connection,
     filter: EntryFilter,
@@ -531,6 +612,10 @@ pub fn list_entries(
 
 /// One list row by id, for a row a list is holding on to that its own query no
 /// longer returns -- an article the reader has just finished with.
+///
+/// # Errors
+///
+/// Returns [`Error::Db`](crate::error::Error::Db) if the query fails.
 pub fn entry_list_row(conn: &rusqlite::Connection, id: EntryId) -> Result<Option<EntryListRow>> {
     let row = conn
         .query_row(
@@ -549,12 +634,14 @@ pub fn entry_list_row(conn: &rusqlite::Connection, id: EntryId) -> Result<Option
 pub struct SearchMatch {
     /// Where it matched, which is the group it is listed in.
     pub kind: MatchKind,
+    /// The article.
     pub id: EntryId,
 }
 
 /// One feed a search matched by its name -- see [`search_feeds`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FeedMatch {
+    /// The feed.
     pub id: FeedId,
     /// FOREIGN TEXT: the feed's name.
     pub title: String,
@@ -566,12 +653,16 @@ pub struct FeedMatch {
 /// feeds in the third.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct SearchCounts {
+    /// Articles matched by title.
     pub title: usize,
+    /// Feeds matched by name.
     pub feed: usize,
+    /// Articles matched by body text only.
     pub text: usize,
 }
 
 impl SearchCounts {
+    /// Count article `matches` by group, and `feeds` as the feed group.
     #[must_use]
     pub fn of(matches: &[SearchMatch], feeds: &[FeedMatch]) -> SearchCounts {
         let mut counts = SearchCounts {
@@ -580,9 +671,9 @@ impl SearchCounts {
         };
         for m in matches {
             match m.kind {
-                MatchKind::Title => counts.title += 1,
-                MatchKind::Feed => counts.feed += 1,
-                MatchKind::Text => counts.text += 1,
+                MatchKind::Title => counts.title = counts.title.saturating_add(1),
+                MatchKind::Feed => counts.feed = counts.feed.saturating_add(1),
+                MatchKind::Text => counts.text = counts.text.saturating_add(1),
             }
         }
         counts
@@ -600,8 +691,9 @@ impl SearchCounts {
 }
 
 /// One article a search found, with what its row needs to say why.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SearchHit {
+    /// What the entry list would show for the article.
     pub row: EntryListRow,
     /// Where it matched, which is the group it is listed in.
     pub kind: MatchKind,
@@ -630,6 +722,11 @@ pub struct SearchHit {
 /// which is all the groups' counts and their order need. Every body is
 /// looked at to find them, but none is held: what a result row shows is read
 /// by [`search_hits`], for the results that are shown.
+///
+/// # Errors
+///
+/// Returns [`Error::Db`](crate::error::Error::Db) if the query fails, including
+/// a failure inside the `vuo_search_kind` SQL function.
 pub fn search_matches(conn: &rusqlite::Connection, query: &str) -> Result<Vec<SearchMatch>> {
     if crate::search::SearchQuery::parse(query).is_none() {
         return Ok(Vec::new());
@@ -664,6 +761,10 @@ pub fn search_matches(conn: &rusqlite::Connection, query: &str) -> Result<Vec<Se
 ///
 /// Every feed, hidden or not, as for [`search_matches`]. Held whole rather
 /// than by id: a mirror has a few dozen feeds, and a name and a count each.
+///
+/// # Errors
+///
+/// Returns [`Error::Db`](crate::error::Error::Db) if the query fails.
 pub fn search_feeds(conn: &rusqlite::Connection, query: &str) -> Result<Vec<FeedMatch>> {
     let Some(parsed) = crate::search::SearchQuery::parse(query) else {
         return Ok(Vec::new());
@@ -700,6 +801,10 @@ pub fn search_feeds(conn: &rusqlite::Connection, query: &str) -> Result<Vec<Feed
 /// One statement per row, as for every other read by id (§9.4), and a body
 /// is read only for a hit whose excerpt needs it. A match whose article has
 /// gone since [`search_matches`] -- a sync landed in between -- is left out.
+///
+/// # Errors
+///
+/// Returns [`Error::Db`](crate::error::Error::Db) if a query fails.
 pub fn search_hits(
     conn: &rusqlite::Connection,
     query: &str,
@@ -745,6 +850,10 @@ pub fn search_hits(
 /// as this once did through `list_entries(.., i64::MAX, 0)`, carried every
 /// BODY -- measured at 54 MB in a single allocation on a 5,357-entry mirror,
 /// which is a spike a phone feels and the allocator never returns.
+///
+/// # Errors
+///
+/// Returns [`Error::Db`](crate::error::Error::Db) if the query fails.
 pub fn entry_ids_matching(
     conn: &rusqlite::Connection,
     filter: EntryFilter,
@@ -812,7 +921,7 @@ fn row_to_list_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<EntryListRow> {
             .map(|u| u.as_str().to_owned()),
         author: r.get(6)?,
         published_at: r.get(7)?,
-        reading_time: r.get::<_, i64>(8)? as i32,
+        reading_time: saturating_i32(r.get(8)?),
     })
 }
 
@@ -839,12 +948,20 @@ fn row_to_entry(r: &rusqlite::Row<'_>) -> rusqlite::Result<Entry> {
         published_at: from_ts(r.get(9)?),
         created_at: from_ts(r.get(10)?),
         changed_at: from_ts(r.get(11)?),
-        reading_time: r.get::<_, i64>(12)? as i32,
+        reading_time: saturating_i32(r.get(12)?),
         tags: serde_json::from_str(&tags).unwrap_or_default(),
         enclosures: Vec::new(),
     })
 }
 
+/// One entry by id, body included; `None` if the mirror does not hold it.
+///
+/// `enclosures` is always empty: this does not read them. Stored URLs that no
+/// longer pass the URL policy are read as `None`, and unreadable tags as none.
+///
+/// # Errors
+///
+/// Returns [`Error::Db`](crate::error::Error::Db) if the query fails.
 pub fn entry(conn: &rusqlite::Connection, id: EntryId) -> Result<Option<Entry>> {
     let row = conn
         .query_row(
@@ -861,6 +978,10 @@ pub fn entry(conn: &rusqlite::Connection, id: EntryId) -> Result<Option<Entry>> 
 /// What the Unread tab holds, counted: the cover's number, and the total a
 /// new-articles notification states. Hidden feeds are left out for the same
 /// reason as in [`EntryFilter::Unread`], and so that the two never disagree.
+///
+/// # Errors
+///
+/// Returns [`Error::Db`](crate::error::Error::Db) if the query fails.
 pub fn unread_count(conn: &rusqlite::Connection) -> Result<i64> {
     Ok(conn.query_row(
         "SELECT COUNT(*) FROM entries WHERE status = 'unread' \
@@ -883,6 +1004,10 @@ pub fn unread_count(conn: &rusqlite::Connection) -> Result<i64> {
 /// A hidden feed's articles are not announced: a notification that sends the
 /// reader to an Unread tab without them would be announcing nothing. They stay
 /// flagged, and opening Vuo clears them with the rest.
+///
+/// # Errors
+///
+/// Returns [`Error::Db`](crate::error::Error::Db) if the query fails.
 pub fn arrivals(conn: &rusqlite::Connection) -> Result<Vec<EntryId>> {
     let mut stmt = conn.prepare(
         "SELECT id FROM entries WHERE arrived = 1 AND status = 'unread' \
@@ -900,11 +1025,17 @@ pub fn arrivals(conn: &rusqlite::Connection) -> Result<Vec<EntryId>> {
 /// what the reader has been told about. Clearing every flag instead would
 /// silently swallow whatever a sync brought in the minutes between the
 /// notification going up and the reader swiping it away.
+///
+/// Returns how many flags were actually cleared.
+///
+/// # Errors
+///
+/// Returns [`Error::Db`](crate::error::Error::Db) if an update fails.
 pub fn acknowledge_arrivals(tx: &Transaction<'_>, ids: &[EntryId]) -> Result<usize> {
     let mut stmt = tx.prepare("UPDATE entries SET arrived = 0 WHERE id = ?1 AND arrived = 1")?;
     let mut cleared = 0usize;
     for id in ids {
-        cleared += stmt.execute([id.get()])?;
+        cleared = cleared.saturating_add(stmt.execute([id.get()])?);
     }
     Ok(cleared)
 }
@@ -916,6 +1047,10 @@ pub fn acknowledge_arrivals(tx: &Transaction<'_>, ids: &[EntryId]) -> Result<usi
 /// finds nothing to do, and a write transaction that finds nothing still takes
 /// the write lock -- and waits behind the worker for it. This is a read, over a
 /// partial index that is empty in that case.
+///
+/// # Errors
+///
+/// Returns [`Error::Db`](crate::error::Error::Db) if the query fails.
 pub fn any_arrivals(conn: &rusqlite::Connection) -> Result<bool> {
     Ok(conn.query_row(
         "SELECT EXISTS(SELECT 1 FROM entries WHERE arrived = 1)",
@@ -925,12 +1060,23 @@ pub fn any_arrivals(conn: &rusqlite::Connection) -> Result<bool> {
 }
 
 /// Stop treating anything as new: the reader has Vuo open in front of them.
+///
+/// Returns how many flags were cleared.
+///
+/// # Errors
+///
+/// Returns [`Error::Db`](crate::error::Error::Db) if the update fails.
 pub fn acknowledge_all_arrivals(tx: &Transaction<'_>) -> Result<usize> {
     Ok(tx.execute("UPDATE entries SET arrived = 0 WHERE arrived = 1", [])?)
 }
 
 // ------------------------------------------------------------------ icons
 
+/// Store a downloaded icon, replacing any held under the same id.
+///
+/// # Errors
+///
+/// Returns [`Error::Db`](crate::error::Error::Db) if the write fails.
 pub fn upsert_icon(tx: &Transaction<'_>, icon: &Icon) -> Result<()> {
     tx.execute(
         "INSERT OR REPLACE INTO icons (id, format, bytes, width, height) VALUES (?1, ?2, ?3, ?4, ?5)",
@@ -946,6 +1092,10 @@ pub fn upsert_icon(tx: &Transaction<'_>, icon: &Icon) -> Result<()> {
 }
 
 /// Record that a feed's icon could not be fetched or decoded.
+///
+/// # Errors
+///
+/// Returns [`Error::Db`](crate::error::Error::Db) if the update fails.
 pub fn record_icon_failure(tx: &Transaction<'_>, feed_id: FeedId) -> Result<()> {
     tx.execute(
         "UPDATE feeds SET icon_failures = icon_failures + 1 WHERE id = ?1",
@@ -955,6 +1105,10 @@ pub fn record_icon_failure(tx: &Transaction<'_>, feed_id: FeedId) -> Result<()> 
 }
 
 /// Clear a feed's icon failure count, e.g. when the server reports a new icon.
+///
+/// # Errors
+///
+/// Returns [`Error::Db`](crate::error::Error::Db) if the update fails.
 pub fn clear_icon_failures(tx: &Transaction<'_>, feed_id: FeedId) -> Result<()> {
     tx.execute(
         "UPDATE feeds SET icon_failures = 0 WHERE id = ?1",
@@ -970,6 +1124,7 @@ pub fn clear_icon_failures(tx: &Transaction<'_>, feed_id: FeedId) -> Result<()> 
 /// carry the same icon blob back hundreds of times.
 #[derive(Debug, Clone)]
 pub struct FeedChrome {
+    /// The feed's server id.
     pub feed_id: i64,
     /// The feed name as the user (or the feed) set it. FOREIGN TEXT.
     pub title: String,
@@ -978,6 +1133,12 @@ pub struct FeedChrome {
 }
 
 /// Feed names and icons, for decorating an entry list.
+///
+/// Every feed, ordered by id. A stored icon with no bytes is reported as none.
+///
+/// # Errors
+///
+/// Returns [`Error::Db`](crate::error::Error::Db) if the query fails.
 pub fn feed_chrome(conn: &rusqlite::Connection) -> Result<Vec<FeedChrome>> {
     let mut stmt = conn.prepare(
         "SELECT f.id, f.title, i.format, i.bytes
@@ -1004,6 +1165,14 @@ pub fn feed_chrome(conn: &rusqlite::Connection) -> Result<Vec<FeedChrome>> {
     Ok(out)
 }
 
+/// One stored icon by id; `None` if it has not been downloaded.
+///
+/// A MIME type this build does not recognise is read as ICO, and stored
+/// dimensions that do not fit a `u32` as unknown.
+///
+/// # Errors
+///
+/// Returns [`Error::Db`](crate::error::Error::Db) if the query fails.
 pub fn icon(conn: &rusqlite::Connection, id: IconId) -> Result<Option<Icon>> {
     let row = conn
         .query_row(
@@ -1023,7 +1192,9 @@ pub fn icon(conn: &rusqlite::Connection, id: IconId) -> Result<Option<Icon>> {
                     },
                     bytes: r.get(2)?,
                     dimensions: match (r.get::<_, Option<i64>>(3)?, r.get::<_, Option<i64>>(4)?) {
-                        (Some(w), Some(h)) => Some((w as u32, h as u32)),
+                        // Written from u32s; a value that no longer fits is
+                        // read as unknown rather than wrapped.
+                        (Some(w), Some(h)) => u32::try_from(w).ok().zip(u32::try_from(h).ok()),
                         _ => None,
                     },
                 })
@@ -1038,6 +1209,10 @@ pub fn icon(conn: &rusqlite::Connection, id: IconId) -> Result<Option<Icon>> {
 /// §11 asks how to avoid a thundering herd on first sync; the answer is that
 /// icons are fetched lazily from this list, a few at a time, rather than all
 /// at once behind the first pull.
+///
+/// # Errors
+///
+/// Returns [`Error::Db`](crate::error::Error::Db) if the query fails.
 pub fn feeds_missing_icons(
     conn: &rusqlite::Connection,
     limit: i64,
@@ -1060,12 +1235,20 @@ pub fn feeds_missing_icons(
 
 // ------------------------------------------------------------- sync state
 
+/// The sync engine's bookkeeping: the mirror's single `sync_state` row.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SyncState {
+    /// The `changed_after` cursor the next incremental pull starts from, in
+    /// Unix seconds; `None` before the first pull.
     pub cursor_changed_after: Option<i64>,
+    /// The generation of the last pass; each pass stamps the rows it writes
+    /// with the next one, in `last_seen_sync`.
     pub sync_generation: i64,
+    /// When the last full reconcile against the server ran, in Unix seconds.
     pub last_full_reconcile_at: Option<i64>,
+    /// The server's deletion regime, as a label recorded for diagnosis.
     pub server_era: Option<String>,
+    /// The Miniflux version the server last reported.
     pub server_version: Option<String>,
     /// When `server_version` was last asked of the server, in Unix seconds.
     ///
@@ -1075,6 +1258,12 @@ pub struct SyncState {
     pub server_version_checked_at: Option<i64>,
 }
 
+/// Read the sync bookkeeping.
+///
+/// # Errors
+///
+/// Returns [`Error::Db`](crate::error::Error::Db) if the query fails, including
+/// when the `sync_state` row is missing (the migrations always create it).
 pub fn sync_state(conn: &rusqlite::Connection) -> Result<SyncState> {
     Ok(conn.query_row(
         "SELECT cursor_changed_after, sync_generation, last_full_reconcile_at, server_era,
@@ -1094,6 +1283,11 @@ pub fn sync_state(conn: &rusqlite::Connection) -> Result<SyncState> {
     )?)
 }
 
+/// Overwrite the sync bookkeeping with `state`, every field at once.
+///
+/// # Errors
+///
+/// Returns [`Error::Db`](crate::error::Error::Db) if the update fails.
 pub fn set_sync_state(tx: &Transaction<'_>, state: &SyncState) -> Result<()> {
     tx.execute(
         "UPDATE sync_state SET cursor_changed_after = ?1, sync_generation = ?2,
@@ -1114,6 +1308,12 @@ pub fn set_sync_state(tx: &Transaction<'_>, state: &SyncState) -> Result<()> {
 
 // --------------------------------------------------------- media consent
 
+/// Record that the reader agreed to load un-proxied media from `origin`
+/// (§9.3), at time `now`. Granting again refreshes the time.
+///
+/// # Errors
+///
+/// Returns [`Error::Db`](crate::error::Error::Db) if the write fails.
 pub fn grant_media_consent(tx: &Transaction<'_>, origin: &str, now: i64) -> Result<()> {
     tx.execute(
         "INSERT OR REPLACE INTO media_consent (origin, granted_at) VALUES (?1, ?2)",
@@ -1122,6 +1322,13 @@ pub fn grant_media_consent(tx: &Transaction<'_>, origin: &str, now: i64) -> Resu
     Ok(())
 }
 
+/// Every origin the reader has agreed to load un-proxied media from.
+///
+/// A stored origin that no longer parses as a URL is skipped.
+///
+/// # Errors
+///
+/// Returns [`Error::Db`](crate::error::Error::Db) if the query fails.
 pub fn media_consent(conn: &rusqlite::Connection) -> Result<Vec<url::Url>> {
     let mut stmt = conn.prepare("SELECT origin FROM media_consent")?;
     let rows = stmt.query_map([], |r| r.get::<_, String>(0))?;
@@ -1281,7 +1488,7 @@ mod tests {
             outbox::queue(
                 tx,
                 EntryId(6),
-                outbox::DesiredValue::Status(EntryStatus::Read),
+                DesiredValue::Status(EntryStatus::Read),
                 1_000,
             )
         })
@@ -1382,7 +1589,7 @@ mod tests {
         assert_eq!(ids(&list(EntryFilter::Category(2))), vec![6, 5]);
     }
 
-    /// §hide_globally: a hidden feed leaves Unread and All, and nothing else.
+    /// §`hide_globally`: a hidden feed leaves Unread and All, and nothing else.
     ///
     /// The flag was stored, sent to the server and shown as a switch, and read
     /// by no query at all -- so the switch promised to keep a feed out of the
@@ -1478,6 +1685,9 @@ mod tests {
 
     /// §search finds articles by what the reader saw, grouped by where it
     /// saw it, newest first within each group.
+    // One fixture of five articles, a to e, each placed to land in a
+    // different group.
+    #[allow(clippy::many_single_char_names)]
     #[test]
     fn search_groups_by_where_it_matched_newest_first() {
         let mut db = populated();
@@ -1663,15 +1873,8 @@ mod tests {
         let mut db = populated();
 
         // Pending STATUS, remote changes STARRED.
-        db.with_tx(|tx| {
-            outbox::queue(
-                tx,
-                EntryId(1),
-                outbox::DesiredValue::Status(EntryStatus::Read),
-                1,
-            )
-        })
-        .expect("queue status");
+        db.with_tx(|tx| outbox::queue(tx, EntryId(1), DesiredValue::Status(EntryStatus::Read), 1))
+            .expect("queue status");
         db.with_tx(|tx| {
             let mut remote = entry_at(1, 10, EntryStatus::Unread, true, 100);
             remote.title = "remote title".to_owned();
@@ -1690,7 +1893,7 @@ mod tests {
         assert_eq!(e.title, "remote title", "as does everything else");
 
         // Pending STARRED, remote changes STATUS. The mirror case.
-        db.with_tx(|tx| outbox::queue(tx, EntryId(5), outbox::DesiredValue::Starred(true), 1))
+        db.with_tx(|tx| outbox::queue(tx, EntryId(5), DesiredValue::Starred(true), 1))
             .expect("queue star");
         db.with_tx(|tx| {
             upsert_entry(
@@ -1717,7 +1920,7 @@ mod tests {
         // §9.3's consent store: agreeing to one host must not agree to every
         // host. Nothing tested it -- rewriting the SELECT left the crate green.
         let mut db = populated();
-        assert!(media_consent(db.conn()).expect("read").is_empty());
+        assert_eq!(media_consent(db.conn()).expect("read"), Vec::new());
 
         db.with_tx(|tx| {
             grant_media_consent(tx, "https://images.example", 1)?;
@@ -1980,7 +2183,7 @@ mod tests {
             .with_tx(acknowledge_all_arrivals)
             .expect("acknowledge all");
         assert_eq!(cleared, 2);
-        assert!(arrivals(db.conn()).expect("arrivals").is_empty());
+        assert_eq!(arrivals(db.conn()).expect("arrivals"), Vec::new());
         assert!(!any_arrivals(db.conn()).expect("any"));
     }
 }

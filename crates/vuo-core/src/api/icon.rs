@@ -50,6 +50,12 @@ impl Default for IconLimits {
 ///
 /// Returns an [`Error::Item`] on any problem, so a bad icon costs the feed its
 /// icon and nothing else.
+///
+/// # Errors
+///
+/// Returns [`Error::Item`] when the payload is empty, is not valid base64,
+/// exceeds `limits.max_bytes`, is not a recognised image format, is an SVG, or
+/// declares a zero dimension or one larger than `limits.max_pixels_per_side`.
 pub fn decode_icon(w: &wire::Icon, limits: IconLimits) -> Result<Icon> {
     let reject = |why: &str| Error::item("icon", Some(w.id), why.to_owned());
 
@@ -73,7 +79,7 @@ pub fn decode_icon(w: &wire::Icon, limits: IconLimits) -> Result<Icon> {
     // that actually enforces the cap. The point of this one is to avoid
     // allocating for a payload that is obviously far too big.
     #[allow(clippy::integer_division)]
-    let decoded_upper_bound = payload.len() / 4 * 3;
+    let decoded_upper_bound = (payload.len() / 4).saturating_mul(3);
     if decoded_upper_bound > limits.max_bytes {
         // Distinct wording from the post-decode check below, so a test can
         // tell WHICH gate refused. With one shared message the pre-check could
@@ -84,7 +90,7 @@ pub fn decode_icon(w: &wire::Icon, limits: IconLimits) -> Result<Icon> {
 
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(payload.trim())
-        .map_err(|_| reject("icon payload is not valid base64"))?;
+        .map_err(|e| reject(&format!("icon payload is not valid base64: {e}")))?;
 
     if bytes.len() > limits.max_bytes {
         return Err(reject("icon exceeds the size cap (decoded)"));
@@ -156,7 +162,7 @@ fn sniff_format(b: &[u8]) -> Option<ImageFormat> {
 }
 
 fn be_u32(b: &[u8], at: usize) -> Option<u32> {
-    let s = b.get(at..at + 4)?;
+    let s = b.get(at..at.checked_add(4)?)?;
     Some(u32::from_be_bytes([
         *s.first()?,
         *s.get(1)?,
@@ -166,12 +172,12 @@ fn be_u32(b: &[u8], at: usize) -> Option<u32> {
 }
 
 fn be_u16(b: &[u8], at: usize) -> Option<u16> {
-    let s = b.get(at..at + 2)?;
+    let s = b.get(at..at.checked_add(2)?)?;
     Some(u16::from_be_bytes([*s.first()?, *s.get(1)?]))
 }
 
 fn le_u16(b: &[u8], at: usize) -> Option<u16> {
-    let s = b.get(at..at + 2)?;
+    let s = b.get(at..at.checked_add(2)?)?;
     Some(u16::from_le_bytes([*s.first()?, *s.get(1)?]))
 }
 
@@ -207,15 +213,10 @@ fn read_dimensions(b: &[u8], format: ImageFormat) -> Option<(u32, u32)> {
         // and are not worth hand-parsing for a favicon.
         ImageFormat::WebP => {
             if b.get(12..16) == Some(b"VP8X") {
-                let w = 1
-                    + u32::from(*b.get(24)?)
-                    + (u32::from(*b.get(25)?) << 8)
-                    + (u32::from(*b.get(26)?) << 16);
-                let h = 1
-                    + u32::from(*b.get(27)?)
-                    + (u32::from(*b.get(28)?) << 8)
-                    + (u32::from(*b.get(29)?) << 16);
-                Some((w, h))
+                // 24 bits plus one, which cannot overflow a u32.
+                let w = u32::from_le_bytes([*b.get(24)?, *b.get(25)?, *b.get(26)?, 0]);
+                let h = u32::from_le_bytes([*b.get(27)?, *b.get(28)?, *b.get(29)?, 0]);
+                Some((w.checked_add(1)?, h.checked_add(1)?))
             } else {
                 None
             }
@@ -238,33 +239,33 @@ fn read_dimensions(b: &[u8], format: ImageFormat) -> Option<(u32, u32)> {
 fn jpeg_dimensions(b: &[u8]) -> Option<(u32, u32)> {
     let mut i = 2usize; // skip SOI
     let mut guard = 0u32;
-    while i + 3 < b.len() {
-        guard += 1;
+    while i.checked_add(3)? < b.len() {
+        guard = guard.checked_add(1)?;
         if guard > 4096 {
             return None;
         }
         if *b.get(i)? != 0xFF {
             // Not at a marker: resynchronise rather than trusting the offset.
-            i += 1;
+            i = i.checked_add(1)?;
             continue;
         }
-        let marker = *b.get(i + 1)?;
+        let marker = *b.get(i.checked_add(1)?)?;
         // Standalone markers carry no length.
         if (0xD0..=0xD9).contains(&marker) || marker == 0x01 || marker == 0xFF {
-            i += 2;
+            i = i.checked_add(2)?;
             continue;
         }
-        let len = usize::from(be_u16(b, i + 2)?);
+        let len = usize::from(be_u16(b, i.checked_add(2)?)?);
         if len < 2 {
             return None;
         }
         // SOF0..SOF15 except the DHT/JPG/DAC markers at C4, C8, CC.
         if (0xC0..=0xCF).contains(&marker) && !matches!(marker, 0xC4 | 0xC8 | 0xCC) {
-            let h = be_u16(b, i + 5)?;
-            let w = be_u16(b, i + 7)?;
+            let h = be_u16(b, i.checked_add(5)?)?;
+            let w = be_u16(b, i.checked_add(7)?)?;
             return Some((u32::from(w), u32::from(h)));
         }
-        i += 2 + len;
+        i = i.checked_add(len)?.checked_add(2)?;
     }
     None
 }
@@ -317,7 +318,7 @@ mod tests {
         assert_eq!(icon.format, ImageFormat::Png, "content wins over the label");
 
         let hostile = icon_body(b"<html><script>alert(1)</script>", "image/png");
-        assert!(decode_icon(&hostile, IconLimits::default()).is_err());
+        decode_icon(&hostile, IconLimits::default()).unwrap_err();
     }
 
     #[test]
@@ -335,7 +336,7 @@ mod tests {
     #[test]
     fn zero_dimensions_are_refused() {
         let bad = icon_body(&png_header(0, 10), "image/png");
-        assert!(decode_icon(&bad, IconLimits::default()).is_err());
+        decode_icon(&bad, IconLimits::default()).unwrap_err();
     }
 
     #[test]
@@ -404,7 +405,7 @@ mod tests {
             mime_type: String::new(),
             data: String::new(),
         };
-        assert!(decode_icon(&empty, IconLimits::default()).is_err());
+        decode_icon(&empty, IconLimits::default()).unwrap_err();
     }
 
     #[test]

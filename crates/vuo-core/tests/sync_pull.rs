@@ -724,7 +724,7 @@ const FIXTURE_CREATED_AT: i64 = 1_767_323_045;
 /// mock served before.
 async fn serve_entries(server: &MockServer, entries: Vec<serde_json::Value>) {
     server.reset().await;
-    let total = entries.len() as i64;
+    let total = i64::try_from(entries.len()).unwrap();
     Mock::given(method("GET"))
         .and(path("/v1/entries"))
         .respond_with(ResponseTemplate::new(200).set_body_json(entries_response(entries, total)))

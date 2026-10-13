@@ -66,7 +66,7 @@ fn cfg() -> TransportConfig {
 /// The header is spliced in here rather than written into each test's bytes so
 /// that a test added later cannot forget it. It is framing, not content: every
 /// response below still declares its own body exactly as its author wrote it.
-fn one_shot(resp: Vec<u8>) -> Vec<u8> {
+fn one_shot(resp: &[u8]) -> Vec<u8> {
     const CLOSE: &[u8] = b"Connection: close\r\n";
     let after_status_line = resp
         .windows(2)
@@ -96,7 +96,7 @@ fn raw_server(
             let mut buf = [0u8; 8192];
             let n = sock.read(&mut buf).unwrap_or(0);
             let _ = tx.send(String::from_utf8_lossy(&buf[..n]).to_string());
-            let _ = sock.write_all(&one_shot(resp));
+            let _ = sock.write_all(&one_shot(&resp));
             let _ = sock.flush();
         }
     });
@@ -125,10 +125,10 @@ async fn relative_redirect_is_followed_with_token() {
             None,
         )
         .await;
-    println!("result: {res:?}");
+    eprintln!("result: {res:?}");
     let req1 = rx.recv().unwrap();
     let req2 = rx.recv_timeout(Duration::from_secs(5)).unwrap();
-    println!("--- req1 ---\n{req1}\n--- req2 ---\n{req2}");
+    eprintln!("--- req1 ---\n{req1}\n--- req2 ---\n{req2}");
     assert!(
         req2.contains("SECRET-TOKEN"),
         "token should be re-attached same-origin"
@@ -206,9 +206,9 @@ async fn protocol_relative_redirect() {
             None,
         )
         .await;
-    println!("protocol-relative result: {res:?}");
+    eprintln!("protocol-relative result: {res:?}");
     let _ = rx.recv().unwrap();
-    assert!(res.is_err());
+    res.unwrap_err();
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -295,8 +295,8 @@ async fn chunked_no_content_length_over_cap() {
             None,
         )
         .await;
-    println!("chunked result: {:?}", res.as_ref().map(|r| r.body.len()));
-    println!("chunked err: {res:?}");
+    eprintln!("chunked result: {:?}", res.as_ref().map(|r| r.body.len()));
+    eprintln!("chunked err: {res:?}");
     let _ = rx.recv().unwrap();
     assert!(res.is_err(), "chunked body over cap must be refused");
 }
@@ -319,8 +319,8 @@ async fn gzip_bomb() {
             None,
         )
         .await;
-    println!("gzip result len: {:?}", res.as_ref().map(|r| r.body.len()));
-    println!("gzip err: {res:?}");
+    eprintln!("gzip result len: {:?}", res.as_ref().map(|r| r.body.len()));
+    eprintln!("gzip err: {res:?}");
     let _ = rx.recv().unwrap();
     assert!(
         res.is_err(),

@@ -140,6 +140,11 @@ fn writers_interleave_without_losing_either_side() {
 fn a_second_writer_waits_rather_than_corrupting() {
     // With BEGIN IMMEDIATE the first writer holds the lock, so the second
     // blocks on busy_timeout instead of taking a snapshot it cannot upgrade.
+
+    // Short enough that a regression fails fast instead of hanging, long
+    // enough that "it waited" is unambiguous on a loaded machine.
+    const BUSY: Duration = Duration::from_millis(300);
+
     let dir = tempfile::tempdir().expect("tempdir");
     let path = dir.path().join("mirror.sqlite");
 
@@ -147,9 +152,6 @@ fn a_second_writer_waits_rather_than_corrupting() {
     let mut timer = Database::open(&path).expect("timer");
     seed(&mut ui, 1);
 
-    // Short enough that a regression fails fast instead of hanging, long
-    // enough that "it waited" is unambiguous on a loaded machine.
-    const BUSY: Duration = Duration::from_millis(300);
     timer.conn().busy_timeout(BUSY).expect("timeout");
 
     let held = ui
@@ -182,7 +184,7 @@ fn a_second_writer_waits_rather_than_corrupting() {
     // apart, and asserting only `is_err()` left this test green under exactly
     // the defect the module header describes.
     assert!(
-        waited >= BUSY - Duration::from_millis(50),
+        waited >= BUSY.checked_sub(Duration::from_millis(50)).unwrap(),
         "the second writer returned after {waited:?} without waiting out the {BUSY:?} \
          busy_timeout, which is the SQLITE_BUSY_SNAPSHOT signature of a DEFERRED \
          transaction rather than a writer politely queueing"

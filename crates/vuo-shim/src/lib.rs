@@ -18,7 +18,7 @@
 //! # Registration, not application ownership
 //!
 //! [`register_qml_types`] registers types and returns. It deliberately does not
-//! create a `QmlEngine`: `QmlEngine::new()` constructs a **QtWidgets**
+//! create a `QmlEngine`: `QmlEngine::new()` constructs a **`QtWidgets`**
 //! `QApplication`, which is not what a Silica app wants — Sailfish needs
 //! `SailfishApp::application()` and `SailfishApp::createView()` for correct
 //! Wayland, booster and theme setup. `qml_register_type` needs no engine at
@@ -42,6 +42,18 @@
 // rather than Rust's. The alternative is QML reading `model.set_read(...)` and
 // a signal handler spelled `onConnection_tested`.
 #![allow(non_snake_case)]
+// Shipped code is held to more than tests are; vuo-core's lib.rs says why.
+#![cfg_attr(
+    not(test),
+    deny(
+        clippy::string_slice,
+        clippy::arithmetic_side_effects,
+        clippy::let_underscore_must_use,
+        clippy::panic_in_result_fn,
+        clippy::unwrap_in_result,
+        clippy::get_unwrap
+    )
+)]
 // The panic denials exist because unwinding out of Rust into Qt's C++ frames
 // is undefined behaviour (§9.5). Test code has neither foreign input nor a Qt
 // frame above it, and a panicking assertion is the entire point of a test.
@@ -54,6 +66,11 @@
         clippy::indexing_slicing
     )
 )]
+// qmetaobject's derive requires the invokable methods QML calls to take
+// `QString` and `QVariantList` by value, so pedantic's
+// `needless_pass_by_value` would ask for a signature that does not compile.
+// piirit allows it the same way, for the same reason.
+#![allow(clippy::needless_pass_by_value)]
 
 pub mod arrivals;
 pub mod article;
@@ -110,7 +127,7 @@ mod tests {
     /// `qml_register_type` in qmetaobject 0.2.10 returns `()`, discarding the
     /// type id that would be -1 on rejection, so there is nothing to assert.
     /// A registration that silently did nothing is caught one level up, by
-    /// tests/qml_loads.rs: the QML then names a type the engine does not know
+    /// `tests/qml_loads.rs`: the QML then names a type the engine does not know
     /// and every page fails to compile. Registering under the wrong name is
     /// caught the same way.
     #[test]

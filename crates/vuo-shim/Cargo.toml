@@ -24,14 +24,33 @@ authors.workspace = true
 # longer tolerate. See the workspace manifest.
 [lints.rust]
 warnings = "deny"
+# The workspace table says why each of these three is here.
+unused_qualifications = "deny"
+trivial_casts = "deny"
+missing_docs = "deny"
 
 [lints.clippy]
+# See the workspace table, for these three.
+pedantic = { level = "deny", priority = -1 }
+too_many_lines = "allow"
+items_after_statements = "allow"
 unwrap_used = "deny"
 expect_used = "deny"
 panic = "deny"
 indexing_slicing = "deny"
 todo = "deny"
 unimplemented = "deny"
+# The workspace table says why each of these is here, and that the crate
+# root denies the rest.
+significant_drop_in_scrutinee = "deny"
+redundant_clone = "deny"
+needless_collect = "deny"
+derive_partial_eq_without_eq = "deny"
+assertions_on_result_states = "deny"
+map_err_ignore = "deny"
+mem_forget = "deny"
+dbg_macro = "deny"
+print_stdout = "deny"
 
 [dependencies]
 vuo-core = { path = "../vuo-core" }

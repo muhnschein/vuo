@@ -20,6 +20,7 @@ use crate::db::outbox::{self, DesiredValue};
 use crate::db::Database;
 use crate::error::{Error, Result};
 
+/// What a [`flush`] did with the outbox. Counts are entries, not batches.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct ReplayOutcome {
     /// Intents the server accepted and that were cleared locally.
@@ -38,6 +39,15 @@ pub struct ReplayOutcome {
 /// only then is a short transaction opened to record the result. Holding one
 /// open across the network call would block the UI's readers for the duration
 /// of a request, which on a phone with poor signal is seconds.
+///
+/// A server's refusal is not an error here: each batch is confirmed,
+/// deferred or dropped, and the counts say which. A credential failure
+/// stops the flush early with `auth_failed` set.
+///
+/// # Errors
+///
+/// [`Error::Db`] when reading the outbox or recording a batch's result
+/// fails. Batches already recorded stay recorded.
 pub async fn flush(db: &mut Database, client: &MinifluxClient) -> Result<ReplayOutcome> {
     let pending = outbox::pending(db.conn())?;
     let batches = outbox::batches(&pending);
@@ -54,13 +64,15 @@ pub async fn flush(db: &mut Database, client: &MinifluxClient) -> Result<ReplayO
                 // Compare-and-delete: a re-toggle during the request leaves a
                 // row with a different value, which must survive.
                 let cleared = db.with_tx(|tx| outbox::confirm(tx, &batch))?;
-                outcome.confirmed += cleared;
-                outcome.deferred += batch.entry_ids.len().saturating_sub(cleared);
+                outcome.confirmed = outcome.confirmed.saturating_add(cleared);
+                outcome.deferred = outcome
+                    .deferred
+                    .saturating_add(batch.entry_ids.len().saturating_sub(cleared));
             }
             Err(e) if e.is_auth_failure() => {
                 // Every remaining batch would fail identically.
                 db.with_tx(|tx| outbox::record_failure(tx, &batch, &e.to_string()))?;
-                outcome.deferred += batch.entry_ids.len();
+                outcome.deferred = outcome.deferred.saturating_add(batch.entry_ids.len());
                 outcome.auth_failed = true;
                 return Ok(outcome);
             }
@@ -76,7 +88,7 @@ pub async fn flush(db: &mut Database, client: &MinifluxClient) -> Result<ReplayO
                 // actually becomes visible, and `ReplayOutcome::dropped`
                 // carries the count to the UI.
                 db.with_tx(|tx| outbox::discard(tx, &batch))?;
-                outcome.dropped += batch.entry_ids.len();
+                outcome.dropped = outcome.dropped.saturating_add(batch.entry_ids.len());
                 tracing::warn!(
                     error = %e,
                     count = batch.entry_ids.len(),
@@ -93,7 +105,7 @@ pub async fn flush(db: &mut Database, client: &MinifluxClient) -> Result<ReplayO
                 // typed the wrong server URL is not a trade this app makes.
                 // They wait for a human to fix the configuration.
                 db.with_tx(|tx| outbox::record_failure(tx, &batch, &e.to_string()))?;
-                outcome.deferred += batch.entry_ids.len();
+                outcome.deferred = outcome.deferred.saturating_add(batch.entry_ids.len());
 
                 // Both cases stay queued, so the DATABASE cannot tell them
                 // apart -- but the user debugging "sync does nothing" very much

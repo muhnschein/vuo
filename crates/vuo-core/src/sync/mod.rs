@@ -58,6 +58,7 @@ use crate::db::{store, Database};
 use crate::error::Result;
 use crate::model::ServerVersion;
 
+/// Tuning for a [`sync`] pass.
 #[derive(Debug, Clone, Copy)]
 pub struct SyncOptions {
     /// How often to run a full deletion reconcile even when nothing looks
@@ -104,19 +105,49 @@ impl Default for SyncOptions {
     }
 }
 
+/// What one [`sync`] pass did.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SyncReport {
+    /// The outbox flush. All zero when `skip_replay` was set.
     pub replay: replay::ReplayOutcome,
+    /// The incremental entry pull.
     pub pull: pull::PullOutcome,
+    /// Local entries deleted by a deletion reconcile.
     pub entries_deleted: usize,
+    /// Feed icons fetched, validated and stored.
     pub icons_fetched: usize,
     /// Entries dropped by the retention policy this pass.
     pub entries_pruned: usize,
+    /// `true` when a deletion reconcile ran to completion.
     pub reconciled: bool,
+    /// The server version the pass used: the cached one, a fresh answer, or
+    /// `"unknown"` when the server would not say. `None` only when the pass
+    /// stopped after the flush on a credential failure.
     pub server_version: Option<String>,
 }
 
 /// Run one full sync pass.
+///
+/// A credential failure during the outbox flush is not an error: the pass
+/// stops there and returns `Ok` with [`ReplayOutcome::auth_failed`] set.
+/// Failures to fetch the server version, the counters or an icon are
+/// absorbed rather than failing the pass.
+///
+/// # Errors
+///
+/// - [`Error::Transport`], [`Error::Http`] or [`Error::Protocol`] when
+///   pulling categories, feeds or entries fails, or a deletion reconcile's
+///   id listing fails.
+/// - [`Error::Db`] when reading or writing the mirror fails at any step.
+///
+/// The sync cursor is saved only at the end, so the next pass re-reads
+/// whatever entry window a failed one did not finish.
+///
+/// [`Error::Transport`]: crate::error::Error::Transport
+/// [`Error::Http`]: crate::error::Error::Http
+/// [`Error::Protocol`]: crate::error::Error::Protocol
+/// [`Error::Db`]: crate::error::Error::Db
+/// [`ReplayOutcome::auth_failed`]: replay::ReplayOutcome::auth_failed
 pub async fn sync(
     db: &mut Database,
     client: &MinifluxClient,
@@ -145,7 +176,7 @@ pub async fn sync(
     // `SyncOptions::server_version_ttl_secs`.
     let cached_version = state
         .server_version_checked_at
-        .filter(|checked| now - checked < options.server_version_ttl_secs)
+        .filter(|checked| now.saturating_sub(*checked) < options.server_version_ttl_secs)
         .and(state.server_version.as_deref())
         .and_then(ServerVersion::parse);
     let (version, version_checked_at) = match cached_version {
@@ -161,7 +192,7 @@ pub async fn sync(
     // 4. Deletions are invisible to the cursor, so they need their own signal.
     let due = state
         .last_full_reconcile_at
-        .is_none_or(|last| now - last >= options.reconcile_interval_secs);
+        .is_none_or(|last| now.saturating_sub(last) >= options.reconcile_interval_secs);
     // The counters request is spent only where its answer can change what
     // this pass does.
     //
@@ -287,7 +318,7 @@ async fn fetch_icons(db: &mut Database, client: &MinifluxClient, limit: i64) -> 
                     store::upsert_icon(tx, &icon)?;
                     store::clear_icon_failures(tx, feed_id)
                 })?;
-                fetched += 1;
+                fetched = fetched.saturating_add(1);
             }
             Err(e) => {
                 tracing::debug!(feed = %feed_id, error = %e, "rejected a feed icon");

@@ -14,7 +14,7 @@
 //! userinfo in the configured base URL through the error chain even though we
 //! never format a `Url` ourselves. Transport failures are classified into
 //! [`TransportKind`] at the boundary and the URL is reduced to a
-//! [`SafeUrl`](crate::redact::SafeUrl) first.
+//! [`SafeUrl`] first.
 //!
 //! **§9.2 — one bad entry must not stall the sync.** [`Error::is_item_local`]
 //! distinguishes "this one item was malformed" from "the whole operation
@@ -75,6 +75,11 @@ impl fmt::Display for TransportKind {
     }
 }
 
+/// Everything that can go wrong in `vuo-core`.
+///
+/// See the [module documentation](crate::error) for the rules that shape it, and the
+/// `is_*` classifiers on this type for how callers decide to retry, drop or
+/// surface a failure.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum Error {
@@ -85,7 +90,9 @@ pub enum Error {
     /// No HTTP response was obtained.
     #[error("{kind} ({endpoint})")]
     Transport {
+        /// The endpoint the request was for, with credentials and query removed.
         endpoint: SafeUrl,
+        /// Why no response arrived.
         kind: TransportKind,
         /// A short, already-redacted detail string. Never the raw
         /// `reqwest::Error` display, which would carry the URL.
@@ -98,8 +105,11 @@ pub enum Error {
     /// It is foreign text: render it as plain text, never as markup (§9.3).
     #[error("server returned HTTP {status} for {endpoint}{}", .message.as_deref().map(|m| format!(": {m}")).unwrap_or_default())]
     Http {
+        /// The HTTP status code.
         status: u16,
+        /// The endpoint that answered, with credentials and query removed.
         endpoint: SafeUrl,
+        /// The server's `error_message`, when it sent one. Foreign text.
         message: Option<String>,
     },
 
@@ -114,8 +124,11 @@ pub enum Error {
     /// *reject the entry rather than the sync when one item is malformed.*
     #[error("unusable {kind} (id {id:?}): {reason}")]
     Item {
+        /// What sort of item it was, such as `"entry"` or `"icon"`.
         kind: &'static str,
+        /// The item's server-assigned id, when known.
         id: Option<i64>,
+        /// Why the item was rejected.
         reason: String,
     },
 
@@ -127,7 +140,13 @@ pub enum Error {
     /// recovery is different and because a failed migration must never be
     /// allowed to silently drop a pending outbox (§9.4).
     #[error("database migration {version} failed: {reason}")]
-    Migration { version: i64, reason: String },
+    Migration {
+        /// The migration that failed, or the database's own version when it is
+        /// newer than this build understands.
+        version: i64,
+        /// What went wrong.
+        reason: String,
+    },
 
     /// The content transform refused its input: too deep, too large, or
     /// malformed past the point of usefulness (§9.2).
@@ -188,7 +207,7 @@ impl Error {
     /// `true` when retrying the identical request could plausibly succeed.
     ///
     /// This is the outbox's retry classifier. Because every outbox write is an
-    /// absolute set (see [`crate::outbox`]), retrying after an ambiguous
+    /// absolute set (see [`crate::db::outbox`]), retrying after an ambiguous
     /// timeout is safe -- there is no partial-application hazard to reason
     /// about, which is the whole payoff of the desired-state design.
     ///

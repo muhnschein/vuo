@@ -142,7 +142,7 @@ fn schema_of(conn: &Connection) -> Vec<String> {
             Ok(format!("{kind} {name}: {sql}"))
         })
         .expect("map")
-        .collect::<std::result::Result<Vec<_>, _>>()
+        .collect::<Result<Vec<_>, _>>()
         .expect("collect");
     out.sort();
     out
@@ -188,7 +188,7 @@ fn fixtures_upgrade_without_data_loss() {
             let rows: Vec<(i64, String, String)> = stmt
                 .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
                 .expect("query")
-                .collect::<std::result::Result<Vec<_>, _>>()
+                .collect::<Result<Vec<_>, _>>()
                 .expect("collect");
             (version, rows)
         };
@@ -216,7 +216,7 @@ fn fixtures_upgrade_without_data_loss() {
                 .expect("prepare");
             stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
                 .expect("query")
-                .collect::<std::result::Result<Vec<_>, _>>()
+                .collect::<Result<Vec<_>, _>>()
                 .expect("collect")
         };
         assert_eq!(

@@ -36,6 +36,15 @@ fn lenient_url(raw: &str) -> Option<MediaUrl> {
     MediaUrl::parse(raw)
 }
 
+/// Validate one wire entry into a domain [`Entry`].
+///
+/// Unparseable URLs become `None` and negative reading times are clamped to
+/// zero; only the status can cost the entry.
+///
+/// # Errors
+///
+/// Returns [`Error::Item`] when the status is `removed` or anything other than
+/// `read` or `unread`, including when it is missing.
 pub fn entry(w: wire::Entry) -> Result<Entry> {
     let id = EntryId(w.id);
 
@@ -92,6 +101,14 @@ fn enclosure(w: wire::Enclosure, entry_id: EntryId) -> Enclosure {
     }
 }
 
+/// Validate one wire feed into a domain [`Feed`].
+///
+/// An icon id of `0` is treated as no icon, and unparseable URLs become `None`.
+///
+/// # Errors
+///
+/// Never fails at present; the `Result` keeps the signature in line with
+/// [`entry`] so a future check can reject a feed with [`Error::Item`].
 pub fn feed(w: wire::Feed) -> Result<Feed> {
     Ok(Feed {
         id: FeedId(w.id),
@@ -116,6 +133,12 @@ pub fn feed(w: wire::Feed) -> Result<Feed> {
     })
 }
 
+/// Validate one wire category into a domain [`Category`].
+///
+/// # Errors
+///
+/// Never fails at present; the `Result` keeps the signature in line with
+/// [`entry`] so a future check can reject a category with [`Error::Item`].
 pub fn category(w: wire::Category) -> Result<Category> {
     Ok(Category {
         id: CategoryId(w.id),
@@ -264,11 +287,7 @@ mod tests {
         // the crate still green.
         assert_eq!(
             e.published_at,
-            Some(
-                "2026-01-02T03:04:05Z"
-                    .parse::<chrono::DateTime<chrono::Utc>>()
-                    .unwrap()
-            )
+            Some("2026-01-02T03:04:05Z".parse::<DateTime<Utc>>().unwrap())
         );
         assert_eq!(e.reading_time, 4);
         assert_eq!(e.title, "T");
@@ -286,11 +305,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             e.published_at,
-            Some(
-                "2026-01-02T03:04:05Z"
-                    .parse::<chrono::DateTime<chrono::Utc>>()
-                    .unwrap()
-            ),
+            Some("2026-01-02T03:04:05Z".parse::<DateTime<Utc>>().unwrap()),
             "05:04:05+02:00 is 03:04:05Z"
         );
     }

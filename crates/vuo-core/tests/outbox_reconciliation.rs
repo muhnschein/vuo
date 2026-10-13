@@ -211,7 +211,7 @@ async fn an_offline_burst_reconciles_on_reconnect() {
     let mut seen: Vec<i64> = Vec::new();
     for body in &bodies {
         if let Some(ids) = body.get("entry_ids").and_then(|v| v.as_array()) {
-            seen.extend(ids.iter().filter_map(serde_json::Value::as_i64));
+            seen.extend(ids.iter().filter_map(Value::as_i64));
         }
     }
     assert_eq!(seen.len(), 1203);
@@ -491,6 +491,41 @@ async fn a_pre_2_3_2_server_keeps_intents_queued_instead_of_dropping_them() {
         "the refusal happens before anything is sent; the 400 must never \
          reach the outbox's discard rule"
     );
+}
+
+#[tokio::test]
+async fn a_server_upgraded_while_running_gets_the_queued_intents() {
+    // The other half of the floor: the intents a 2.2.13 kept queued go out
+    // once the instance is upgraded, without restarting Vuo. The client
+    // used to hold the first version it heard in a `OnceLock`, so the daily
+    // version check the sync makes (`server_version_ttl_secs`) could fetch
+    // the new answer and the write floor would go on reading the old one.
+    let server = MockServer::start().await;
+    mount_version(&server, "2.2.13").await;
+    let client = client_for(&server);
+    let mut db = seeded_db(1);
+    db.with_tx(|tx| outbox::queue(tx, EntryId(1), DesiredValue::Starred(true), 1))
+        .unwrap();
+
+    let outcome = replay::flush(&mut db, &client).await.unwrap();
+    assert_eq!(outcome.deferred, 1, "still refused on the old server");
+
+    // The owner upgrades, and the next sync pass asks again.
+    server.reset().await;
+    mount_version(&server, "2.3.3").await;
+    Mock::given(method("PUT"))
+        .and(path("/v1/entries"))
+        .respond_with(ResponseTemplate::new(204))
+        .mount(&server)
+        .await;
+    assert_eq!(client.version().await.unwrap().raw, "2.3.3");
+
+    let outcome = replay::flush(&mut db, &client).await.unwrap();
+    assert_eq!(
+        outcome.confirmed, 1,
+        "the upgrade must reach the write floor"
+    );
+    assert_eq!(outbox::len(db.conn()).unwrap(), 0);
 }
 
 #[tokio::test]

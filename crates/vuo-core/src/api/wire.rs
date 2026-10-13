@@ -38,6 +38,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 /// feed list by a literal year-1 timestamp silently corrupts the ordering.
 const GO_ZERO_TIME_SECS: i64 = -62_135_596_800;
 
+/// Whether `t` is Go's zero time, the sentinel Miniflux sends for an unset timestamp.
 #[must_use]
 pub fn is_zero_time(t: &DateTime<FixedOffset>) -> bool {
     t.timestamp() == GO_ZERO_TIME_SECS
@@ -47,6 +48,11 @@ pub fn is_zero_time(t: &DateTime<FixedOffset>) -> bool {
 ///
 /// All three collapse to `None`, so callers never have to know which spelling
 /// of "unset" a given server version chose.
+///
+/// # Errors
+///
+/// Returns the deserialiser's error when the value is neither `null` nor an
+/// RFC 3339 timestamp.
 pub fn de_opt_time<'de, D>(d: D) -> Result<Option<DateTime<FixedOffset>>, D::Error>
 where
     D: Deserializer<'de>,
@@ -58,6 +64,10 @@ where
 /// Deserialise a collection that may arrive as `null`.
 ///
 /// Collapses `null` to the empty collection so no call site has to branch.
+///
+/// # Errors
+///
+/// Returns the deserialiser's error when a non-null value does not decode as `T`.
 pub fn de_null_default<'de, D, T>(d: D) -> Result<T, D::Error>
 where
     D: Deserializer<'de>,
@@ -75,7 +85,9 @@ where
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
 pub struct EntriesResponse {
+    /// Count of every entry matching the query; see the type docs for why it is no loop bound.
     pub total: i64,
+    /// This page of entries.
     #[serde(deserialize_with = "de_null_default")]
     pub entries: Vec<Entry>,
 }
@@ -84,16 +96,22 @@ pub struct EntriesResponse {
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
 pub struct EntryIdsResponse {
+    /// Count of every matching entry id.
     pub total: i64,
+    /// The matching entry ids.
     #[serde(deserialize_with = "de_null_default")]
     pub entry_ids: Vec<i64>,
 }
 
+/// One entry (article), as `GET /v1/entries` and friends send it.
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
 pub struct Entry {
+    /// The server's id for the entry.
     pub id: i64,
+    /// The user who owns the entry.
     pub user_id: i64,
+    /// The feed the entry came from.
     pub feed_id: i64,
     /// Deliberately a `String`, not an enum.
     ///
@@ -102,65 +120,112 @@ pub struct Entry {
     /// an enum would turn that into a deserialisation failure for the whole
     /// page rather than one unusable row.
     pub status: String,
+    /// Miniflux's hash identifying the entry within its feed.
     pub hash: String,
+    /// The article title. Foreign text.
     pub title: String,
+    /// Link to the article on its own site. Foreign text, validated on conversion.
     pub url: String,
+    /// Link to the article's discussion page, if the feed gives one. Foreign text.
     pub comments_url: String,
     /// Added in 2.3.x; simply absent on older servers.
     pub language: String,
+    /// When the feed says the article was published.
     #[serde(deserialize_with = "de_opt_time")]
     pub published_at: Option<DateTime<FixedOffset>>,
+    /// When the server first stored the entry.
     #[serde(deserialize_with = "de_opt_time")]
     pub created_at: Option<DateTime<FixedOffset>>,
+    /// When the server last changed the entry.
     #[serde(deserialize_with = "de_opt_time")]
     pub changed_at: Option<DateTime<FixedOffset>>,
+    /// The article body as HTML. Foreign text.
     pub content: String,
+    /// The article's author. Foreign text.
     pub author: String,
+    /// The public share code, empty when the entry has not been shared.
     pub share_code: String,
+    /// Whether the user has starred (bookmarked) the entry.
     pub starred: bool,
+    /// Estimated reading time in minutes.
     pub reading_time: i32,
+    /// Attached media; `null` on the wire becomes empty.
     #[serde(deserialize_with = "de_null_default")]
     pub enclosures: Vec<Enclosure>,
     /// Omitted entirely when nil, and only partially populated when present.
     pub feed: Option<Feed>,
+    /// Tags (categories) the feed attached to the entry. Foreign text; `null` becomes empty.
     #[serde(deserialize_with = "de_null_default")]
     pub tags: Vec<String>,
 }
 
+// Miniflux's own shape, field for field: the bools are the server's.
+/// A subscribed feed, from `GET /v1/feeds` or embedded in an [`Entry`].
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
 pub struct Feed {
+    /// The server's id for the feed.
     pub id: i64,
+    /// The user who owns the subscription.
     pub user_id: i64,
+    /// The URL the server fetches the feed from.
     pub feed_url: String,
+    /// The website the feed belongs to. Foreign text.
     pub site_url: String,
+    /// The feed title. Foreign text.
     pub title: String,
+    /// The feed's description. Foreign text.
     pub description: String,
+    /// The feed's declared language. Foreign text.
     pub language: String,
+    /// When the server last fetched the feed.
     #[serde(deserialize_with = "de_opt_time")]
     pub checked_at: Option<DateTime<FixedOffset>>,
+    /// When the server next plans to fetch the feed.
     #[serde(deserialize_with = "de_opt_time")]
     pub next_check_at: Option<DateTime<FixedOffset>>,
+    /// The `ETag` from the feed's last response.
     pub etag_header: String,
+    /// The `Last-Modified` from the feed's last response.
     pub last_modified_header: String,
+    /// Why the last fetch failed, empty when it did not. Foreign text.
     pub parsing_error_message: String,
+    /// How many fetches in a row have failed.
     pub parsing_error_count: i32,
+    /// Scraper rules for fetching full article content.
     pub scraper_rules: String,
+    /// Content rewrite rules.
     pub rewrite_rules: String,
+    /// Whether the server fetches each article's full content.
     pub crawler: bool,
+    /// Rules for entries the server should drop.
     pub blocklist_rules: String,
+    /// Rules for entries the server should keep.
     pub keeplist_rules: String,
+    /// Rules for rewriting entry URLs.
     pub urlrewrite_rules: String,
+    /// A custom user agent for fetching the feed.
     pub user_agent: String,
+    /// A custom cookie for fetching the feed.
     pub cookie: String,
+    /// Username for a feed behind HTTP authentication.
     pub username: String,
+    /// Password for a feed behind HTTP authentication.
     pub password: String,
+    /// Whether fetching the feed is paused.
     pub disabled: bool,
+    /// Whether the server hides its media player for this feed.
     pub no_media_player: bool,
+    /// Whether the server ignores HTTP caching headers when fetching.
     pub ignore_http_cache: bool,
+    /// Whether the server accepts a self-signed certificate from the feed's host.
     pub allow_self_signed_certificates: bool,
+    /// Whether the server fetches the feed through its proxy.
     pub fetch_via_proxy: bool,
+    /// Whether the feed's entries are hidden from the global unread list.
     pub hide_globally: bool,
+    /// The category the feed is filed under; omitted when nil.
     pub category: Option<Category>,
     /// Present and `null` when the feed has no icon.
     pub icon: Option<FeedIconRef>,
@@ -170,8 +235,11 @@ pub struct Feed {
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
 pub struct FeedIconRef {
+    /// The feed the icon belongs to.
     pub feed_id: i64,
+    /// The id to fetch the icon by; `0` means no icon.
     pub icon_id: i64,
+    /// Miniflux's external icon id.
     pub external_icon_id: String,
 }
 
@@ -179,34 +247,50 @@ pub struct FeedIconRef {
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
 pub struct Icon {
+    /// The server's id for the icon.
     pub id: i64,
+    /// The mime type the server claims. Not trusted; see [`crate::api::icon`].
     pub mime_type: String,
     /// Base64, **prefixed with the mime type**: `"image/png;base64,iVBOR..."`.
     /// Not a `data:` URI -- the `data:` scheme prefix is absent.
     pub data: String,
 }
 
+/// A category, from `GET /v1/categories` or embedded in a [`Feed`].
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
 pub struct Category {
+    /// The server's id for the category.
     pub id: i64,
+    /// The user who owns the category.
     pub user_id: i64,
+    /// The category title.
     pub title: String,
+    /// Whether entries in this category are hidden from the global unread list.
     pub hide_globally: bool,
     /// Only present on `GET /v1/categories?counts=true`.
     pub feed_count: Option<i64>,
+    /// Unread entries in the category; likewise only present with `counts=true`.
     pub total_unread: Option<i64>,
 }
 
+/// A media attachment on an entry.
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
 pub struct Enclosure {
+    /// The server's id for the enclosure.
     pub id: i64,
+    /// The user who owns the enclosure.
     pub user_id: i64,
+    /// The entry the enclosure belongs to.
     pub entry_id: i64,
+    /// Where the media lives. Foreign text, validated on conversion.
     pub url: String,
+    /// The mime type the feed claims. Foreign text.
     pub mime_type: String,
+    /// Size in bytes, as the feed claims it.
     pub size: i64,
+    /// Playback position the user reached, in seconds.
     pub media_progression: i64,
 }
 
@@ -217,8 +301,10 @@ pub struct Enclosure {
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
 pub struct FeedCounters {
+    /// Read entries per feed, keyed by feed id as a string.
     #[serde(deserialize_with = "de_null_default")]
     pub reads: std::collections::HashMap<String, i64>,
+    /// Unread entries per feed, keyed by feed id as a string.
     #[serde(deserialize_with = "de_null_default")]
     pub unreads: std::collections::HashMap<String, i64>,
 }
@@ -227,12 +313,19 @@ pub struct FeedCounters {
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
 pub struct VersionResponse {
+    /// The Miniflux version, for example `2.3.2`.
     pub version: String,
+    /// The commit the server was built from.
     pub commit: String,
+    /// When the server was built.
     pub build_date: String,
+    /// The Go version the server was built with.
     pub go_version: String,
+    /// The Go compiler used.
     pub compiler: String,
+    /// The server's CPU architecture.
     pub arch: String,
+    /// The server's operating system.
     pub os: String,
 }
 
@@ -240,13 +333,21 @@ pub struct VersionResponse {
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
 pub struct User {
+    /// The user's id.
     pub id: i64,
+    /// The user's login name.
     pub username: String,
+    /// Whether the user is an administrator.
     pub is_admin: bool,
+    /// The user's web UI theme.
     pub theme: String,
+    /// The user's interface language.
     pub language: String,
+    /// The user's time zone name.
     pub timezone: String,
+    /// The field the web UI sorts entries by.
     pub entry_sorting_field: String,
+    /// The direction the web UI sorts entries in.
     pub entry_sorting_direction: String,
 }
 
@@ -254,7 +355,9 @@ pub struct User {
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
 pub struct EntryContentResponse {
+    /// The entry's content as the server scraped it from the original page. Foreign text.
     pub content: String,
+    /// Reading time in minutes for the scraped content.
     pub reading_time: i32,
 }
 
@@ -264,6 +367,7 @@ pub struct EntryContentResponse {
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
 pub struct ApiError {
+    /// The server's description of what went wrong. Foreign text.
     pub error_message: String,
 }
 
@@ -284,9 +388,12 @@ pub struct ApiError {
 /// state back when replayed.
 #[derive(Debug, Clone, Serialize)]
 pub struct EntriesUpdateRequest {
+    /// The entries to change; must not be empty.
     pub entry_ids: Vec<i64>,
+    /// The status to set, `"read"` or `"unread"`; omitted when unchanged.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<&'static str>,
+    /// The starred flag to set; omitted when unchanged.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub starred: Option<bool>,
 }
@@ -301,7 +408,7 @@ mod tests {
         // everything must still deserialise.
         let e: Entry = serde_json::from_str("{}").unwrap();
         assert_eq!(e.id, 0);
-        assert!(e.enclosures.is_empty());
+        assert_eq!(e.enclosures.len(), 0);
         assert!(e.feed.is_none());
     }
 
@@ -318,8 +425,8 @@ mod tests {
     fn null_collections_become_empty_not_errors() {
         let json = r#"{"id":1,"enclosures":null,"tags":null}"#;
         let e: Entry = serde_json::from_str(json).unwrap();
-        assert!(e.enclosures.is_empty());
-        assert!(e.tags.is_empty());
+        assert_eq!(e.enclosures.len(), 0);
+        assert_eq!(e.tags, Vec::<String>::new());
     }
 
     #[test]
