@@ -23,7 +23,7 @@
 
 Name:       harbour-vuo
 Summary:    Miniflux feed reader for SailfishOS
-Version:    1.0.1
+Version:    1.1.0
 Release:    1
 License:    GPL-3.0-or-later
 Group:      Applications/Internet
@@ -219,6 +219,25 @@ install -Dm 644 LICENSE %{buildroot}%{_datadir}/harbour-vuo/LICENSE
 %{_datadir}/icons/hicolor/*/apps/harbour-vuo.png
 
 %changelog
+* Tue Oct 13 2026 Vuo contributors <noreply@example.invalid> - 1.1.0-1
+- Search the local mirror: feeds by name, articles by title and text, grouped by
+  where they matched and showing why. Ten results per group, more on request.
+  Return closes the search keyboard.
+- Zoom into an article's images: pinch to zoom, and a double tap no longer
+  jumps.
+- The cover states the unread total beside the count of new articles after a
+  sync, carves the unread count out of its text art, and shows the bare texture
+  when nothing is unread.
+- "Only sync on Wi-Fi" now takes effect, and no radio or CPU is spent on work
+  nobody is watching.
+- Globally hidden feeds stay out of Unread and All.
+- On Miniflux older than 2.3.2, read and star changes are refused rather than
+  sent. A server upgraded past it is noticed without restarting the app.
+- A failed server version check keeps the version recorded last time, and a
+  read or star toggled again while its request is in flight no longer takes
+  that request's error.
+- Rewritten English strings, translated into every catalog.
+
 * Wed Sep 16 2026 Vuo contributors <noreply@example.invalid> - 1.0.1-1
 - Cut the read path's memory use: article lists no longer carry entry bodies
   they never draw, feed icons are held once instead of per row and per repaint,
