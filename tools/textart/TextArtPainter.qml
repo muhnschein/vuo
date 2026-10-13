@@ -165,6 +165,18 @@ Canvas {
     /// right bearing of 22, so its own advance box sits +10.0 off the ink
     /// box centre, against the +21.5 of the weight.
     property real obstacleOptical: 0.5
+    /// A further shift across, by eye, as a fraction of the digits' font
+    /// size: negative is left. 0 for none.
+    ///
+    /// The weight above is a measurement, and for most counts it is enough.
+    /// For a few it is not, and no one rule agrees with the eye on all of
+    /// them: the weight says a 3 should go LEFT, because its spine is on the
+    /// right, but its open left side already makes it look left of centre,
+    /// and on a device it was reported that way. So the rule stays as it is
+    /// and the counts it gets wrong are corrected one by one, by the job that
+    /// paints them -- see render.qml. A fraction of the size rather than
+    /// pixels, so a correction holds if the master or the fit changes.
+    property real obstacleNudge: 0
     /// How wide a line to trace around the digits' silhouette, in pixels of
     /// this master, or 0 for none. It is NOT painted into the pattern: it is
     /// written beside it by `saveEdge`, as a mask of its own, so the app can
@@ -649,6 +661,9 @@ Canvas {
             }
         }
         optical = inked > 0 ? art.obstacleOptical * optical / inked : 0
+        // `optical` is how far LEFT the number goes, so a nudge to the
+        // right takes away from it.
+        optical -= art.obstacleNudge * px
 
         // The shift cannot walk the number out of the crop. There is room --
         // the fit leaves (1 - obstacleMaxWidth) of the fitted width spare,

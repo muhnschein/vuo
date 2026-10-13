@@ -399,3 +399,103 @@ fn every_mask_the_cover_can_name_exists_and_is_a_mask() {
         problems.join("\n")
     );
 }
+
+/// An 8-bit grayscale PNG, as `scripts/png-mask.py` writes them, read back
+/// to its rows. Nothing else is accepted: the test above already holds the
+/// masks to that format.
+fn read_mask(name: &str) -> (usize, usize, Vec<u8>) {
+    use std::io::Read as _;
+    let bytes = std::fs::read(repo_root().join("qml/art/cover").join(name)).unwrap();
+    let be32 = |at: usize| u32::from_be_bytes(bytes[at..at + 4].try_into().unwrap()) as usize;
+    let (w, h) = (be32(16), be32(20));
+    assert_eq!(
+        (bytes[24], bytes[25]),
+        (8, 0),
+        "{name} is not 8-bit grayscale"
+    );
+    let mut zipped = Vec::new();
+    let mut at = 8;
+    while at + 8 <= bytes.len() {
+        let len = be32(at);
+        if &bytes[at + 4..at + 8] == b"IDAT" {
+            zipped.extend_from_slice(&bytes[at + 8..at + 8 + len]);
+        }
+        at += 12 + len;
+    }
+    let mut raw = Vec::new();
+    flate2::read::ZlibDecoder::new(&zipped[..])
+        .read_to_end(&mut raw)
+        .unwrap();
+    let mut px = vec![0u8; w * h];
+    for y in 0..h {
+        let filter = raw[y * (w + 1)];
+        for x in 0..w {
+            let left = if x > 0 { px[y * w + x - 1] } else { 0 };
+            let up = if y > 0 { px[(y - 1) * w + x] } else { 0 };
+            let up_left = if x > 0 && y > 0 {
+                px[(y - 1) * w + x - 1]
+            } else {
+                0
+            };
+            let add = match filter {
+                0 => 0,
+                1 => left,
+                2 => up,
+                3 => u8::midpoint(left, up),
+                4 => paeth(left, up, up_left),
+                other => panic!("{name}: PNG filter {other}"),
+            };
+            px[y * w + x] = raw[y * (w + 1) + 1 + x].wrapping_add(add);
+        }
+    }
+    (w, h, px)
+}
+
+/// PNG's Paeth predictor: whichever neighbour is nearest their linear guess.
+fn paeth(left: u8, up: u8, up_left: u8) -> u8 {
+    let guess = i16::from(left) + i16::from(up) - i16::from(up_left);
+    let off = |v: u8| (guess - i16::from(v)).abs();
+    if off(left) <= off(up) && off(left) <= off(up_left) {
+        left
+    } else if off(up) <= off(up_left) {
+        up
+    } else {
+        up_left
+    }
+}
+
+/// Where a count's outline sits across its master: the middle of the
+/// outline's ink box, in pixels right of the master's middle.
+fn outline_offset(key: &str) -> f64 {
+    let (w, h, px) = read_mask(&format!("{key}-edge.png"));
+    let inked: Vec<usize> = (0..w)
+        .filter(|&x| (0..h).any(|y| px[y * w + x] > 0))
+        .collect();
+    let (first, last) = (inked[0], inked[inked.len() - 1]);
+    let px_f = |n: usize| f64::from(u32::try_from(n).unwrap());
+    px_f(first + last) / 2.0 - px_f(w - 1) / 2.0
+}
+
+/// The 1, the 3 and the 4 sit where they LOOK centred, which is not where
+/// the painter's weight rule alone put them -- see `coverNudge` in
+/// tools/textart/render.qml. Off a device, over five rounds: in the end
+/// all three read right of where the rule put them.
+///
+/// In pixels of the 512-wide master, on the outline's ink box, and each
+/// held to within a pixel of where it was settled. The rule alone left the
+/// 1 at -18.5, the 3 at -9 and the 4 at +1.5; the rounds on a phone had
+/// them at -25.5, +3 and +7.5, then -30.5, -2 and -4.5, then the 1 alone
+/// at -35.5, then -40.5 and -7 for the 1 and the 3. No earlier set
+/// passes, so a repaint that
+/// drops the nudge, or masks never repainted after it changed, fail here.
+/// The 2 is the control: nobody asked for it to move, and it has not.
+#[test]
+fn the_one_three_and_four_are_centred_by_eye() {
+    for (key, want) in [("1", -37.5), ("3", -4.0), ("4", -9.5), ("2", -5.0)] {
+        let got = outline_offset(key);
+        assert!(
+            (got - want).abs() < 1.0,
+            "the {key}'s box is {got:+} px from centre; want {want:+}"
+        );
+    }
+}

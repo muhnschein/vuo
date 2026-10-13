@@ -2136,6 +2136,7 @@ version = "1.0.1"
 dependencies = [
  "base64",
  "cstr",
+ "flate2",
  "qmetaobject",
  "qttypes",
  "rusqlite",
