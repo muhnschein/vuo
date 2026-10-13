@@ -154,7 +154,7 @@ fn every_scope_tab_has_a_scope_kind() {
 /// feed's articles, with no way back except killing the app".
 ///
 /// Neither qmllint nor the load test can see this -- both models are a
-/// `property var` holding a perfectly valid EntryModel, and the wrong one is
+/// `property var` holding a perfectly valid `EntryModel`, and the wrong one is
 /// wrong only in where else it is bound. So the wiring is asserted here.
 #[test]
 fn a_feed_view_is_never_given_a_tabs_model() {
@@ -200,7 +200,7 @@ fn a_feed_view_is_never_given_a_tabs_model() {
     // And the pulley must reach for it rather than for the list it is on.
     let push = view
         .split_once("FeedListPage.qml")
-        .map(|(_, rest)| rest.split_once("})").map(|(args, _)| args).unwrap_or(rest))
+        .map(|(_, rest)| rest.split_once("})").map_or(rest, |(args, _)| args))
         .expect("the pulley opens the feeds page");
     assert!(
         push.contains("browseModel"),
@@ -212,7 +212,7 @@ fn a_feed_view_is_never_given_a_tabs_model() {
     // hands it on again so a feed opened from THAT page has one too.
     let opened = feeds
         .split_once("EntryListPage.qml")
-        .map(|(_, rest)| rest.split_once("})").map(|(args, _)| args).unwrap_or(rest))
+        .map(|(_, rest)| rest.split_once("})").map_or(rest, |(args, _)| args))
         .expect("the feeds page opens a feed");
     assert!(
         opened.contains("model: page.entryModel"),
@@ -283,7 +283,7 @@ fn a_search_is_never_given_another_lists_model() {
 ///
 /// `account: account` inside an `OnboardingPage { }` does not mean "the id
 /// called account". A binding is resolved against the object's OWN properties
-/// first, and OnboardingPage declares `property var account` -- so the name on
+/// first, and `OnboardingPage` declares `property var account` -- so the name on
 /// the right is the name on the left, and Qt reports a binding loop and leaves
 /// the property at its default. Everything that reads it then quietly does
 /// nothing.
@@ -337,8 +337,8 @@ fn no_property_is_bound_to_itself() {
                     }
                 }
             }
-            depth += line.chars().filter(|c| *c == '(').count() as i32;
-            depth -= line.chars().filter(|c| *c == ')').count() as i32;
+            depth += i32::try_from(line.chars().filter(|c| *c == '(').count()).unwrap();
+            depth -= i32::try_from(line.chars().filter(|c| *c == ')').count()).unwrap();
             depth = depth.max(0);
         }
     }
@@ -390,18 +390,6 @@ fn qml_files(dir: &Path, out: &mut Vec<PathBuf>) {
 
 #[test]
 fn every_member_the_qml_uses_is_implemented_in_rust() {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(|p| p.parent())
-        .expect("repository root")
-        .to_path_buf();
-
-    let declared = declared_members(&root);
-    assert!(
-        !declared.is_empty(),
-        "found no qt_property/qt_method declarations to check against"
-    );
-
     // Identifiers that hold a Vuo model in the QML. `model` and `feedModel`
     // are the `property var` names pages receive them through.
     const RECEIVERS: &[&str] = &[
@@ -432,6 +420,18 @@ fn every_member_the_qml_uses_is_implemented_in_rust() {
         "browseEntries",
         "searchEntries",
     ];
+
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(|p| p.parent())
+        .expect("repository root")
+        .to_path_buf();
+
+    let declared = declared_members(&root);
+    assert!(
+        !declared.is_empty(),
+        "found no qt_property/qt_method declarations to check against"
+    );
 
     let mut files = Vec::new();
     qml_files(&root.join("qml"), &mut files);

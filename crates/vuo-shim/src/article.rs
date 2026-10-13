@@ -69,7 +69,7 @@ pub struct BlockRow {
     /// `rule`. A string rather than an enum because this `qmetaobject` version
     /// has no `qml_register_enum` on Qt 5.6.
     pub kind: String,
-    /// Qt StyledText for text blocks; empty otherwise.
+    /// Qt `StyledText` for text blocks; empty otherwise.
     pub text: String,
     /// The same content with no markup at all, for accessibility and search.
     pub plain: String,
@@ -139,15 +139,15 @@ fn row_for(block: &RenderBlock) -> BlockRow {
     };
     row.plain = block.plain_text();
 
-    match &block.kind {
+    let kind = match &block.kind {
         BlockKind::Heading { level, spans } => {
-            row.kind = "heading".to_owned();
             row.level = i32::from(*level);
             row.text = Span::render_styled_text(spans);
+            "heading"
         }
         BlockKind::Paragraph { spans } => {
-            row.kind = "paragraph".to_owned();
             row.text = Span::render_styled_text(spans);
+            "paragraph"
         }
         BlockKind::ListItem {
             ordered,
@@ -155,7 +155,6 @@ fn row_for(block: &RenderBlock) -> BlockRow {
             indent,
             spans,
         } => {
-            row.kind = "list_item".to_owned();
             row.ordered = *ordered;
             row.indent = i32::from(*indent);
             row.marker = match number {
@@ -163,13 +162,14 @@ fn row_for(block: &RenderBlock) -> BlockRow {
                 None => "\u{2022}".to_owned(),
             };
             row.text = Span::render_styled_text(spans);
+            "list_item"
         }
         BlockKind::Code { language, text } => {
-            row.kind = "code".to_owned();
             // Code is plain text by definition; the delegate uses a monospace
             // font and Text.PlainText.
-            row.text = text.clone();
+            row.text.clone_from(text);
             row.code_language = language.clone().unwrap_or_default();
+            "code"
         }
         BlockKind::Image {
             src,
@@ -179,19 +179,21 @@ fn row_for(block: &RenderBlock) -> BlockRow {
             link,
             ..
         } => {
-            row.kind = "image".to_owned();
-            row.image_src = src.as_str().to_owned();
-            row.image_alt = alt.clone();
-            row.image_host = src.as_url().host_str().unwrap_or_default().to_owned();
+            src.as_str().clone_into(&mut row.image_src);
+            row.image_alt.clone_from(alt);
+            src.as_url()
+                .host_str()
+                .unwrap_or_default()
+                .clone_into(&mut row.image_host);
             row.needs_consent = matches!(fetch, MediaFetch::NeedsConsent);
-            row.image_ratio = intrinsic.map(image_ratio).unwrap_or(0.0);
+            row.image_ratio = intrinsic.map_or(0.0, image_ratio);
             row.image_link = link
                 .as_ref()
                 .map(|l| l.as_str().to_owned())
                 .unwrap_or_default();
+            "image"
         }
         BlockKind::Table { rows } => {
-            row.kind = "table".to_owned();
             // Tables render as pre-formatted plain text. Qt 5.6's Text has no
             // usable table support, and a QML-side grid built from foreign
             // data is a lot of machinery for something that appears in a small
@@ -207,17 +209,22 @@ fn row_for(block: &RenderBlock) -> BlockRow {
                 out.push('\n');
             }
             row.text = out;
+            "table"
         }
-        BlockKind::Rule => row.kind = "rule".to_owned(),
+        BlockKind::Rule => "rule",
         // BlockKind is #[non_exhaustive]: a future core release can add a block
         // type this shim predates. Rendering nothing is the right default --
         // the alternative is a shim that fails to build against a newer core
         // for a block it could simply have skipped.
-        _ => row.kind = "unsupported".to_owned(),
-    }
+        _ => "unsupported",
+    };
+    kind.clone_into(&mut row.kind);
     row
 }
 
+// The bools are `qt_property!`s, each its own setting or state that QML
+// binds to by name; a bitfield would hide them from QML.
+#[allow(clippy::struct_excessive_bools)]
 #[derive(QObject, Default)]
 pub struct ArticleModel {
     base: qt_base_class!(trait QAbstractListModel),
@@ -248,7 +255,7 @@ pub struct ArticleModel {
     /// A property rather than only `openInBrowser`'s return value, because the
     /// page BINDS to it: the site page attached to the right of the article
     /// exists exactly when this is non-empty. Validated as http(s) by the
-    /// core before it was stored, so handing it to a WebView or the system
+    /// core before it was stored, so handing it to a `WebView` or the system
     /// browser cannot launch anything else.
     pub articleUrl: qt_property!(QString; NOTIFY entryStateChanged),
     entryStateChanged: qt_signal!(),
@@ -462,8 +469,7 @@ impl ArticleModel {
         // to be repeated on every entry from the same site.
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_secs() as i64)
-            .unwrap_or(0);
+            .map_or(0, |d| i64::try_from(d.as_secs()).unwrap_or(i64::MAX));
         ctx.write(|db| db.with_tx(|tx| store::grant_media_consent(tx, origin.as_str(), now)));
 
         // Re-transform so the placeholders become images.

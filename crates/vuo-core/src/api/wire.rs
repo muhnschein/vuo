@@ -127,6 +127,8 @@ pub struct Entry {
     pub tags: Vec<String>,
 }
 
+// Miniflux's own shape, field for field: the bools are the server's.
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
 pub struct Feed {
@@ -301,7 +303,7 @@ mod tests {
         // everything must still deserialise.
         let e: Entry = serde_json::from_str("{}").unwrap();
         assert_eq!(e.id, 0);
-        assert!(e.enclosures.is_empty());
+        assert_eq!(e.enclosures.len(), 0);
         assert!(e.feed.is_none());
     }
 
@@ -318,8 +320,8 @@ mod tests {
     fn null_collections_become_empty_not_errors() {
         let json = r#"{"id":1,"enclosures":null,"tags":null}"#;
         let e: Entry = serde_json::from_str(json).unwrap();
-        assert!(e.enclosures.is_empty());
-        assert!(e.tags.is_empty());
+        assert_eq!(e.enclosures.len(), 0);
+        assert_eq!(e.tags, Vec::<String>::new());
     }
 
     #[test]

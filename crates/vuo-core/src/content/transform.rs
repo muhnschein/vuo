@@ -277,7 +277,10 @@ struct OpenElement {
     disposition: Disposition,
     /// Inline style to restore when this element closes.
     saved_style: Option<SpanStyle>,
-    /// Link to restore when this element closes.
+    /// Link to restore when this element closes. Two levels on purpose: the
+    /// outer `None` is "this element did not touch the link", the inner one
+    /// is "restore no link".
+    #[allow(clippy::option_option)]
     saved_link: Option<Option<MediaUrl>>,
 }
 
@@ -910,14 +913,13 @@ impl Builder {
             self.style = style;
         }
         if let Some(link) = &element.saved_link {
-            self.link = link.clone();
+            self.link.clone_from(link);
         }
 
         match element.disposition {
-            Disposition::Block(BlockTag::Heading(_)) | Disposition::Block(BlockTag::Paragraph) => {
+            Disposition::Block(BlockTag::Heading(_) | BlockTag::Paragraph | BlockTag::ListItem) => {
                 self.flush();
             }
-            Disposition::Block(BlockTag::ListItem) => self.flush(),
             Disposition::Block(BlockTag::List { .. }) => {
                 self.flush();
                 self.lists.pop();
@@ -1007,8 +1009,8 @@ impl TokenSink for Builder {
             Token::CommentToken(_)
             | Token::DoctypeToken(_)
             | Token::NullCharacterToken
-            | Token::ParseError(_) => {}
-            Token::EOFToken => {}
+            | Token::ParseError(_)
+            | Token::EOFToken => {}
         }
         TokenSinkResult::Continue
     }
@@ -1204,7 +1206,7 @@ mod tests {
     fn text_of(doc: &Document) -> String {
         doc.blocks
             .iter()
-            .map(|b| b.plain_text())
+            .map(RenderBlock::plain_text)
             .collect::<Vec<_>>()
             .join("\n")
     }
@@ -1309,10 +1311,7 @@ mod tests {
             panic!("expected a table, got {:?}", doc.blocks)
         };
         assert_eq!(rows.len(), 2);
-        assert!(rows
-            .first()
-            .map(|r| r.iter().all(|c| c.header))
-            .unwrap_or(false));
+        assert!(rows.first().is_some_and(|r| r.iter().all(|c| c.header)));
         let body: Vec<String> = rows
             .get(1)
             .map(|r| {
@@ -1394,7 +1393,7 @@ mod tests {
             spans
                 .first()
                 .and_then(|s| s.link.as_ref())
-                .map(|u| u.as_str()),
+                .map(MediaUrl::as_str),
             Some("https://blog.example/x")
         );
     }

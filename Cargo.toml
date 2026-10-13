@@ -76,8 +76,25 @@ unreachable_pub = "warn"
 # the device build.
 unused_qualifications = "deny"
 trivial_casts = "deny"
+# Every public item says what it is for, as in piirit. Most of the tree
+# already explains itself in prose; this makes the API surface do the same,
+# and `clippy::missing_errors_doc` (pedantic) asks the same of every
+# function that can fail.
+missing_docs = "deny"
 
 [workspace.lints.clippy]
+# The pedantic group as a whole, as piirit has it: most of it is how a
+# reviewer would ask for the code to be written anyway, and taking the group
+# means a lint it gains in a later release arrives through the
+# next-stable-clippy job rather than being missed. Exceptions are allowed
+# where they occur, with the reason beside them.
+pedantic = { level = "deny", priority = -1 }
+# Two of the group, allowed. Both are about how long a function reads, and
+# everything they found was a test scenario or the sync worker's event loop,
+# each read top to bottom and clearer for it: a fixture constant declared
+# where it is first needed, a scenario that does not fit in a hundred lines.
+too_many_lines = "allow"
+items_after_statements = "allow"
 # Foreign input reaches this program from arbitrary websites by way of a
 # Miniflux instance. Panicking on it is not a safe failure mode: unwinding out
 # of Rust into Qt's C++ frames is undefined behaviour. See docs/scope.md §9.5.

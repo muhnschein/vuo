@@ -29,6 +29,12 @@ fn ts(t: Option<chrono::DateTime<chrono::Utc>>) -> Option<i64> {
     t.map(|t| t.timestamp())
 }
 
+/// An INTEGER column the domain holds as an `i32`. SQLite stores 64 bits
+/// whatever was written, so a value out of range clamps instead of wrapping.
+fn saturating_i32(v: i64) -> i32 {
+    i32::try_from(v).unwrap_or(if v < 0 { i32::MIN } else { i32::MAX })
+}
+
 fn from_ts(secs: Option<i64>) -> Option<chrono::DateTime<chrono::Utc>> {
     secs.and_then(|s| chrono::DateTime::from_timestamp(s, 0))
 }
@@ -50,20 +56,17 @@ pub fn name_sort_key(title: &str) -> String {
     let mut key = String::with_capacity(title.len());
     for c in title.to_lowercase().chars() {
         match c {
-            'ä' => key.push('a'),
-            'ö' => key.push('o'),
-            'ü' => key.push('u'),
             // `to_lowercase` already turns 'ß' into itself, not "ss".
             'ß' => key.push_str("ss"),
-            'á' | 'à' | 'â' | 'å' | 'ã' => key.push('a'),
+            'ä' | 'á' | 'à' | 'â' | 'å' | 'ã' => key.push('a'),
             // è é ê ë -- contiguous, so a range says it without a gap.
             'è'..='ë' => key.push('e'),
             // ì í î ï
             'ì'..='ï' => key.push('i'),
-            // ò ó ô õ -- ö is handled above, and F6 is outside this range.
-            'ò'..='õ' => key.push('o'),
-            // ù ú û -- ü likewise handled above, at FC.
-            'ù'..='û' => key.push('u'),
+            // ò ó ô õ, and ö, which is F6 and outside that range.
+            'ò'..='õ' | 'ö' => key.push('o'),
+            // ù ú û, and ü at FC likewise.
+            'ù'..='û' | 'ü' => key.push('u'),
             'ç' => key.push('c'),
             'ñ' => key.push('n'),
             other => key.push(other),
@@ -139,11 +142,11 @@ pub fn upsert_feed(tx: &Transaction<'_>, f: &Feed, generation: i64) -> Result<()
              last_seen_sync = excluded.last_seen_sync",
         rusqlite::params![
             f.id.get(),
-            f.category_id.map(|c| c.get()),
+            f.category_id.map(CategoryId::get),
             f.title,
-            f.site_url.as_ref().map(|u| u.as_str()),
-            f.feed_url.as_ref().map(|u| u.as_str()),
-            f.icon_id.map(|i| i.get()),
+            f.site_url.as_ref().map(crate::content::MediaUrl::as_str),
+            f.feed_url.as_ref().map(crate::content::MediaUrl::as_str),
+            f.icon_id.map(IconId::get),
             ts(f.checked_at),
             f.parsing_error_message,
             i64::from(f.parsing_error_count),
@@ -177,7 +180,7 @@ pub fn feeds(conn: &rusqlite::Connection) -> Result<Vec<Feed>> {
             icon_id: r.get::<_, Option<i64>>(5)?.map(IconId),
             checked_at: from_ts(r.get(6)?),
             parsing_error_message: r.get(7)?,
-            parsing_error_count: r.get::<_, i64>(8)? as i32,
+            parsing_error_count: saturating_i32(r.get(8)?),
             disabled: r.get::<_, i64>(9)? != 0,
             hide_globally: r.get::<_, i64>(10)? != 0,
             crawler: r.get::<_, i64>(11)? != 0,
@@ -295,8 +298,10 @@ pub fn upsert_entry(
             status.as_api_str(),
             i64::from(starred),
             e.title,
-            e.url.as_ref().map(|u| u.as_str()),
-            e.comments_url.as_ref().map(|u| u.as_str()),
+            e.url.as_ref().map(crate::content::MediaUrl::as_str),
+            e.comments_url
+                .as_ref()
+                .map(crate::content::MediaUrl::as_str),
             e.author,
             e.content,
             ts(e.published_at),
@@ -317,7 +322,7 @@ pub fn upsert_entry(
             rusqlite::params![
                 enc.id,
                 e.id.get(),
-                enc.url.as_ref().map(|u| u.as_str()),
+                enc.url.as_ref().map(crate::content::MediaUrl::as_str),
                 enc.mime_type,
                 enc.size
             ],
@@ -812,7 +817,7 @@ fn row_to_list_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<EntryListRow> {
             .map(|u| u.as_str().to_owned()),
         author: r.get(6)?,
         published_at: r.get(7)?,
-        reading_time: r.get::<_, i64>(8)? as i32,
+        reading_time: saturating_i32(r.get(8)?),
     })
 }
 
@@ -839,7 +844,7 @@ fn row_to_entry(r: &rusqlite::Row<'_>) -> rusqlite::Result<Entry> {
         published_at: from_ts(r.get(9)?),
         created_at: from_ts(r.get(10)?),
         changed_at: from_ts(r.get(11)?),
-        reading_time: r.get::<_, i64>(12)? as i32,
+        reading_time: saturating_i32(r.get(12)?),
         tags: serde_json::from_str(&tags).unwrap_or_default(),
         enclosures: Vec::new(),
     })
@@ -1023,7 +1028,9 @@ pub fn icon(conn: &rusqlite::Connection, id: IconId) -> Result<Option<Icon>> {
                     },
                     bytes: r.get(2)?,
                     dimensions: match (r.get::<_, Option<i64>>(3)?, r.get::<_, Option<i64>>(4)?) {
-                        (Some(w), Some(h)) => Some((w as u32, h as u32)),
+                        // Written from u32s; a value that no longer fits is
+                        // read as unknown rather than wrapped.
+                        (Some(w), Some(h)) => u32::try_from(w).ok().zip(u32::try_from(h).ok()),
                         _ => None,
                     },
                 })
@@ -1382,7 +1389,7 @@ mod tests {
         assert_eq!(ids(&list(EntryFilter::Category(2))), vec![6, 5]);
     }
 
-    /// §hide_globally: a hidden feed leaves Unread and All, and nothing else.
+    /// §`hide_globally`: a hidden feed leaves Unread and All, and nothing else.
     ///
     /// The flag was stored, sent to the server and shown as a switch, and read
     /// by no query at all -- so the switch promised to keep a feed out of the
@@ -1478,6 +1485,9 @@ mod tests {
 
     /// §search finds articles by what the reader saw, grouped by where it
     /// saw it, newest first within each group.
+    // One fixture of five articles, a to e, each placed to land in a
+    // different group.
+    #[allow(clippy::many_single_char_names)]
     #[test]
     fn search_groups_by_where_it_matched_newest_first() {
         let mut db = populated();
@@ -1710,7 +1720,7 @@ mod tests {
         // §9.3's consent store: agreeing to one host must not agree to every
         // host. Nothing tested it -- rewriting the SELECT left the crate green.
         let mut db = populated();
-        assert!(media_consent(db.conn()).expect("read").is_empty());
+        assert_eq!(media_consent(db.conn()).expect("read"), Vec::new());
 
         db.with_tx(|tx| {
             grant_media_consent(tx, "https://images.example", 1)?;
@@ -1973,7 +1983,7 @@ mod tests {
             .with_tx(acknowledge_all_arrivals)
             .expect("acknowledge all");
         assert_eq!(cleared, 2);
-        assert!(arrivals(db.conn()).expect("arrivals").is_empty());
+        assert_eq!(arrivals(db.conn()).expect("arrivals"), Vec::new());
         assert!(!any_arrivals(db.conn()).expect("any"));
     }
 }

@@ -3,7 +3,7 @@
 //! Holds the account and the handful of preferences that change behaviour.
 //! §7: *the API key is stored under the app's data directory with restrictive
 //! permissions, relying on Sailfish's home encryption. No custom keyring, no
-//! SQLCipher, unless a concrete threat model justifies it.*
+//! `SQLCipher`, unless a concrete threat model justifies it.*
 //!
 //! The token deliberately does not live in the SQLite mirror. The mirror is a
 //! cache that can be deleted, copied for a bug report, or inspected by a
@@ -105,6 +105,9 @@ pub fn mark_read_delay_seconds(index: i32) -> Option<i32> {
     }
 }
 
+// The bools are `qt_property!`s, each its own setting or state that QML
+// binds to by name; a bitfield would hide them from QML.
+#[allow(clippy::struct_excessive_bools)]
 #[derive(QObject, Default)]
 pub struct Settings {
     base: qt_base_class!(trait QObject),
@@ -229,6 +232,9 @@ impl Settings {
         self.notifyNewArticles = account.notify_new_articles;
     }
 
+    // A method because QML calls it on the object; it reads the account file,
+    // not the object, so that a fresh setup is seen without a reload.
+    #[allow(clippy::unused_self)]
     fn is_configured(&self) -> bool {
         AppPaths::resolve()
             .and_then(|paths| worker::load_account(&paths.account).ok())
@@ -241,8 +247,7 @@ impl Settings {
             .or_else(crate::context::current)
             .as_ref()
             .and_then(|ctx| ctx.read(|db| vuo_core::db::outbox::len(db.conn()).unwrap_or(0)))
-            .map(|n| i32::try_from(n).unwrap_or(i32::MAX))
-            .unwrap_or(0)
+            .map_or(0, |n| i32::try_from(n).unwrap_or(i32::MAX))
     }
 
     fn reload(&mut self) {
@@ -488,6 +493,7 @@ impl Settings {
     }
 
     /// The chosen sync interval in minutes, or `None` for "Manual only".
+    #[must_use]
     pub fn sync_interval_minutes(&self) -> Option<i64> {
         sync_interval_minutes_for(self.syncIntervalIndex)
     }

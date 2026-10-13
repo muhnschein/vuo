@@ -333,7 +333,7 @@ fn shared_worker() -> Option<Rc<SharedWorker>> {
     }
 
     let signal = std::sync::Arc::new(SyncSignal::default());
-    let worker = Worker::spawn(std::sync::Arc::clone(&signal), log_event);
+    let worker = Worker::spawn(std::sync::Arc::clone(&signal), |event| log_event(&event));
     let shared = Rc::new(SharedWorker { worker, signal });
     WORKER.with(|w| {
         if let Ok(mut slot) = w.try_borrow_mut() {
@@ -391,8 +391,8 @@ fn fingerprint(account: &Account) -> u64 {
 /// event loop, which start-up has and the settings screen cannot promise. The
 /// results the UI has to *show* travel by [`SyncSignal`] instead; see that
 /// type for why it is a poll.
-fn log_event(event: Event) {
-    match &event {
+fn log_event(event: &Event) {
+    match event {
         Event::SyncFinished { unread, .. } => tracing::info!(unread, "sync finished"),
         Event::AuthFailed => tracing::warn!("the server rejected the API key"),
         // `error =`, not a bare `%message`: the literal below is recorded by
@@ -440,14 +440,22 @@ fn build_from(paths: &AppPaths, account: Account) -> vuo_core::Result<Rc<AppCont
         vuo_core::Error::Config("the sync worker thread is not running".to_owned())
     })?;
     tracing::info!("handing the account to the sync worker");
-    worker
-        .worker
-        .send(Command::Configure(Box::new(crate::worker::WorkerAccount {
-            database: paths.database.clone(),
-            server: server.clone(),
-            token: vuo_core::redact::ApiToken::new(account.token),
-            transport: config,
-        })));
+    // A worker that stopped between the lookup above and here would take the
+    // account nowhere, and every sync after it would silently do nothing.
+    let configured =
+        worker
+            .worker
+            .send(Command::Configure(Box::new(crate::worker::WorkerAccount {
+                database: paths.database.clone(),
+                server: server.clone(),
+                token: vuo_core::redact::ApiToken::new(account.token),
+                transport: config,
+            })));
+    if !configured {
+        return Err(vuo_core::Error::Config(
+            "the sync worker thread stopped before it took the account".to_owned(),
+        ));
+    }
 
     let ctx = AppContext::new(db, server, &worker, fingerprint);
     // Seed the Images setting from the stored account, so the first article
@@ -840,7 +848,7 @@ mod tests {
     /// result would re-appear on every poll.
     ///
     /// These two methods came in with the addressed slot and were never
-    /// covered; the module move that put them in a SonarQube diff is what
+    /// covered; the module move that put them in a `SonarQube` diff is what
     /// surfaced it.
     #[test]
     fn a_scrape_result_is_only_taken_by_the_article_that_asked_for_it() {

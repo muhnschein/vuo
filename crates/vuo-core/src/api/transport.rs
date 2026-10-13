@@ -258,7 +258,7 @@ impl Transport {
                     .body(bytes.clone());
             }
 
-            let response = req.send().await.map_err(|e| classify(e, &safe))?;
+            let response = req.send().await.map_err(|e| classify(&e, &safe))?;
             let status = response.status();
 
             // 304/305/306 are in the 3xx range but are not redirects to
@@ -364,7 +364,7 @@ impl Transport {
         let mut out: Vec<u8> = Vec::new();
         let mut stream = response.bytes_stream();
         while let Some(chunk) = stream.next().await {
-            let chunk = chunk.map_err(|e| classify(e, safe))?;
+            let chunk = chunk.map_err(|e| classify(&e, safe))?;
             if out.len().saturating_add(chunk.len()) > self.config_max_bytes {
                 return Err(Error::Transport {
                     endpoint: safe.clone(),
@@ -384,7 +384,7 @@ impl Transport {
 /// would leak any userinfo in the configured base URL through the error chain,
 /// defeating the redaction in [`crate::redact`]. Only the classification is
 /// kept; the detail string is written here and contains nothing foreign.
-fn classify(e: reqwest::Error, endpoint: &SafeUrl) -> Error {
+fn classify(e: &reqwest::Error, endpoint: &SafeUrl) -> Error {
     // `is_connect` FIRST, and deliberately so: reqwest sets `is_timeout` on a
     // connect timeout as well, so testing timeout first collapsed "nothing
     // answered at that address" into a bare "timed out". Those need different

@@ -1,7 +1,7 @@
 //! The search field keeps the keyboard while the results change under it.
 //!
 //! Reported from a device: pausing while typing a search -- long enough for
-//! the results to load -- closed the keyboard. A ListView makes its current
+//! the results to load -- closed the keyboard. A `ListView` makes its current
 //! item the focused one inside it, and gives itself a current item whenever
 //! rows arrive and it has none; the search field is in the same view's
 //! header, so every new set of results took the focus off it.

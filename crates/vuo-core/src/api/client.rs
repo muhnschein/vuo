@@ -225,7 +225,7 @@ impl MinifluxClient {
         &self.transport
     }
 
-    fn url(&self, path: &str) -> Result<Url> {
+    fn url(&self, path: &str) -> Url {
         // `join` on a base whose path lacks a trailing slash would replace the
         // last segment, so build against a normalised base. This matters for
         // instances hosted under a sub-path.
@@ -233,20 +233,20 @@ impl MinifluxClient {
         let base_path = base.path().trim_end_matches('/').to_owned();
         base.set_path(&format!("{base_path}/{}", path.trim_start_matches('/')));
         base.set_query(None);
-        Ok(base)
+        base
     }
 
     async fn get_json<T: serde::de::DeserializeOwned>(&self, url: Url) -> Result<T> {
         let safe = SafeUrl::from(&url);
         let response = self.transport.send(reqwest::Method::GET, url, None).await?;
-        Self::decode(response, &safe)
+        Self::decode(&response, &safe)
     }
 
     fn decode<T: serde::de::DeserializeOwned>(
-        response: BoundedResponse,
+        response: &BoundedResponse,
         safe: &SafeUrl,
     ) -> Result<T> {
-        Self::check_status(&response, safe)?;
+        Self::check_status(response, safe)?;
         serde_json::from_slice(&response.body).map_err(|e| {
             // The parse error's own message can quote response bytes, which
             // are foreign; keep only the structural position.
@@ -284,7 +284,7 @@ impl MinifluxClient {
     /// the instance's owner upgrades their Miniflux, and `sync` calls this on
     /// its version-check TTL precisely to notice that.
     pub async fn version(&self) -> Result<ServerVersion> {
-        let w: wire::VersionResponse = self.get_json(self.url("/v1/version")?).await?;
+        let w: wire::VersionResponse = self.get_json(self.url("/v1/version")).await?;
         let version = ServerVersion::parse(&w.version).unwrap_or_default();
         *self.cached_version() = Some(version.clone());
         Ok(version)
@@ -332,34 +332,34 @@ impl MinifluxClient {
 
     /// `GET /v1/me`. Used to verify that an API key works during setup.
     pub async fn me(&self) -> Result<wire::User> {
-        self.get_json(self.url("/v1/me")?).await
+        self.get_json(self.url("/v1/me")).await
     }
 
     // -------------------------------------------------------------- reading
 
     pub async fn categories(&self) -> Result<Vec<wire::Category>> {
-        self.get_json(self.url("/v1/categories")?).await
+        self.get_json(self.url("/v1/categories")).await
     }
 
     pub async fn feeds(&self) -> Result<Vec<wire::Feed>> {
-        self.get_json(self.url("/v1/feeds")?).await
+        self.get_json(self.url("/v1/feeds")).await
     }
 
     pub async fn entries(
         &self,
         query: &EntriesQuery,
     ) -> Result<(wire::EntriesResponse, Option<chrono::DateTime<chrono::Utc>>)> {
-        let mut url = self.url("/v1/entries")?;
+        let mut url = self.url("/v1/entries");
         query.apply(&mut url);
         let safe = SafeUrl::from(&url);
         let response = self.transport.send(reqwest::Method::GET, url, None).await?;
         let date = response.server_date;
-        let body: wire::EntriesResponse = Self::decode(response, &safe)?;
+        let body: wire::EntriesResponse = Self::decode(&response, &safe)?;
         Ok((body, date))
     }
 
     pub async fn entry(&self, id: EntryId) -> Result<wire::Entry> {
-        self.get_json(self.url(&format!("/v1/entries/{}", id.get()))?)
+        self.get_json(self.url(&format!("/v1/entries/{}", id.get())))
             .await
     }
 
@@ -370,7 +370,7 @@ impl MinifluxClient {
         query: &EntriesQuery,
         offset: u32,
     ) -> Result<wire::EntryIdsResponse> {
-        let mut url = self.url("/v1/entries/ids")?;
+        let mut url = self.url("/v1/entries/ids");
         query.apply(&mut url);
         url.query_pairs_mut()
             .append_pair("offset", &offset.to_string());
@@ -378,12 +378,12 @@ impl MinifluxClient {
     }
 
     pub async fn feed_icon(&self, feed_id: i64) -> Result<wire::Icon> {
-        self.get_json(self.url(&format!("/v1/feeds/{feed_id}/icon"))?)
+        self.get_json(self.url(&format!("/v1/feeds/{feed_id}/icon")))
             .await
     }
 
     pub async fn counters(&self) -> Result<wire::FeedCounters> {
-        self.get_json(self.url("/v1/feeds/counters")?).await
+        self.get_json(self.url("/v1/feeds/counters")).await
     }
 
     /// `GET /v1/entries/{id}/fetch-content`.
@@ -394,7 +394,7 @@ impl MinifluxClient {
     /// this GET persist the scrape server-side, which must not happen
     /// speculatively.
     pub async fn fetch_original_content(&self, id: EntryId) -> Result<wire::EntryContentResponse> {
-        self.get_json(self.url(&format!("/v1/entries/{}/fetch-content", id.get()))?)
+        self.get_json(self.url(&format!("/v1/entries/{}/fetch-content", id.get())))
             .await
     }
 
@@ -444,7 +444,7 @@ impl MinifluxClient {
         let payload = serde_json::to_vec(&body)
             .map_err(|e| Error::Protocol(format!("could not encode the entry-state write: {e}")))?;
 
-        let url = self.url("/v1/entries")?;
+        let url = self.url("/v1/entries");
         let safe = SafeUrl::from(&url);
         let response = self
             .transport
@@ -477,7 +477,7 @@ impl MinifluxClient {
     }
 
     async fn put_empty(&self, path: &str) -> Result<()> {
-        let url = self.url(path)?;
+        let url = self.url(path);
         let safe = SafeUrl::from(&url);
         let response = self.transport.send(reqwest::Method::PUT, url, None).await?;
         Self::check_status(&response, &safe)
@@ -505,13 +505,13 @@ impl MinifluxClient {
             category_id,
         })
         .map_err(|e| Error::Protocol(format!("could not encode the subscribe request: {e}")))?;
-        let url = self.url("/v1/feeds")?;
+        let url = self.url("/v1/feeds");
         let safe = SafeUrl::from(&url);
         let response = self
             .transport
             .send(reqwest::Method::POST, url, Some(payload))
             .await?;
-        let resp: Resp = Self::decode(response, &safe)?;
+        let resp: Resp = Self::decode(&response, &safe)?;
         Ok(resp.feed_id)
     }
 
@@ -525,7 +525,7 @@ impl MinifluxClient {
     pub async fn update_feed(&self, feed_id: i64, update: &FeedPatch) -> Result<()> {
         let payload = serde_json::to_vec(update)
             .map_err(|e| Error::Protocol(format!("could not encode the feed update: {e}")))?;
-        let url = self.url(&format!("/v1/feeds/{feed_id}"))?;
+        let url = self.url(&format!("/v1/feeds/{feed_id}"));
         let safe = SafeUrl::from(&url);
         let response = self
             .transport
@@ -536,7 +536,7 @@ impl MinifluxClient {
 
     /// `DELETE /v1/feeds/{id}` — unsubscribe.
     pub async fn delete_feed(&self, feed_id: i64) -> Result<()> {
-        let url = self.url(&format!("/v1/feeds/{feed_id}"))?;
+        let url = self.url(&format!("/v1/feeds/{feed_id}"));
         let safe = SafeUrl::from(&url);
         let response = self
             .transport

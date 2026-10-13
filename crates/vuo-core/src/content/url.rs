@@ -107,9 +107,7 @@ impl<'de> Deserialize<'de> for MediaUrl {
         MediaUrl::parse(&raw).ok_or_else(|| {
             serde::de::Error::custom(format!(
                 "expected an http(s) URL, got a {} one",
-                Url::parse(&raw)
-                    .map(|u| u.scheme().to_owned())
-                    .unwrap_or_else(|_| "malformed".to_owned())
+                Url::parse(&raw).map_or_else(|_| "malformed".to_owned(), |u| u.scheme().to_owned())
             ))
         })
     }

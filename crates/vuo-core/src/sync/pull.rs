@@ -434,7 +434,7 @@ pub async fn reconcile(db: &mut Database, client: &MinifluxClient) -> Result<Rec
         tracing::warn!("aborting deletion reconcile: the server declared no usable total");
         return Ok(Reconcile::aborted());
     };
-    if seen.len() as i64 != total {
+    if i64::try_from(seen.len()).ok() != Some(total) {
         tracing::warn!(
             declared = total,
             collected = seen.len(),

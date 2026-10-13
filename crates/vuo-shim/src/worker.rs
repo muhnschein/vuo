@@ -589,25 +589,23 @@ impl Worker {
                                         }
                                         continue;
                                     }
-                                    match work {
-                                        Some(DueWork::Flush) => {
-                                            flush_due = None;
-                                            flush_fell_due = true;
-                                            Command::FlushOutbox
-                                        }
+                                    if let Some(DueWork::Flush) = work {
+                                        flush_due = None;
+                                        flush_fell_due = true;
+                                        Command::FlushOutbox
+                                    } else {
                                         // `None` cannot happen -- the wait
                                         // ended because one of the two
                                         // deadlines passed -- but a sync is
                                         // the safe reading of it either way,
                                         // and it is what the loop did before
                                         // there was a second deadline.
-                                        _ => {
-                                            // As `requestSync` does before
-                                            // sending, so the cover and the
-                                            // list show it.
-                                            signal.set_running(true);
-                                            Command::Sync
-                                        }
+                                        //
+                                        // As `requestSync` does before
+                                        // sending, so the cover and the list
+                                        // show it.
+                                        signal.set_running(true);
+                                        Command::Sync
                                     }
                                 }
                                 Err(mpsc::RecvTimeoutError::Disconnected) => break,
@@ -1119,6 +1117,7 @@ impl Worker {
     }
 
     /// Ask the worker to do something. Returns `false` if it has stopped.
+    #[must_use]
     pub fn send(&self, command: Command) -> bool {
         self.tx.send(command).is_ok()
     }
@@ -1197,15 +1196,14 @@ pub fn apply_local_mark_category_read(
 fn chrono_now() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0)
+        .map_or(0, |d| i64::try_from(d.as_secs()).unwrap_or(i64::MAX))
 }
 
 /// Where Vuo keeps its data and credentials on a device.
 ///
 /// §7: *the API key is stored under the app's data directory with restrictive
 /// permissions, relying on Sailfish's home encryption. No custom keyring, no
-/// SQLCipher, unless a concrete threat model justifies it.*
+/// `SQLCipher`, unless a concrete threat model justifies it.*
 ///
 /// The token deliberately does **not** live in the SQLite mirror. The mirror is
 /// a cache that can be deleted, copied for debugging, or handed to a developer
@@ -1475,9 +1473,7 @@ pub fn transport_config_for(
     account: &Account,
 ) -> vuo_core::Result<TransportConfig> {
     let mut config = TransportConfig::default();
-    let uses_tls = url::Url::parse(&account.server_url)
-        .map(|u| u.scheme() == "https")
-        .unwrap_or(false);
+    let uses_tls = url::Url::parse(&account.server_url).is_ok_and(|u| u.scheme() == "https");
     if account.use_custom_ca && uses_tls {
         let pem = std::fs::read(&paths.ca_certificate).map_err(|e| {
             // Loud, never silent. Falling back to the platform roots here would
@@ -1908,7 +1904,7 @@ EQBBQIobIy41+aQiMsM0XBYH3Q==\n\
     #[test]
     fn a_sync_subsumes_a_flush_that_falls_due_with_it() {
         let now = std::time::Instant::now();
-        let past = now - std::time::Duration::from_secs(1);
+        let past = now.checked_sub(std::time::Duration::from_secs(1)).unwrap();
 
         assert_eq!(
             due_work(Some(past), Some(past), now),

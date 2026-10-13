@@ -1,6 +1,6 @@
 //! Load a QML file in a real engine and let it print what it finds.
 //!
-//! Exists so the UI can be inspected against the SailfishOS target's OWN
+//! Exists so the UI can be inspected against the `SailfishOS` target's OWN
 //! Qt 5.6 and OWN Silica, under qemu, with no phone. `docs/status.md` lists
 //! "the shim is compiled against Qt 5.15, not Qt 5.6" and "the Silica stubs
 //! are an approximation" as standing gaps; this closes enough of them to

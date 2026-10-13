@@ -35,6 +35,10 @@
 use crate::content::url::MediaUrl;
 
 /// Inline styling. A bitfield rather than a tree, so a `Span` never nests.
+///
+/// Independent flags, any combination of which is valid, which is the case
+/// `struct_excessive_bools` exists to question and does not apply to.
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SpanStyle {
     pub bold: bool,

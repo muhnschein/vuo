@@ -25,8 +25,8 @@ use url::Url;
 use vuo_core::api::{Transport, TransportConfig};
 use vuo_core::redact::ApiToken;
 
-fn transport(origin: &str, c: TransportConfig) -> Transport {
-    Transport::new(Url::parse(origin).unwrap(), ApiToken::new("SECRET"), &c).unwrap()
+fn transport(origin: &str, c: &TransportConfig) -> Transport {
+    Transport::new(Url::parse(origin).unwrap(), ApiToken::new("SECRET"), c).unwrap()
 }
 
 /// Server that sends headers then dribbles one byte every `gap`, forever.
@@ -71,7 +71,7 @@ async fn read_timeout_on_silent_server() {
     let base = silent_server();
     let t = transport(
         &base,
-        TransportConfig {
+        &TransportConfig {
             read_timeout: Duration::from_millis(400),
             request_timeout: Duration::from_secs(30),
             ..TransportConfig::default()
@@ -99,7 +99,7 @@ async fn total_timeout_during_slow_body() {
     let base = dribble_server(Duration::from_millis(50));
     let t = transport(
         &base,
-        TransportConfig {
+        &TransportConfig {
             read_timeout: Duration::from_secs(10),
             request_timeout: Duration::from_millis(800),
             max_response_bytes: 100 * 1024 * 1024,
@@ -128,7 +128,7 @@ async fn read_timeout_during_slow_body() {
     let base = dribble_server(Duration::from_millis(900));
     let t = transport(
         &base,
-        TransportConfig {
+        &TransportConfig {
             read_timeout: Duration::from_millis(300),
             request_timeout: Duration::from_secs(60),
             max_response_bytes: 100 * 1024 * 1024,

@@ -156,15 +156,16 @@ mod tests {
 
     #[test]
     fn token_never_renders_itself() {
-        let t = ApiToken::new("super-secret-token");
-        assert_eq!(t.to_string(), "<redacted>");
-        assert_eq!(format!("{t:?}"), "ApiToken(<redacted>)");
         // The struct that holds it must not leak it via a derived Debug either.
         #[derive(Debug)]
         #[allow(dead_code)]
         struct Holder {
             token: ApiToken,
         }
+
+        let t = ApiToken::new("super-secret-token");
+        assert_eq!(t.to_string(), "<redacted>");
+        assert_eq!(format!("{t:?}"), "ApiToken(<redacted>)");
         let h = Holder { token: t.clone() };
         assert!(!format!("{h:?}").contains("super-secret-token"));
         assert_eq!(t.expose(), "super-secret-token");

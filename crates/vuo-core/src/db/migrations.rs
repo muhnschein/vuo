@@ -143,14 +143,14 @@ CREATE TABLE media_consent (
     Migration {
         version: 2,
         name: "record failed icon fetches",
-        sql: r#"
+        sql: r"
 -- Without this, a feed whose icon cannot be decoded is retried on every sync
 -- forever, and because icons are fetched in a small batch ordered by feed id,
 -- a handful of permanently-bad icons at the front starve every feed behind
 -- them: measured, feeds 9 and 10 never got their icons across five passes
 -- while 40 requests were spent re-fetching the same broken ones.
 ALTER TABLE feeds ADD COLUMN icon_failures INTEGER NOT NULL DEFAULT 0;
-"#,
+",
     },
     Migration {
         version: 3,
@@ -195,7 +195,7 @@ ALTER TABLE sync_state ADD COLUMN server_version_checked_at INTEGER;
     Migration {
         version: 6,
         name: "remember which articles arrived since the reader last looked",
-        sql: r#"
+        sql: r"
 -- The notification for new articles needs to know which ones are NEW, and
 -- nothing in the mirror said so: the upsert is `INSERT ... ON CONFLICT DO
 -- UPDATE`, so an entry arriving for the first time and one being refreshed
@@ -215,7 +215,7 @@ ALTER TABLE entries ADD COLUMN arrived INTEGER NOT NULL DEFAULT 0;
 -- looked, and the query that reads it runs every time a sync lands while Vuo
 -- is on its cover.
 CREATE INDEX entries_arrived_idx ON entries(published_at DESC) WHERE arrived = 1;
-"#,
+",
     },
 ];
 

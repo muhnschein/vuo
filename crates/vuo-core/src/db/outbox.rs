@@ -389,7 +389,12 @@ mod tests {
         let mut db = db_with_entries(1);
         db.with_tx(|tx| {
             for (i, starred) in [true, false, true, false, true].into_iter().enumerate() {
-                queue(tx, EntryId(1), DesiredValue::Starred(starred), i as i64)?;
+                queue(
+                    tx,
+                    EntryId(1),
+                    DesiredValue::Starred(starred),
+                    i64::try_from(i).unwrap(),
+                )?;
             }
             Ok(())
         })
@@ -594,6 +599,6 @@ mod tests {
                 [],
             )
             .unwrap();
-        assert!(pending(db.conn()).unwrap().is_empty());
+        assert_eq!(pending(db.conn()).unwrap(), Vec::new());
     }
 }

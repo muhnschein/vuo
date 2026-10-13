@@ -78,6 +78,8 @@ pub fn entry_json(id: i64, feed_id: i64, status: &str, starred: bool) -> serde_j
     })
 }
 
+// By value so a call can build the page inline with `vec![...]`.
+#[allow(clippy::needless_pass_by_value)]
 pub fn entries_response(entries: Vec<serde_json::Value>, total: i64) -> serde_json::Value {
     serde_json::json!({ "total": total, "entries": entries })
 }

@@ -313,7 +313,7 @@ trait RowList: QAbstractListModel + Sized {
     fn rows_held_mut(&mut self) -> &mut Vec<Self::Row>;
     /// What identifies a row across a reload: the mirror's own key for it.
     fn row_id(row: &Self::Row) -> i64;
-    /// Emit the model's `countChanged`. A qt_signal is an inherent method
+    /// Emit the model's `countChanged`. A `qt_signal` is an inherent method
     /// generated per struct, which is not something a trait can name.
     fn emit_count_changed(&mut self);
 }
@@ -525,6 +525,7 @@ impl Scope {
     /// Decode the integer pair QML passes. Qt 5.6 has no `QEnum` registration
     /// in this crate version, so the scope crosses the boundary as two ints
     /// rather than as a typed enum.
+    #[must_use]
     pub fn from_qml(kind: i32, id: i64) -> Scope {
         match kind {
             1 => Scope::Starred,
@@ -537,6 +538,9 @@ impl Scope {
     }
 }
 
+// The bools are `qt_property!`s, each its own setting or state that QML
+// binds to by name; a bitfield would hide them from QML.
+#[allow(clippy::struct_excessive_bools)]
 #[derive(QObject, Default)]
 pub struct EntryModel {
     base: qt_base_class!(trait QAbstractListModel),
@@ -596,7 +600,7 @@ pub struct EntryModel {
     /// survive being produced while the app is on its cover (the cover has a
     /// Refresh of its own and no page to receive a signal), and it has to
     /// survive a page that is not currently the visible one. FOREIGN TEXT --
-    /// the server's own words -- so the page renders it as PlainText.
+    /// the server's own words -- so the page renders it as `PlainText`.
     pub syncError: qt_property!(QString; NOTIFY syncStateChanged),
     /// True when the failure was the server rejecting the API key.
     ///
@@ -931,8 +935,7 @@ impl EntryModel {
     fn unread_total(&self) -> i32 {
         self.context()
             .and_then(|ctx| ctx.read(|db| store::unread_count(db.conn()).unwrap_or(0)))
-            .map(|n| i32::try_from(n).unwrap_or(i32::MAX))
-            .unwrap_or(0)
+            .map_or(0, |n| i32::try_from(n).unwrap_or(i32::MAX))
     }
 
     fn title_matches(&self) -> i32 {
@@ -1126,8 +1129,7 @@ impl EntryModel {
         usize::try_from(row)
             .ok()
             .and_then(|i| self.rows.get(i))
-            .map(|r| r.id)
-            .unwrap_or(0)
+            .map_or(0, |r| r.id)
     }
 
     /// Re-read rows from the mirror, KEEPING the rows already on screen.
@@ -1703,8 +1705,7 @@ impl FeedModel {
         usize::try_from(row)
             .ok()
             .and_then(|i| self.rows.get(i))
-            .map(|r| r.id)
-            .unwrap_or(0)
+            .map_or(0, |r| r.id)
     }
 
     /// Re-read the feed list. Returns true when the model was RESET, which is
@@ -1731,7 +1732,7 @@ impl FeedModel {
                         unread: i32::try_from(counts.get(&f.id.get()).copied().unwrap_or(0))
                             .unwrap_or(i32::MAX),
                         error: f.parsing_error_message.clone(),
-                        category_id: f.category_id.map(|c| c.get()).unwrap_or(0),
+                        category_id: f.category_id.map_or(0, vuo_core::model::CategoryId::get),
                         crawler: f.crawler,
                         disabled: f.disabled,
                         hide_globally: f.hide_globally,
@@ -2197,7 +2198,7 @@ mod row_decoration_tests {
             (ROLE_FEED_ICON_URI, "feedIcon"),
         ] {
             assert_eq!(
-                names.get(&role).map(|n| n.to_string()),
+                names.get(&role).map(ToString::to_string),
                 Some(name.to_owned()),
                 "QML reaches this role by name, and the editor's push needs it"
             );
@@ -2306,7 +2307,7 @@ mod row_decoration_tests {
     /// generation the instant the server confirms that intent, for the
     /// settings page's pending count and nothing this list shows. The poll
     /// that saw the bump re-read exactly the rows it already had and reset the
-    /// model anyway; a reset re-lays a plain ListView out at its own top.
+    /// model anyway; a reset re-lays a plain `ListView` out at its own top.
     #[test]
     fn a_bump_that_leaves_the_rows_alone_does_not_reset_the_list() {
         let (_dir, ctx) = seeded();
