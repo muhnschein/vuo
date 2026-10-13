@@ -5,7 +5,13 @@
 # build uses the SDK's toolchain, not this one. This pin exists so that
 # rustfmt and clippy behave identically everywhere -- a clippy version drift
 # turns `-D warnings` into a lottery.
+#
+# An exact release, not `stable`, which moves under every runner the day a
+# new Rust ships and fails pull requests that changed nothing. What the next
+# stable would say is .github/workflows/scheduled.yml's `next-stable-clippy`
+# job's to report, weekly, so moving this pin is a known amount of work.
+# Bump it deliberately, with the fixes that job lists.
 [toolchain]
-channel = "stable"
+channel = "1.99.0"
 components = ["rustfmt", "clippy"]
 profile = "minimal"

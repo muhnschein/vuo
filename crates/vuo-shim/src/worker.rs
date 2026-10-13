@@ -110,8 +110,11 @@ pub fn next_interval_after(
     interval_minutes: Option<i64>,
     now: std::time::Instant,
 ) -> Option<std::time::Instant> {
+    // Checked: the interval is read from settings, and an `Instant` pushed
+    // past what the clock can hold panics rather than wrapping.
     interval_minutes
-        .map(|minutes| now + std::time::Duration::from_secs(minutes.max(1).unsigned_abs() * 60))
+        .and_then(|minutes| minutes.max(1).unsigned_abs().checked_mul(60))
+        .and_then(|secs| now.checked_add(std::time::Duration::from_secs(secs)))
 }
 
 /// Which piece of scheduled work has fallen due at `now`.
@@ -624,7 +627,7 @@ impl Worker {
                     // already set and leave it alone.
                     if matches!(command, Command::FlushOutbox) && !flush_fell_due {
                         if flush_due.is_none() {
-                            flush_due = Some(std::time::Instant::now() + FLUSH_DEBOUNCE);
+                            flush_due = std::time::Instant::now().checked_add(FLUSH_DEBOUNCE);
                         }
                         continue;
                     }
@@ -686,7 +689,7 @@ impl Worker {
                             // sync of a new one is scheduled from ITS history.
                             next_sync =
                                 next_sync_delay(interval, read_sync_time(&last_sync), chrono_now())
-                                    .map(|delay| std::time::Instant::now() + delay);
+                                    .and_then(|delay| std::time::Instant::now().checked_add(delay));
                             // Anything the last session left unsent goes
                             // shortly after start-up rather than waiting for
                             // the next interval, which may be an hour away.
@@ -695,14 +698,14 @@ impl Worker {
                                 .as_ref()
                                 .and_then(|db| outbox::len(db.conn()).ok())
                                 .filter(|pending| *pending > 0)
-                                .map(|_| std::time::Instant::now() + FLUSH_AFTER_START);
+                                .and_then(|_| std::time::Instant::now().checked_add(FLUSH_AFTER_START));
                             continue;
                         }
                         Command::SetSyncInterval { minutes } => {
                             interval = minutes;
                             next_sync =
                                 next_sync_delay(interval, read_sync_time(&last_sync), chrono_now())
-                                    .map(|delay| std::time::Instant::now() + delay);
+                                    .and_then(|delay| std::time::Instant::now().checked_add(delay));
                             continue;
                         }
                         Command::SetRetention { seconds } => {
@@ -820,14 +823,19 @@ impl Worker {
                                 Ok(_) => {
                                     // Pull immediately so the new feed's entries
                                     // appear without waiting for the next timer.
-                                    let _ = runtime.block_on(sync::sync(
+                                    // The subscription itself succeeded, so a
+                                    // failed pull is only logged: the next
+                                    // timed sync brings the entries instead.
+                                    if let Err(e) = runtime.block_on(sync::sync(
                                         db,
                                         client,
                                         SyncOptions {
                                             retention_secs: retention,
                                             ..SyncOptions::default()
                                         },
-                                    ));
+                                    )) {
+                                        tracing::warn!(error = %e, "the sync after subscribing failed");
+                                    }
                                     guard.changed = true;
                                     on_event(Event::SubscriptionChanged {
                                         ok: true,
@@ -1124,9 +1132,12 @@ impl Worker {
 
 impl Drop for Worker {
     fn drop(&mut self) {
-        let _ = self.tx.send(Command::Shutdown);
+        // A worker that has already stopped has no one left to tell.
+        self.tx.send(Command::Shutdown).ok();
         if let Some(handle) = self.handle.take() {
-            let _ = handle.join();
+            if handle.join().is_err() {
+                tracing::error!("the sync worker panicked");
+            }
         }
     }
 }
@@ -1386,7 +1397,16 @@ pub fn load_account(path: &std::path::Path) -> vuo_core::Result<Account> {
     let raw = std::fs::read_to_string(path)
         .map_err(|e| vuo_core::Error::Config(format!("could not read the account file: {e}")))?;
     serde_json::from_str(&raw)
-        .map_err(|_| vuo_core::Error::Config("the account file is malformed".to_owned()))
+        // Where and what kind of fault, never serde's own message: that can
+        // quote a value, and the value here may be the API token.
+        .map_err(|e| {
+            vuo_core::Error::Config(format!(
+                "the account file is malformed ({:?} at line {}, column {})",
+                e.classify(),
+                e.line(),
+                e.column()
+            ))
+        })
 }
 
 /// Write the account file with mode 0600.
@@ -1434,7 +1454,7 @@ pub fn save_account(path: &std::path::Path, account: &Account) -> vuo_core::Resu
     }
 
     let json = serde_json::to_vec_pretty(account)
-        .map_err(|_| vuo_core::Error::Config("could not encode the account".to_owned()))?;
+        .map_err(|e| vuo_core::Error::Config(format!("could not encode the account: {e}")))?;
     file.write_all(&json)
         .map_err(|e| vuo_core::Error::Config(format!("could not write the account file: {e}")))?;
     Ok(())
@@ -1703,7 +1723,7 @@ EQBBQIobIy41+aQiMsM0XBYH3Q==\n\
             server_url: "https://10.77.0.1:8083/".into(),
             ..account
         };
-        assert!(transport_config_for(&paths, &https).is_err());
+        transport_config_for(&paths, &https).unwrap_err();
     }
 
     #[test]
@@ -1732,9 +1752,9 @@ EQBBQIobIy41+aQiMsM0XBYH3Q==\n\
         // And the config must be one a client can be built from. Stopping at
         // the struct field blesses a configuration that `Transport::new`
         // refuses, which is the opposite of what this test's name claims.
-        vuo_core::api::Transport::new(
+        Transport::new(
             url::Url::parse("https://h.example/").expect("url"),
-            vuo_core::redact::ApiToken::new("t"),
+            ApiToken::new("t"),
             &config,
         )
         .expect("a configured CA must produce a usable transport");
@@ -1818,7 +1838,7 @@ EQBBQIobIy41+aQiMsM0XBYH3Q==\n\
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join("account.json");
         std::fs::write(&path, "not json at all").expect("write");
-        assert!(load_account(&path).is_err());
+        load_account(&path).unwrap_err();
     }
 
     #[test]

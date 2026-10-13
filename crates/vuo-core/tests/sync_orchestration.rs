@@ -121,7 +121,7 @@ async fn a_pass_persists_the_cursor_and_bumps_the_generation() {
     let after = store::sync_state(db.conn()).expect("state");
     assert_eq!(
         after.cursor_changed_after,
-        Some(1_767_323_045 - vuo_core::sync::pull::CURSOR_SKEW_SECS),
+        Some(1_767_323_045 - sync::pull::CURSOR_SKEW_SECS),
         "the cursor the pass computed must be COMMITTED. Dropping the
          set_sync_state call means every sync re-pulls the whole window, on a
          phone, forever -- and nothing else in the suite noticed."

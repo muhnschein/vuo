@@ -43,8 +43,8 @@ SKIP_QT ?=
 HAVE_QT := $(shell test -x "$(QMAKE)" && echo yes)
 # Goals whose result bears on Qt: the shim and its clippy, the QML tests, and
 # every aggregate that pulls them in. Everything else is Qt-free on the host.
-QT_FREE_GOALS := fmt fmt-check fuzz-check lockfile deny vendor-check msrv \
-                 fuzz-quick live-test icons rpm vendor clean help
+QT_FREE_GOALS := fmt fmt-check fuzz-check lockfile deny workflow-lint vendor-check \
+                 msrv fuzz-quick live-test icons rpm vendor clean help
 QT_GOALS := $(filter-out $(QT_FREE_GOALS),$(if $(MAKECMDGOALS),$(MAKECMDGOALS),all))
 ifneq ($(HAVE_QT),yes)
 ifneq ($(QT_GOALS),)
@@ -57,13 +57,14 @@ endif
 endif
 
 .PHONY: all check fmt fmt-check clippy test qmllint qml-load shim deny \
-        fuzz-check packaging harbour msrv fuzz-quick live-test vendor-check \
-        sonar-reports textart icons rpm vendor clean help
+        workflow-lint fuzz-check packaging harbour msrv fuzz-quick live-test \
+        vendor-check leak-check sonar-reports textart icons rpm vendor clean help
 
 all: check
 
 ## check: everything CI runs. No phone, no server, no network.
-check: fmt-check clippy test qmllint qml-load fuzz-check packaging lockfile deny
+check: fmt-check clippy test qmllint qml-load fuzz-check packaging lockfile deny \
+       workflow-lint
 ifeq ($(HAVE_QT),yes)
 	@echo "== make check passed =="
 else
@@ -177,6 +178,26 @@ deny:
 		echo "CI installs it, so a green local run without it is not a green CI run." >&2; \
 		exit 1; \
 	fi
+
+## workflow-lint: the workflows in .github/, through zizmor -- a `${{ }}`
+## pasted into a script, a token left in .git/config, a cache a release build
+## trusts. Offline, so no network; scheduled.yml asks GitHub the rest weekly.
+workflow-lint:
+	@echo "== zizmor =="
+	@if command -v zizmor >/dev/null 2>&1; then \
+		zizmor --offline .github/workflows/; \
+	else \
+		echo "zizmor not installed. Install it with:" >&2; \
+		echo "    cargo install --locked zizmor    (or: pipx install zizmor)" >&2; \
+		echo "CI installs it, so a green local run without it is not a green CI run." >&2; \
+		exit 1; \
+	fi
+
+## leak-check: every test under AddressSanitizer and LeakSanitizer, on a
+## pinned nightly. Slow, and not part of `check`; scheduled.yml runs it weekly.
+## See scripts/leak-check.sh.
+leak-check:
+	scripts/leak-check.sh
 
 ## sonar-reports: the two files SonarQube Cloud imports -- clippy diagnostics
 ## and coverage -- written to target/sonar/. Needs cargo-llvm-cov, so it is an

@@ -242,7 +242,7 @@ pub async fn entries_with_page_cap(
             .changed_after(cursor)
             .after_entry_id(after);
         let (page, date) = client.entries(&query).await?;
-        outcome.pages += 1;
+        outcome.pages = outcome.pages.saturating_add(1);
 
         // Anchor to the FIRST response's Date: later pages happen after
         // mutations that this pass will not see, and using a later clock
@@ -260,9 +260,9 @@ pub async fn entries_with_page_cap(
         for e in &decoded.rejected {
             tracing::debug!(error = %e, "dropped an unusable entry");
         }
-        outcome.rejected += decoded.rejected.len();
-        outcome.upserted += decoded.valid.len();
-        outcome.removed += decoded.removed.len();
+        outcome.rejected = outcome.rejected.saturating_add(decoded.rejected.len());
+        outcome.upserted = outcome.upserted.saturating_add(decoded.valid.len());
+        outcome.removed = outcome.removed.saturating_add(decoded.removed.len());
 
         db.with_tx(|tx| {
             for e in &decoded.valid {
@@ -302,12 +302,18 @@ pub async fn entries_with_page_cap(
         None
     } else {
         server_now
-            .map(|now| now - CURSOR_SKEW_SECS)
+            .map(|now| now.saturating_sub(CURSOR_SKEW_SECS))
             // Falling back to the local clock is a compromise, not a
             // preference: without a Date header there is nothing better, and
             // keeping the old cursor forever would re-pull the same window
             // every sync.
-            .or_else(|| Some(chrono::Utc::now().timestamp() - CURSOR_SKEW_SECS))
+            .or_else(|| {
+                Some(
+                    chrono::Utc::now()
+                        .timestamp()
+                        .saturating_sub(CURSOR_SKEW_SECS),
+                )
+            })
     };
 
     Ok(outcome)

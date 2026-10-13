@@ -25,11 +25,13 @@ jobs:
         target: [content_transform, entry_deserialise]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      - uses: dtolnay/rust-toolchain@be39649afda95dbf70f87cce95f68b8d5797b296 # nightly
         with:
-          toolchain: nightly
+          # Nothing here pushes with git, so the token is not left behind in
+          # .git/config for a later step to find.
+          persist-credentials: false
+      - run: rustup toolchain install nightly --profile minimal
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-      - uses: taiki-e/install-action@d438492cf8a250514fa2d34b30bc3c0dc37c65ff # v2.87.8
+      - uses: taiki-e/install-action@f7e5d7c961414b23f5b25b2da9294395d08513ad # v2.87.26
         with:
           tool: cargo-fuzz
 
@@ -42,7 +44,8 @@ jobs:
 
       - name: Fuzz for 30 minutes
         env:
-          # See the note in ci.yml: rust-toolchain.toml pins stable and would
+          # See the note in ci.yml: rust-toolchain.toml pins a stable release
+          # and would
           # otherwise override the nightly toolchain cargo-fuzz requires.
           RUSTUP_TOOLCHAIN: nightly
         run: |

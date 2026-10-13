@@ -150,8 +150,8 @@ impl Transport {
         if let Some(pem) = &config.extra_ca_pem {
             // Additive: the platform roots stay trusted, so supplying a
             // private CA does not turn off verification for anything.
-            let certs = reqwest::Certificate::from_pem_bundle(pem).map_err(|_| {
-                Error::Config("the supplied CA certificate is not valid PEM".to_owned())
+            let certs = reqwest::Certificate::from_pem_bundle(pem).map_err(|e| {
+                Error::Config(format!("the supplied CA certificate is not valid PEM: {e}"))
             })?;
             // `from_pem_bundle` answers `Ok(vec![])` for input that contains no
             // PEM blocks at all rather than reporting an error. Without this
@@ -170,14 +170,14 @@ impl Transport {
 
         let api = api_builder
             .build()
-            .map_err(|_| Error::Config("could not build the HTTP client".to_owned()))?;
+            .map_err(|e| Error::Config(format!("could not build the HTTP client: {e}")))?;
 
         // The media client gets neither the token nor the extra CA, and is
         // used for third-party hosts. Keeping it separate is what makes the
         // API client's private CA genuinely host-scoped.
         let media = base()
             .build()
-            .map_err(|_| Error::Config("could not build the media HTTP client".to_owned()))?;
+            .map_err(|e| Error::Config(format!("could not build the media HTTP client: {e}")))?;
 
         Ok(Transport {
             api,
@@ -292,10 +292,10 @@ impl Transport {
                         detail: "redirect without a Location header".to_owned(),
                     })?;
 
-                let next = current.join(location).map_err(|_| Error::Transport {
+                let next = current.join(location).map_err(|e| Error::Transport {
                     endpoint: safe.clone(),
                     kind: TransportKind::RedirectRefused,
-                    detail: "redirect Location is not a valid URL".to_owned(),
+                    detail: format!("redirect Location is not a valid URL: {e}"),
                 })?;
 
                 // Refuse a downgrade to plaintext (§9.1).
@@ -320,7 +320,7 @@ impl Transport {
                     });
                 }
 
-                hops += 1;
+                hops = hops.saturating_add(1);
                 current = next;
                 continue;
             }

@@ -50,6 +50,9 @@ jobs:
           # Sonar reads git blame to decide what counts as new code. A shallow
           # clone leaves every line looking as though it landed in this commit.
           fetch-depth: 0
+          # Nothing here pushes with git, so the token is not left behind in
+          # .git/config for a later step to find; the scan holds SONAR_TOKEN.
+          persist-credentials: false
 
       - name: Install Qt
         run: |
@@ -69,20 +72,18 @@ jobs:
       # a SHA cannot be re-aimed. SonarQube flags the unpinned form as S7637,
       # and it is right to: this job holds SONAR_TOKEN.
       #
-      # `toolchain` is passed explicitly because dtolnay/rust-toolchain takes
-      # it from the REF NAME it was called with, and a SHA has no name. The
-      # pinned commit is the head of the action's `stable` branch, whose
-      # action.yml defaults to the same value -- the explicit input is what
-      # keeps that readable.
-      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
-        with:
-          toolchain: stable
-          components: clippy, llvm-tools-preview
+      # The toolchain is rust-toolchain.toml's, which rustup installs with
+      # clippy on first use, so the coverage tooling is all it adds. No
+      # action for it: dtolnay/rust-toolchain was pinned to a commit on its
+      # `stable` branch, which is rebuilt with every release, and a commit
+      # it leaves behind belongs to no branch or tag -- nothing then vouches
+      # for what this job, holding the token, runs.
+      - run: rustup component add llvm-tools-preview
 
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
 
       - name: Install cargo-llvm-cov
-        uses: taiki-e/install-action@d438492cf8a250514fa2d34b30bc3c0dc37c65ff # v2.87.8
+        uses: taiki-e/install-action@f7e5d7c961414b23f5b25b2da9294395d08513ad # v2.87.26
         with:
           tool: cargo-llvm-cov
 

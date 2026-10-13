@@ -346,7 +346,7 @@ impl ArticleModel {
         let stored_consent = ctx.read(|db| store::media_consent(db.conn()).unwrap_or_default());
         self.consented = stored_consent.unwrap_or_default();
 
-        let content = entry.content.clone();
+        let content = entry.content;
         let ctx_for_transform = self.transform_context(&ctx);
         self.set_html(&content, &ctx_for_transform);
     }
@@ -477,9 +477,9 @@ impl ArticleModel {
         let rows: Vec<BlockRow> = document.blocks.iter().map(row_for).collect();
         let blocked = rows.iter().filter(|r| r.needs_consent).count();
 
-        (self as &mut dyn QAbstractListModel).begin_reset_model();
+        QAbstractListModel::begin_reset_model(self);
         self.rows = rows;
-        (self as &mut dyn QAbstractListModel).end_reset_model();
+        QAbstractListModel::end_reset_model(self);
 
         self.truncated = document.truncated.is_some();
         self.blockedImages = i32::try_from(blocked).unwrap_or(i32::MAX);
@@ -570,9 +570,9 @@ impl ArticleModel {
     }
 
     fn clear(&mut self) {
-        (self as &mut dyn QAbstractListModel).begin_reset_model();
+        QAbstractListModel::begin_reset_model(self);
         self.rows.clear();
-        (self as &mut dyn QAbstractListModel).end_reset_model();
+        QAbstractListModel::end_reset_model(self);
         self.countChanged();
         // Forget which entry this was, or the next `clear`-then-toggle would
         // mutate the article that is no longer open.
@@ -792,7 +792,7 @@ mod tests {
             enclosures: Vec::new(),
         };
         db.with_tx(|tx| {
-            vuo_core::db::store::upsert_feed(
+            store::upsert_feed(
                 tx,
                 &vuo_core::model::Feed {
                     id: FeedId(1),
@@ -810,7 +810,7 @@ mod tests {
                 },
                 1,
             )?;
-            vuo_core::db::store::upsert_entry(tx, &entry, 1, vuo_core::db::store::Arrival::Quiet)
+            store::upsert_entry(tx, &entry, 1, store::Arrival::Quiet)
         })
         .expect("seed");
 

@@ -84,7 +84,7 @@ pub fn retention_seconds_for(index: i32) -> Option<i64> {
         .and_then(|i| RETENTION_DAYS.get(i))
         .copied()
         .filter(|days| *days > 0)
-        .map(|days| days * 24 * 60 * 60)
+        .and_then(|days| days.checked_mul(24 * 60 * 60))
 }
 
 /// How long an article must be open before it counts as read.
@@ -346,18 +346,18 @@ impl Settings {
             // And the interval, to the worker that keeps it. A context
             // rebuilt just above was told at build time; one that survived
             // the save -- same server, same key -- hears it here.
-            ctx.send(worker::Command::SetSyncInterval {
+            ctx.send(Command::SetSyncInterval {
                 minutes: sync_interval_minutes_for(self.syncIntervalIndex),
             });
             // And the retention window, which the worker applies at the end of
             // the next pass. Same hop, same reason: a worker that survived the
             // save was told its window when it spawned.
-            ctx.send(worker::Command::SetRetention {
+            ctx.send(Command::SetRetention {
                 seconds: retention_seconds_for(self.retentionIndex),
             });
             // And "Only sync on Wi-Fi", which the worker consults against the
             // network it reads when its own work falls due.
-            ctx.send(worker::Command::SetWifiOnly {
+            ctx.send(Command::SetWifiOnly {
                 enabled: self.wifiOnly,
             });
         }

@@ -65,7 +65,7 @@ separate purposes:
 | File | What it pins | Why |
 | --- | --- | --- |
 | `Cargo.toml` `rust-version` | the **MSRV** (1.75) | the device build uses the SDK's toolchain; `make msrv` and a CI job re-check against it so a dependency bump cannot silently break it |
-| `rust-toolchain.toml` | the **development** toolchain (stable) | so rustfmt and clippy behave identically everywhere; a clippy version drift turns `-D warnings` into a lottery |
+| `rust-toolchain.toml` | the **development** toolchain (a pinned stable release) | so rustfmt and clippy behave identically everywhere; a clippy version drift turns `-D warnings` into a lottery |
 
 `make msrv` installs the floor toolchain if absent and runs `cargo check
 --locked` against it. `--locked` matters: the committed lockfile is what OBS

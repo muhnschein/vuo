@@ -125,7 +125,7 @@ impl Database {
             // Someone else holds the lock. Journal mode is a persistent
             // property of the file, so we do not need to be the one who sets
             // it — only to see it set.
-            if attempt + 1 < ATTEMPTS {
+            if attempt.saturating_add(1) < ATTEMPTS {
                 std::thread::sleep(PAUSE);
             }
         }
@@ -316,7 +316,7 @@ mod tests {
         // because the `format!` and the keyword land on different lines. It
         // now walks every .rs file under src/ and scans with comments stripped
         // and whitespace collapsed.
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
         let mut files = Vec::new();
         collect_rs(&root, &mut files);
         assert!(
@@ -398,7 +398,7 @@ mod tests {
         None
     }
 
-    fn collect_rs(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+    fn collect_rs(dir: &Path, out: &mut Vec<std::path::PathBuf>) {
         let Ok(entries) = std::fs::read_dir(dir) else {
             return;
         };

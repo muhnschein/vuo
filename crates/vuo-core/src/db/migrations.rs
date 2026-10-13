@@ -585,6 +585,6 @@ mod tests {
             "INSERT INTO outbox (entry_id, field, value, queued_at) VALUES (1,'colour','red',0)",
             [],
         );
-        assert!(bad.is_err());
+        bad.unwrap_err();
     }
 }

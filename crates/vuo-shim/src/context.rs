@@ -419,8 +419,11 @@ const NOT_A_URL: &str =
 /// not even built by most of `make check`, and that is precisely why the
 /// first-run defect it now carries the fix for survived to a device.
 fn build_from(paths: &AppPaths, account: Account) -> vuo_core::Result<Rc<AppContext>> {
-    let server = url::Url::parse(&account.server_url)
-        .map_err(|_| vuo_core::Error::Config(NOT_A_URL.to_owned()))?;
+    let server = url::Url::parse(&account.server_url).map_err(|e| {
+        // Why it did not parse, for the log; the address stays out of it.
+        tracing::warn!(error = %e, "the stored server address does not parse");
+        vuo_core::Error::Config(NOT_A_URL.to_owned())
+    })?;
     let config = crate::worker::transport_config_for(paths, &account)?;
     // The steps below are logged one by one on purpose. Building the context
     // is the only part of Vuo that runs BOTH at start-up and again from inside

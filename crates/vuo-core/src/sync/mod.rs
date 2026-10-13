@@ -145,7 +145,7 @@ pub async fn sync(
     // `SyncOptions::server_version_ttl_secs`.
     let cached_version = state
         .server_version_checked_at
-        .filter(|checked| now - checked < options.server_version_ttl_secs)
+        .filter(|checked| now.saturating_sub(*checked) < options.server_version_ttl_secs)
         .and(state.server_version.as_deref())
         .and_then(ServerVersion::parse);
     let (version, version_checked_at) = match cached_version {
@@ -161,7 +161,7 @@ pub async fn sync(
     // 4. Deletions are invisible to the cursor, so they need their own signal.
     let due = state
         .last_full_reconcile_at
-        .is_none_or(|last| now - last >= options.reconcile_interval_secs);
+        .is_none_or(|last| now.saturating_sub(last) >= options.reconcile_interval_secs);
     // The counters request is spent only where its answer can change what
     // this pass does.
     //
@@ -287,7 +287,7 @@ async fn fetch_icons(db: &mut Database, client: &MinifluxClient, limit: i64) -> 
                     store::upsert_icon(tx, &icon)?;
                     store::clear_icon_failures(tx, feed_id)
                 })?;
-                fetched += 1;
+                fetched = fetched.saturating_add(1);
             }
             Err(e) => {
                 tracing::debug!(feed = %feed_id, error = %e, "rejected a feed icon");

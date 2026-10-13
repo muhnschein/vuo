@@ -314,7 +314,8 @@ pub fn confirm(tx: &Transaction<'_>, batch: &Batch) -> Result<usize> {
     let mut stmt =
         tx.prepare("DELETE FROM outbox WHERE entry_id = ?1 AND field = ?2 AND value = ?3")?;
     for id in &batch.entry_ids {
-        cleared += stmt.execute(rusqlite::params![id.get(), field, value])?;
+        cleared =
+            cleared.saturating_add(stmt.execute(rusqlite::params![id.get(), field, value])?);
     }
     Ok(cleared)
 }

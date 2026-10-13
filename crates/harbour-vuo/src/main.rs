@@ -17,6 +17,19 @@
 //! mirror, loads QML, and runs the event loop. Everything else is in
 //! `vuo-core`, where it can be tested without Qt.
 
+// Shipped code is held to more than tests are; vuo-core's lib.rs says why.
+#![cfg_attr(
+    not(test),
+    deny(
+        clippy::string_slice,
+        clippy::arithmetic_side_effects,
+        clippy::let_underscore_must_use,
+        clippy::panic_in_result_fn,
+        clippy::unwrap_in_result,
+        clippy::get_unwrap
+    )
+)]
+
 // Only the desktop harness needs these. The device build's `run` is the cpp!
 // block, which reaches Qt through C++ headers rather than through
 // qmetaobject's Rust types -- so under `sailfishapp` this import would be

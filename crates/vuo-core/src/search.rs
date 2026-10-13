@@ -163,7 +163,7 @@ impl SearchQuery {
     /// here, which is what lets QML render it as `StyledText` (§9.3).
     #[must_use]
     pub fn highlight(&self, text: &str) -> String {
-        let mut out = String::with_capacity(text.len() + 16);
+        let mut out = String::with_capacity(text.len().saturating_add(16));
         let mut copied = 0;
         for (start, end) in self.spans(text) {
             crate::content::block::escape_into(
@@ -204,10 +204,10 @@ impl SearchQuery {
                 .find(|&i| chars.get(i.wrapping_sub(1)).is_some_and(|&(_, c)| c == ' '))
                 .unwrap_or(at);
         }
-        let mut to = (from + EXCERPT_LENGTH).min(chars.len());
+        let mut to = from.saturating_add(EXCERPT_LENGTH).min(chars.len());
         if to < chars.len() {
             // Back to the end of a word, unless that loses the match.
-            if let Some(space) = (at + 1..to)
+            if let Some(space) = (at.saturating_add(1)..to)
                 .rev()
                 .find(|&i| chars.get(i).is_some_and(|&(_, c)| c == ' '))
             {
@@ -237,13 +237,13 @@ impl SearchQuery {
         // folded whole. If it ever did not, nothing is marked: a missing bold
         // is better than a misplaced one.
         let folded = fold(text);
-        let mut origin = Vec::with_capacity(folded.len() + 1);
+        let mut origin = Vec::with_capacity(folded.len().saturating_add(1));
         for (at, ch) in text.char_indices() {
             let width: usize = ch.to_lowercase().map(char::len_utf8).sum();
             origin.extend(std::iter::repeat_n(at, width));
         }
         origin.push(text.len());
-        if origin.len() != folded.len() + 1 {
+        if origin.len() != folded.len().saturating_add(1) {
             return Vec::new();
         }
 
@@ -251,8 +251,8 @@ impl SearchQuery {
         for term in &self.terms {
             let mut from = 0;
             while let Some(hit) = folded.get(from..).and_then(|rest| rest.find(term.as_str())) {
-                let start = from + hit;
-                let end = start + term.len();
+                let start = from.saturating_add(hit);
+                let end = start.saturating_add(term.len());
                 // The END maps to the start of the character after the match:
                 // a match that ends inside one character's folding (a dotted
                 // capital I folds to two) stops short of it.
@@ -261,9 +261,11 @@ impl SearchQuery {
                         found.push((a, b));
                     }
                 }
-                from = start + 1;
-                while !folded.is_char_boundary(from) {
-                    from += 1;
+                // On to the next character; past the end, `get` above ends
+                // the loop.
+                from = start.saturating_add(1);
+                while from < folded.len() && !folded.is_char_boundary(from) {
+                    from = from.saturating_add(1);
                 }
             }
         }
@@ -317,30 +319,33 @@ pub fn html_text(html: &str) -> String {
         .get(at..)
         .and_then(|b| b.iter().position(|&c| c == b'<' || c == b'&'))
     {
-        let mark = at + found;
+        let mark = at.saturating_add(found);
         out.push_str(html.get(copied..mark).unwrap_or_default());
         if bytes.get(mark) == Some(&b'<') {
             // An unterminated tag ends the text: what follows is not
             // something a reader would have seen.
+            let after = mark.saturating_add(1);
             let Some(len) = bytes
-                .get(mark + 1..)
+                .get(after..)
                 .and_then(|b| b.iter().position(|&c| c == b'>'))
             else {
                 return out;
             };
-            if !is_inline(html.get(mark + 1..mark + 1 + len).unwrap_or_default()) {
+            let close = after.saturating_add(len);
+            if !is_inline(html.get(after..close).unwrap_or_default()) {
                 out.push(' ');
             }
-            at = mark + 1 + len + 1;
+            at = close.saturating_add(1);
         } else {
-            match decode_entity(html.get(mark + 1..).unwrap_or_default()) {
+            let after = mark.saturating_add(1);
+            match decode_entity(html.get(after..).unwrap_or_default()) {
                 Some((ch, used)) => {
                     out.push(ch);
-                    at = mark + 1 + used;
+                    at = after.saturating_add(used);
                 }
                 None => {
                     out.push('&');
-                    at = mark + 1;
+                    at = after;
                 }
             }
         }
@@ -390,7 +395,7 @@ fn decode_entity(s: &str) -> Option<(char, usize)> {
             _ => return None,
         }
     };
-    Some((ch, semi + 1))
+    Some((ch, semi.checked_add(1)?))
 }
 
 /// Register [`SQL_FUNCTION`] on a connection.
@@ -492,13 +497,12 @@ mod tests {
         // not find an article by. This pins the SQL function's arity too.
         let conn = Connection::open_in_memory().unwrap();
         register(&conn).unwrap();
-        assert!(conn
-            .query_row(
-                "SELECT vuo_search_kind('jane', '', 'Jane Doe', '')",
-                [],
-                |r| r.get::<_, i64>(0),
-            )
-            .is_err());
+        conn.query_row(
+            "SELECT vuo_search_kind('jane', '', 'Jane Doe', '')",
+            [],
+            |r| r.get::<_, i64>(0),
+        )
+        .unwrap_err();
     }
 
     #[test]

@@ -264,11 +264,7 @@ mod tests {
         // the crate still green.
         assert_eq!(
             e.published_at,
-            Some(
-                "2026-01-02T03:04:05Z"
-                    .parse::<chrono::DateTime<chrono::Utc>>()
-                    .unwrap()
-            )
+            Some("2026-01-02T03:04:05Z".parse::<DateTime<Utc>>().unwrap())
         );
         assert_eq!(e.reading_time, 4);
         assert_eq!(e.title, "T");
@@ -286,11 +282,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             e.published_at,
-            Some(
-                "2026-01-02T03:04:05Z"
-                    .parse::<chrono::DateTime<chrono::Utc>>()
-                    .unwrap()
-            ),
+            Some("2026-01-02T03:04:05Z".parse::<DateTime<Utc>>().unwrap()),
             "05:04:05+02:00 is 03:04:05Z"
         );
     }

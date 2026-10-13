@@ -203,7 +203,12 @@ pub struct MinifluxClient {
     transport: Transport,
     /// The server version, once known. Written by [`MinifluxClient::version`]
     /// and read by the entry-write floor; see `write_capable_version`.
-    server_version: std::sync::OnceLock<ServerVersion>,
+    ///
+    /// A lock rather than a `OnceLock`, because `version` has to be able to
+    /// REPLACE the answer: a `OnceLock` kept the first one for the life of
+    /// the client, so an instance upgraded past the write floor while Vuo ran
+    /// went on refusing the user's queued stars and reads until a restart.
+    server_version: std::sync::Arc<std::sync::Mutex<Option<ServerVersion>>>,
 }
 
 impl MinifluxClient {
@@ -211,7 +216,7 @@ impl MinifluxClient {
     pub fn new(transport: Transport) -> Self {
         MinifluxClient {
             transport,
-            server_version: std::sync::OnceLock::new(),
+            server_version: std::sync::Arc::default(),
         }
     }
 
@@ -281,8 +286,16 @@ impl MinifluxClient {
     pub async fn version(&self) -> Result<ServerVersion> {
         let w: wire::VersionResponse = self.get_json(self.url("/v1/version")?).await?;
         let version = ServerVersion::parse(&w.version).unwrap_or_default();
-        let _ = self.server_version.set(version.clone());
+        *self.cached_version() = Some(version.clone());
         Ok(version)
+    }
+
+    /// The cache behind `version`. A poisoned lock still holds a version that
+    /// was whole when it was written, so it is read rather than given up on.
+    fn cached_version(&self) -> std::sync::MutexGuard<'_, Option<ServerVersion>> {
+        self.server_version
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
     /// The version entry-state writes must be checked against.
@@ -292,8 +305,9 @@ impl MinifluxClient {
     /// server. A failed fetch propagates as that failure — transient, so the
     /// intent stays queued and the next flush tries again.
     async fn write_capable_version(&self) -> Result<ServerVersion> {
-        match self.server_version.get() {
-            Some(v) => Ok(v.clone()),
+        let known = self.cached_version().clone();
+        match known {
+            Some(v) => Ok(v),
             None => self.version().await,
         }
     }
@@ -428,7 +442,7 @@ impl MinifluxClient {
             starred,
         };
         let payload = serde_json::to_vec(&body)
-            .map_err(|_| Error::Protocol("could not encode the update request".to_owned()))?;
+            .map_err(|e| Error::Protocol(format!("could not encode the entry-state write: {e}")))?;
 
         let url = self.url("/v1/entries")?;
         let safe = SafeUrl::from(&url);
@@ -490,7 +504,7 @@ impl MinifluxClient {
             feed_url,
             category_id,
         })
-        .map_err(|_| Error::Protocol("could not encode the subscribe request".to_owned()))?;
+        .map_err(|e| Error::Protocol(format!("could not encode the subscribe request: {e}")))?;
         let url = self.url("/v1/feeds")?;
         let safe = SafeUrl::from(&url);
         let response = self
@@ -510,7 +524,7 @@ impl MinifluxClient {
     /// reverting a change made in the web UI in between.
     pub async fn update_feed(&self, feed_id: i64, update: &FeedPatch) -> Result<()> {
         let payload = serde_json::to_vec(update)
-            .map_err(|_| Error::Protocol("could not encode the feed update".to_owned()))?;
+            .map_err(|e| Error::Protocol(format!("could not encode the feed update: {e}")))?;
         let url = self.url(&format!("/v1/feeds/{feed_id}"))?;
         let safe = SafeUrl::from(&url);
         let response = self
