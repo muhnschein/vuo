@@ -27,7 +27,7 @@
 //! `/proc/net/route` and `/proc/net/ipv6_route` for a default route, and
 //! `/sys/class/net/<iface>/` for whether the interface carrying it is Wi-Fi.
 //! `phy80211` is the modern marker and `wireless` the old one; between them
-//! they are what `iw` and NetworkManager look at.
+//! they are what `iw` and `NetworkManager` look at.
 //!
 //! # The rule that matters most
 //!
@@ -74,9 +74,9 @@ impl Network {
     #[must_use]
     pub fn allows(self, wifi_only: bool) -> bool {
         match self {
-            // The reading failed. Behave as though this module were not here.
-            Network::Unknown => true,
-            Network::Wifi => true,
+            // Unknown: the reading failed. Behave as though this module were
+            // not here.
+            Network::Unknown | Network::Wifi => true,
             Network::Metered => !wifi_only,
             Network::Offline => false,
         }

@@ -42,6 +42,7 @@ macro_rules! id_type {
         pub struct $name(pub i64);
 
         impl $name {
+            /// The raw identifier as the server sent it.
             #[must_use]
             pub fn get(self) -> i64 {
                 self.0
@@ -76,7 +77,9 @@ id_type!(IconId, "A server-assigned icon identifier.");
 )]
 #[serde(rename_all = "lowercase")]
 pub enum EntryStatus {
+    /// Not yet read.
     Unread,
+    /// Read.
     Read,
 }
 
@@ -90,23 +93,30 @@ impl EntryStatus {
         }
     }
 
+    /// `true` for [`EntryStatus::Read`].
     #[must_use]
     pub fn is_read(self) -> bool {
         matches!(self, EntryStatus::Read)
     }
 }
 
+/// An article as mirrored locally, validated from its [`crate::api::wire`] form.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Entry {
+    /// The entry's server-assigned identifier.
     pub id: EntryId,
+    /// The feed the entry belongs to.
     pub feed_id: FeedId,
+    /// Whether the user has read it.
     pub status: EntryStatus,
+    /// Whether the user has starred it.
     pub starred: bool,
     /// Foreign text. Renders as `Text.PlainText` only (§9.3).
     pub title: String,
     /// `None` when the server sent nothing parseable or a non-http(s) scheme.
     /// A bad link is not a reason to discard the article body.
     pub url: Option<MediaUrl>,
+    /// The discussion page, if the feed links one. `None` on the same terms as `url`.
     pub comments_url: Option<MediaUrl>,
     /// Foreign text. Plain text only.
     pub author: String,
@@ -115,54 +125,77 @@ pub struct Entry {
     /// larger than its input and depends on settings (media policy) that the
     /// user can change without re-syncing.
     pub content: String,
+    /// When the feed says the entry was published.
     pub published_at: Option<DateTime<Utc>>,
+    /// When the server first stored the entry.
     pub created_at: Option<DateTime<Utc>>,
     /// The server's `changed_at`. Bumped on insert and on every status or
     /// starred mutation -- including Vuo's own replayed writes, which is why
     /// the pull has to tolerate seeing its own echo.
     pub changed_at: Option<DateTime<Utc>>,
+    /// The server's reading-time estimate in minutes. Clamped to be non-negative.
     pub reading_time: i32,
+    /// Foreign text. The tags the feed attached to the entry.
     pub tags: Vec<String>,
+    /// Attached media files, such as podcast episodes.
     pub enclosures: Vec<Enclosure>,
 }
 
+/// A media file attached to an entry, such as a podcast episode.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Enclosure {
+    /// The server-assigned enclosure identifier.
     pub id: i64,
+    /// The entry it is attached to.
     pub entry_id: EntryId,
+    /// `None` when the server sent nothing parseable or a non-http(s) scheme.
     pub url: Option<MediaUrl>,
     /// Claimed MIME type. Foreign, advisory, and not to be trusted for
     /// dispatch decisions on its own.
     pub mime_type: String,
+    /// Claimed size in bytes. Foreign and advisory; clamped to be non-negative.
     pub size: i64,
 }
 
+/// A subscribed feed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Feed {
+    /// The feed's server-assigned identifier.
     pub id: FeedId,
+    /// The category it is filed under, if the server sent one.
     pub category_id: Option<CategoryId>,
     /// Foreign text (a feed *name* is chosen by the feed operator). Plain text.
     pub title: String,
+    /// The website the feed belongs to.
     pub site_url: Option<MediaUrl>,
+    /// The address the server fetches the feed from.
     pub feed_url: Option<MediaUrl>,
+    /// `None` when the feed has no icon (the server sends a null icon or an id of 0).
     pub icon_id: Option<IconId>,
+    /// When the server last fetched the feed.
     pub checked_at: Option<DateTime<Utc>>,
     /// Non-empty when the server last failed to refresh this feed. Foreign
     /// text, plain text only.
     pub parsing_error_message: String,
+    /// How many refreshes in a row have failed. Clamped to be non-negative.
     pub parsing_error_count: i32,
+    /// The user has stopped the server refreshing this feed.
     pub disabled: bool,
+    /// The user has hidden this feed's entries from the global unread and all-entries lists.
     pub hide_globally: bool,
     /// The server scrapes each entry's own page instead of trusting the feed's
     /// summary ("Fetch original content" in the web UI).
     pub crawler: bool,
 }
 
+/// A user-defined group of feeds.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Category {
+    /// The category's server-assigned identifier.
     pub id: CategoryId,
     /// Foreign text. Plain text only.
     pub title: String,
+    /// The user has hidden its feeds' entries from the global unread and all-entries lists.
     pub hide_globally: bool,
 }
 
@@ -172,22 +205,33 @@ pub struct Category {
 /// magic bytes rather than believing `mime_type` (§9.3).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Icon {
+    /// The icon's server-assigned identifier.
     pub id: IconId,
     /// The format as determined from the bytes, not as claimed.
     pub format: ImageFormat,
+    /// The decoded image bytes.
     pub bytes: Vec<u8>,
     /// Pixel dimensions where they could be read cheaply from the header.
     pub dimensions: Option<(u32, u32)>,
 }
 
+/// An image format recognised from an icon's magic bytes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ImageFormat {
+    /// PNG.
     Png,
+    /// JPEG.
     Jpeg,
+    /// GIF.
     Gif,
+    /// WebP.
     WebP,
+    /// Windows bitmap.
     Bmp,
+    /// Windows icon (`.ico`).
     Ico,
+    /// SVG. Recognised only so it can be refused: [`crate::api::icon::decode_icon`]
+    /// never produces an [`Icon`] in this format.
     Svg,
 }
 
@@ -214,9 +258,13 @@ impl ImageFormat {
 /// 2.2.x server requests the entire corpus in one response.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ServerVersion {
+    /// The version string as the server reported it, trimmed.
     pub raw: String,
+    /// Major version.
     pub major: u32,
+    /// Minor version; `0` when missing or unparseable.
     pub minor: u32,
+    /// Patch version; `0` when missing or unparseable.
     pub patch: u32,
 }
 

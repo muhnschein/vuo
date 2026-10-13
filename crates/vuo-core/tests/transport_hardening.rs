@@ -66,7 +66,7 @@ fn cfg() -> TransportConfig {
 /// The header is spliced in here rather than written into each test's bytes so
 /// that a test added later cannot forget it. It is framing, not content: every
 /// response below still declares its own body exactly as its author wrote it.
-fn one_shot(resp: Vec<u8>) -> Vec<u8> {
+fn one_shot(resp: &[u8]) -> Vec<u8> {
     const CLOSE: &[u8] = b"Connection: close\r\n";
     let after_status_line = resp
         .windows(2)
@@ -96,7 +96,7 @@ fn raw_server(
             let mut buf = [0u8; 8192];
             let n = sock.read(&mut buf).unwrap_or(0);
             let _ = tx.send(String::from_utf8_lossy(&buf[..n]).to_string());
-            let _ = sock.write_all(&one_shot(resp));
+            let _ = sock.write_all(&one_shot(&resp));
             let _ = sock.flush();
         }
     });

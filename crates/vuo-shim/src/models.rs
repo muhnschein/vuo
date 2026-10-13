@@ -42,7 +42,7 @@ use crate::context::AppContext;
 use crate::worker::{self, Command};
 
 /// Rows loaded into a list model at once, and how much a
-/// [`loadMore`](EntryModel::loadMore) adds.
+/// `loadMore` adds.
 ///
 /// The list is a window onto the mirror, not the whole of it. Anything that
 /// acts on "everything in this scope" must query the database rather than
@@ -61,7 +61,7 @@ use crate::worker::{self, Command};
 ///
 /// A hundred and fifty is about fifteen screens, so the reader reaches the end
 /// of the window by scrolling rather than by accident, and
-/// [`loadMore`](EntryModel::loadMore) extends it by another page when they do.
+/// `loadMore` extends it by another page when they do.
 pub const PAGE_SIZE: i64 = 150;
 
 /// How many results of each group a search shows at first.
@@ -161,14 +161,27 @@ fn match_kind_from_qml(kind: &str) -> Option<MatchKind> {
     }
 }
 
+/// Model roles for [`EntryModel`], one per [`EntryRow`] field; the model's
+/// `role_names` gives each its QML name.
+///
+/// `entryId`: [`EntryRow::id`]. Also `feedId` on [`FeedModel`], which shares
+/// this number.
 pub const ROLE_ID: i32 = USER_ROLE;
+/// `title`: [`EntryRow::title`]. FOREIGN TEXT: `Text.PlainText`.
 pub const ROLE_TITLE: i32 = USER_ROLE + 1;
+/// `author`: [`EntryRow::author`]. FOREIGN TEXT: `Text.PlainText`.
 pub const ROLE_AUTHOR: i32 = USER_ROLE + 2;
+/// `unread`: [`EntryRow::unread`].
 pub const ROLE_UNREAD: i32 = USER_ROLE + 3;
+/// `starred`: [`EntryRow::starred`].
 pub const ROLE_STARRED: i32 = USER_ROLE + 4;
+/// `feedId`: [`EntryRow::feed_id`].
 pub const ROLE_FEED_ID: i32 = USER_ROLE + 5;
+/// `published`: [`EntryRow::published`].
 pub const ROLE_PUBLISHED: i32 = USER_ROLE + 6;
+/// `readingTime`: [`EntryRow::reading_time`].
 pub const ROLE_READING_TIME: i32 = USER_ROLE + 7;
+/// `url`: [`EntryRow::url`].
 pub const ROLE_URL: i32 = USER_ROLE + 8;
 /// The name of the feed the entry came from. FOREIGN TEXT: `Text.PlainText`.
 pub const ROLE_FEED_NAME: i32 = USER_ROLE + 9;
@@ -176,7 +189,7 @@ pub const ROLE_FEED_NAME: i32 = USER_ROLE + 9;
 pub const ROLE_FEED_ICON: i32 = USER_ROLE + 10;
 /// Where a search result matched: `title`, `feed` or `text` -- the group it
 /// is listed under. Empty outside a search. A `feed` row is a FEED, not an
-/// article: see [`EntryRow::feed_found`].
+/// article: see `EntryRow::feed_found`.
 pub const ROLE_MATCH_KIND: i32 = USER_ROLE + 11;
 /// A search result's title with the terms in bold. `StyledText` built and
 /// ESCAPED in Rust (`SearchQuery::highlight`), so QML may render it as
@@ -196,7 +209,7 @@ pub const ROLE_UNREAD_COUNT: i32 = USER_ROLE + 15;
 /// Deliberately neither [`vuo_core::model::Entry`] nor a copy of the feed
 /// chrome. The body stays in SQLite, and so do the feed's name and icon: those
 /// are looked up by `feed_id` when a delegate asks for them (see
-/// [`EntryModel::chrome_for`]) rather than copied in here.
+/// `EntryModel::chrome_for`) rather than copied in here.
 ///
 /// The icon is why that matters. It is a base64 `data:` URI, which for a
 /// perfectly ordinary 6 KB favicon is 8 KB of text, and the fetcher accepts
@@ -204,27 +217,40 @@ pub const ROLE_UNREAD_COUNT: i32 = USER_ROLE + 15;
 /// models -- 16 MB resident on a mirror of the size this was reported against,
 /// with a worst case two orders of magnitude worse -- to hold at most
 /// fifty-six distinct strings. It was also compared byte by byte on every
-/// poll, because [`publish_rows`] diffs whole rows.
+/// poll, because `publish_rows` diffs whole rows.
 ///
 /// `PartialEq` so a reload can tell a row that actually moved from one it has
 /// just re-read unchanged -- see [`EntryModel::reload`].
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct EntryRow {
+    /// The server's id for the entry; for a feed a search found, the feed's id
+    /// negated (see `feed_found`).
     pub id: i64,
+    /// The feed the entry belongs to.
     pub feed_id: i64,
+    /// FOREIGN TEXT: the entry's title.
     pub title: String,
+    /// FOREIGN TEXT: the entry's author, or empty.
     pub author: String,
+    /// Whether it is unread, with any pending local change applied.
     pub unread: bool,
+    /// Whether it is starred.
     pub starred: bool,
+    /// When the feed says it was published, in Unix seconds; 0 when unknown.
     pub published: i64,
+    /// The server's reading-time estimate, in minutes.
     pub reading_time: i32,
+    /// The article's link, or empty when there is none.
     pub url: String,
     /// What a search result shows of why it was found. Empty strings -- no
     /// allocation -- on every other list. See [`ROLE_MATCH_KIND`] and the
     /// roles after it.
     pub match_kind: &'static str,
+    /// See [`ROLE_TITLE_STYLED`].
     pub title_styled: String,
+    /// See [`ROLE_FEED_NAME_STYLED`].
     pub feed_styled: String,
+    /// See [`ROLE_EXCERPT`].
     pub excerpt: String,
     /// See [`ROLE_UNREAD_COUNT`].
     pub unread_count: i64,
@@ -313,7 +339,7 @@ trait RowList: QAbstractListModel + Sized {
     fn rows_held_mut(&mut self) -> &mut Vec<Self::Row>;
     /// What identifies a row across a reload: the mirror's own key for it.
     fn row_id(row: &Self::Row) -> i64;
-    /// Emit the model's `countChanged`. A qt_signal is an inherent method
+    /// Emit the model's `countChanged`. A `qt_signal` is an inherent method
     /// generated per struct, which is not something a trait can name.
     fn emit_count_changed(&mut self);
 }
@@ -496,13 +522,18 @@ fn inserted_run(held: &[i64], fresh: &[i64]) -> Option<(usize, usize)> {
 /// Which slice of the mirror a model shows.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Scope {
+    /// Unread entries.
     Unread,
+    /// Starred entries.
     Starred,
+    /// Every entry in the mirror.
     All,
+    /// One feed's entries, by its id.
     Feed(i64),
+    /// One category's entries, by its id.
     Category(i64),
     /// Whatever the model's search text matches -- see
-    /// [`EntryModel::setSearch`]. The text lives on the model rather than in
+    /// `EntryModel::setSearch`. The text lives on the model rather than in
     /// here so that `Scope` stays `Copy`, and so that re-scoping a model that
     /// is already searching keeps what the reader typed.
     Search,
@@ -525,6 +556,7 @@ impl Scope {
     /// Decode the integer pair QML passes. Qt 5.6 has no `QEnum` registration
     /// in this crate version, so the scope crosses the boundary as two ints
     /// rather than as a typed enum.
+    #[must_use]
     pub fn from_qml(kind: i32, id: i64) -> Scope {
         match kind {
             1 => Scope::Starred,
@@ -537,6 +569,11 @@ impl Scope {
     }
 }
 
+/// An entry list: the rows of one [`Scope`], re-read from the mirror when
+/// the worker changes it.
+// The bools are `qt_property!`s, each its own setting or state that QML
+// binds to by name; a bitfield would hide them from QML.
+#[allow(clippy::struct_excessive_bools)]
 #[derive(QObject, Default)]
 pub struct EntryModel {
     base: qt_base_class!(trait QAbstractListModel),
@@ -596,7 +633,7 @@ pub struct EntryModel {
     /// survive being produced while the app is on its cover (the cover has a
     /// Refresh of its own and no page to receive a signal), and it has to
     /// survive a page that is not currently the visible one. FOREIGN TEXT --
-    /// the server's own words -- so the page renders it as PlainText.
+    /// the server's own words -- so the page renders it as `PlainText`.
     pub syncError: qt_property!(QString; NOTIFY syncStateChanged),
     /// True when the failure was the server rejecting the API key.
     ///
@@ -931,8 +968,7 @@ impl EntryModel {
     fn unread_total(&self) -> i32 {
         self.context()
             .and_then(|ctx| ctx.read(|db| store::unread_count(db.conn()).unwrap_or(0)))
-            .map(|n| i32::try_from(n).unwrap_or(i32::MAX))
-            .unwrap_or(0)
+            .map_or(0, |n| i32::try_from(n).unwrap_or(i32::MAX))
     }
 
     fn title_matches(&self) -> i32 {
@@ -1126,8 +1162,7 @@ impl EntryModel {
         usize::try_from(row)
             .ok()
             .and_then(|i| self.rows.get(i))
-            .map(|r| r.id)
-            .unwrap_or(0)
+            .map_or(0, |r| r.id)
     }
 
     /// Re-read rows from the mirror, KEEPING the rows already on screen.
@@ -1138,8 +1173,8 @@ impl EntryModel {
     /// opened and marked read vanished from Unread a moment after coming back
     /// to it, on the poll that noticed the mirror had changed, and the rows
     /// below it jumped up under the thumb. Rows only ever LEAVE on a manual
-    /// refresh ([`requestSync`](Self::requestSync)), a scope change, or "mark
-    /// all as read"; those go through [`reload_fresh`](Self::reload_fresh).
+    /// refresh (`requestSync`), a scope change, or "mark
+    /// all as read"; those go through `reload_fresh`.
     /// Rows still ARRIVE here -- a sync that lands while the app is open shows
     /// its new articles -- and a kept row the mirror no longer has (the server
     /// deleted it) goes with it.
@@ -1149,7 +1184,7 @@ impl EntryModel {
     /// wrong `begin_insert_rows` range is a crash inside Qt's model machinery
     /// rather than a visual glitch — a bad trade for a saved millisecond. A
     /// reload that finds the same articles in the same places does not reset
-    /// at all; see [`reload_keeping`](Self::reload_keeping).
+    /// at all; see `reload_keeping`.
     ///
     /// Returns true when the model was RESET, which is the thing that costs
     /// the reader their scroll position.
@@ -1363,6 +1398,7 @@ impl EntryModel {
         }
     }
 
+    /// The rows as they stand, in display order.
     #[must_use]
     pub fn rows(&self) -> &[EntryRow] {
         &self.rows
@@ -1463,9 +1499,16 @@ impl QAbstractListModel for EntryModel {
 
 // ------------------------------------------------------------------- feeds
 
+/// Model roles for [`FeedModel`], one per [`FeedRow`] field; it reuses
+/// [`ROLE_ID`] for the feed's id.
+///
+/// `title`: [`FeedRow::title`]. FOREIGN TEXT: `Text.PlainText`.
 pub const ROLE_FEED_TITLE: i32 = USER_ROLE + 1;
+/// `unreadCount`: [`FeedRow::unread`].
 pub const ROLE_FEED_UNREAD: i32 = USER_ROLE + 2;
+/// `errorMessage`: [`FeedRow::error`].
 pub const ROLE_FEED_ERROR: i32 = USER_ROLE + 3;
+/// `categoryId`: [`FeedRow::category_id`].
 pub const ROLE_FEED_CATEGORY: i32 = USER_ROLE + 4;
 /// "Fetch original content" for every entry of this feed, server-side.
 pub const ROLE_FEED_CRAWLER: i32 = USER_ROLE + 5;
@@ -1484,15 +1527,22 @@ pub const ROLE_FEED_ICON_URI: i32 = USER_ROLE + 8;
 /// list it already holds must not reset the model.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct FeedRow {
+    /// The server's id for the feed.
     pub id: i64,
+    /// FOREIGN TEXT: the feed's name.
     pub title: String,
+    /// How many of its entries are unread in the mirror.
     pub unread: i32,
     /// Non-empty when the server last failed to refresh this feed. Foreign
     /// text: plain text only.
     pub error: String,
+    /// The feed's category, or 0 when it has none.
     pub category_id: i64,
+    /// See [`ROLE_FEED_CRAWLER`].
     pub crawler: bool,
+    /// See [`ROLE_FEED_DISABLED`].
     pub disabled: bool,
+    /// See [`ROLE_FEED_HIDDEN`].
     pub hide_globally: bool,
     /// The feed's icon as a `data:` URI, or empty. Built from bytes already in
     /// the mirror, so drawing it fetches nothing (§9.3).
@@ -1505,6 +1555,8 @@ pub struct FeedRow {
     pub icon_uri: QString,
 }
 
+/// The feed list, and the feed-level actions: subscribe, unsubscribe, edit
+/// and mark read.
 #[derive(QObject, Default)]
 pub struct FeedModel {
     base: qt_base_class!(trait QAbstractListModel),
@@ -1544,6 +1596,7 @@ pub struct FeedModel {
     /// See `EntryModel::syncError`: the worker cannot call into a QML-owned
     /// object, so a one-shot slot plus a poll is how an answer gets back.
     pub updateError: qt_property!(QString; NOTIFY updateStateChanged),
+    /// Whether the last `updateFeed` succeeded; read beside `updateError`.
     pub updateOk: qt_property!(bool; NOTIFY updateStateChanged),
     /// Bumped for every finished save, so a page can tell a repeat answer from
     /// a stale one.
@@ -1556,6 +1609,9 @@ pub struct FeedModel {
 }
 
 impl FeedModel {
+    /// Give the model a context explicitly, instead of the installed one,
+    /// and load the list. Only the tests call it; a model QML builds uses
+    /// the installed context.
     pub fn attach(&mut self, ctx: std::rc::Rc<AppContext>) {
         self.ctx = Some(ctx);
         self.reload();
@@ -1703,8 +1759,7 @@ impl FeedModel {
         usize::try_from(row)
             .ok()
             .and_then(|i| self.rows.get(i))
-            .map(|r| r.id)
-            .unwrap_or(0)
+            .map_or(0, |r| r.id)
     }
 
     /// Re-read the feed list. Returns true when the model was RESET, which is
@@ -1731,7 +1786,7 @@ impl FeedModel {
                         unread: i32::try_from(counts.get(&f.id.get()).copied().unwrap_or(0))
                             .unwrap_or(i32::MAX),
                         error: f.parsing_error_message.clone(),
-                        category_id: f.category_id.map(|c| c.get()).unwrap_or(0),
+                        category_id: f.category_id.map_or(0, vuo_core::model::CategoryId::get),
                         crawler: f.crawler,
                         disabled: f.disabled,
                         hide_globally: f.hide_globally,
@@ -1757,6 +1812,7 @@ impl FeedModel {
         publish_rows(self, rows)
     }
 
+    /// The rows as they stand, in display order.
     #[must_use]
     pub fn rows(&self) -> &[FeedRow] {
         &self.rows
@@ -2197,7 +2253,7 @@ mod row_decoration_tests {
             (ROLE_FEED_ICON_URI, "feedIcon"),
         ] {
             assert_eq!(
-                names.get(&role).map(|n| n.to_string()),
+                names.get(&role).map(ToString::to_string),
                 Some(name.to_owned()),
                 "QML reaches this role by name, and the editor's push needs it"
             );
@@ -2306,7 +2362,7 @@ mod row_decoration_tests {
     /// generation the instant the server confirms that intent, for the
     /// settings page's pending count and nothing this list shows. The poll
     /// that saw the bump re-read exactly the rows it already had and reset the
-    /// model anyway; a reset re-lays a plain ListView out at its own top.
+    /// model anyway; a reset re-lays a plain `ListView` out at its own top.
     #[test]
     fn a_bump_that_leaves_the_rows_alone_does_not_reset_the_list() {
         let (_dir, ctx) = seeded();

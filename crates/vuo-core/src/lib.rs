@@ -1,7 +1,7 @@
-//! `vuo-core` — the Qt-free heart of Vuo, a SailfishOS client for Miniflux.
+//! `vuo-core` — the Qt-free heart of Vuo, a `SailfishOS` client for Miniflux.
 //!
 //! Everything in this crate builds and tests on a plain host toolchain: no Qt,
-//! no SailfishOS SDK, no phone, no server. That is the point. §5 of the scope:
+//! no `SailfishOS` SDK, no phone, no server. That is the point. §5 of the scope:
 //! *if a bug can only be reproduced on a phone, the layering is wrong.* The
 //! sync engine is where this project's real invariants live — cursors,
 //! conflict resolution, an outbox that must not lose or double-apply
@@ -149,26 +149,6 @@ mod workspace_guards {
     /// test at whatever the production path actually does.
     #[test]
     fn every_pub_fn_has_a_caller_outside_its_own_definition() {
-        let workspace = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .and_then(Path::parent)
-            .expect("workspace root")
-            .join("crates");
-
-        let mut files = Vec::new();
-        for crate_dir in ["vuo-core", "vuo-shim", "harbour-vuo"] {
-            collect_rs(&workspace.join(crate_dir).join("src"), &mut files);
-        }
-        assert!(
-            files.len() > 15,
-            "found only {} sources; the scan is not reaching the workspace",
-            files.len()
-        );
-
-        // Every file's production half, concatenated: the haystack a call has
-        // to appear in somewhere.
-        let all: String = files.iter().map(|f| production_source(f)).collect();
-
         // Exempt, each for a stated reason. This list is the guard's only
         // escape hatch, and it is deliberately a nuisance: adding a name means
         // writing down who the caller is, which is the question the guard
@@ -189,6 +169,26 @@ mod workspace_guards {
                  crate, so this cannot be #[cfg(test)]",
             ),
         ];
+
+        let workspace = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .and_then(Path::parent)
+            .expect("workspace root")
+            .join("crates");
+
+        let mut files = Vec::new();
+        for crate_dir in ["vuo-core", "vuo-shim", "harbour-vuo"] {
+            collect_rs(&workspace.join(crate_dir).join("src"), &mut files);
+        }
+        assert!(
+            files.len() > 15,
+            "found only {} sources; the scan is not reaching the workspace",
+            files.len()
+        );
+
+        // Every file's production half, concatenated: the haystack a call has
+        // to appear in somewhere.
+        let all: String = files.iter().map(|f| production_source(f)).collect();
 
         let mut orphans = Vec::new();
         for file in &files {

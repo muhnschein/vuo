@@ -32,20 +32,38 @@ use vuo_core::model::{EntryId, EntryStatus};
 use crate::context::AppContext;
 use crate::worker::Command;
 
+/// Model roles, one per [`BlockRow`] field; [`ArticleModel`]'s `role_names`
+/// gives each its QML name.
+///
+/// `blockKind`: [`BlockRow::kind`].
 pub const ROLE_KIND: i32 = USER_ROLE;
+/// `styledText`: [`BlockRow::text`], the only role that carries markup.
 pub const ROLE_TEXT: i32 = USER_ROLE + 1;
+/// `level`: [`BlockRow::level`].
 pub const ROLE_LEVEL: i32 = USER_ROLE + 2;
+/// `quoteDepth`: [`BlockRow::quote_depth`].
 pub const ROLE_QUOTE_DEPTH: i32 = USER_ROLE + 3;
+/// `ordered`: [`BlockRow::ordered`].
 pub const ROLE_ORDERED: i32 = USER_ROLE + 4;
+/// `marker`: [`BlockRow::marker`].
 pub const ROLE_MARKER: i32 = USER_ROLE + 5;
+/// `indent`: [`BlockRow::indent`].
 pub const ROLE_INDENT: i32 = USER_ROLE + 6;
+/// `imageSource`: [`BlockRow::image_src`].
 pub const ROLE_IMAGE_SRC: i32 = USER_ROLE + 7;
+/// `imageAlt`: [`BlockRow::image_alt`] (plain text).
 pub const ROLE_IMAGE_ALT: i32 = USER_ROLE + 8;
+/// `needsConsent`: [`BlockRow::needs_consent`].
 pub const ROLE_NEEDS_CONSENT: i32 = USER_ROLE + 9;
+/// `codeLanguage`: [`BlockRow::code_language`].
 pub const ROLE_CODE_LANGUAGE: i32 = USER_ROLE + 10;
+/// `plainText`: [`BlockRow::plain`].
 pub const ROLE_PLAIN_TEXT: i32 = USER_ROLE + 11;
+/// `imageHost`: [`BlockRow::image_host`].
 pub const ROLE_IMAGE_HOST: i32 = USER_ROLE + 12;
+/// `imageRatio`: [`BlockRow::image_ratio`].
 pub const ROLE_IMAGE_RATIO: i32 = USER_ROLE + 13;
+/// `imageLink`: [`BlockRow::image_link`].
 pub const ROLE_IMAGE_LINK: i32 = USER_ROLE + 14;
 
 /// No scrape has finished (or the last one was acknowledged).
@@ -69,16 +87,23 @@ pub struct BlockRow {
     /// `rule`. A string rather than an enum because this `qmetaobject` version
     /// has no `qml_register_enum` on Qt 5.6.
     pub kind: String,
-    /// Qt StyledText for text blocks; empty otherwise.
+    /// Qt `StyledText` for text blocks; empty otherwise.
     pub text: String,
     /// The same content with no markup at all, for accessibility and search.
     pub plain: String,
+    /// A heading's level, from the source tag; 0 for other blocks.
     pub level: i32,
+    /// How many block quotes the block sits inside.
     pub quote_depth: i32,
+    /// Whether a list item belongs to a numbered list.
     pub ordered: bool,
+    /// A list item's marker: `"3."` for a numbered item, a bullet otherwise.
     pub marker: String,
+    /// A list item's nesting depth.
     pub indent: i32,
+    /// The image's URL, as the core resolved it.
     pub image_src: String,
+    /// The image's alt text (foreign text, plain).
     pub image_alt: String,
     /// The host the image would be fetched from. Shown in the consent
     /// placeholder so "load images" is an informed choice rather than a shrug.
@@ -100,6 +125,7 @@ pub struct BlockRow {
     /// instead -- a tap on a linked one has to keep meaning "go there".
     /// Validated as `http`/`https` in the core, like every other link.
     pub image_link: String,
+    /// A code block's declared language; empty when it gave none.
     pub code_language: String,
 }
 
@@ -139,15 +165,15 @@ fn row_for(block: &RenderBlock) -> BlockRow {
     };
     row.plain = block.plain_text();
 
-    match &block.kind {
+    let kind = match &block.kind {
         BlockKind::Heading { level, spans } => {
-            row.kind = "heading".to_owned();
             row.level = i32::from(*level);
             row.text = Span::render_styled_text(spans);
+            "heading"
         }
         BlockKind::Paragraph { spans } => {
-            row.kind = "paragraph".to_owned();
             row.text = Span::render_styled_text(spans);
+            "paragraph"
         }
         BlockKind::ListItem {
             ordered,
@@ -155,7 +181,6 @@ fn row_for(block: &RenderBlock) -> BlockRow {
             indent,
             spans,
         } => {
-            row.kind = "list_item".to_owned();
             row.ordered = *ordered;
             row.indent = i32::from(*indent);
             row.marker = match number {
@@ -163,13 +188,14 @@ fn row_for(block: &RenderBlock) -> BlockRow {
                 None => "\u{2022}".to_owned(),
             };
             row.text = Span::render_styled_text(spans);
+            "list_item"
         }
         BlockKind::Code { language, text } => {
-            row.kind = "code".to_owned();
             // Code is plain text by definition; the delegate uses a monospace
             // font and Text.PlainText.
-            row.text = text.clone();
+            row.text.clone_from(text);
             row.code_language = language.clone().unwrap_or_default();
+            "code"
         }
         BlockKind::Image {
             src,
@@ -179,19 +205,21 @@ fn row_for(block: &RenderBlock) -> BlockRow {
             link,
             ..
         } => {
-            row.kind = "image".to_owned();
-            row.image_src = src.as_str().to_owned();
-            row.image_alt = alt.clone();
-            row.image_host = src.as_url().host_str().unwrap_or_default().to_owned();
+            src.as_str().clone_into(&mut row.image_src);
+            row.image_alt.clone_from(alt);
+            src.as_url()
+                .host_str()
+                .unwrap_or_default()
+                .clone_into(&mut row.image_host);
             row.needs_consent = matches!(fetch, MediaFetch::NeedsConsent);
-            row.image_ratio = intrinsic.map(image_ratio).unwrap_or(0.0);
+            row.image_ratio = intrinsic.map_or(0.0, image_ratio);
             row.image_link = link
                 .as_ref()
                 .map(|l| l.as_str().to_owned())
                 .unwrap_or_default();
+            "image"
         }
         BlockKind::Table { rows } => {
-            row.kind = "table".to_owned();
             // Tables render as pre-formatted plain text. Qt 5.6's Text has no
             // usable table support, and a QML-side grid built from foreign
             // data is a lot of machinery for something that appears in a small
@@ -207,17 +235,24 @@ fn row_for(block: &RenderBlock) -> BlockRow {
                 out.push('\n');
             }
             row.text = out;
+            "table"
         }
-        BlockKind::Rule => row.kind = "rule".to_owned(),
+        BlockKind::Rule => "rule",
         // BlockKind is #[non_exhaustive]: a future core release can add a block
         // type this shim predates. Rendering nothing is the right default --
         // the alternative is a shim that fails to build against a newer core
         // for a block it could simply have skipped.
-        _ => row.kind = "unsupported".to_owned(),
-    }
+        _ => "unsupported",
+    };
+    kind.clone_into(&mut row.kind);
     row
 }
 
+/// The article view's list model: the open entry's [`BlockRow`]s, plus its
+/// read, starred and fetch-original state. See the module docs.
+// The bools are `qt_property!`s, each its own setting or state that QML
+// binds to by name; a bitfield would hide them from QML.
+#[allow(clippy::struct_excessive_bools)]
 #[derive(QObject, Default)]
 pub struct ArticleModel {
     base: qt_base_class!(trait QAbstractListModel),
@@ -242,13 +277,14 @@ pub struct ArticleModel {
     /// reader who opened an article had no way to star it, and no way to tell
     /// whether the one they were looking at was already starred.
     pub isRead: qt_property!(bool; NOTIFY entryStateChanged),
+    /// Whether the open article is starred (see `isRead`).
     pub isStarred: qt_property!(bool; NOTIFY entryStateChanged),
     /// The article's own link, or empty when the entry has none.
     ///
     /// A property rather than only `openInBrowser`'s return value, because the
     /// page BINDS to it: the site page attached to the right of the article
     /// exists exactly when this is non-empty. Validated as http(s) by the
-    /// core before it was stored, so handing it to a WebView or the system
+    /// core before it was stored, so handing it to a `WebView` or the system
     /// browser cannot launch anything else.
     pub articleUrl: qt_property!(QString; NOTIFY entryStateChanged),
     entryStateChanged: qt_signal!(),
@@ -462,8 +498,7 @@ impl ArticleModel {
         // to be repeated on every entry from the same site.
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_secs() as i64)
-            .unwrap_or(0);
+            .map_or(0, |d| i64::try_from(d.as_secs()).unwrap_or(i64::MAX));
         ctx.write(|db| db.with_tx(|tx| store::grant_media_consent(tx, origin.as_str(), now)));
 
         // Re-transform so the placeholders become images.
@@ -589,6 +624,7 @@ impl ArticleModel {
         self.clearFetchStatus();
     }
 
+    /// The open article's blocks, in display order.
     #[must_use]
     pub fn rows(&self) -> &[BlockRow] {
         &self.rows

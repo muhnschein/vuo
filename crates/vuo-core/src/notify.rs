@@ -43,7 +43,10 @@ pub enum Announcement {
     /// cover. A notification whose numbers merely moved -- articles read on
     /// another device, new or old -- is corrected in place, without
     /// interrupting anyone to say that there is now less to read.
-    Show { banner: bool },
+    Show {
+        /// Whether it also pops up over whatever the reader is doing.
+        banner: bool,
+    },
     /// Take the notification down.
     Withdraw,
 }

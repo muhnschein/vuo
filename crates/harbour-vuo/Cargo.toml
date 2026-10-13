@@ -23,11 +23,16 @@ path = "src/main.rs"
 # longer tolerate. See the workspace manifest.
 [lints.rust]
 warnings = "deny"
-# The workspace table says why each of these two is here.
+# The workspace table says why each of these three is here.
 unused_qualifications = "deny"
 trivial_casts = "deny"
+missing_docs = "deny"
 
 [lints.clippy]
+# See the workspace table, for these three.
+pedantic = { level = "deny", priority = -1 }
+too_many_lines = "allow"
+items_after_statements = "allow"
 unwrap_used = "deny"
 expect_used = "deny"
 panic = "deny"

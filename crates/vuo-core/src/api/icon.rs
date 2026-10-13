@@ -50,6 +50,12 @@ impl Default for IconLimits {
 ///
 /// Returns an [`Error::Item`] on any problem, so a bad icon costs the feed its
 /// icon and nothing else.
+///
+/// # Errors
+///
+/// Returns [`Error::Item`] when the payload is empty, is not valid base64,
+/// exceeds `limits.max_bytes`, is not a recognised image format, is an SVG, or
+/// declares a zero dimension or one larger than `limits.max_pixels_per_side`.
 pub fn decode_icon(w: &wire::Icon, limits: IconLimits) -> Result<Icon> {
     let reject = |why: &str| Error::item("icon", Some(w.id), why.to_owned());
 

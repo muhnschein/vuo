@@ -50,6 +50,7 @@ impl MediaUrl {
         Self::from_url(url)
     }
 
+    /// Wrap an already-parsed URL, returning `None` unless it is `http(s)`.
     #[must_use]
     pub fn from_url(url: Url) -> Option<Self> {
         match url.scheme() {
@@ -58,11 +59,13 @@ impl MediaUrl {
         }
     }
 
+    /// The URL as text.
     #[must_use]
     pub fn as_str(&self) -> &str {
         self.0.as_str()
     }
 
+    /// The underlying parsed URL.
     #[must_use]
     pub fn as_url(&self) -> &Url {
         &self.0
@@ -107,9 +110,7 @@ impl<'de> Deserialize<'de> for MediaUrl {
         MediaUrl::parse(&raw).ok_or_else(|| {
             serde::de::Error::custom(format!(
                 "expected an http(s) URL, got a {} one",
-                Url::parse(&raw)
-                    .map(|u| u.scheme().to_owned())
-                    .unwrap_or_else(|_| "malformed".to_owned())
+                Url::parse(&raw).map_or_else(|_| "malformed".to_owned(), |u| u.scheme().to_owned())
             ))
         })
     }

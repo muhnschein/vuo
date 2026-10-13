@@ -20,6 +20,7 @@ use crate::db::outbox::{self, DesiredValue};
 use crate::db::Database;
 use crate::error::{Error, Result};
 
+/// What a [`flush`] did with the outbox. Counts are entries, not batches.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct ReplayOutcome {
     /// Intents the server accepted and that were cleared locally.
@@ -38,6 +39,15 @@ pub struct ReplayOutcome {
 /// only then is a short transaction opened to record the result. Holding one
 /// open across the network call would block the UI's readers for the duration
 /// of a request, which on a phone with poor signal is seconds.
+///
+/// A server's refusal is not an error here: each batch is confirmed,
+/// deferred or dropped, and the counts say which. A credential failure
+/// stops the flush early with `auth_failed` set.
+///
+/// # Errors
+///
+/// [`Error::Db`] when reading the outbox or recording a batch's result
+/// fails. Batches already recorded stay recorded.
 pub async fn flush(db: &mut Database, client: &MinifluxClient) -> Result<ReplayOutcome> {
     let pending = outbox::pending(db.conn())?;
     let batches = outbox::batches(&pending);

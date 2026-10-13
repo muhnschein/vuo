@@ -4,7 +4,7 @@
 //!
 //! - **Device (`--features sailfishapp`).** Uses `SailfishApp::application()`
 //!   and `SailfishApp::createView()`. This matters: `QmlEngine::new()` builds a
-//!   **QtWidgets** `QApplication`, and a Silica app needs Sailfish's own
+//!   **`QtWidgets`** `QApplication`, and a Silica app needs Sailfish's own
 //!   application object for correct Wayland surfaces, the booster, and theme
 //!   setup.
 //!

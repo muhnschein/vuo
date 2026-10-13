@@ -338,15 +338,12 @@ pub fn html_text(html: &str) -> String {
             at = close.saturating_add(1);
         } else {
             let after = mark.saturating_add(1);
-            match decode_entity(html.get(after..).unwrap_or_default()) {
-                Some((ch, used)) => {
-                    out.push(ch);
-                    at = after.saturating_add(used);
-                }
-                None => {
-                    out.push('&');
-                    at = after;
-                }
+            if let Some((ch, used)) = decode_entity(html.get(after..).unwrap_or_default()) {
+                out.push(ch);
+                at = after.saturating_add(used);
+            } else {
+                out.push('&');
+                at = after;
             }
         }
         copied = at;

@@ -29,7 +29,7 @@ use vuo_core::notify::{Announcement, Announcer};
 
 use crate::context::AppContext;
 
-/// What [`Arrivals::review`] tells QML to do. Integers, because this
+/// What `Arrivals::review` tells QML to do. Integers, because this
 /// `qmetaobject` has no `qml_register_enum` on Qt 5.6 (see the crate docs).
 ///
 /// Leave the notification as it is.
@@ -41,6 +41,7 @@ pub const ANNOUNCE_QUIET: i32 = 2;
 /// Close it.
 pub const ANNOUNCE_WITHDRAW: i32 = 3;
 
+/// The QML object behind the new-articles notification; see the module docs.
 #[derive(QObject, Default)]
 pub struct Arrivals {
     base: qt_base_class!(trait QObject),

@@ -250,7 +250,7 @@ async fn an_auth_failure_stops_the_pass_rather_than_pulling_anyway() {
 async fn a_pass_prunes_only_when_a_retention_window_is_set() {
     // Two locally-held articles the server does not list, both published in
     // January and read long ago. One is a favourite.
-    async fn seeded() -> Database {
+    fn seeded() -> Database {
         let mut db = Database::open_in_memory().expect("mirror");
         db.with_tx(|tx| {
             tx.execute("INSERT INTO feeds (id, title) VALUES (1, 'Feed')", [])?;
@@ -270,7 +270,7 @@ async fn a_pass_prunes_only_when_a_retention_window_is_set() {
 
     // Off by default, which is what every version before this did and what an
     // install that has never opened Settings still means.
-    let mut db = seeded().await;
+    let mut db = seeded();
     let report = sync::sync(&mut db, &client, SyncOptions::default())
         .await
         .expect("sync");
@@ -282,7 +282,7 @@ async fn a_pass_prunes_only_when_a_retention_window_is_set() {
     );
 
     // And on, with a window that closed months ago.
-    let mut db = seeded().await;
+    let mut db = seeded();
     let options = SyncOptions {
         retention_secs: Some(30 * 24 * 60 * 60),
         ..SyncOptions::default()

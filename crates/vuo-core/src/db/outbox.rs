@@ -69,7 +69,9 @@ pub const MAX_IDS_PER_REQUEST: usize = 500;
 /// Which field of an entry an intent concerns.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum OutboxField {
+    /// Read or unread.
     Status,
+    /// Starred or not.
     Starred,
 }
 
@@ -85,7 +87,9 @@ impl OutboxField {
 /// A desired absolute value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum DesiredValue {
+    /// The entry should end up with this read status.
     Status(EntryStatus),
+    /// The entry should end up starred (`true`) or unstarred (`false`).
     Starred(bool),
 }
 
@@ -122,15 +126,21 @@ impl DesiredValue {
 /// One queued intent.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PendingMutation {
+    /// The entry the intent is for.
     pub entry_id: EntryId,
+    /// The value the user wants the server to hold.
     pub value: DesiredValue,
+    /// Failed sends since this value was queued; reset when the user queues a
+    /// new value for the same field.
     pub attempts: i64,
 }
 
 /// A group of intents that share a field and a value, ready to be one request.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Batch {
+    /// The value every entry in the batch should take.
     pub value: DesiredValue,
+    /// The entries, at most [`MAX_IDS_PER_REQUEST`] and never empty.
     pub entry_ids: Vec<EntryId>,
 }
 
@@ -139,6 +149,12 @@ pub struct Batch {
 /// Both halves matter. The local write is what makes the UI respond instantly
 /// and keeps §5's "the mirror is the source of truth for the UI" true while
 /// offline; the queue row is what eventually tells the server.
+///
+/// # Errors
+///
+/// Returns [`Error::Db`](crate::error::Error::Db) if either write fails.
+/// Queueing for an entry that is not in the mirror is not an error: the outbox
+/// row is written and the local update touches nothing.
 pub fn queue(tx: &Transaction<'_>, entry_id: EntryId, value: DesiredValue, now: i64) -> Result<()> {
     // Upsert, not insert: this is what collapses a burst of toggles into one
     // row and keeps the queue bounded. `attempts` resets because a new value
@@ -175,6 +191,13 @@ pub fn queue(tx: &Transaction<'_>, entry_id: EntryId, value: DesiredValue, now: 
 ///
 /// Expands to concrete ids rather than queueing the server's bulk endpoint;
 /// see the module docs for why that endpoint is unsafe to replay.
+///
+/// Returns how many entries were queued.
+///
+/// # Errors
+///
+/// Returns [`Error::Db`](crate::error::Error::Db) if reading the unread ids or
+/// queueing any of them fails.
 pub fn queue_mark_feed_read(tx: &Transaction<'_>, feed_id: i64, now: i64) -> Result<usize> {
     let ids: Vec<i64> = {
         let mut stmt =
@@ -194,6 +217,11 @@ pub fn queue_mark_feed_read(tx: &Transaction<'_>, feed_id: i64, now: i64) -> Res
 }
 
 /// As [`queue_mark_feed_read`], for a whole category.
+///
+/// # Errors
+///
+/// Returns [`Error::Db`](crate::error::Error::Db) if reading the unread ids or
+/// queueing any of them fails.
 pub fn queue_mark_category_read(tx: &Transaction<'_>, category_id: i64, now: i64) -> Result<usize> {
     let ids: Vec<i64> = {
         let mut stmt = tx.prepare(
@@ -216,6 +244,13 @@ pub fn queue_mark_category_read(tx: &Transaction<'_>, category_id: i64, now: i64
 }
 
 /// Every pending intent, oldest first.
+///
+/// Rows this build cannot parse (queued by a newer Vuo) are skipped, not
+/// returned.
+///
+/// # Errors
+///
+/// Returns [`Error::Db`](crate::error::Error::Db) if the outbox cannot be read.
 pub fn pending(conn: &Connection) -> Result<Vec<PendingMutation>> {
     let mut stmt = conn.prepare(
         "SELECT entry_id, field, value, attempts FROM outbox ORDER BY queued_at ASC, entry_id ASC",
@@ -250,6 +285,10 @@ pub fn pending(conn: &Connection) -> Result<Vec<PendingMutation>> {
 ///
 /// Used by the pull to resolve conflicts **per field**: a remote read-status
 /// change must not clobber a local pending star.
+///
+/// # Errors
+///
+/// Returns [`Error::Db`](crate::error::Error::Db) if the outbox cannot be read.
 pub fn pending_for(
     conn: &Connection,
     entry_id: EntryId,
@@ -304,6 +343,10 @@ pub fn batches(pending: &[PendingMutation]) -> Vec<Batch> {
 ///
 /// Returns how many rows were actually cleared, which is less than the batch
 /// size exactly when something was re-toggled mid-flight.
+///
+/// # Errors
+///
+/// Returns [`Error::Db`](crate::error::Error::Db) if a delete fails.
 pub fn confirm(tx: &Transaction<'_>, batch: &Batch) -> Result<usize> {
     let field = batch.value.field().as_str();
     let value = batch.value.as_str();
@@ -321,6 +364,13 @@ pub fn confirm(tx: &Transaction<'_>, batch: &Batch) -> Result<usize> {
 }
 
 /// Record a failed attempt without losing the intent.
+///
+/// Bumps `attempts` and stores `error` on every row in the batch, whatever
+/// value the row now holds.
+///
+/// # Errors
+///
+/// Returns [`Error::Db`](crate::error::Error::Db) if an update fails.
 pub fn record_failure(tx: &Transaction<'_>, batch: &Batch, error: &str) -> Result<()> {
     let field = batch.value.field().as_str();
     let mut stmt = tx.prepare(
@@ -337,11 +387,24 @@ pub fn record_failure(tx: &Transaction<'_>, batch: &Batch, error: &str) -> Resul
 ///
 /// Only for genuinely unrecoverable rejections (a 400 means the payload will
 /// be rejected identically forever). Called deliberately, never on a timeout.
+///
+/// The same compare-and-delete as [`confirm`], so a row re-toggled since the
+/// batch was built survives. Returns how many rows were dropped.
+///
+/// # Errors
+///
+/// Returns [`Error::Db`](crate::error::Error::Db) if a delete fails.
 pub fn discard(tx: &Transaction<'_>, batch: &Batch) -> Result<usize> {
     confirm(tx, batch)
 }
 
 /// How many intents are waiting.
+///
+/// Counts every row, including any [`pending`] would skip as unrecognised.
+///
+/// # Errors
+///
+/// Returns [`Error::Db`](crate::error::Error::Db) if the count query fails.
 pub fn len(conn: &Connection) -> Result<i64> {
     Ok(conn.query_row("SELECT COUNT(*) FROM outbox", [], |r| r.get(0))?)
 }
@@ -389,7 +452,12 @@ mod tests {
         let mut db = db_with_entries(1);
         db.with_tx(|tx| {
             for (i, starred) in [true, false, true, false, true].into_iter().enumerate() {
-                queue(tx, EntryId(1), DesiredValue::Starred(starred), i as i64)?;
+                queue(
+                    tx,
+                    EntryId(1),
+                    DesiredValue::Starred(starred),
+                    i64::try_from(i).unwrap(),
+                )?;
             }
             Ok(())
         })
@@ -594,6 +662,6 @@ mod tests {
                 [],
             )
             .unwrap();
-        assert!(pending(db.conn()).unwrap().is_empty());
+        assert_eq!(pending(db.conn()).unwrap(), Vec::new());
     }
 }

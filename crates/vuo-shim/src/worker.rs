@@ -84,7 +84,9 @@ pub const FLUSH_AFTER_START: std::time::Duration = std::time::Duration::from_sec
 /// What the worker does when its wait ends with no command having arrived.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DueWork {
+    /// The interval sync is due.
     Sync,
+    /// The debounced outbox flush is due; see [`FLUSH_DEBOUNCE`].
     Flush,
 }
 
@@ -145,8 +147,11 @@ pub struct WorkerAccount {
     /// The mirror. The worker opens its own connection to it; the Qt thread
     /// has a second one, and WAL is what makes that safe.
     pub database: PathBuf,
+    /// The Miniflux instance to talk to.
     pub server: url::Url,
+    /// The API key, which redacts itself in logs.
     pub token: ApiToken,
+    /// TLS settings, including a custom CA when one is configured.
     pub transport: TransportConfig,
 }
 
@@ -189,19 +194,25 @@ pub enum Command {
     /// Subscribe to a feed. The *server* discovers and fetches it; §3 makes
     /// local feed fetching the project's most important boundary.
     Subscribe {
+        /// The address the user entered; the server finds the feed from it.
         feed_url: String,
     },
+    /// Unsubscribe from a feed on the server.
     Unsubscribe {
+        /// The server's id for the feed.
         feed_id: i64,
     },
     /// Change a feed's settings on the server, then mirror the result.
     UpdateFeed {
+        /// The server's id for the feed.
         feed_id: i64,
+        /// The settings to change; fields left `None` are not touched.
         update: vuo_core::api::client::FeedPatch,
     },
     /// Ask the server to scrape the original article (§3: use the server's
     /// endpoint, never a local Readability port).
     FetchOriginal {
+        /// The server's id for the entry.
         entry_id: i64,
     },
     /// Verify the configured credentials, for the settings screen.
@@ -218,12 +229,14 @@ pub enum Command {
     /// knows of (the stamp beside the mirror), so a restart does not sync
     /// at once if the mirror is fresh.
     SetSyncInterval {
+        /// Minutes between automatic syncs, or `None` for "Manual only".
         minutes: Option<i64>,
     },
     /// How long read, unfavourited articles are kept in the mirror, in
     /// seconds; `None` for "keep everything". Sent alongside
     /// [`Command::SetSyncInterval`] and applied at the end of the next pass.
     SetRetention {
+        /// The retention window in seconds, or `None` to keep everything.
         seconds: Option<i64>,
     },
     /// Whether the user has asked that Vuo sync only over Wi-Fi.
@@ -234,8 +247,10 @@ pub enum Command {
     /// subscribed to, a connection they asked to test. The setting is about
     /// what Vuo does on its own.
     SetWifiOnly {
+        /// True to sync automatically only over Wi-Fi.
         enabled: bool,
     },
+    /// Stop the worker thread. Sent by `Worker`'s `Drop`.
     Shutdown,
 }
 
@@ -268,36 +283,50 @@ impl Command {
 /// What the worker reports back.
 #[derive(Debug, Clone)]
 pub enum Event {
+    /// A sync pass has begun.
     SyncStarted,
+    /// A sync pass, or an outbox flush, completed.
     SyncFinished {
+        /// The mirror's unread count afterwards.
         unread: i64,
+        /// Whether the mirror was written to.
         changed: bool,
     },
     /// Already-redacted, user-presentable text. Rendered as plain text (§9.3).
     SyncFailed {
+        /// What went wrong.
         message: String,
     },
     /// The API key was rejected; the UI should send the user to settings.
     AuthFailed,
     /// A subscribe or unsubscribe finished. `message` is empty on success.
     SubscriptionChanged {
+        /// Whether the server accepted the change.
         ok: bool,
+        /// The server's error text on failure (foreign text).
         message: String,
     },
     /// A feed's settings were changed. `message` is empty on success.
     FeedUpdated {
+        /// The server's id for the feed.
         feed_id: i64,
+        /// Whether the server accepted the change.
         ok: bool,
+        /// The server's error text on failure (foreign text).
         message: String,
     },
     /// The server returned scraped content for an entry.
     OriginalContentFetched {
+        /// The server's id for the entry.
         entry_id: i64,
+        /// Whether the scraped content was stored.
         ok: bool,
     },
     /// Result of a settings-screen connection test.
     ConnectionTested {
+        /// Whether the server accepted the credentials.
         ok: bool,
+        /// The username on success, the error text otherwise.
         message: String,
     },
 }
@@ -361,12 +390,15 @@ impl Drop for CommandGuard<'_> {
     }
 }
 
-/// A handle to the worker thread.
 /// Write an accepted feed update into the mirror.
 ///
 /// Only the fields the update actually carried: a `None` here means the user
 /// did not touch that setting, and writing a default over it would revert a
 /// value set from the web UI.
+///
+/// # Errors
+///
+/// Returns [`vuo_core::Error::Db`] if any of the updates fails.
 pub fn apply_feed_patch(
     tx: &rusqlite::Transaction<'_>,
     feed_id: i64,
@@ -444,6 +476,9 @@ pub fn classify_scrape(previous: &str, scraped: &str) -> ScrapeVerdict {
     }
 }
 
+/// A handle to the worker thread.
+///
+/// Dropping it sends [`Command::Shutdown`] and joins the thread.
 pub struct Worker {
     tx: mpsc::Sender<Command>,
     handle: Option<thread::JoinHandle<()>>,
@@ -589,25 +624,23 @@ impl Worker {
                                         }
                                         continue;
                                     }
-                                    match work {
-                                        Some(DueWork::Flush) => {
-                                            flush_due = None;
-                                            flush_fell_due = true;
-                                            Command::FlushOutbox
-                                        }
+                                    if let Some(DueWork::Flush) = work {
+                                        flush_due = None;
+                                        flush_fell_due = true;
+                                        Command::FlushOutbox
+                                    } else {
                                         // `None` cannot happen -- the wait
                                         // ended because one of the two
                                         // deadlines passed -- but a sync is
                                         // the safe reading of it either way,
                                         // and it is what the loop did before
                                         // there was a second deadline.
-                                        _ => {
-                                            // As `requestSync` does before
-                                            // sending, so the cover and the
-                                            // list show it.
-                                            signal.set_running(true);
-                                            Command::Sync
-                                        }
+                                        //
+                                        // As `requestSync` does before
+                                        // sending, so the cover and the list
+                                        // show it.
+                                        signal.set_running(true);
+                                        Command::Sync
                                     }
                                 }
                                 Err(mpsc::RecvTimeoutError::Disconnected) => break,
@@ -1119,6 +1152,7 @@ impl Worker {
     }
 
     /// Ask the worker to do something. Returns `false` if it has stopped.
+    #[must_use]
     pub fn send(&self, command: Command) -> bool {
         self.tx.send(command).is_ok()
     }
@@ -1148,6 +1182,11 @@ impl Drop for Worker {
 /// The write is a fast local transaction, and doing it inline is what lets the
 /// UI update in the same frame as the tap. The server hears about it on the
 /// next flush; that is the whole point of the outbox.
+///
+/// # Errors
+///
+/// Returns [`vuo_core::Error::Db`] if the transaction cannot be opened or
+/// committed, or the outbox or entry write fails.
 pub fn apply_local_status(
     db: &mut Database,
     id: EntryId,
@@ -1157,6 +1196,12 @@ pub fn apply_local_status(
     db.with_tx(|tx| outbox::queue(tx, id, DesiredValue::Status(status), now))
 }
 
+/// As [`apply_local_status`], for the starred flag.
+///
+/// # Errors
+///
+/// Returns [`vuo_core::Error::Db`] if the transaction cannot be opened or
+/// committed, or the outbox or entry write fails.
 pub fn apply_local_starred(db: &mut Database, id: EntryId, starred: bool) -> vuo_core::Result<()> {
     let now = chrono_now();
     db.with_tx(|tx| outbox::queue(tx, id, DesiredValue::Starred(starred), now))
@@ -1167,6 +1212,13 @@ pub fn apply_local_starred(db: &mut Database, id: EntryId, starred: bool) -> vuo
 /// Used by "mark all read" in a scope that has no server-side equivalent
 /// (unread, starred, all), where the intent has to be expanded over the
 /// concrete entries the user is actually looking at.
+///
+/// Returns how many entries were queued, which is always `ids.len()`.
+///
+/// # Errors
+///
+/// Returns [`vuo_core::Error::Db`] if any write fails. The whole batch is
+/// one transaction, so a failure leaves none of it applied.
 pub fn apply_local_status_bulk(
     db: &mut Database,
     ids: &[EntryId],
@@ -1181,11 +1233,26 @@ pub fn apply_local_status_bulk(
     })
 }
 
+/// Mark every unread entry in a feed read, locally and in the outbox.
+///
+/// Expands to the concrete unread entries in the mirror, one outbox row
+/// each, and returns how many there were.
+///
+/// # Errors
+///
+/// Returns [`vuo_core::Error::Db`] if reading the unread entries or queueing
+/// any of them fails; the transaction then applies none of it.
 pub fn apply_local_mark_feed_read(db: &mut Database, feed_id: i64) -> vuo_core::Result<usize> {
     let now = chrono_now();
     db.with_tx(|tx| outbox::queue_mark_feed_read(tx, feed_id, now))
 }
 
+/// As [`apply_local_mark_feed_read`], for every feed in a category.
+///
+/// # Errors
+///
+/// Returns [`vuo_core::Error::Db`] if reading the unread entries or queueing
+/// any of them fails; the transaction then applies none of it.
 pub fn apply_local_mark_category_read(
     db: &mut Database,
     category_id: i64,
@@ -1197,22 +1264,23 @@ pub fn apply_local_mark_category_read(
 fn chrono_now() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0)
+        .map_or(0, |d| i64::try_from(d.as_secs()).unwrap_or(i64::MAX))
 }
 
 /// Where Vuo keeps its data and credentials on a device.
 ///
 /// §7: *the API key is stored under the app's data directory with restrictive
 /// permissions, relying on Sailfish's home encryption. No custom keyring, no
-/// SQLCipher, unless a concrete threat model justifies it.*
+/// `SQLCipher`, unless a concrete threat model justifies it.*
 ///
 /// The token deliberately does **not** live in the SQLite mirror. The mirror is
 /// a cache that can be deleted, copied for debugging, or handed to a developer
 /// with a bug report; a credential in it would travel with all of that.
 #[derive(Debug, Clone)]
 pub struct AppPaths {
+    /// The SQLite mirror.
     pub database: PathBuf,
+    /// The account file: server, API key and settings, as JSON.
     pub account: PathBuf,
     /// Where a user-supplied CA certificate is expected, for a self-hosted
     /// instance with a private certificate authority (§9.1). A fixed path
@@ -1323,7 +1391,9 @@ pub fn record_sync_time(stamp: &std::path::Path) {
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[serde(default)]
 pub struct Account {
+    /// The Miniflux instance's address, as the user entered it.
     pub server_url: String,
+    /// The API key.
     pub token: String,
     /// Whether to trust the CA certificate at [`AppPaths::ca_certificate`].
     ///
@@ -1339,6 +1409,7 @@ pub struct Account {
     #[serde(default = "default_sync_interval_index")]
     pub sync_interval_index: i32,
     #[serde(default)]
+    /// Whether automatic syncs are limited to Wi-Fi; see [`Command::SetWifiOnly`].
     pub wifi_only: bool,
     /// When an opened article is marked read. See `settings::MARK_READ_*`.
     #[serde(default = "default_mark_read_delay_index")]
@@ -1393,6 +1464,12 @@ impl Default for Account {
 }
 
 /// Read the account file.
+///
+/// # Errors
+///
+/// Returns [`vuo_core::Error::Config`] if the file cannot be read (including
+/// when it does not exist yet) or is not a valid account. The message never
+/// quotes the file's contents.
 pub fn load_account(path: &std::path::Path) -> vuo_core::Result<Account> {
     let raw = std::fs::read_to_string(path)
         .map_err(|e| vuo_core::Error::Config(format!("could not read the account file: {e}")))?;
@@ -1421,6 +1498,12 @@ pub fn load_account(path: &std::path::Path) -> vuo_core::Result<Account> {
 /// covered by tightening the mode explicitly after the open, which is safe in
 /// the same sense: `truncate(true)` has already emptied the file, so the
 /// permissions are narrowed before any secret goes in.
+///
+/// # Errors
+///
+/// Returns [`vuo_core::Error::Config`] if the data directory cannot be
+/// created, the file cannot be opened or restricted to mode 0600, or the
+/// account cannot be encoded or written.
 pub fn save_account(path: &std::path::Path, account: &Account) -> vuo_core::Result<()> {
     use std::io::Write as _;
 
@@ -1470,14 +1553,17 @@ pub fn save_account(path: &std::path::Path, account: &Account) -> vuo_core::Resu
 /// present, connecting to an `http://` server failed with "the custom CA
 /// certificate ... could not be read", which names a file the user has no
 /// reason to have and a problem they do not have.
+///
+/// # Errors
+///
+/// Returns [`vuo_core::Error::Config`] if the account uses a custom CA with
+/// an `https` server and the certificate file cannot be read.
 pub fn transport_config_for(
     paths: &AppPaths,
     account: &Account,
 ) -> vuo_core::Result<TransportConfig> {
     let mut config = TransportConfig::default();
-    let uses_tls = url::Url::parse(&account.server_url)
-        .map(|u| u.scheme() == "https")
-        .unwrap_or(false);
+    let uses_tls = url::Url::parse(&account.server_url).is_ok_and(|u| u.scheme() == "https");
     if account.use_custom_ca && uses_tls {
         let pem = std::fs::read(&paths.ca_certificate).map_err(|e| {
             // Loud, never silent. Falling back to the platform roots here would
@@ -1908,7 +1994,7 @@ EQBBQIobIy41+aQiMsM0XBYH3Q==\n\
     #[test]
     fn a_sync_subsumes_a_flush_that_falls_due_with_it() {
         let now = std::time::Instant::now();
-        let past = now - std::time::Duration::from_secs(1);
+        let past = now.checked_sub(std::time::Duration::from_secs(1)).unwrap();
 
         assert_eq!(
             due_work(Some(past), Some(past), now),

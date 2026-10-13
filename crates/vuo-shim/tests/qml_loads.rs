@@ -1,7 +1,7 @@
 //! Loading every QML file in a real QML engine, headlessly.
 //!
 //! §8.1 asks for Silica stubs so QML can be linted on a CI runner without the
-//! SailfishOS SDK. Qt 5's `qmllint` only checks *syntax*, so on its own it
+//! `SailfishOS` SDK. Qt 5's `qmllint` only checks *syntax*, so on its own it
 //! would pass a file that references a type that does not exist or sets a
 //! property that was never declared — which is most of the mistakes actually
 //! made in QML.
@@ -52,7 +52,7 @@ const CHILD_VAR: &str = "VUO_QML_LOAD_ONE";
 ///
 /// The two are not the same claim. Qt reads images on a thread of its own, and
 /// a process that calls `exit` while one is mid-read runs Qt's static
-/// destructors out from under it: "QMutex: destroying locked mutex", and then
+/// destructors out from under it: "`QMutex`: destroying locked mutex", and then
 /// a crash, in a process whose actual work was already finished. That crash
 /// says nothing at all about the QML -- but as an exit code it was
 /// indistinguishable from a file that would not load.
@@ -212,7 +212,11 @@ fn every_page_reference_resolves_to_a_file() {
                 let Some(end) = after.find('"') else { break };
                 let target = &after[..end];
                 rest = &after[end..];
-                if !target.ends_with(".qml") {
+                // Exact case: QML resolves an import on a case-sensitive file system.
+                if std::path::Path::new(target)
+                    .extension()
+                    .is_none_or(|e| e != "qml")
+                {
                     continue;
                 }
                 checked += 1;
@@ -271,7 +275,10 @@ fn every_texture_the_qml_names_is_a_mask_that_exists() {
             let Some(end) = after.find('"') else { continue };
             let target = &after[..end];
             // `image://theme/...` is Silica's own provider, not a file.
-            if !target.ends_with(".png") {
+            if std::path::Path::new(target)
+                .extension()
+                .is_none_or(|e| e != "png")
+            {
                 continue;
             }
             checked += 1;
