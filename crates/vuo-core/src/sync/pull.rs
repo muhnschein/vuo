@@ -65,13 +65,17 @@ pub const PAGE_SIZE: u32 = 250;
 /// forever against the user's data allowance.
 pub const MAX_PAGES_PER_PASS: usize = 400;
 
+/// What one [`entries`] pass did.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct PullOutcome {
+    /// Entries that validated and were written to the mirror.
     pub upserted: usize,
+    /// Entries dropped because they failed validation.
     pub rejected: usize,
     /// Entries a pre-2.3 server reported as `removed` and that were deleted
     /// locally as a result.
     pub removed: usize,
+    /// Pages requested, including the final short one.
     pub pages: usize,
     /// The cursor to persist if the whole pass succeeds.
     pub next_cursor: Option<i64>,
@@ -79,6 +83,19 @@ pub struct PullOutcome {
 
 /// Pull categories and feeds. Cheap, and needed before entries so that an
 /// entry's feed exists when the UI joins against it.
+///
+/// Per-item conversion failures drop that item and are not errors.
+///
+/// # Errors
+///
+/// - [`Error::Transport`], [`Error::Http`] or [`Error::Protocol`] when
+///   either listing request fails.
+/// - [`Error::Db`] when writing to or reading from the mirror fails.
+///
+/// [`Error::Transport`]: crate::error::Error::Transport
+/// [`Error::Http`]: crate::error::Error::Http
+/// [`Error::Protocol`]: crate::error::Error::Protocol
+/// [`Error::Db`]: crate::error::Error::Db
 pub async fn taxonomy(db: &mut Database, client: &MinifluxClient, generation: i64) -> Result<()> {
     // Deliberately SEQUENTIAL, though the two listings are independent.
     //
@@ -195,6 +212,20 @@ pub fn arrival_for(entry: &Entry, cursor: Option<i64>) -> store::Arrival {
 ///
 /// Returns the cursor to persist; the caller stores it only after everything
 /// else in the sync has committed.
+///
+/// # Errors
+///
+/// - [`Error::Transport`], [`Error::Http`] or [`Error::Protocol`] when any
+///   page request fails.
+/// - [`Error::Db`] when writing a page to the mirror fails.
+///
+/// Pages written before the failure stay written; no cursor is returned, so
+/// the next pass re-reads the window.
+///
+/// [`Error::Transport`]: crate::error::Error::Transport
+/// [`Error::Http`]: crate::error::Error::Http
+/// [`Error::Protocol`]: crate::error::Error::Protocol
+/// [`Error::Db`]: crate::error::Error::Db
 pub async fn entries(
     db: &mut Database,
     client: &MinifluxClient,
@@ -213,6 +244,10 @@ pub async fn entries(
 /// written, so the branch was dead under test: replacing its body with a panic
 /// left every test in the suite green. Injecting the cap makes it reachable in
 /// milliseconds.
+///
+/// # Errors
+///
+/// As for [`entries`].
 pub async fn entries_with_page_cap(
     db: &mut Database,
     client: &MinifluxClient,
@@ -328,6 +363,17 @@ pub async fn entries_with_page_cap(
 /// worth its cost.
 ///
 /// Returns the feed ids that disagree.
+///
+/// # Errors
+///
+/// - [`Error::Transport`], [`Error::Http`] or [`Error::Protocol`] when the
+///   counters request fails.
+/// - [`Error::Db`] when reading the local counts fails.
+///
+/// [`Error::Transport`]: crate::error::Error::Transport
+/// [`Error::Http`]: crate::error::Error::Http
+/// [`Error::Protocol`]: crate::error::Error::Protocol
+/// [`Error::Db`]: crate::error::Error::Db
 pub async fn diverging_feeds(db: &Database, client: &MinifluxClient) -> Result<Vec<i64>> {
     let counters = client.counters().await?;
     let local = store::entry_counts_by_feed(db.conn())?;
@@ -384,6 +430,21 @@ pub async fn diverging_feeds(db: &Database, client: &MinifluxClient) -> Result<V
 /// reported, and a mismatch **aborts the reconcile** rather than deleting
 /// anything. A reconcile that does not run is a cache that stays slightly
 /// stale; a reconcile that runs on a torn listing destroys the user's data.
+///
+/// # Errors
+///
+/// - [`Error::Transport`], [`Error::Http`] or [`Error::Protocol`] when any
+///   page of the id listing fails, including [`Error::Http`] from a server
+///   without the endpoint.
+/// - [`Error::Db`] when reading local ids or deleting stale entries fails.
+///
+/// A listing that fails the guard is not an error: it returns
+/// `Ok` with `completed` false and nothing deleted.
+///
+/// [`Error::Transport`]: crate::error::Error::Transport
+/// [`Error::Http`]: crate::error::Error::Http
+/// [`Error::Protocol`]: crate::error::Error::Protocol
+/// [`Error::Db`]: crate::error::Error::Db
 pub async fn reconcile(db: &mut Database, client: &MinifluxClient) -> Result<Reconcile> {
     // The server caps `limit` at 1000 and `EntriesQuery` clamps to it, so
     // asking for 10_000 silently yielded 1000 -- and the loop's
@@ -476,7 +537,9 @@ pub async fn reconcile(db: &mut Database, client: &MinifluxClient) -> Result<Rec
 /// actually checked.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Reconcile {
+    /// `true` when the listing passed the guard and stale entries were removed.
     pub completed: bool,
+    /// Local entries deleted because the server no longer lists them.
     pub deleted: usize,
 }
 

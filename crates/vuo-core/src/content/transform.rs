@@ -18,7 +18,7 @@
 //! §9.2: *allowlist, never blocklist. A blocklist is a promise to have thought
 //! of every tag, which nobody can keep.* Recognised elements map to
 //! [`BlockKind`] variants or to inline styles; everything else falls through to
-//! [`Disposition::Flatten`], which drops the tag and keeps its text. There is
+//! `Disposition::Flatten`, which drops the tag and keeps its text. There is
 //! no passthrough path, so an element nobody has heard of renders as its text
 //! content and nothing more.
 //!
@@ -96,6 +96,7 @@ pub struct TransformContext {
     pub base_url: Option<Url>,
     /// What to do about remote media (§9.3).
     pub media: MediaPolicy,
+    /// The resource caps the transform enforces.
     pub limits: Limits,
 }
 

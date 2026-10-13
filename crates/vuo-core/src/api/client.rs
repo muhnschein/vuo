@@ -41,13 +41,21 @@ pub enum EntryOrder {
     /// identical timestamp, and paging through them will silently skip and
     /// duplicate. `id` is the primary key, so it is a total order with no ties.
     Id,
+    /// By publication date (`published_at`). Unstable for pagination.
     PublishedAt,
+    /// By the server's last-change time (`changed_at`). Unstable for pagination.
     ChangedAt,
+    /// By when the server first stored the entry (`created_at`). Unstable for pagination.
     CreatedAt,
+    /// By category title. Unstable for pagination.
     CategoryTitle,
+    /// By category id. Unstable for pagination.
     CategoryId,
+    /// By read state. Unstable for pagination.
     Status,
+    /// By entry title. Unstable for pagination.
     Title,
+    /// By author. Unstable for pagination.
     Author,
 }
 
@@ -67,9 +75,12 @@ impl EntryOrder {
     }
 }
 
+/// The direction of an entry-list sort.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SortDirection {
+    /// Ascending.
     Asc,
+    /// Descending.
     Desc,
 }
 
@@ -130,6 +141,8 @@ impl EntriesQuery {
         self
     }
 
+    /// Only entries whose id is greater than `id`: the keyset cursor. `None`
+    /// omits the parameter.
     #[must_use]
     pub fn after_entry_id(mut self, id: Option<EntryId>) -> Self {
         self.after_entry_id = id;
@@ -144,24 +157,29 @@ impl EntriesQuery {
         self
     }
 
+    /// Only starred (`Some(true)`) or only unstarred (`Some(false)`) entries.
+    /// `None` omits the filter.
     #[must_use]
     pub fn starred(mut self, starred: Option<bool>) -> Self {
         self.starred = starred;
         self
     }
 
+    /// Adds a `feed_id` filter. `None` omits it.
     #[must_use]
     pub fn feed_id(mut self, id: Option<i64>) -> Self {
         self.feed_id = id;
         self
     }
 
+    /// Adds a `category_id` filter. `None` omits it.
     #[must_use]
     pub fn category_id(mut self, id: Option<i64>) -> Self {
         self.category_id = id;
         self
     }
 
+    /// The page size this query requests, always in `1..=1000`.
     #[must_use]
     pub fn limit(&self) -> u32 {
         self.limit
@@ -194,10 +212,15 @@ impl EntriesQuery {
 /// What an entry-state write should set. Both are absolute values.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EntryMutation {
+    /// Set the read state.
     Status(EntryStatus),
+    /// Set or clear the star.
     Starred(bool),
 }
 
+/// A client for one Miniflux instance's REST API.
+///
+/// Clones share the cached server version.
 #[derive(Debug, Clone)]
 pub struct MinifluxClient {
     transport: Transport,
@@ -212,6 +235,8 @@ pub struct MinifluxClient {
 }
 
 impl MinifluxClient {
+    /// A client that sends through `transport`. The server version starts
+    /// unknown; [`Self::version`] or the first entry-state write fills it in.
     #[must_use]
     pub fn new(transport: Transport) -> Self {
         MinifluxClient {
@@ -220,6 +245,7 @@ impl MinifluxClient {
         }
     }
 
+    /// The transport this client sends through.
     #[must_use]
     pub fn transport(&self) -> &Transport {
         &self.transport
@@ -283,6 +309,15 @@ impl MinifluxClient {
     /// Each call refetches and refreshes the cache: the answer changes when
     /// the instance's owner upgrades their Miniflux, and `sync` calls this on
     /// its version-check TTL precisely to notice that.
+    ///
+    /// An unparseable version string is not an error: it is treated as the
+    /// oldest version Vuo supports ([`ServerVersion::default`]).
+    ///
+    /// # Errors
+    ///
+    /// - [`Error::Transport`] when no response arrives.
+    /// - [`Error::Http`] when the server answers with a non-2xx status.
+    /// - [`Error::Protocol`] when the body is not the expected JSON.
     pub async fn version(&self) -> Result<ServerVersion> {
         let w: wire::VersionResponse = self.get_json(self.url("/v1/version")).await?;
         let version = ServerVersion::parse(&w.version).unwrap_or_default();
@@ -331,20 +366,51 @@ impl MinifluxClient {
     }
 
     /// `GET /v1/me`. Used to verify that an API key works during setup.
+    ///
+    /// # Errors
+    ///
+    /// - [`Error::Transport`] when no response arrives.
+    /// - [`Error::Http`] when the server answers with a non-2xx status, including
+    ///   401 or 403 for a rejected API key.
+    /// - [`Error::Protocol`] when the body is not the expected JSON.
     pub async fn me(&self) -> Result<wire::User> {
         self.get_json(self.url("/v1/me")).await
     }
 
     // -------------------------------------------------------------- reading
 
+    /// `GET /v1/categories`: every category the user has.
+    ///
+    /// # Errors
+    ///
+    /// - [`Error::Transport`] when no response arrives.
+    /// - [`Error::Http`] when the server answers with a non-2xx status.
+    /// - [`Error::Protocol`] when the body is not the expected JSON.
     pub async fn categories(&self) -> Result<Vec<wire::Category>> {
         self.get_json(self.url("/v1/categories")).await
     }
 
+    /// `GET /v1/feeds`: every feed the user subscribes to.
+    ///
+    /// # Errors
+    ///
+    /// - [`Error::Transport`] when no response arrives.
+    /// - [`Error::Http`] when the server answers with a non-2xx status.
+    /// - [`Error::Protocol`] when the body is not the expected JSON.
     pub async fn feeds(&self) -> Result<Vec<wire::Feed>> {
         self.get_json(self.url("/v1/feeds")).await
     }
 
+    /// `GET /v1/entries`: one page of entries matching `query`.
+    ///
+    /// Also returns the response's `Date` header when it parsed, so the caller
+    /// can anchor its sync cursor to the server's clock rather than the phone's.
+    ///
+    /// # Errors
+    ///
+    /// - [`Error::Transport`] when no response arrives.
+    /// - [`Error::Http`] when the server answers with a non-2xx status.
+    /// - [`Error::Protocol`] when the body is not the expected JSON.
     pub async fn entries(
         &self,
         query: &EntriesQuery,
@@ -358,6 +424,14 @@ impl MinifluxClient {
         Ok((body, date))
     }
 
+    /// `GET /v1/entries/{id}`: a single entry.
+    ///
+    /// # Errors
+    ///
+    /// - [`Error::Transport`] when no response arrives.
+    /// - [`Error::Http`] when the server answers with a non-2xx status, such as
+    ///   404 for an id it does not have.
+    /// - [`Error::Protocol`] when the body is not the expected JSON.
     pub async fn entry(&self, id: EntryId) -> Result<wire::Entry> {
         self.get_json(self.url(&format!("/v1/entries/{}", id.get())))
             .await
@@ -365,6 +439,15 @@ impl MinifluxClient {
 
     /// `GET /v1/entries/ids`. Present only from 2.3.2; check
     /// [`ServerVersion::has_entry_ids_endpoint`] before calling.
+    ///
+    /// `offset` skips that many ids into the result.
+    ///
+    /// # Errors
+    ///
+    /// - [`Error::Transport`] when no response arrives.
+    /// - [`Error::Http`] when the server answers with a non-2xx status, including
+    ///   on a server too old to have the endpoint.
+    /// - [`Error::Protocol`] when the body is not the expected JSON.
     pub async fn entry_ids(
         &self,
         query: &EntriesQuery,
@@ -377,11 +460,27 @@ impl MinifluxClient {
         self.get_json(url).await
     }
 
+    /// `GET /v1/feeds/{id}/icon`: the feed's icon, still encoded and unchecked.
+    /// Pass it through [`crate::api::icon::decode_icon`] before use.
+    ///
+    /// # Errors
+    ///
+    /// - [`Error::Transport`] when no response arrives.
+    /// - [`Error::Http`] when the server answers with a non-2xx status, such as
+    ///   when the feed has no icon.
+    /// - [`Error::Protocol`] when the body is not the expected JSON.
     pub async fn feed_icon(&self, feed_id: i64) -> Result<wire::Icon> {
         self.get_json(self.url(&format!("/v1/feeds/{feed_id}/icon")))
             .await
     }
 
+    /// `GET /v1/feeds/counters`: read and unread counts per feed.
+    ///
+    /// # Errors
+    ///
+    /// - [`Error::Transport`] when no response arrives.
+    /// - [`Error::Http`] when the server answers with a non-2xx status.
+    /// - [`Error::Protocol`] when the body is not the expected JSON.
     pub async fn counters(&self) -> Result<wire::FeedCounters> {
         self.get_json(self.url("/v1/feeds/counters")).await
     }
@@ -393,6 +492,13 @@ impl MinifluxClient {
     /// not write one. `update_content` is deliberately never sent: it makes
     /// this GET persist the scrape server-side, which must not happen
     /// speculatively.
+    ///
+    /// # Errors
+    ///
+    /// - [`Error::Transport`] when no response arrives.
+    /// - [`Error::Http`] when the server answers with a non-2xx status, such as
+    ///   when it cannot fetch the original page.
+    /// - [`Error::Protocol`] when the body is not the expected JSON.
     pub async fn fetch_original_content(&self, id: EntryId) -> Result<wire::EntryContentResponse> {
         self.get_json(self.url(&format!("/v1/entries/{}/fetch-content", id.get())))
             .await
@@ -422,6 +528,16 @@ impl MinifluxClient {
     /// payload rejection, so every intent stays queued, visible as stuck,
     /// until the instance is upgraded. Status writes those servers *would*
     /// accept are refused too — half-working writes are how stars vanished.
+    ///
+    /// # Errors
+    ///
+    /// - [`Error::Config`] when `ids` is empty, or when the server is older
+    ///   than 2.3.2. Nothing is sent in either case.
+    /// - Whatever [`Self::version`] returns, when the version is not yet known
+    ///   and fetching it fails.
+    /// - [`Error::Protocol`] if the request body cannot be encoded.
+    /// - [`Error::Transport`] when no response arrives.
+    /// - [`Error::Http`] when the server answers with a non-2xx status.
     pub async fn update_entries(&self, ids: &[EntryId], mutation: EntryMutation) -> Result<()> {
         if ids.is_empty() {
             // A hard 400 server-side; refuse locally so it is not mistaken for
@@ -459,10 +575,18 @@ impl MinifluxClient {
     /// `published_at < now()` cut-off captured at request time, so replaying a
     /// queued one later marks strictly more entries than the user saw — which
     /// is why the outbox expands mark-all into concrete entry ids instead of
-    /// queueing this call. See [`crate::outbox`].
+    /// queueing this call. See [`crate::db::outbox`].
     ///
     /// Refused below the 2.3.2 write floor like every entry-state write; see
     /// [`Self::update_entries`].
+    ///
+    /// # Errors
+    ///
+    /// - [`Error::Config`] when the server is older than 2.3.2. Nothing is sent.
+    /// - Whatever [`Self::version`] returns, when the version is not yet known
+    ///   and fetching it fails.
+    /// - [`Error::Transport`] when no response arrives.
+    /// - [`Error::Http`] when the server answers with a non-2xx status.
     pub async fn mark_feed_read(&self, feed_id: i64) -> Result<()> {
         self.refuse_entry_writes_before_floor().await?;
         self.put_empty(&format!("/v1/feeds/{feed_id}/mark-all-as-read"))
@@ -470,6 +594,10 @@ impl MinifluxClient {
     }
 
     /// As [`Self::mark_feed_read`], for one category.
+    ///
+    /// # Errors
+    ///
+    /// As for [`Self::mark_feed_read`].
     pub async fn mark_category_read(&self, category_id: i64) -> Result<()> {
         self.refuse_entry_writes_before_floor().await?;
         self.put_empty(&format!("/v1/categories/{category_id}/mark-all-as-read"))
@@ -487,6 +615,17 @@ impl MinifluxClient {
 
     /// `POST /v1/feeds` — subscribe. §3 keeps add/remove in scope and leaves
     /// rewrite rules, scraper rules and blocklists to the web UI.
+    ///
+    /// Returns the new feed's id.
+    ///
+    /// # Errors
+    ///
+    /// - [`Error::Protocol`] if the request body cannot be encoded, or the
+    ///   response is not the expected JSON.
+    /// - [`Error::Transport`] when no response arrives.
+    /// - [`Error::Http`] when the server answers with a non-2xx status, for
+    ///   instance when it cannot fetch or parse the feed, or the user already
+    ///   subscribes to it. `message` carries the server's reason.
     pub async fn create_feed(&self, feed_url: &str, category_id: Option<i64>) -> Result<i64> {
         #[derive(serde::Serialize)]
         struct Req<'a> {
@@ -522,6 +661,12 @@ impl MinifluxClient {
     /// only the ones that are present. Sending a full feed object back would
     /// mean re-transmitting values the mirror may be stale about and quietly
     /// reverting a change made in the web UI in between.
+    ///
+    /// # Errors
+    ///
+    /// - [`Error::Protocol`] if the request body cannot be encoded.
+    /// - [`Error::Transport`] when no response arrives.
+    /// - [`Error::Http`] when the server answers with a non-2xx status.
     pub async fn update_feed(&self, feed_id: i64, update: &FeedPatch) -> Result<()> {
         let payload = serde_json::to_vec(update)
             .map_err(|e| Error::Protocol(format!("could not encode the feed update: {e}")))?;
@@ -535,6 +680,11 @@ impl MinifluxClient {
     }
 
     /// `DELETE /v1/feeds/{id}` — unsubscribe.
+    ///
+    /// # Errors
+    ///
+    /// - [`Error::Transport`] when no response arrives.
+    /// - [`Error::Http`] when the server answers with a non-2xx status.
     pub async fn delete_feed(&self, feed_id: i64) -> Result<()> {
         let url = self.url(&format!("/v1/feeds/{feed_id}"));
         let safe = SafeUrl::from(&url);
@@ -558,8 +708,10 @@ impl MinifluxClient {
 /// rename a rename rather than a full overwrite of everything else.
 #[derive(Debug, Clone, Default, serde::Serialize, PartialEq, Eq)]
 pub struct FeedPatch {
+    /// Rename the feed.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
+    /// Move the feed to this category.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub category_id: Option<i64>,
     /// "Fetch original content" -- the server scrapes each entry's own page.

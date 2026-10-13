@@ -41,12 +41,18 @@ use crate::content::url::MediaUrl;
 #[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SpanStyle {
+    /// Bold: `<b>`, `<strong>`.
     pub bold: bool,
+    /// Italic: `<i>`, `<em>` and similar.
     pub italic: bool,
+    /// Monospace: `<code>`, `<kbd>` and similar. Rendered as no tag in
+    /// `StyledText`; the UI chooses the font.
     pub code: bool,
+    /// Struck through: `<s>`, `<del>`, `<strike>`.
     pub strike: bool,
     /// `<sup>`/`<sub>` collapse to this; the UI may ignore it.
     pub superscript: bool,
+    /// `<sub>`; the UI may ignore it.
     pub subscript: bool,
 }
 
@@ -55,7 +61,10 @@ impl SpanStyle {}
 /// A run of text with uniform styling, optionally hyperlinked.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Span {
+    /// The text. Foreign and unescaped: render it through
+    /// [`Span::render_styled_text`] or as plain text, never as markup.
     pub text: String,
+    /// How the text is styled.
     pub style: SpanStyle,
     /// `None` for non-link text. Always `http`/`https`: other schemes are
     /// dropped during parsing (§9.2), so a `javascript:` URL can never reach
@@ -64,6 +73,7 @@ pub struct Span {
 }
 
 impl Span {
+    /// An unstyled, unlinked span.
     #[must_use]
     pub fn plain(text: impl Into<String>) -> Self {
         Span {
@@ -166,7 +176,9 @@ pub enum MediaFetch {
 /// A table cell: a span run plus whether it came from `<th>`.
 #[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub struct TableCell {
+    /// The cell's contents.
     pub spans: Vec<Span>,
+    /// `true` for a `<th>` cell.
     pub header: bool,
 }
 
@@ -181,30 +193,47 @@ pub struct TableCell {
 #[serde(tag = "kind", rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum BlockKind {
+    /// A heading, `<h1>` to `<h6>`.
     Heading {
+        /// The heading level, 1 to 6.
         level: u8,
+        /// The heading text.
         spans: Vec<Span>,
     },
+    /// A paragraph. Block containers with no styling of their own, such as
+    /// `<div>` and `<figure>`, also become paragraphs.
     Paragraph {
+        /// The paragraph text.
         spans: Vec<Span>,
     },
+    /// One list item, or continuation text inside one.
     ListItem {
+        /// `true` inside an `<ol>`.
         ordered: bool,
         /// The rendered marker number for ordered lists, `None` for bullets.
         number: Option<u32>,
         /// Nesting depth, already clamped to the parser's list-depth cap.
         indent: u8,
+        /// The item text.
         spans: Vec<Span>,
     },
     /// `<pre>` / `<pre><code>`. Text is verbatim and is *not* span-formatted:
     /// inline markup inside a code block is flattened away rather than honoured.
     Code {
+        /// A language hint from the `<pre>`'s `class` (`language-rust`,
+        /// `lang-`, `highlight-`, `brush:`), if it had one.
         language: Option<String>,
+        /// The code, verbatim, with leading and trailing newlines trimmed.
         text: String,
     },
+    /// An `<img>` whose `src` resolved to an `http`/`https` URL that the media
+    /// policy did not drop.
     Image {
+        /// Where to load the image from, as the media policy decided.
         src: MediaUrl,
+        /// The `alt` text, empty when there was none. Foreign text.
         alt: String,
+        /// The `title` attribute, when non-empty. Foreign text.
         title: Option<String>,
         /// Whether the UI may load this image immediately.
         ///
@@ -234,14 +263,17 @@ pub enum BlockKind {
     /// Fixed three-level nesting: rows of cells of spans. Not self-referential,
     /// so the drop-recursion argument above does not apply.
     Table {
+        /// The table's rows, each a list of cells.
         rows: Vec<Vec<TableCell>>,
     },
+    /// A horizontal rule, `<hr>`.
     Rule,
 }
 
 /// One entry in the flat render list.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RenderBlock {
+    /// What to draw.
     pub kind: BlockKind,
     /// How many `<blockquote>`s enclosed this block, clamped to the depth cap.
     /// Carried as a scalar so the block list stays flat -- see the module docs.
@@ -249,6 +281,7 @@ pub struct RenderBlock {
 }
 
 impl RenderBlock {
+    /// A block outside any blockquote.
     #[must_use]
     pub fn new(kind: BlockKind) -> Self {
         RenderBlock {
@@ -257,6 +290,7 @@ impl RenderBlock {
         }
     }
 
+    /// A block inside `quote_depth` nested blockquotes. Not clamped here.
     #[must_use]
     pub fn quoted(kind: BlockKind, quote_depth: u8) -> Self {
         RenderBlock { kind, quote_depth }
@@ -292,6 +326,7 @@ impl RenderBlock {
 /// The transform's output: a flat block list plus what it had to throw away.
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Document {
+    /// The blocks, in document order.
     pub blocks: Vec<RenderBlock>,
     /// Set when a cap was hit and the document is therefore incomplete. The UI
     /// should say so rather than silently showing a truncated article -- a
@@ -299,6 +334,7 @@ pub struct Document {
     pub truncated: Option<Truncation>,
 }
 
+/// The cap that cut a [`Document`] short.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Truncation {

@@ -25,7 +25,9 @@ use crate::worker::{self, Account, AppPaths, Command};
 /// How un-proxied third-party media is treated. Crosses to QML as an integer,
 /// because this `qmetaobject` version has no `qml_register_enum` on Qt 5.6.
 pub const MEDIA_STRICT: i32 = 0;
+/// Un-proxied media waits behind a tap-to-load placeholder. The default.
 pub const MEDIA_ASK: i32 = 1;
+/// Un-proxied media loads without asking.
 pub const MEDIA_ALLOW: i32 = 2;
 
 /// Background refresh intervals, in minutes. Index 0 is "manual only".
@@ -49,6 +51,7 @@ pub const SYNC_INTERVAL_DEFAULT_INDEX: i32 = 3;
 /// article the user glances at being marked read and pushed to the server.
 /// That is the safe polarity for a destructive default.
 pub const MARK_READ_NEVER: i32 = 0;
+/// Mark read as soon as the article opens.
 pub const MARK_READ_IMMEDIATELY: i32 = 1;
 /// Seconds for the delayed choices, from index 2 onward.
 pub const MARK_READ_DELAYS_SECONDS: [i32; 3] = [5, 15, 30];
@@ -105,6 +108,7 @@ pub fn mark_read_delay_seconds(index: i32) -> Option<i32> {
     }
 }
 
+/// The settings screen's backing object; see the module docs.
 // The bools are `qt_property!`s, each its own setting or state that QML
 // binds to by name; a bitfield would hide them from QML.
 #[allow(clippy::struct_excessive_bools)]
@@ -186,6 +190,8 @@ pub struct Settings {
 }
 
 impl Settings {
+    /// Give this object a context explicitly and load the stored account into
+    /// it. Only the tests call it; QML calls `reload` instead.
     pub fn attach(&mut self, ctx: std::rc::Rc<AppContext>) {
         self.ctx = Some(ctx);
         self.load();
@@ -200,7 +206,7 @@ impl Settings {
         self.load_from(&paths);
     }
 
-    /// [`Settings::load`] against explicit paths.
+    /// `Settings::load` against explicit paths.
     ///
     /// Split out so the settings screen's own read path can be tested. The
     /// no-arg version resolves `$XDG_DATA_HOME`/`$HOME`, so a test that called
@@ -263,7 +269,7 @@ impl Settings {
         self.save_to(&paths);
     }
 
-    /// [`Settings::save`] against explicit paths.
+    /// `Settings::save` against explicit paths.
     ///
     /// The copy from the QML-visible properties into `Account` lives here, so
     /// a test can drive the real one. The round-trip test used to build an
@@ -380,7 +386,7 @@ impl Settings {
         self.test_connection_with(&paths);
     }
 
-    /// [`Settings::testConnection`] against explicit paths.
+    /// `Settings::testConnection` against explicit paths.
     ///
     /// Split out for the same reason `save_to` is: the no-arg version resolves
     /// `$XDG_DATA_HOME`/`$HOME`, so a test that drove it would be reading — and
@@ -453,7 +459,7 @@ impl Settings {
         self.poll_notice_from(&signal)
     }
 
-    /// [`Settings::pollNotice`] against an explicit signal, so the worker →
+    /// `Settings::pollNotice` against an explicit signal, so the worker →
     /// page round trip can be tested without a QML engine or a context.
     pub fn poll_notice_from(&mut self, signal: &crate::context::SyncSignal) -> bool {
         match signal.take_notice() {
@@ -471,7 +477,7 @@ impl Settings {
         }
     }
 
-    /// Fire the QML-visible signal. Reached through [`Settings::pollNotice`].
+    /// Fire the QML-visible signal. Reached through `Settings::pollNotice`.
     pub fn on_connection_tested(&mut self, ok: bool, message: &str) {
         self.connectionTested(ok, QString::from(message.to_owned()));
     }

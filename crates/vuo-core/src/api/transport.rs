@@ -16,7 +16,7 @@
 //! header. A hostile or merely compromised instance answering `302` with a
 //! `Location` on an attacker's host would hand over the user's API key.
 //!
-//! So the client is built with [`redirect::Policy::none`] and redirects are
+//! So the client is built with [`redirect::Policy::none`](reqwest::redirect::Policy::none) and redirects are
 //! resolved in [`Transport::send`], where the token is attached per hop
 //! against an explicit origin check.
 //!
@@ -55,8 +55,10 @@ use crate::redact::{ApiToken, SafeUrl};
 /// handling above has to be manual.
 const AUTH_HEADER: &str = "X-Auth-Token";
 
+/// Limits and settings for a [`Transport`]; the defaults suit a phone.
 #[derive(Debug, Clone)]
 pub struct TransportConfig {
+    /// Maximum time to establish a connection to the server.
     pub connect_timeout: Duration,
     /// Maximum time between bytes. A server that accepts a connection and then
     /// dribbles must not wedge a sync forever.
@@ -69,10 +71,12 @@ pub struct TransportConfig {
     pub request_timeout: Duration,
     /// Hard cap on any response body (§9.1: this is a phone).
     pub max_response_bytes: usize,
+    /// Most redirect hops [`Transport::send`] follows before refusing.
     pub max_redirects: usize,
     /// PEM for a user-supplied CA, for self-hosted instances with a private
     /// certificate authority. Trusted only by the API client (see module docs).
     pub extra_ca_pem: Option<Vec<u8>>,
+    /// The `User-Agent` sent with every request.
     pub user_agent: String,
 }
 
@@ -95,7 +99,9 @@ impl Default for TransportConfig {
 /// A response body already read, bounded, into memory.
 #[derive(Debug)]
 pub struct BoundedResponse {
+    /// The HTTP status code, which may be any non-redirect status.
     pub status: u16,
+    /// The whole body, no longer than the configured cap.
     pub body: Vec<u8>,
     /// The `Date` header, parsed. The sync cursor is anchored to the server's
     /// clock rather than the phone's, because the phone's is not trustworthy
@@ -125,6 +131,12 @@ impl Transport {
     /// undone by a later edit to this function. Vuo authenticates with a
     /// header, so a cookie could only ever be something a server set that we
     /// would then replay somewhere we did not intend.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Config`] when `origin` is not `http` or `https` or has
+    /// no host, when `extra_ca_pem` is not valid PEM or holds no certificates,
+    /// or when either HTTP client cannot be built.
     pub fn new(origin: Url, token: ApiToken, config: &TransportConfig) -> Result<Self> {
         if !matches!(origin.scheme(), "http" | "https") {
             return Err(Error::Config(format!(
@@ -190,6 +202,7 @@ impl Transport {
         })
     }
 
+    /// The configured server origin, the only one the token is sent to.
     #[must_use]
     pub fn origin(&self) -> &Url {
         &self.origin
@@ -212,6 +225,18 @@ impl Transport {
     }
 
     /// Perform a request, following redirects under an explicit policy.
+    ///
+    /// Any non-redirect status, including 4xx and 5xx, comes back as `Ok` for
+    /// the caller to interpret; the exceptions are 304 to 306.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Transport`] when the server cannot be reached, TLS
+    /// fails, the request times out (the deadline covers every hop), a redirect
+    /// is refused (too many hops, no or an invalid `Location`, a downgrade from
+    /// https, or a jump off the configured origin), or the body exceeds
+    /// [`TransportConfig::max_response_bytes`], declared or as read. Returns
+    /// [`Error::Http`] for a 304, 305 or 306 response.
     pub async fn send(
         &self,
         method: reqwest::Method,

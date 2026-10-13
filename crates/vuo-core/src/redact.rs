@@ -7,7 +7,7 @@
 //! the obvious leak is closed by construction. Two less obvious ones are not:
 //!
 //! 1. A user may paste a base URL carrying userinfo (`https://u:pw@host/`).
-//!    [`Url::to_string`] round-trips the password verbatim.
+//!    [`Url::to_string`](url::Url) round-trips the password verbatim.
 //! 2. [`reqwest::Error`]'s own `Display` embeds the URL it failed on. Wrapping
 //!    one in a `#[from]` variant would reintroduce the leak through the error
 //!    chain even though we never format the URL ourselves.
@@ -97,6 +97,7 @@ impl fmt::Debug for SafeUrl {
 pub struct ApiToken(String);
 
 impl ApiToken {
+    /// Wrap a token. The value is kept as given, without trimming.
     #[must_use]
     pub fn new(token: impl Into<String>) -> Self {
         ApiToken(token.into())
@@ -108,6 +109,7 @@ impl ApiToken {
         &self.0
     }
 
+    /// `true` when the token is empty or only whitespace.
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.0.trim().is_empty()

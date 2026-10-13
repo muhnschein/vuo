@@ -50,6 +50,7 @@ impl MediaUrl {
         Self::from_url(url)
     }
 
+    /// Wrap an already-parsed URL, returning `None` unless it is `http(s)`.
     #[must_use]
     pub fn from_url(url: Url) -> Option<Self> {
         match url.scheme() {
@@ -58,11 +59,13 @@ impl MediaUrl {
         }
     }
 
+    /// The URL as text.
     #[must_use]
     pub fn as_str(&self) -> &str {
         self.0.as_str()
     }
 
+    /// The underlying parsed URL.
     #[must_use]
     pub fn as_url(&self) -> &Url {
         &self.0

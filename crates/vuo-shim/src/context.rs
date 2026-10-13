@@ -15,6 +15,8 @@ use vuo_core::db::Database;
 
 use crate::worker::{Account, AppPaths, Command, Event, Worker};
 
+/// The mirror and the worker's command channel, shared by every QML-facing
+/// object; see the module docs.
 pub struct AppContext {
     db: Rc<RefCell<Database>>,
     commands: std::sync::mpsc::Sender<Command>,
@@ -128,6 +130,7 @@ impl AppContext {
         self.fingerprint
     }
 
+    /// The worker's change counter and result slots.
     #[must_use]
     pub fn signal(&self) -> &SyncSignal {
         &self.signal
@@ -139,6 +142,7 @@ impl AppContext {
         &self.signal
     }
 
+    /// The configured Miniflux origin.
     #[must_use]
     pub fn instance(&self) -> &url::Url {
         &self.instance
@@ -176,7 +180,7 @@ impl AppContext {
         self.db.try_borrow().ok().map(|db| f(&db))
     }
 
-    /// Borrow the mirror for a write. Same fallibility rule as [`read`].
+    /// Borrow the mirror for a write. Same fallibility rule as [`read`](Self::read).
     pub fn write<T>(&self, f: impl FnOnce(&mut Database) -> T) -> Option<T> {
         self.db.try_borrow_mut().ok().map(|mut db| f(&mut db))
     }
@@ -491,6 +495,15 @@ fn build_from(paths: &AppPaths, account: Account) -> vuo_core::Result<Rc<AppCont
 /// server address would report a confident answer about the *previous* account.
 ///
 /// Idempotent and cheap when nothing changed: one file read and a hash.
+///
+/// # Errors
+///
+/// - [`vuo_core::Error::Config`] if the account file cannot be read or
+///   parsed (the ordinary state before the first save), the stored server
+///   address is not a URL, a configured custom CA cannot be read, or the
+///   worker thread is not running or stopped before it took the account.
+/// - [`vuo_core::Error::Db`] or [`vuo_core::Error::Migration`] if the mirror
+///   cannot be opened, as for [`Database::open`].
 pub fn refresh(paths: &AppPaths) -> vuo_core::Result<Rc<AppContext>> {
     let account = crate::worker::load_account(&paths.account)?;
     let wanted = fingerprint(&account);
@@ -584,6 +597,7 @@ pub struct SyncSignal {
 /// How a server-side scrape ended, and for which entry.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FetchOutcome {
+    /// The entry the scrape was asked for.
     pub entry_id: i64,
     /// One of the `FETCH_*` constants in `crate::article`.
     pub status: i32,
@@ -596,13 +610,28 @@ pub struct FetchOutcome {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Notice {
     /// `GET /v1/me` answered. `message` is the username, or the error.
-    ConnectionTested { ok: bool, message: String },
+    ConnectionTested {
+        /// Whether the server accepted the credentials.
+        ok: bool,
+        /// The username, or the error text.
+        message: String,
+    },
     /// A subscribe or unsubscribe finished. `message` is the server's error
     /// text when it failed -- foreign text, so it renders as plain text.
-    SubscriptionChanged { ok: bool, message: String },
+    SubscriptionChanged {
+        /// Whether the server accepted the change.
+        ok: bool,
+        /// The server's error text on failure; empty on success.
+        message: String,
+    },
     /// A feed's settings were saved, or were not. `message` is the server's
     /// error text -- foreign, so plain text.
-    FeedUpdated { ok: bool, message: String },
+    FeedUpdated {
+        /// Whether the server accepted the change.
+        ok: bool,
+        /// The server's error text on failure; empty on success.
+        message: String,
+    },
     /// A refresh failed. `message` is foreign text; render it as plain text.
     ///
     /// `auth` distinguishes "the server rejected the key" from everything
@@ -614,7 +643,12 @@ pub enum Notice {
     /// On `auth` the message is deliberately EMPTY. The server's own text for
     /// a rejected key says nothing a user can act on, and the page supplies a
     /// fixed translated line instead.
-    SyncFailed { auth: bool, message: String },
+    SyncFailed {
+        /// Whether the server rejected the API key.
+        auth: bool,
+        /// What went wrong; empty when `auth` is set.
+        message: String,
+    },
 }
 
 impl SyncSignal {
@@ -663,6 +697,8 @@ impl SyncSignal {
         self.notice.lock().ok().and_then(|mut slot| slot.take())
     }
 
+    /// Raise or lower the sync spinner. Raised on the Qt thread for a
+    /// user-initiated sync; lowered by the worker when that command ends.
     pub fn set_running(&self, running: bool) {
         self.running
             .store(running, std::sync::atomic::Ordering::Release);
@@ -674,17 +710,20 @@ impl SyncSignal {
             .fetch_add(1, std::sync::atomic::Ordering::Release);
     }
 
+    /// How many times the user has asked for a fresh list; see `refresh_epoch`.
     #[must_use]
     pub fn refresh_epoch(&self) -> u64 {
         self.refresh_epoch
             .load(std::sync::atomic::Ordering::Acquire)
     }
 
+    /// The mirror's change counter, bumped by [`SyncSignal::bump`].
     #[must_use]
     pub fn generation(&self) -> u64 {
         self.generation.load(std::sync::atomic::Ordering::Acquire)
     }
 
+    /// Whether the sync spinner is up.
     #[must_use]
     pub fn is_running(&self) -> bool {
         self.running.load(std::sync::atomic::Ordering::Acquire)

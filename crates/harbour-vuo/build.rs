@@ -1,3 +1,7 @@
+//! Build script for the application binary: compiles the C++ glue in
+//! `src/main.rs` against `sailfishapp` and Qt when the `sailfishapp` feature
+//! is on, and links with `--as-needed` so no unused Qt library is recorded
+//! as needed.
 // A build script talks to cargo through `cargo:` lines on stdout.
 #![allow(clippy::print_stdout)]
 

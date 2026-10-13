@@ -32,20 +32,38 @@ use vuo_core::model::{EntryId, EntryStatus};
 use crate::context::AppContext;
 use crate::worker::Command;
 
+/// Model roles, one per [`BlockRow`] field; [`ArticleModel`]'s `role_names`
+/// gives each its QML name.
+///
+/// `blockKind`: [`BlockRow::kind`].
 pub const ROLE_KIND: i32 = USER_ROLE;
+/// `styledText`: [`BlockRow::text`], the only role that carries markup.
 pub const ROLE_TEXT: i32 = USER_ROLE + 1;
+/// `level`: [`BlockRow::level`].
 pub const ROLE_LEVEL: i32 = USER_ROLE + 2;
+/// `quoteDepth`: [`BlockRow::quote_depth`].
 pub const ROLE_QUOTE_DEPTH: i32 = USER_ROLE + 3;
+/// `ordered`: [`BlockRow::ordered`].
 pub const ROLE_ORDERED: i32 = USER_ROLE + 4;
+/// `marker`: [`BlockRow::marker`].
 pub const ROLE_MARKER: i32 = USER_ROLE + 5;
+/// `indent`: [`BlockRow::indent`].
 pub const ROLE_INDENT: i32 = USER_ROLE + 6;
+/// `imageSource`: [`BlockRow::image_src`].
 pub const ROLE_IMAGE_SRC: i32 = USER_ROLE + 7;
+/// `imageAlt`: [`BlockRow::image_alt`] (plain text).
 pub const ROLE_IMAGE_ALT: i32 = USER_ROLE + 8;
+/// `needsConsent`: [`BlockRow::needs_consent`].
 pub const ROLE_NEEDS_CONSENT: i32 = USER_ROLE + 9;
+/// `codeLanguage`: [`BlockRow::code_language`].
 pub const ROLE_CODE_LANGUAGE: i32 = USER_ROLE + 10;
+/// `plainText`: [`BlockRow::plain`].
 pub const ROLE_PLAIN_TEXT: i32 = USER_ROLE + 11;
+/// `imageHost`: [`BlockRow::image_host`].
 pub const ROLE_IMAGE_HOST: i32 = USER_ROLE + 12;
+/// `imageRatio`: [`BlockRow::image_ratio`].
 pub const ROLE_IMAGE_RATIO: i32 = USER_ROLE + 13;
+/// `imageLink`: [`BlockRow::image_link`].
 pub const ROLE_IMAGE_LINK: i32 = USER_ROLE + 14;
 
 /// No scrape has finished (or the last one was acknowledged).
@@ -73,12 +91,19 @@ pub struct BlockRow {
     pub text: String,
     /// The same content with no markup at all, for accessibility and search.
     pub plain: String,
+    /// A heading's level, from the source tag; 0 for other blocks.
     pub level: i32,
+    /// How many block quotes the block sits inside.
     pub quote_depth: i32,
+    /// Whether a list item belongs to a numbered list.
     pub ordered: bool,
+    /// A list item's marker: `"3."` for a numbered item, a bullet otherwise.
     pub marker: String,
+    /// A list item's nesting depth.
     pub indent: i32,
+    /// The image's URL, as the core resolved it.
     pub image_src: String,
+    /// The image's alt text (foreign text, plain).
     pub image_alt: String,
     /// The host the image would be fetched from. Shown in the consent
     /// placeholder so "load images" is an informed choice rather than a shrug.
@@ -100,6 +125,7 @@ pub struct BlockRow {
     /// instead -- a tap on a linked one has to keep meaning "go there".
     /// Validated as `http`/`https` in the core, like every other link.
     pub image_link: String,
+    /// A code block's declared language; empty when it gave none.
     pub code_language: String,
 }
 
@@ -222,6 +248,8 @@ fn row_for(block: &RenderBlock) -> BlockRow {
     row
 }
 
+/// The article view's list model: the open entry's [`BlockRow`]s, plus its
+/// read, starred and fetch-original state. See the module docs.
 // The bools are `qt_property!`s, each its own setting or state that QML
 // binds to by name; a bitfield would hide them from QML.
 #[allow(clippy::struct_excessive_bools)]
@@ -249,6 +277,7 @@ pub struct ArticleModel {
     /// reader who opened an article had no way to star it, and no way to tell
     /// whether the one they were looking at was already starred.
     pub isRead: qt_property!(bool; NOTIFY entryStateChanged),
+    /// Whether the open article is starred (see `isRead`).
     pub isStarred: qt_property!(bool; NOTIFY entryStateChanged),
     /// The article's own link, or empty when the entry has none.
     ///
@@ -595,6 +624,7 @@ impl ArticleModel {
         self.clearFetchStatus();
     }
 
+    /// The open article's blocks, in display order.
     #[must_use]
     pub fn rows(&self) -> &[BlockRow] {
         &self.rows

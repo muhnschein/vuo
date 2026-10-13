@@ -7,7 +7,7 @@
 //!
 //! # Rules for adding a migration
 //!
-//! 1. **Append only.** Never edit an existing entry in [`MIGRATIONS`]; a
+//! 1. **Append only.** Never edit an existing entry in `MIGRATIONS`; a
 //!    database in the wild has already run it. Add a new one.
 //! 2. **Never drop or recreate `outbox`.** Losing it loses user actions that
 //!    were never sent to the server -- marks and stars the user believes they
@@ -226,6 +226,10 @@ pub fn target_version() -> i64 {
 }
 
 /// Read the database's current schema version.
+///
+/// # Errors
+///
+/// Returns [`Error::Db`] if `PRAGMA user_version` cannot be read.
 pub fn current_version(conn: &Connection) -> Result<i64> {
     Ok(conn.query_row("PRAGMA user_version", [], |row| row.get(0))?)
 }
@@ -234,6 +238,13 @@ pub fn current_version(conn: &Connection) -> Result<i64> {
 ///
 /// Runs every pending migration inside one transaction, so a failure leaves
 /// the file exactly as it was rather than half-upgraded.
+///
+/// # Errors
+///
+/// - [`Error::Migration`] if the database is already at a version newer than
+///   [`target_version`] (it is left untouched), or if a migration's SQL fails.
+/// - [`Error::Db`] if the write transaction cannot be begun or committed, or
+///   the version cannot be read or recorded.
 pub fn migrate(conn: &mut Connection) -> Result<()> {
     apply(conn, MIGRATIONS)
 }
