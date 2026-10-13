@@ -181,7 +181,25 @@ pub async fn sync(
         .and_then(ServerVersion::parse);
     let (version, version_checked_at) = match cached_version {
         Some(version) => (version, state.server_version_checked_at),
-        None => (client.version().await.unwrap_or_default(), Some(now)),
+        None => match client.version().await {
+            Ok(version) => (version, Some(now)),
+            // A failed check is not an answer. The version recorded last time
+            // is still the best guess: falling back to the oldest supported
+            // one would skip a due reconcile and record the wrong era, for a
+            // server that has not changed. The check time is left alone, so
+            // the next pass asks again.
+            Err(e) => {
+                tracing::warn!(error = %e, "could not check the server version");
+                let recorded = state
+                    .server_version
+                    .as_deref()
+                    .and_then(ServerVersion::parse);
+                (
+                    recorded.unwrap_or_default(),
+                    state.server_version_checked_at,
+                )
+            }
+        },
     };
     report.server_version = Some(version.raw.clone());
 

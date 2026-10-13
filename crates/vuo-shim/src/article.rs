@@ -348,7 +348,8 @@ pub struct ArticleModel {
 }
 
 impl ArticleModel {
-    /// Give the model its context. Called during app start-up, not from QML.
+    /// Give the model a context explicitly. Only the tests call it; a model
+    /// QML builds uses the installed context.
     pub fn attach(&mut self, ctx: std::rc::Rc<AppContext>) {
         self.ctx = Some(ctx);
     }

@@ -50,7 +50,7 @@ pub struct SpanStyle {
     pub code: bool,
     /// Struck through: `<s>`, `<del>`, `<strike>`.
     pub strike: bool,
-    /// `<sup>`/`<sub>` collapse to this; the UI may ignore it.
+    /// `<sup>`; the UI may ignore it.
     pub superscript: bool,
     /// `<sub>`; the UI may ignore it.
     pub subscript: bool,
@@ -210,7 +210,8 @@ pub enum BlockKind {
     ListItem {
         /// `true` inside an `<ol>`.
         ordered: bool,
-        /// The rendered marker number for ordered lists, `None` for bullets.
+        /// The marker number on the first block of an ordered item; `None` for
+        /// bullets and for continuation text, which carries no marker.
         number: Option<u32>,
         /// Nesting depth, already clamped to the parser's list-depth cap.
         indent: u8,

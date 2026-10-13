@@ -365,20 +365,23 @@ pub fn confirm(tx: &Transaction<'_>, batch: &Batch) -> Result<usize> {
 
 /// Record a failed attempt without losing the intent.
 ///
-/// Bumps `attempts` and stores `error` on every row in the batch, whatever
-/// value the row now holds.
+/// Bumps `attempts` and stores `error` on every row in the batch that still
+/// holds the value the batch sent. Matched the way [`confirm`] matches: a row
+/// re-toggled while the request was in flight is a new intent that has not
+/// been tried yet, and the old request's failure is not its failure.
 ///
 /// # Errors
 ///
 /// Returns [`Error::Db`](crate::error::Error::Db) if an update fails.
 pub fn record_failure(tx: &Transaction<'_>, batch: &Batch, error: &str) -> Result<()> {
     let field = batch.value.field().as_str();
+    let value = batch.value.as_str();
     let mut stmt = tx.prepare(
-        "UPDATE outbox SET attempts = attempts + 1, last_error = ?3
-         WHERE entry_id = ?1 AND field = ?2",
+        "UPDATE outbox SET attempts = attempts + 1, last_error = ?4
+         WHERE entry_id = ?1 AND field = ?2 AND value = ?3",
     )?;
     for id in &batch.entry_ids {
-        stmt.execute(rusqlite::params![id.get(), field, error])?;
+        stmt.execute(rusqlite::params![id.get(), field, value, error])?;
     }
     Ok(())
 }
@@ -604,6 +607,40 @@ mod tests {
         let p = pending(db.conn()).unwrap();
         assert_eq!(p.len(), 1, "a failure must never lose the user's action");
         assert_eq!(p.first().map(|m| m.attempts), Some(1));
+    }
+
+    #[test]
+    fn a_failure_is_not_charged_to_an_intent_queued_after_the_request() {
+        // The user stars, the flush sends it, the user unstars before the
+        // request fails. The queued unstar has never been sent, so it must not
+        // carry the star's error or count the star's attempt.
+        let mut db = db_with_entries(1);
+        db.with_tx(|tx| queue(tx, EntryId(1), DesiredValue::Starred(true), 1))
+            .unwrap();
+        let batch = Batch {
+            value: DesiredValue::Starred(true),
+            entry_ids: vec![EntryId(1)],
+        };
+        db.with_tx(|tx| queue(tx, EntryId(1), DesiredValue::Starred(false), 2))
+            .unwrap();
+
+        db.with_tx(|tx| record_failure(tx, &batch, "timed out"))
+            .unwrap();
+        let p = pending(db.conn()).unwrap();
+        assert_eq!(
+            p.first().map(|m| m.value),
+            Some(DesiredValue::Starred(false))
+        );
+        assert_eq!(p.first().map(|m| m.attempts), Some(0));
+        let last_error: Option<String> = db
+            .conn()
+            .query_row(
+                "SELECT last_error FROM outbox WHERE entry_id = 1",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(last_error, None);
     }
 
     #[test]

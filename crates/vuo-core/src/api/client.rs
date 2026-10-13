@@ -616,7 +616,9 @@ impl MinifluxClient {
     /// `POST /v1/feeds` — subscribe. §3 keeps add/remove in scope and leaves
     /// rewrite rules, scraper rules and blocklists to the web UI.
     ///
-    /// Returns the new feed's id.
+    /// Returns the new feed's id, or `0` when a success response leaves it out.
+    /// That is not an error: the server said the subscription was made, and
+    /// the next sync finds the feed whatever its id.
     ///
     /// # Errors
     ///
