@@ -62,11 +62,11 @@ Window {
     ///
     /// Set off device reports, not measured: after the painter's
     /// half-weight shift the 1 and the 4 still read right of centre, and
-    /// the 3 less left than the rule had put it. Three rounds on a phone
+    /// the 3 less left than the rule had put it. Four rounds on a phone
     /// got here; the first sent the 3 and the 4 right, which overshot the
     /// 3 and was the wrong way for the 4. Single counts only -- a correction is for a shape,
     /// and an 13 is not a 1 and a 3 side by side as far as the eye goes.
-    readonly property var coverNudge: ({ "1": -0.035, "3": 0.004, "4": -0.022 })
+    readonly property var coverNudge: ({ "1": -0.045, "3": 0.004, "4": -0.022 })
 
     /// One cover master. `key` is the count, "99+", or "none".
     function coverJob(key) {

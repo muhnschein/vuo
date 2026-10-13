@@ -479,19 +479,20 @@ fn outline_offset(key: &str) -> f64 {
 
 /// The 1, the 3 and the 4 sit where they LOOK centred, which is not where
 /// the painter's weight rule alone put them -- see `coverNudge` in
-/// tools/textart/render.qml. Off a device, over three rounds: in the end
+/// tools/textart/render.qml. Off a device, over four rounds: in the end
 /// all three read right of where the rule put them.
 ///
 /// In pixels of the 512-wide master, on the outline's ink box, and each
 /// held to within a pixel of where it was settled. The rule alone left the
 /// 1 at -18.5, the 3 at -9 and the 4 at +1.5; the rounds on a phone had
-/// them at -25.5, +3 and +7.5, then -30.5, -2 and -4.5. No earlier set
+/// them at -25.5, +3 and +7.5, then -30.5, -2 and -4.5, then the 1 alone
+/// at -35.5. No earlier set
 /// passes, so a repaint that
 /// drops the nudge, or masks never repainted after it changed, fail here.
 /// The 2 is the control: nobody asked for it to move, and it has not.
 #[test]
 fn the_one_three_and_four_are_centred_by_eye() {
-    for (key, want) in [("1", -35.5), ("3", -7.0), ("4", -9.5), ("2", -5.0)] {
+    for (key, want) in [("1", -40.5), ("3", -7.0), ("4", -9.5), ("2", -5.0)] {
         let got = outline_offset(key);
         assert!(
             (got - want).abs() < 1.0,
