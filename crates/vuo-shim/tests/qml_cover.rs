@@ -32,12 +32,10 @@ const PROBE_QML: &str = r"
     Item {
         Loader { id: loader }
         property int refreshes: 0
-        property int searches: 0
         function load(url) {
             loader.setSource(url, { width: 240, height: 360 })
             if (loader.status !== Loader.Ready) { return 'load-failed' }
             loader.item.refresh.connect(function() { refreshes++ })
-            loader.item.search.connect(function() { searches++ })
             return 'ok'
         }
         /// Tap a cover action, and say what the cover asked the app for.
@@ -45,7 +43,7 @@ const PROBE_QML: &str = r"
             var action = findIn(loader.item, name)
             if (!action) { return 'missing:' + name }
             action.triggered()
-            return 'refresh ' + refreshes + ', search ' + searches
+            return 'refresh ' + refreshes
         }
         function findIn(node, name) {
             if (!node) { return null }
@@ -329,22 +327,11 @@ fn the_cover_names_the_mask_for_its_count_and_says_how_sync_is() {
     mask!("4");
 
     // ------------------------------------------------------------ actions
-    // Each action asks the app for its own thing, and only that: a search
-    // tap that also refreshed would spend the radio, and one that refreshed
-    // INSTEAD would look, from the cover, like a search that never opened.
+    // The refresh action asks the app for a refresh.
     assert_eq!(
         call!("tap", QString::from("refreshAction")),
-        "refresh 1, search 0",
+        "refresh 1",
         "the refresh action must ask for a refresh"
-    );
-    assert_eq!(
-        call!("tap", QString::from("searchAction")),
-        "refresh 1, search 1",
-        "the search action must ask the app to open its search page"
-    );
-    assert_eq!(
-        get!("searchAction", "iconSource"),
-        "image://theme/icon-cover-search"
     );
 }
 

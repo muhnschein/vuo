@@ -813,12 +813,5 @@
             <numerusform>%n ongelezen</numerusform>
         </translation>
     </message>
-    <message>
-        <location filename="../qml/harbour-vuo.qml" line="338"/>
-        <source>Search</source>
-        <comment>page title</comment>
-        <extracomment>The search page&apos;s title. A noun.</extracomment>
-        <translation>Zoeken</translation>
-    </message>
 </context>
 </TS>
