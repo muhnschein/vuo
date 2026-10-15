@@ -20,7 +20,7 @@
 
 Name:       harbour-vuo
 Summary:    Miniflux feed reader for SailfishOS
-Version:    1.1.0
+Version:    1.1.1
 # `--define "vuo_release N"` (scripts/cross-rpm.sh, from VUO_RELEASE) stamps a
 # CI build so each one installs as an upgrade of the last; the tree keeps 1.
 Release:    %{?vuo_release}%{!?vuo_release:1}
@@ -98,6 +98,10 @@ install -D -m 644 %{_sourcedir}/LICENSE \
 %{_datadir}/icons/hicolor/*/apps/harbour-vuo.png
 
 %changelog
+* Thu Oct 15 2026 Vuo contributors <noreply@example.invalid> - 1.1.1-1
+- Update rustls to 0.23.46 for RUSTSEC-2026-0349 and a second advisory fixed in
+  the same release.
+
 * Tue Oct 13 2026 Vuo contributors <noreply@example.invalid> - 1.1.0-1
 - Search the local mirror: feeds by name, articles by title and text, grouped by
   where they matched and showing why. Ten results per group, more on request.
