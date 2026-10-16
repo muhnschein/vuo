@@ -239,6 +239,35 @@ fn every_page_reference_resolves_to_a_file() {
     );
 }
 
+/// No size or text in the article body may be gated on `visible`.
+///
+/// `visible` reads as the EFFECTIVE visibility, which is false for every item
+/// on a page the stack has hidden -- and the article is hidden whenever the
+/// image viewer is pushed over it. A block whose `height` read it collapsed to
+/// nothing then, the list lost everything below its header, and the reader
+/// came back from the viewer to the top of the article. The block kind says
+/// the same thing and does not change while the page is out of sight.
+#[test]
+fn the_article_body_keeps_its_shape_while_the_page_is_hidden() {
+    let path = repo_root().join("qml/pages/ArticlePage.qml");
+    let source = std::fs::read_to_string(&path).expect("read ArticlePage.qml");
+    let offending: Vec<String> = source
+        .lines()
+        .enumerate()
+        .filter_map(|(lineno, line)| {
+            let code = line.split("//").next().unwrap_or("").trim();
+            let gated = (code.starts_with("height:") || code.starts_with("text:"))
+                && code.contains("visible ?");
+            gated.then(|| format!("ArticlePage.qml:{} — {code}", lineno + 1))
+        })
+        .collect();
+    assert!(
+        offending.is_empty(),
+        "these collapse while another page is over the article:\n{}",
+        offending.join("\n")
+    );
+}
+
 /// Every texture the QML names must be there, and must be a coverage mask.
 ///
 /// Two separate ways for the texture to come out wrong on a device, neither
