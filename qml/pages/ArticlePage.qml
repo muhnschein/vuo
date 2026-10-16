@@ -264,9 +264,16 @@ Page {
         //
         // Measured on a Jolla with a long text-only article: 30 MB of that,
         // resident, and not released on leaving the page. Every `text` below
-        // is therefore gated on the block kind, not merely hidden. The
-        // `height: visible ? implicitHeight : 0` bindings were already safe --
-        // a false `visible` short-circuits before implicitHeight is read.
+        // is therefore gated on the block kind, not merely hidden.
+        //
+        // AND SO IS EVERY `height`, never on `visible`. Reading `visible`
+        // gives the EFFECTIVE visibility, which is false for every item on a
+        // page the stack has hidden -- and the stack hides this page whenever
+        // another is pushed over it, the image viewer included. Gated on
+        // `visible`, every block collapsed to nothing the moment the viewer
+        // came up, the list had no content left to be scrolled into, and the
+        // reader came back to the top of the article whatever they had been
+        // reading. The kind does not change while the page is out of sight.
         delegate: Item {
             id: block
             width: blocks.width
@@ -278,7 +285,7 @@ Page {
 
                 Label {
                     visible: blockKind === "heading"
-                    height: visible ? implicitHeight + Theme.paddingLarge : 0
+                    height: blockKind === "heading" ? implicitHeight + Theme.paddingLarge : 0
                     x: Theme.horizontalPageMargin + quoteDepth * Theme.paddingLarge
                     width: block.width - x - Theme.horizontalPageMargin
                     wrapMode: Text.Wrap
@@ -286,10 +293,9 @@ Page {
                     // foreign text into it. StyledText is safe here, and only
                     // where the text came from that one function.
                     textFormat: Text.StyledText
-                    // Gated on the kind, not just hidden. See the note above
-                    // the delegate: an invisible Text still parses and lays
-                    // out whatever is assigned to `text`.
-                    text: visible ? styledText : ""
+                    // Gated on the kind, not on `visible`. See the note
+                    // above the delegate for both reasons.
+                    text: blockKind === "heading" ? styledText : ""
                     color: Theme.highlightColor
                     font.pixelSize: level <= 2 ? Theme.fontSizeLarge : Theme.fontSizeMedium
                     font.bold: true
@@ -297,12 +303,12 @@ Page {
 
                 Label {
                     visible: blockKind === "paragraph"
-                    height: visible ? implicitHeight + Theme.paddingMedium : 0
+                    height: blockKind === "paragraph" ? implicitHeight + Theme.paddingMedium : 0
                     x: Theme.horizontalPageMargin + quoteDepth * Theme.paddingLarge
                     width: block.width - x - Theme.horizontalPageMargin
                     wrapMode: Text.Wrap
                     textFormat: Text.StyledText
-                    text: visible ? styledText : ""
+                    text: blockKind === "paragraph" ? styledText : ""
                     color: quoteDepth > 0 ? Theme.secondaryColor : Theme.primaryColor
                     font.pixelSize: Theme.fontSizeSmall
                     linkColor: Theme.highlightColor
@@ -311,7 +317,7 @@ Page {
 
                 Row {
                     visible: blockKind === "list_item"
-                    height: visible ? itemText.implicitHeight + Theme.paddingSmall : 0
+                    height: blockKind === "list_item" ? itemText.implicitHeight + Theme.paddingSmall : 0
                     x: Theme.horizontalPageMargin + (quoteDepth + indent) * Theme.paddingLarge
                     width: block.width - x - Theme.horizontalPageMargin
                     spacing: Theme.paddingSmall
@@ -337,7 +343,8 @@ Page {
 
                 Rectangle {
                     visible: blockKind === "code" || blockKind === "table"
-                    height: visible ? codeText.implicitHeight + Theme.paddingMedium * 2 : 0
+                    height: blockKind === "code" || blockKind === "table"
+                            ? codeText.implicitHeight + Theme.paddingMedium * 2 : 0
                     x: Theme.horizontalPageMargin
                     width: block.width - Theme.horizontalPageMargin * 2
                     color: Theme.rgba(Theme.highlightBackgroundColor, 0.1)
@@ -362,7 +369,7 @@ Page {
 
                 Column {
                     visible: blockKind === "image"
-                    height: visible ? implicitHeight : 0
+                    height: blockKind === "image" ? implicitHeight : 0
                     x: Theme.horizontalPageMargin
                     width: block.width - Theme.horizontalPageMargin * 2
                     spacing: Theme.paddingSmall
@@ -374,7 +381,7 @@ Page {
                     BackgroundItem {
                         visible: needsConsent
                         width: parent.width
-                        height: visible ? Theme.itemSizeLarge : 0
+                        height: needsConsent ? Theme.itemSizeLarge : 0
                         onClicked: article.allowImagesFrom(index)
 
                         Rectangle {
@@ -475,7 +482,7 @@ Page {
                         width: parent.width
                         horizontalAlignment: Text.AlignHCenter
                         textFormat: Text.PlainText
-                        text: visible ? imageAlt : ""
+                        text: blockKind === "image" ? imageAlt : ""
                         wrapMode: Text.Wrap
                         font.pixelSize: Theme.fontSizeExtraSmall
                         color: Theme.secondaryColor
@@ -484,7 +491,7 @@ Page {
 
                 Separator {
                     visible: blockKind === "rule"
-                    height: visible ? Theme.paddingLarge : 0
+                    height: blockKind === "rule" ? Theme.paddingLarge : 0
                     x: Theme.horizontalPageMargin
                     width: block.width - Theme.horizontalPageMargin * 2
                     color: Theme.secondaryColor
