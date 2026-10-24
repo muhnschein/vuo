@@ -8,14 +8,20 @@ Actions tab (the SDK version is an input) or push a `v*` or `build-*` tag; it
 also runs on any pull request that changes the recipe. The skeleton follows
 muhnschein/postivene's `rpm.yml`, but not its `mb2` build: Jolla's
 repositories install `rust`/`cargo` 1.75.0+git2 into the target (measured
-against the 5.2.0.15 SDK), and this lockfile needs 1.88. So the job lifts the
-SDK's cross compiler and target sysroot out of the image and runs
-`scripts/cross-rpm.sh` with the host's cargo -- the route in
-[`sdk-build.md`](sdk-build.md). The output is a test package: the binary
-links against the chosen SDK version's glibc (2.39 for 5.2.0.15), so it runs
-on phones at that release or newer.
+against the 5.2.0.15 SDK), and this lockfile needs 1.88. So the SDK's cross
+compiler and target sysroot are lifted out of the image and driven by a pinned
+host cargo -- the route in [`sdk-build.md`](sdk-build.md). The binary links
+against the chosen SDK version's glibc (2.39 for 5.2.0.15), so it runs on
+phones at that release or newer.
 
-**Locally, with the SDK installed:**
+**Locally, with Podman or Docker:** `scripts/build-in-container.sh`, the same
+script `rpm.yml` runs. SDK image pinned by digest in `rpm/sdk-images`; host
+side (cargo, rpm, qemu) in `rpm/Containerfile`, every input pinned. Output in
+`dist/`. Release builds reproducible byte for byte; `reproduce` job checks
+before publishing: [`verifying.md`](verifying.md).
+
+**Locally, with the SDK installed** (`mb2`; stops at cargo, see
+[`sdk-build.md`](sdk-build.md)):
 
 ```sh
 scripts/build-rpm.sh aarch64     # or armv7hl, or i486 for the emulator

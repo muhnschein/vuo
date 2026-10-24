@@ -1,0 +1,61 @@
+# Build environment for device RPM: host side of scripts/cross-build.sh and
+# scripts/cross-rpm.sh. scripts/build-in-container.sh builds and runs it; SDK
+# compiler and sysroot mounted at /sdk, not baked in.
+#
+# Every input pinned, so same Containerfile = same tools = same RPM
+# (docs/verifying.md):
+# - base image by digest;
+# - apt from snapshot.ubuntu.com at SNAPSHOT: archive frozen at that instant;
+# - rustup-init by version and sha256; Rust release from rust-toolchain.toml
+#   (RUST_VERSION, passed in).
+# Bump: new digest (`docker buildx imagetools inspect ubuntu:24.04`), new
+# SNAPSHOT, rustup version + its .sha256 from static.rust-lang.org.
+FROM docker.io/library/ubuntu:24.04@sha256:a2d43bffc46670d7108bb3c0468c67c5557c4c92e83e1e34cbff1322ad1b94dc
+
+ARG SNAPSHOT=20261020T000000Z
+ARG RUSTUP_VERSION=1.29.2
+ARG RUSTUP_SHA256=5be191e8c70a5007074254cb74d78dbfdd25cd5a61c27de7b8e5410122ec24f4
+ARG RUST_VERSION
+
+# Snapshot is https only; base image has no CA bundle. First two apt calls skip
+# TLS check, for ca-certificates alone: apt still checks Release signature against
+# ubuntu-keyring and every .deb against it, so content can't be swapped.
+#
+# i386: SDK cross compilers are i386 ELFs (docs/sdk-build.md). gcc/libc6-dev:
+# host linker for build scripts. qemu: runs SDK's own lrelease.
+RUN set -eu; \
+    sed -i -E "s#^URIs: .*#URIs: https://snapshot.ubuntu.com/ubuntu/${SNAPSHOT}/#" \
+        /etc/apt/sources.list.d/ubuntu.sources; \
+    dpkg --add-architecture i386; \
+    noverify="-o Acquire::https::Verify-Peer=false -o Acquire::https::Verify-Host=false"; \
+    apt-get $noverify update; \
+    apt-get $noverify install -y --no-install-recommends ca-certificates; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
+        curl gcc libc6-dev pkgconf file binutils rpm qemu-user-static \
+        libc6:i386 libstdc++6:i386 zlib1g:i386; \
+    rm -rf /var/lib/apt/lists/*
+
+# Readable by any uid: build runs as caller's (scripts/build-in-container.sh).
+# rustfmt, clippy: rust-toolchain.toml lists them; rustup would try to add
+# them at run time, into read-only RUSTUP_HOME.
+ENV RUSTUP_HOME=/opt/rustup PATH=/opt/cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+RUN set -eu; \
+    test -n "$RUST_VERSION"; \
+    curl -sSf --proto '=https' -o /tmp/rustup-init \
+        "https://static.rust-lang.org/rustup/archive/${RUSTUP_VERSION}/x86_64-unknown-linux-gnu/rustup-init"; \
+    echo "${RUSTUP_SHA256}  /tmp/rustup-init" | sha256sum -c -; \
+    chmod +x /tmp/rustup-init; \
+    CARGO_HOME=/opt/cargo /tmp/rustup-init -y --no-modify-path --profile minimal \
+        --default-toolchain "$RUST_VERSION" \
+        --component rustfmt,clippy --target aarch64-unknown-linux-gnu; \
+    rm /tmp/rustup-init; \
+    chmod -R a+rX /opt/rustup /opt/cargo
+
+# GCC finds cc1 and specs by own absolute prefix: toolchain must answer at
+# /opt/cross. Dangles until /sdk mounted.
+RUN ln -s /sdk/opt/cross /opt/cross
+
+# Crates download here (mounted); fixed path, so paths compiled into binary
+# (panic locations) same on every machine. HOME: any writable dir.
+ENV CARGO_HOME=/cargo HOME=/tmp

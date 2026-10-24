@@ -1,0 +1,7 @@
+# Sailfish SDK image per SDK version, by digest: third-party image, tags
+# repointable. scripts/build-in-container.sh reads it. New version:
+# `docker buildx imagetools inspect coderus/sailfishos-platform-sdk:<ver>`,
+# add line. Target's glibc = floor package runs on.
+5.2.0.15 sha256:e7c4379393b17ee63d7f7443ce9930c315a61fdb2e732016346ccbe8c934435e
+5.1.0.11 sha256:31ba115546972af3630f4690acc204a4e09701358ae39be1883ca70e0eadda86
+5.0.0.43 sha256:0eb5e0cbcdc7e5f12280d8d05c198f8497e7b39679fb6009f30b8a720b02a53a

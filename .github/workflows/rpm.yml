@@ -7,7 +7,11 @@
 # Not `mb2` (as postivene's rpm.yml): Jolla repos install rust/cargo 1.75.0+git2
 # into target (5.2.0.15 SDK), lockfile needs 1.88 (docs/sdk-build.md, "The
 # blocker"). So SDK's cross compiler and sysroot get lifted out of image and
-# driven by host cargo: scripts/cross-build.sh, scripts/cross-rpm.sh.
+# driven by pinned cargo in pinned build container:
+# scripts/build-in-container.sh, same as local build.
+#
+# Releases reproducible: `reproduce` rebuilds on other runner, byte for byte,
+# before `release` publishes (docs/verifying.md).
 name: rpm
 
 on:
@@ -51,8 +55,12 @@ on:
   pull_request:
     paths:
       - ".github/workflows/rpm.yml"
+      - "scripts/build-in-container.sh"
+      - "scripts/container-engine.sh"
       - "scripts/cross-build.sh"
       - "scripts/cross-rpm.sh"
+      - "rpm/Containerfile"
+      - "rpm/sdk-images"
       - "rpm/harbour-vuo-cross.spec"
 
 permissions:
@@ -62,45 +70,30 @@ jobs:
   rpm:
     runs-on: ubuntu-latest
     timeout-minutes: 120
-    # Write for release publish step only. Read floor stays on workflow above:
-    # non-tag builds keep read-only token.
-    permissions:
-      contents: write
+    outputs:
+      release_tag: ${{ steps.release.outputs.tag }}
     env:
       ARCH: ${{ inputs.arch || 'aarch64' }}
       SFOS: ${{ inputs.sfos_version || '5.2.0.15' }}
-      ROOTFS: /home/runner/sdk/rootfs
       # One job, every run: higher counts stall; slow finish beats restart.
-      # Cargo reads it in scripts/cross-build.sh; cc crate shares cargo's
+      # build-in-container.sh passes it to cargo; cc crate shares cargo's
       # jobserver, so C/C++ compiles serial too. Here, not in script: local
-      # cross build keeps every core.
+      # build keeps every core.
       CARGO_BUILD_JOBS: 1
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
-          # Release publishes via `gh` and GH_TOKEN, not git: token not left in
-          # .git/config.
+          # Nothing pushes with git: token not left in .git/config.
           persist-credentials: false
 
-      # By digest, not tag: third-party image, tag repointable. New SDK version:
-      # `docker manifest inspect coderus/sailfishos-platform-sdk:<ver>`, add
-      # line.
-      #
-      # Version shape-checked first: free text from dispatch form, spliced into
-      # paths and artifact name.
-      - name: Resolve the SDK image
+      # Free text from dispatch form, spliced into paths and artifact name.
+      # Digest per version: rpm/sdk-images.
+      - name: Check the SDK version
         run: |
           [[ $SFOS =~ ^[0-9]+(\.[0-9]+){3}$ ]] || {
             echo "::error::sfos_version '$SFOS' is not a dotted version"; exit 1; }
-          case "$SFOS" in
-            5.2.0.15) digest=sha256:e7c4379393b17ee63d7f7443ce9930c315a61fdb2e732016346ccbe8c934435e ;;
-            5.1.0.11) digest=sha256:31ba115546972af3630f4690acc204a4e09701358ae39be1883ca70e0eadda86 ;;
-            5.0.0.43) digest=sha256:0eb5e0cbcdc7e5f12280d8d05c198f8497e7b39679fb6009f30b8a720b02a53a ;;
-            *) echo "::error::no pinned digest for coderus/sailfishos-platform-sdk:$SFOS; add one to rpm.yml"
-               exit 1 ;;
-          esac
-          echo "IMAGE=coderus/sailfishos-platform-sdk@$digest" >> "$GITHUB_ENV"
-          echo "TARGET=SailfishOS-$SFOS-$ARCH" >> "$GITHUB_ENV"
+          awk -v v="$SFOS" '$1 == v { f = 1 } END { exit !f }' rpm/sdk-images || {
+            echo "::error::no pinned digest for $SFOS; add one to rpm/sdk-images"; exit 1; }
 
       # Release decided before build: bad tag costs seconds, not whole build.
       #
@@ -110,6 +103,7 @@ jobs:
       # Must match tree's Version, else release page and RPM disagree (v1.0.2
       # tag, 1.0.1 package).
       - name: Resolve the release tag
+        id: release
         env:
           INPUT_RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
@@ -129,96 +123,24 @@ jobs:
             echo "this run releases nothing; building a package only"
           fi
           echo "RELEASE_TAG=$tag" >> "$GITHUB_ENV"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
-      # ~13 GB unpacked; hosted runner has room, and image removed after lift
-      # below.
-      - name: Pull the Sailfish SDK
+      # SDK image ~13 GB unpacked, until compiler and sysroot lifted out.
+      - name: Make room
         run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet \
+                      "${AGENT_TOOLSDIRECTORY:-/opt/hostedtoolcache}"
           df -h / | tail -1
-          docker pull "$IMAGE"
-
-      # What scripts/cross-build.sh needs from image, nothing else:
-      #
-      #   /opt/cross                  SDK's aarch64-meego-linux-gnu GCC; must match
-      #                               device glibc and libstdc++ (docs/sdk-build.md)
-      #   /srv/mer/targets/<target>   target sysroot: Qt 5.6, sailfishapp, glibc,
-      #                               everything link resolves
-      #   a few of /usr/lib's         tooling's i486 libmpc/libmpfr/libgmp etc.;
-      #   libraries                   cc1 links them, host lacks them
-      #
-      # `docker cp`, not 13 GB export; image removed after. Target name checked
-      # against image's own list first: naming change fails here, not deep in
-      # build.
-      - name: Lift the cross toolchain and sysroot out of the image
-        run: |
-          targets=$(docker run --rm "$IMAGE" sb2-config -l 2>/dev/null || true)
-          echo "available targets:"; echo "$targets"
-          echo "$targets" | grep -qx -- "$TARGET" || {
-            echo "::error::no $TARGET in the $SFOS SDK image; see the list above"; exit 1; }
-
-          # Image has no default command and `docker create` needs one;
-          # container never starts, any command works.
-          c=$(docker create "$IMAGE" true)
-          mkdir -p "$ROOTFS/opt" "$ROOTFS/srv/mer/targets" "$ROOTFS/usr"
-          # `docker cp` from container extracts in client process; runner user
-          # can't restore root ownership ("operation not permitted"). sudo, then
-          # chown back.
-          sudo docker cp "$c:/opt/cross" "$ROOTFS/opt/cross"
-          sudo docker cp "$c:/srv/mer/targets/$TARGET" "$ROOTFS/srv/mer/targets/$TARGET"
-          docker rm "$c" >/dev/null
-
-          # Not all of tooling's /usr/lib: `docker cp` refuses trees with
-          # symlinks pointing outside. Image's own ldd lists libs cross compiler
-          # loads; copy exactly those, dereferenced. Skip glibc: host i386 libc
-          # serves; foreign libc on LD_LIBRARY_PATH breaks every 32-bit program
-          # on runner.
-          mkdir -p "$ROOTFS/usr/lib"
-          docker run --rm --user root -v "$ROOTFS/usr/lib:/out" "$IMAGE" sh -c '
-            set -e
-            libexec=/opt/cross/libexec/gcc/aarch64-meego-linux-gnu
-            for b in $libexec/*/cc1 $libexec/*/cc1plus $libexec/*/collect2 $libexec/*/lto1 \
-                     $libexec/*/lto-wrapper /opt/cross/bin/aarch64-meego-linux-gnu-*; do
-              [ -x "$b" ] || continue
-              ldd "$b" 2>/dev/null | awk "/=> \\//{print \$3}"
-            done | sort -u | while read -r lib; do
-              case "$lib" in
-                /usr/lib/*) cp -L "$lib" /out/ ;;
-              esac
-            done
-            ls -l /out
-            ls /out/libmpc.so* /out/libmpfr.so* /out/libgmp.so* >/dev/null'
-          docker rmi "$IMAGE" >/dev/null || true
-          sudo chown -R "$(id -u):$(id -g)" "$ROOTFS"
-          # GCC resolves cc1 and specs against absolute prefix: toolchain must
-          # be at /opt/cross.
-          sudo ln -sfn "$ROOTFS/opt/cross" /opt/cross
-          du -sh "$ROOTFS"/opt/cross "$ROOTFS"/srv/mer/targets/* "$ROOTFS"/usr/lib
-          df -h / | tail -1
-          ls "$ROOTFS/opt/cross/bin" | grep -- "-gcc$"
-
-      # Cross compilers are i386 ELFs (docs/sdk-build.md). rpm packages on host;
-      # qemu runs target's own lrelease, since newer Qt's .qm not guaranteed
-      # readable by device's 5.6.
-      - name: Install host prerequisites
-        run: |
-          sudo dpkg --add-architecture i386
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            libc6:i386 libstdc++6:i386 zlib1g:i386 \
-            rpm qemu-user-static file binutils
-
-      # Host cargo, new enough for lockfile, prebuilt aarch64 std. Only C/C++
-      # compiles and final link use SDK compiler; rustc is rust-toolchain.toml's
-      # release.
-      - run: rustup target add aarch64-unknown-linux-gnu
 
       # Not for release: cache written by earlier run, release binary must come
       # from tagged commit only; pays cold compile. zizmor can't read the `if`,
-      # hence ignored cache-poisoning finding.
+      # hence ignored cache-poisoning finding. Container writes crates to
+      # ~/.cargo (VUO_CARGO_HOME below) and objects to target/, as runner user:
+      # where this caches.
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2  # zizmor: ignore[cache-poisoning]
         if: env.RELEASE_TAG == '' && !inputs.release
         with:
-          key: cross-${{ env.TARGET }}
+          key: cross-SailfishOS-${{ env.SFOS }}-${{ env.ARCH }}
 
       # Test builds: run number as Release, else same NEVRA every time and `pkcon
       # install-local` silently does nothing. Run number monotonic: each build
@@ -242,19 +164,12 @@ jobs:
             echo "building a TEST package (Release: 1.${GITHUB_RUN_NUMBER})"
           fi
 
-      # scripts/cross-rpm.sh runs scripts/cross-build.sh, then %install/%files
-      # half of spec as rpm/harbour-vuo-cross.spec over cross-built binary.
-      # Output = TEST package.
-      - name: Cross-build and package
+      # Same script as local build and as `reproduce`, so they can't drift (its
+      # comments say why). Docker here; `reproduce` rebuilds with Podman.
+      - name: Build the RPM
         env:
-          SDK_VERSION: ${{ env.SFOS }}
-        run: scripts/cross-rpm.sh "$ROOTFS"
-
-      - name: Show what was built
-        run: |
-          for f in dist/*.rpm; do
-            echo "== $f"; rpm -qip "$f"; rpm -qlp "$f"
-          done
+          VUO_ENGINE: docker
+        run: VUO_CARGO_HOME=~/.cargo scripts/build-in-container.sh "$SFOS"
 
       # Harbour file-name rule, set by stamping above, so
       # scripts/check-harbour.sh can't hold it:
@@ -275,6 +190,7 @@ jobs:
               *) echo "::error::a release package must have Release 1, got $f"; exit 1 ;;
             esac
           fi
+          sha256sum dist/*.rpm
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
@@ -285,24 +201,82 @@ jobs:
 
       # After upload, deliberately: allowed-libraries rule only device link
       # answers, and breaking package still installs and runs, so you want it in
-      # hand to debug. Artifact kept, job red.
+      # hand to debug. Artifact kept, job red, nothing released. Host readelf
+      # reads aarch64 ELF too.
       - name: Harbour's allowed-libraries rule
-        run: |
-          bin=target/aarch64-unknown-linux-gnu/release/harbour-vuo
-          readelf=/opt/cross/bin/aarch64-meego-linux-gnu-readelf
-          ./scripts/check-linked-libs.sh "$bin" "$readelf"
+        run: ./scripts/check-linked-libs.sh target/aarch64-unknown-linux-gnu/release/harbour-vuo
 
-      # Run with release tag publishes, package attached (pushed tag or form).
-      #
-      # Last: after both Harbour rules, so breaking package never reaches
-      # release page; failed job never gets here.
-      #
+  # Release rebuilt the way docs/verifying.md tells users (verify-release.sh):
+  # fresh clone, other runner, Podman not Docker, other time zone and umask.
+  # Not byte-identical: no release. Users' check is then one CI already passed.
+  reproduce:
+    needs: rpm
+    if: needs.rpm.outputs.release_tag != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - name: Make room
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet \
+                      "${AGENT_TOOLSDIRECTORY:-/opt/hostedtoolcache}"
+
+      # SDK image's build user is uid 100000, past rootless Podman's default
+      # 65536 subordinate ids. The step docs/verifying.md gives users.
+      - name: Give rootless Podman the SDK image's ids
+        run: |
+          sudo usermod --add-subuids 100000-599999 --add-subgids 100000-599999 "$(id -un)"
+          podman system migrate
+
+      - name: Fetch the package the rpm job built
+        run: gh run download "$GITHUB_RUN_ID" --dir rpms
+
+      - name: Rebuild and compare
+        run: |
+          umask 0027
+          TZ=Pacific/Kiritimati scripts/verify-release.sh --podman \
+            --ref "$GITHUB_SHA" --no-download --rpm rpms/*/harbour-vuo-*.rpm
+
+  # Publishes only what `reproduce` rebuilt byte for byte. Release notes from
+  # spec's %changelog; SHA256SUMS beside package.
+  release:
+    needs: [rpm, reproduce]
+    if: needs.rpm.outputs.release_tag != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RELEASE_TAG: ${{ needs.rpm.outputs.release_tag }}
+      SFOS: ${{ inputs.sfos_version || '5.2.0.15' }}
+      ARCH: ${{ inputs.arch || 'aarch64' }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - name: Fetch the package the rpm job built
+        run: |
+          gh run download "$GITHUB_RUN_ID" --dir rpms
+          mkdir dist
+          mv rpms/*/harbour-vuo-*.rpm dist/
+          (cd dist && sha256sum -- *.rpm > SHA256SUMS && cat SHA256SUMS)
+
       # `gh`, not third-party action: runner ships it, no tag to repoint,
       # nothing to pin.
       - name: Publish the release
-        if: env.RELEASE_TAG != ''
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
           notes=$(mktemp)
           {
@@ -310,6 +284,9 @@ jobs:
             echo
             echo 'Install it with `pkcon install-local harbour-vuo-*.rpm`, or'
             echo 'through Storeman if you have it.'
+            echo
+            echo 'Rebuilds from this tag to the same file, byte for byte:'
+            echo 'see docs/verifying.md.'
             echo
             echo "## Changes"
             echo
@@ -327,11 +304,11 @@ jobs:
           # Idempotent: re-run after transient failure attaches package, no
           # "release already exists".
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            gh release upload "$RELEASE_TAG" dist/*.rpm --clobber
+            gh release upload "$RELEASE_TAG" dist/*.rpm dist/SHA256SUMS --clobber
           else
             # --target creates tag when form asked; on tag push tag already this
             # commit's, gh ignores it.
-            gh release create "$RELEASE_TAG" dist/*.rpm \
+            gh release create "$RELEASE_TAG" dist/*.rpm dist/SHA256SUMS \
               --title "Vuo $RELEASE_TAG" \
               --notes-file "$notes" \
               --target "$GITHUB_SHA"

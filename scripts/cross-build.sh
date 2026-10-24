@@ -34,9 +34,10 @@ CROSS=/opt/cross/bin/aarch64-meego-linux-gnu
 [[ -x "$CROSS-gcc" ]] || { echo "no cross gcc at $CROSS-gcc" >&2; exit 1; }
 
 # GCC calls plain `as` and `ld`; without -B finds host x86 binutils on PATH,
-# dies "as: unrecognized option '-EL'".
-BINDIR="$(mktemp -d)"
-trap 'rm -rf "$BINDIR"' EXIT
+# dies "as: unrecognized option '-EL'". Fixed path, not mktemp: it lands in
+# RUSTFLAGS and CFLAGS; random one = different build inputs every run.
+BINDIR="$ROOT/target/cross-bin"
+mkdir -p "$BINDIR"
 for t in as ld ar nm ranlib objcopy objdump strip readelf; do
     ln -sf "$CROSS-$t" "$BINDIR/$t"
 done

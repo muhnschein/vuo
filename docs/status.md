@@ -57,7 +57,8 @@ and its evidence are in [docs/sdk-build.md](sdk-build.md).
 **Device builds come from CI, not the spec.** What stays unproven or manual:
 
 - **The RPM is produced by CI**, but not by the spec: `.github/workflows/rpm.yml`
-  drives `scripts/cross-rpm.sh` over the SDK image (see `docs/packaging.md`).
+  drives `scripts/build-in-container.sh` over the SDK image (see
+  `docs/packaging.md`); releases rebuild byte for byte (`docs/verifying.md`).
   `rpm/harbour-vuo.spec` itself still stops at the cargo invocation, for the
   reason above, and the Jolla repositories' rust is 1.75.0+git2 on 5.2.0.15 too.
 - **Only `aarch64` is built.** `scripts/cross-build.sh` cross-compiles the

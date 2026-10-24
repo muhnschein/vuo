@@ -54,12 +54,16 @@ checkout, with no phone, no server account, and no network.** Anything that
 cannot be verified under those conditions is either badly layered or belongs
 behind an explicit opt-in gate.
 
-Device RPMs are built with the Sailfish SDK (Docker build engine — the
-VirtualBox engine cannot build Rust):
+Device RPMs are built in containers with Podman or Docker, the same way
+releases are:
 
 ```sh
-scripts/build-rpm.sh aarch64
+scripts/build-in-container.sh      # writes dist/harbour-vuo-*.aarch64.rpm
 ```
+
+Releases are reproducible: each release RPM rebuilds from its tag to the same
+file, byte for byte. To check one yourself, see
+[`docs/verifying.md`](docs/verifying.md).
 
 ## Licence
 
