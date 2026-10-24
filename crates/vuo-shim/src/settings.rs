@@ -435,22 +435,6 @@ impl Settings {
         self.connectionTested(ok, QString::from(message.to_owned()));
     }
 
-    /// The media policy as the core's type.
-    #[must_use]
-    pub fn media_policy_for(&self, instance: url::Url) -> vuo_core::content::MediaPolicy {
-        use vuo_core::content::{MediaPolicy, UnproxiedMedia};
-        let fallback = match self.mediaPolicy {
-            MEDIA_STRICT => UnproxiedMedia::Strict,
-            MEDIA_ALLOW => UnproxiedMedia::Allow,
-            _ => UnproxiedMedia::Ask,
-        };
-        MediaPolicy::ProxyThroughInstance {
-            instance,
-            extra_trusted: Vec::new(),
-            fallback,
-        }
-    }
-
     /// The chosen sync interval in minutes, or `None` for "Manual only".
     #[must_use]
     pub fn sync_interval_minutes(&self) -> Option<i64> {
@@ -993,27 +977,6 @@ mod tests {
                 expected,
                 "the context must read index {index} the same way"
             );
-        }
-    }
-
-    #[test]
-    fn media_policy_maps_every_index_including_nonsense() {
-        use vuo_core::content::{MediaPolicy, UnproxiedMedia};
-        let instance = url::Url::parse("https://h.example/").unwrap();
-        let mut s = Settings::default();
-        for (index, expected) in [
-            (MEDIA_STRICT, UnproxiedMedia::Strict),
-            (MEDIA_ASK, UnproxiedMedia::Ask),
-            (MEDIA_ALLOW, UnproxiedMedia::Allow),
-            (99, UnproxiedMedia::Ask),
-        ] {
-            s.mediaPolicy = index;
-            let MediaPolicy::ProxyThroughInstance { fallback, .. } =
-                s.media_policy_for(instance.clone())
-            else {
-                panic!("expected a proxying policy")
-            };
-            assert_eq!(fallback, expected, "index {index}");
         }
     }
 

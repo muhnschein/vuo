@@ -25,11 +25,8 @@ pub struct AppContext {
     ///
     /// Here because both interested objects are QML-constructed and can't reach
     /// each other: `Settings` writes on save, `ArticleModel` reads when
-    /// building transform context (§9.3).
-    ///
-    /// `ArticleModel` maps it to the core's type itself.
-    /// `Settings::media_policy_for` is a parallel mapping only its own test
-    /// calls; the pub-fn guard counts this mention as its caller.
+    /// building transform context (§9.3), mapping it to the core's type
+    /// itself.
     media_policy: std::cell::Cell<i32>,
     /// User's "mark read when opened" setting (`settings::MARK_READ_*`).
     ///
