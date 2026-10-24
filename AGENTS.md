@@ -50,7 +50,8 @@ User tests RPM on phone; that test judges feel, lag, transitions. Say exactly wh
 ## Comments and docs
 
 - Caveman-full = drop articles, filler, pleasantries, hedging. Fragments OK, short words. Identifiers, paths, code, errors exact. E.g. "`Cargo.lock` stays v3: SDK cargo 1.75 can't read v4."
-- New code comments, `docs/*.md` edits, this file: caveman-full. Existing prose comments stay; no rewrite unasked.
+- Code comments, `docs/*.md` edits, this file: caveman-full.
+- Comments: terse fragments. What is true now and why; keep constraints. No changelog, bug story, history (git's job): delete comment rather than turn it into history. Identifiers, paths, flags exact. Item doc comments stay (`missing_docs` denied).
 - `README.md`, release notes (`%changelog` in both `rpm/*.spec`), forum posts: plain prose for users, as short and to the point as possible.
 - No plans, research notes, scratch files in repo.
 
