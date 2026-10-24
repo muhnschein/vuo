@@ -1,18 +1,16 @@
 #!/usr/bin/env bash
-# Render store/cover.png -- the 1080x540 banner on Vuo's Harbour Store page.
+# Render store/cover.png: 1080x540 banner on Vuo's Harbour Store page.
 #
-# Not part of the app and not installed. It is the onboarding screen laid out
-# for a landscape frame, so the Store page and the app look like one thing;
-# tools/textart/store-cover.qml is the composition and this puts the pieces
-# where it expects them.
+# Not app part, not installed. Onboarding screen laid out landscape, so Store
+# page and app look like one thing; tools/textart/store-cover.qml = composition,
+# this places pieces.
 #
-# Needs the same QML runtime with a GL context that `make textart` does, and
-# two font files. Sail Sans Pro ships with SailfishOS and is not
-# redistributable, so the wordmark is Fira Sans (SIL OFL). Point
-# VUO_FONT_DIR at a directory holding FiraSans-Light.ttf and
-# FiraSans-Regular.ttf, or let this fetch them from Google Fonts once.
+# Needs same GL-context QML runtime as `make textart`, plus two fonts. Sail Sans
+# Pro ships with SailfishOS, not redistributable; wordmark = Fira Sans (SIL
+# OFL). VUO_FONT_DIR → dir with FiraSans-Light.ttf and FiraSans-Regular.ttf, or
+# fetched from Google Fonts once.
 #
-# The result is COMMITTED, like the masks in qml/art/: the Store wants a file.
+# Result COMMITTED, like qml/art/ masks: Store wants file.
 set -euo pipefail
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
@@ -29,11 +27,9 @@ BOOK="$FONT_DIR/FiraSans-Regular.ttf"
 if [[ ! -f "$LIGHT" ]] || [[ ! -f "$BOOK" ]]; then
     echo "== fetching Fira Sans (SIL OFL) into $FONT_DIR =="
     mkdir -p "$FONT_DIR"
-    # Resolved through the CSS API rather than hardcoding a versioned path,
-    # which Google rotates.
-    # --proto/--proto-redir: -L follows redirects, and without these a
-    # redirect could walk this fetch down to plain http. §9.1 says TLS is
-    # never given up, and that has to hold for the hop nobody chose.
+    # Resolved via CSS API, not hardcoded versioned path (Google rotates).
+    # --proto/--proto-redir: -L follows redirects; without these redirect could
+    # drop to plain http. §9.1: TLS never given up, incl. hop nobody chose.
     css=$(curl -sSfL --proto '=https' --proto-redir '=https' \
         "https://fonts.googleapis.com/css2?family=Fira+Sans:wght@300;400&display=swap") || {
         echo "could not reach Google Fonts; set VUO_FONT_DIR to a directory holding the two files." >&2

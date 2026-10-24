@@ -1,58 +1,49 @@
-//! Permissive wire types: exactly what Miniflux puts on the socket.
+//! Permissive wire types: exactly what Miniflux puts on socket.
 //!
-//! §9.2: *treat every JSON field as absent, wrong-typed, or absurd. Server
-//! versions skew; fields get added and deprecated. Deserialise into permissive
-//! types and validate into strict domain types at the boundary, rejecting the
-//! entry rather than the sync when one item is malformed.*
+//! §9.2: treat every JSON field as absent, wrong-typed or absurd. Versions
+//! skew, fields come and go. Deserialise permissively, validate into strict
+//! domain types at boundary, reject entry not sync.
 //!
-//! Nothing in this module validates anything. These structs exist to make
-//! `serde` succeed on any plausible server response so that validation can
-//! happen afterwards, per item, where a failure can be attributed and
-//! isolated. The strict types live in [`crate::model`] and the translation in
-//! [`crate::api::convert`].
+//! Nothing here validates. Structs make `serde` succeed on any plausible
+//! response; validation happens after, per item, where failure is attributable.
+//! Strict types: [`crate::model`]; translation: [`crate::api::convert`].
 //!
-//! # Three rules, learned from the server's own history
+//! # Three rules, from server's own history
 //!
-//! 1. **No `deny_unknown_fields`, anywhere.** `Feed` gained a dozen fields and
-//!    `User` eight within the version window Vuo has to tolerate. A newer
-//!    server will always send keys this client has never heard of, and that
-//!    must be uninteresting rather than fatal.
-//! 2. **`#[serde(default)]` on every container.** `Option<T>` alone does *not*
-//!    make a field optional in serde -- a missing key is still an error unless
-//!    a default exists. Container-level `default` fixes every field at once,
-//!    including the ones added after this file was written.
-//! 3. **Absence has three spellings** and Miniflux uses all of them: the key
-//!    is omitted (`feed`, `category`), the key is present and `null`
-//!    (`icon`, `enclosures`, `tags`), or the key is present and holds a zero
-//!    value (`""`, `0`, `false`, and the Go zero time
-//!    `"0001-01-01T00:00:00Z"`). Only the first two are serde's problem; the
-//!    third is handled by [`de_opt_time`].
+//! 1. **No `deny_unknown_fields`, anywhere.** `Feed` gained a dozen fields,
+//!    `User` eight, within tolerated version window. Unknown keys must be
+//!    uninteresting, not fatal.
+//! 2. **`#[serde(default)]` on every container.** `Option<T>` alone doesn't
+//!    make a field optional (missing key still errors without default).
+//!    Container-level `default` covers every field, incl. future ones.
+//! 3. **Absence has three spellings**, Miniflux uses all: key omitted (`feed`,
+//!    `category`), key `null` (`icon`, `enclosures`, `tags`), or zero value
+//!    (`""`, `0`, `false`, Go zero time `"0001-01-01T00:00:00Z"`). First two
+//!    are serde's problem; third handled by [`de_opt_time`].
 
 use chrono::{DateTime, FixedOffset};
 use serde::{Deserialize, Deserializer, Serialize};
 
-/// Go's zero `time.Time`, `0001-01-01T00:00:00Z`, as a Unix timestamp.
+/// Go zero `time.Time`, `0001-01-01T00:00:00Z`, as Unix timestamp.
 ///
-/// Miniflux serialises unset timestamps as this rather than omitting them or
-/// sending null. Treating it as a real date is not a cosmetic bug: sorting a
-/// feed list by a literal year-1 timestamp silently corrupts the ordering.
+/// Miniflux sends this for unset timestamps instead of omitting or null.
+/// Treating it as real date corrupts sort order.
 const GO_ZERO_TIME_SECS: i64 = -62_135_596_800;
 
-/// Whether `t` is Go's zero time, the sentinel Miniflux sends for an unset timestamp.
+/// Whether `t` is Go zero time (Miniflux's unset-timestamp sentinel).
 #[must_use]
 pub fn is_zero_time(t: &DateTime<FixedOffset>) -> bool {
     t.timestamp() == GO_ZERO_TIME_SECS
 }
 
-/// Deserialise a timestamp that may be absent, `null`, or the zero sentinel.
+/// Deserialise timestamp that may be absent, `null`, or zero sentinel.
 ///
-/// All three collapse to `None`, so callers never have to know which spelling
-/// of "unset" a given server version chose.
+/// All three → `None`: callers needn't know which "unset" spelling server
+/// chose.
 ///
 /// # Errors
 ///
-/// Returns the deserialiser's error when the value is neither `null` nor an
-/// RFC 3339 timestamp.
+/// Deserialiser's error when value is neither `null` nor RFC 3339 timestamp.
 pub fn de_opt_time<'de, D>(d: D) -> Result<Option<DateTime<FixedOffset>>, D::Error>
 where
     D: Deserializer<'de>,
@@ -61,13 +52,13 @@ where
     Ok(opt.filter(|t| !is_zero_time(t)))
 }
 
-/// Deserialise a collection that may arrive as `null`.
+/// Deserialise collection that may arrive as `null`.
 ///
-/// Collapses `null` to the empty collection so no call site has to branch.
+/// `null` → empty collection: no call site branches.
 ///
 /// # Errors
 ///
-/// Returns the deserialiser's error when a non-null value does not decode as `T`.
+/// Deserialiser's error when non-null value doesn't decode as `T`.
 pub fn de_null_default<'de, D, T>(d: D) -> Result<T, D::Error>
 where
     D: Deserializer<'de>,
@@ -78,14 +69,13 @@ where
 
 /// `{ "total": N, "entries": [...] }`
 ///
-/// `total` is `count(*) OVER()` -- the full match count ignoring limit and
-/// offset. It is *not* a safe loop bound during keyset pagination: with
-/// `after_entry_id` set it counts only the rows still ahead of the cursor and
-/// therefore shrinks on every page.
+/// `total` = `count(*) OVER()`, full match count ignoring limit/offset. *Not*
+/// safe loop bound for keyset pagination: with `after_entry_id` it counts only
+/// rows ahead of cursor, shrinks every page.
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
 pub struct EntriesResponse {
-    /// Count of every entry matching the query; see the type docs for why it is no loop bound.
+    /// Count of every matching entry; type docs say why it's no loop bound.
     pub total: i64,
     /// This page of entries.
     #[serde(deserialize_with = "de_null_default")]
@@ -113,12 +103,10 @@ pub struct Entry {
     pub user_id: i64,
     /// The feed the entry came from.
     pub feed_id: i64,
-    /// Deliberately a `String`, not an enum.
+    /// `String` on purpose, not enum.
     ///
-    /// A server older than 2.3 can still send the retired `"removed"` status,
-    /// and a newer one could add a value this client predates. Decoding into
-    /// an enum would turn that into a deserialisation failure for the whole
-    /// page rather than one unusable row.
+    /// Pre-2.3 server can still send retired `"removed"`; newer one may add
+    /// values. Enum would fail whole page instead of one row.
     pub status: String,
     /// Miniflux's hash identifying the entry within its feed.
     pub hash: String,
@@ -128,7 +116,7 @@ pub struct Entry {
     pub url: String,
     /// Link to the article's discussion page, if the feed gives one. Foreign text.
     pub comments_url: String,
-    /// Added in 2.3.x; simply absent on older servers.
+    /// Added in 2.3.x; absent on older servers.
     pub language: String,
     /// When the feed says the article was published.
     #[serde(deserialize_with = "de_opt_time")]
@@ -152,14 +140,14 @@ pub struct Entry {
     /// Attached media; `null` on the wire becomes empty.
     #[serde(deserialize_with = "de_null_default")]
     pub enclosures: Vec<Enclosure>,
-    /// Omitted entirely when nil, and only partially populated when present.
+    /// Omitted when nil; partially populated when present.
     pub feed: Option<Feed>,
     /// Tags (categories) the feed attached to the entry. Foreign text; `null` becomes empty.
     #[serde(deserialize_with = "de_null_default")]
     pub tags: Vec<String>,
 }
 
-// Miniflux's own shape, field for field: the bools are the server's.
+// Miniflux's own shape, field for field: bools are server's.
 /// A subscribed feed, from `GET /v1/feeds` or embedded in an [`Entry`].
 #[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -251,8 +239,8 @@ pub struct Icon {
     pub id: i64,
     /// The mime type the server claims. Not trusted; see [`crate::api::icon`].
     pub mime_type: String,
-    /// Base64, **prefixed with the mime type**: `"image/png;base64,iVBOR..."`.
-    /// Not a `data:` URI -- the `data:` scheme prefix is absent.
+    /// Base64, **prefixed with mime type**: `"image/png;base64,iVBOR..."`. Not
+    /// `data:` URI: no `data:` prefix.
     pub data: String,
 }
 
@@ -296,8 +284,7 @@ pub struct Enclosure {
 
 /// `GET /v1/feeds/counters`.
 ///
-/// Feeds with a zero count are omitted from the maps rather than sent as
-/// explicit zeros, so a missing key means zero.
+/// Zero-count feeds omitted from maps: missing key = zero.
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
 pub struct FeedCounters {
@@ -361,9 +348,9 @@ pub struct EntryContentResponse {
     pub reading_time: i32,
 }
 
-/// Every error body Miniflux produces: `{"error_message": "..."}`.
+/// Every Miniflux error body: `{"error_message": "..."}`.
 ///
-/// The message is foreign text. Render it as plain text, never as markup.
+/// Message is foreign text: plain text only, never markup.
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
 pub struct ApiError {
@@ -373,19 +360,15 @@ pub struct ApiError {
 
 // ---------------------------------------------------------------- requests
 
-/// Body of `PUT /v1/entries` -- the only idempotent entry-state write.
+/// Body of `PUT /v1/entries`: only idempotent entry-state write.
 ///
-/// Both fields are absolute sets, not deltas, which is what makes outbox
-/// replay safe. `status` and `starred` are independent; sending neither is a
-/// 400 ("either the status or the starred field must be specified", verified
-/// on 2.3.2+), and so is an empty `entry_ids`. `starred` itself only exists
-/// from 2.3.2; on older servers the field is unknown and a starred-only body
-/// 400s, which is why the client refuses writes below that floor rather than
-/// sending this.
+/// Both fields absolute sets, not deltas: outbox replay safe. Independent;
+/// neither = 400 ("either the status or the starred field must be specified",
+/// 2.3.2+), empty `entry_ids` too. `starred` exists only from 2.3.2; older
+/// servers 400 on starred-only body, so client refuses writes below that floor.
 ///
-/// The `/star` and `/bookmark` routes are *not* usable here: they map to a
-/// handler whose SQL is `SET starred = NOT starred`, a true toggle that flips
-/// state back when replayed.
+/// Never `/star` or `/bookmark`: handler does `SET starred = NOT starred`,
+/// replay flips back.
 #[derive(Debug, Clone, Serialize)]
 pub struct EntriesUpdateRequest {
     /// The entries to change; must not be empty.
@@ -404,8 +387,8 @@ mod tests {
 
     #[test]
     fn entry_survives_a_completely_empty_object() {
-        // The point of container-level `default`: a server that omits
-        // everything must still deserialise.
+        // Point of container-level `default`: server omitting everything still
+        // deserialises.
         let e: Entry = serde_json::from_str("{}").unwrap();
         assert_eq!(e.id, 0);
         assert_eq!(e.enclosures.len(), 0);
@@ -414,7 +397,7 @@ mod tests {
 
     #[test]
     fn unknown_fields_are_ignored() {
-        // A newer server will always send keys this client predates.
+        // Newer server always sends keys this client predates.
         let json = r#"{"id":1,"title":"x","some_field_from_2027":{"nested":true},"tags":["a"]}"#;
         let e: Entry = serde_json::from_str(json).unwrap();
         assert_eq!(e.id, 1);
@@ -447,9 +430,8 @@ mod tests {
         // 05:06:07+02:00 is 03:06:07Z.
         assert_eq!(ts.timestamp(), 1_772_593_567);
         assert_eq!(ts.offset().local_minus_utc(), 2 * 3600);
-        // `timestamp()` truncates, so the whole-seconds assertion above says
-        // nothing about the fractional half of this test's name: zeroing the
-        // nanoseconds left it, and the rest of the crate, green.
+        // `timestamp()` truncates: assertion above says nothing about
+        // fractional part.
         assert_eq!(ts.timestamp_subsec_micros(), 123_456);
     }
 
@@ -462,8 +444,8 @@ mod tests {
 
     #[test]
     fn a_retired_status_value_does_not_fail_the_page() {
-        // Pre-2.3 servers still emit "removed". An enum here would reject the
-        // entire response rather than one row.
+        // Pre-2.3 servers still send "removed"; enum would reject whole
+        // response.
         let e: Entry = serde_json::from_str(r#"{"id":1,"status":"removed"}"#).unwrap();
         assert_eq!(e.status, "removed");
     }

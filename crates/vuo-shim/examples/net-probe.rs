@@ -1,14 +1,12 @@
-//! Make exactly the request "Test connection" makes, and say what happened.
+//! Make exactly the request "Test connection" makes; say what happened.
 //!
-//! For telling an app fault apart from a network one when a device reports a
-//! connection failure. Run it under qemu against the target sysroot and it
-//! exercises the same `Transport` the phone does -- including, usefully, the
-//! fact that Miniflux authenticates with the `X-Auth-Token` header and no
-//! username is sent at all.
+//! Tells app fault from network fault when device reports connection failure.
+//! Under qemu against target sysroot it exercises phone's `Transport`, incl.
+//! Miniflux authenticating via `X-Auth-Token` header, no username sent.
 //!
 //! Usage: net-probe <server-url> [api-key]
 
-// Its whole output is the report, on stdout, for a person to read.
+// Whole output = report on stdout, for a person.
 #![allow(clippy::print_stdout)]
 
 fn main() {

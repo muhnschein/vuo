@@ -1,23 +1,19 @@
-//! The Vuo application binary.
+//! Vuo application binary.
 //!
-//! Two entry paths, selected by the `sailfishapp` feature:
+//! Two entry paths, by `sailfishapp` feature:
 //!
-//! - **Device (`--features sailfishapp`).** Uses `SailfishApp::application()`
-//!   and `SailfishApp::createView()`. This matters: `QmlEngine::new()` builds a
-//!   **`QtWidgets`** `QApplication`, and a Silica app needs Sailfish's own
-//!   application object for correct Wayland surfaces, the booster, and theme
-//!   setup.
+//! - **Device (`--features sailfishapp`).** `SailfishApp::application()` and
+//!   `SailfishApp::createView()`. `QmlEngine::new()` builds a **`QtWidgets`**
+//!   `QApplication`; Silica app needs Sailfish's application object for Wayland
+//!   surfaces, booster, theme.
 //!
-//! - **Desktop (default).** A plain `QmlEngine` pointed at the Silica stubs.
-//!   For bring-up and debugging on a laptop, so that a QML change can be seen
-//!   without a phone. Not shippable and not meant to be: the stubs are
-//!   geometry-free placeholders.
+//! - **Desktop (default).** Plain `QmlEngine` on Silica stubs. Bring-up and
+//!   debugging on laptop. Not shippable: stubs are geometry-free placeholders.
 //!
-//! Either way the binary is thin on purpose. It registers types, opens the
-//! mirror, loads QML, and runs the event loop. Everything else is in
-//! `vuo-core`, where it can be tested without Qt.
+//! Binary thin on purpose: register types, open mirror, load QML, run event
+//! loop. Rest in `vuo-core`, testable without Qt.
 
-// Shipped code is held to more than tests are; vuo-core's lib.rs says why.
+// Shipped code held to more than tests; vuo-core's lib.rs says why.
 #![cfg_attr(
     not(test),
     deny(
@@ -30,23 +26,18 @@
     )
 )]
 
-// Only the desktop harness needs these. The device build's `run` is the cpp!
-// block, which reaches Qt through C++ headers rather than through
-// qmetaobject's Rust types -- so under `sailfishapp` this import would be
-// unused and warn.
+// Desktop harness only. Device `run` is cpp! block (C++ headers, not
+// qmetaobject's Rust types): import unused under `sailfishapp`.
 #[cfg(not(feature = "sailfishapp"))]
 use qmetaobject::{QString, QmlEngine};
 
 fn main() {
-    // `vuo_shim=info` is in the default on purpose, not only under `VUO_LOG`.
+    // `vuo_shim=info` in default on purpose, not only under `VUO_LOG`.
     //
-    // The shim logs a bare handful of lines a session, and they are the ones
-    // that matter when something goes wrong where no Rust diagnostic can
-    // follow it: opening the mirror, starting the sync worker, installing the
-    // context. A device process that dies on a signal prints no backtrace and
-    // no panic message — the binary is stripped — so the last line reached is
-    // the whole of the evidence, and a user reproducing a crash should not
-    // have to know an environment variable to produce it.
+    // Shim logs a handful of lines per session: mirror open, sync worker start,
+    // context install. Device process dying on signal prints nothing (stripped
+    // binary), so last line reached is all evidence; user reproducing crash
+    // shouldn't need an env var.
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_env("VUO_LOG").unwrap_or_else(|_| {
@@ -59,38 +50,29 @@ fn main() {
 
     vuo_shim::register_qml_types();
 
-    // The sync worker's thread, before anything else and whether or not there
-    // is an account for it to serve yet.
+    // Sync worker thread first, account or not.
     //
-    // Not an optimisation. Creating this thread later — from the QML tap that
-    // saves a first account — kills the process on a Jolla Phone 2026, with no
-    // panic and no diagnostic. Started here, while the process is still a
-    // handful of threads and Wayland and the GPU stack have not been loaded,
-    // it costs a parked thread and is handed its account by a channel send
-    // when the user configures one. See `vuo_shim::context::start_worker`.
+    // Not optimisation: creating it later (from QML tap saving first account)
+    // kills process on Jolla Phone 2026, no panic, no diagnostic. Started here,
+    // while process is few threads and Wayland/GPU not loaded: parked thread,
+    // account sent by channel later. See `vuo_shim::context::start_worker`.
     vuo_shim::context::start_worker();
 
-    // Install the shared context before any QML loads: QML constructs the
-    // models itself, so they resolve their database and worker through the
-    // Qt-thread global rather than through a constructor.
+    // Install shared context before QML loads: QML constructs models itself;
+    // they find database and worker via Qt-thread global, not constructor.
     if let Err(e) = install_context() {
-        // Not fatal. With no account configured yet there is nothing to open,
-        // and the UI must still start so the user can reach Settings.
+        // Not fatal: no account yet = nothing to open; UI must still start for
+        // Settings.
         tracing::info!(error = %e, "starting without a configured account");
     }
 
     run();
 }
 
-/// Open the mirror, start the worker, and install the app context.
+/// Open mirror, start worker, install app context.
 ///
-/// The whole body of this used to live here, in a crate with no tests that
-/// most of `make check` does not even build. It now lives in `vuo-shim`, where
-/// it is tested — and, more importantly, where the settings screen can call it
-/// again. Building the context exactly once, here, meant that on a first run
-/// (no account file, so this fails) nothing ever retried it, and every
-/// worker-backed action in the running app silently did nothing until Vuo was
-/// restarted. See `vuo_shim::context::refresh`.
+/// Body lives in `vuo-shim` (tested; settings screen calls it again after first
+/// account save). See `vuo_shim::context::refresh`.
 fn install_context() -> vuo_core::Result<()> {
     let paths = vuo_shim::worker::AppPaths::resolve().ok_or_else(|| {
         vuo_core::Error::Config("could not resolve the data directory".to_owned())
@@ -101,11 +83,8 @@ fn install_context() -> vuo_core::Result<()> {
 
 #[cfg(feature = "sailfishapp")]
 fn run() {
-    // From `cpp`, not `qmetaobject`: qmetaobject depends on the crate but
-    // its `use cpp::{cpp, cpp_class}` is private, so `qmetaobject::cpp` does
-    // not resolve. This line was `use qmetaobject::cpp;` and could never have
-    // compiled -- the first thing a real device build finds once it gets past
-    // the toolchain.
+    // From `cpp`, not `qmetaobject`: qmetaobject's `use cpp::{cpp, cpp_class}`
+    // is private, `qmetaobject::cpp` doesn't resolve.
     use cpp::cpp;
 
     cpp! {{
@@ -117,9 +96,8 @@ fn run() {
         #include <QTranslator>
     }}
 
-    // SailfishApp::main() does the whole dance -- application object, view,
-    // source path resolution against /usr/share/<pkg>/ -- and is what every
-    // Silica app uses.
+    // SailfishApp::main() does it all (app object, view, source path against
+    // /usr/share/<pkg>/); every Silica app uses it.
     unsafe {
         cpp!([] {
             int argc = 1;
@@ -127,18 +105,14 @@ fn run() {
             char *argv[] = { name, nullptr };
             QGuiApplication *app = SailfishApp::application(argc, argv);
 
-            // Load the UI translation for the device's locale.
+            // Load UI translation for device locale.
             //
-            // Without this, `qsTr` returns its source string -- English --
-            // while Silica's own Format/Formatter follow the system locale.
-            // Reported from a German device as a metadata line reading
-            // "Tagesschau | vor 6 Stunden | 2 min read": half translated by
-            // Silica, half not translated at all, in one sentence.
+            // Without it `qsTr` returns English source while Silica's
+            // Format/Formatter follow system locale: half-translated lines.
             //
-            // Leaked on purpose: it must outlive `run()`, which never returns
-            // until the app is quitting, and a QTranslator removed while the
-            // UI is live would blank every translated string. `-` is the
-            // separator in `harbour-vuo-de.qm`.
+            // Leaked on purpose: must outlive `run()` (returns only at quit);
+            // removing QTranslator while UI live blanks every translated
+            // string. `-` = separator in `harbour-vuo-de.qm`.
             QTranslator *translator = new QTranslator(app);
             if (translator->load(QLocale(), QStringLiteral("harbour-vuo"),
                                  QStringLiteral("-"),

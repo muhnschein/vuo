@@ -28,15 +28,15 @@ import Sailfish.Silica 1.0
 DockedPanel {
     id: banner
 
-    /// FOREIGN TEXT. Rendered as PlainText, always.
+    /// FOREIGN TEXT. Always PlainText.
     property string message: ""
-    /// Colours the text and holds the banner open: an error the user has to
-    /// act on should not vanish while they are reading it.
+    /// Colours text, holds banner open: error user must act on mustn't vanish
+    /// while read.
     property bool isError: false
-    /// When non-empty, an action button is shown. A TRANSLATED CONSTANT.
+    /// Non-empty = action button shown. TRANSLATED CONSTANT.
     property string actionText: ""
-    /// How long a non-error banner stays. Errors ignore this unless they carry
-    /// no action -- see `post`.
+    /// Non-error banner lifetime. Errors ignore it unless no action; see
+    /// `post`.
     property int autoHideMs: 6000
 
     signal actionTriggered()
@@ -44,19 +44,16 @@ DockedPanel {
     width: parent ? parent.width : 0
     height: content.height + Theme.paddingLarge
 
-    // An OPAQUE background, replacing DockedPanel's default PanelBackground.
+    // OPAQUE background, replaces DockedPanel default PanelBackground.
     //
-    // That default is a gradient that fades to transparent, which is right for
-    // a panel the user has deliberately pulled open and wrong for a banner
-    // that appears on its own: reported from a device as "barely readable --
-    // the content under it shines through". `Theme.overlayBackgroundColor` is
-    // the public, fully opaque colour Silica uses for exactly this, and it
-    // follows the ambience rather than pinning a shade.
+    // Default = gradient fading to transparent: fine for panel user pulls open,
+    // wrong for banner appearing by itself (device: "barely readable, content
+    // shines through"). `Theme.overlayBackgroundColor` = Silica's public fully
+    // opaque colour for this; follows ambience.
     background: Rectangle {
         color: Theme.overlayBackgroundColor
 
-        // A hairline so the banner reads as a surface sitting ON the page
-        // rather than as a hole punched in it.
+        // Hairline: banner reads as surface ON page, not hole in it.
         Rectangle {
             anchors { top: parent.top; left: parent.left; right: parent.right }
             height: Theme._lineWidth
@@ -65,20 +62,18 @@ DockedPanel {
         }
     }
 
-    /// Show `text`. `error` colours it; `action` (a translated constant, or
-    /// empty) adds a button.
+    /// Show `text`. `error` colours it; `action` (translated constant or empty)
+    /// adds button.
     ///
-    /// A function rather than bindings on `message`/`open`, because a notice
-    /// is an EVENT. Bound visibility re-shows the same banner every time the
-    /// property that produced it is re-evaluated, which is how "fetch original
-    /// content" managed to report the same failure twice.
+    /// Function, not bindings on `message`/`open`: notice is EVENT. Bound
+    /// visibility re-shows banner on every re-evaluation (same failure reported
+    /// twice).
     function post(text, error, action) {
         banner.message = text
         banner.isError = error === true
         banner.actionText = action === undefined ? "" : action
-        // An error with nothing to do about it still goes away on its own: a
-        // banner the user cannot dismiss and cannot act on is just a smaller
-        // version of the layout it replaced.
+        // Error with no action still auto-hides: undismissable, unactionable
+        // banner = just smaller version of replaced layout.
         hideTimer.interval = banner.isError && banner.actionText.length > 0
                              ? 0
                              : banner.autoHideMs
@@ -93,8 +88,8 @@ DockedPanel {
 
     Timer {
         id: hideTimer
-        // `interval: 0` is the sticky case; `running` is gated on it so a
-        // zero-interval timer never fires immediately.
+        // `interval: 0` = sticky; `running` gated on it so zero-interval timer
+        // never fires at once.
         repeat: false
         running: false
         onTriggered: if (hideTimer.interval > 0) banner.hide()
@@ -110,8 +105,8 @@ DockedPanel {
 
         Label {
             width: parent.width
-            // The whole point of this component. Never AutoText, never
-            // StyledText: this string can come straight from the server.
+            // Point of component. Never AutoText or StyledText: string can come
+            // straight from server.
             textFormat: Text.PlainText
             text: banner.message
             wrapMode: Text.Wrap
@@ -132,8 +127,7 @@ DockedPanel {
         }
     }
 
-    // Tapping the banner dismisses it. Below the button in the file so the
-    // button wins the tap.
+    // Tap dismisses. Below button in file so button wins tap.
     MouseArea {
         anchors.fill: parent
         z: -1

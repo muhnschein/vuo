@@ -1,74 +1,66 @@
-//! Searching the local mirror.
+//! Searching local mirror.
 //!
-//! §5: the mirror is the UI's single source of truth and the UI never waits on
-//! the network, so search runs against what has been synced rather than asking
-//! the server. It works offline, and it finds exactly what the lists can show.
+//! §5: mirror = UI's single source of truth, UI never waits on network: search
+//! runs against synced data, not server. Works offline, finds exactly what
+//! lists can show.
 //!
 //! # What matches
 //!
-//! A query is split on whitespace into terms, and an article matches when
-//! EVERY term appears somewhere in its title or the TEXT of its body. Case is
-//! ignored. A term is a plain substring: no wildcards, no operators, so `50%`
-//! and `C++` mean what they say.
+//! Query split on whitespace into terms; article matches when EVERY term is in
+//! title or body TEXT. Case ignored. Term = plain substring: no wildcards, no
+//! operators; `50%` and `C++` mean what they say.
 //!
-//! The author is not searched. A list row does not show it, so an article
-//! found by its author would be a result with nothing on screen to say why.
+//! Author not searched: row doesn't show it; hit by author has nothing on
+//! screen saying why.
 //!
-//! Nor is the name of an article's feed. A feed's name finds the FEED, which
-//! matches when every term is in its name ([`SearchQuery::matches`]): a
-//! reader typing a feed's name is after that feed, not after its latest
-//! articles, which were all the name used to find.
+//! Feed name neither. Feed's name finds FEED (every term in name,
+//! [`SearchQuery::matches`]): typing feed name = after the feed, not its latest
+//! articles.
 //!
 //! # Where it matched
 //!
-//! Results are grouped by WHERE they matched -- the [`MatchKind`] -- so the
-//! articles a reader is most likely after, the ones whose title says so, come
-//! first. For an article the kind is title when its title holds any term, and
-//! body text otherwise; the feeds are a group of their own. For the result
-//! rows themselves, [`SearchQuery::highlight`] marks the terms in a title or
-//! feed name, and [`SearchQuery::excerpt`] cuts the lines around a match out
-//! of a body.
+//! Results grouped by WHERE matched ([`MatchKind`]): title hits first (most
+//! likely wanted). Article kind = title when title holds any term, else body
+//! text; feeds own group. Result rows: [`SearchQuery::highlight`] marks terms
+//! in title or feed name; [`SearchQuery::excerpt`] cuts lines around body
+//! match.
 //!
-//! "The text of its body" is the point of this module. Bodies are stored as
-//! the HTML Miniflux delivered, and a substring test over the raw markup would
-//! match every article for `div`, `href` or `class`. It would also miss text
-//! the markup escapes: Miniflux delivers UTF-8 but escapes `&`, `<` and `>`,
-//! so `AT&T` is stored as `AT&amp;T` and a raw search for it finds nothing.
-//! [`html_text`] strips the markup and decodes the character references that
-//! matter before anything is compared.
+//! "Body text" is the point. Bodies stored as Miniflux HTML; substring over raw
+//! markup matches every article for `div`, `href`, `class`, and misses escaped
+//! text: Miniflux escapes `&`, `<`, `>`, so `AT&T` stored as `AT&amp;T`.
+//! [`html_text`] strips markup, decodes references that matter, before
+//! comparing.
 //!
-//! # Why a SQL function
+//! # Why SQL function
 //!
-//! The matching runs inside SQLite as `vuo_search_kind(...)`, registered on
-//! every connection by [`crate::db::Database`]. The alternative -- reading
-//! every body out to filter it in Rust -- is the shape `store::EntryListRow`
-//! exists to avoid: it carried every body in the mirror through memory at
-//! once. Inside the query each body is looked at once, in SQLite's own buffer,
-//! and dropped before the next row.
+//! Matching runs inside SQLite as `vuo_search_kind(...)`, registered per
+//! connection by [`crate::db::Database`]. Alternative (read every body into
+//! Rust to filter) = shape `store::EntryListRow` exists to avoid: every body in
+//! memory at once. In-query: each body seen once in SQLite's buffer, dropped
+//! before next row.
 
 use rusqlite::functions::{Context, FunctionFlags};
 use rusqlite::Connection;
 
-/// The SQL name the matcher is registered under. `store::search_entries`
-/// spells it out in its statement, which is a literal by rule (§9.4).
+/// SQL name matcher registered under. `store::search_entries` spells it out:
+/// statement literal by rule (§9.4).
 const SQL_FUNCTION: &str = "vuo_search_kind";
 
-/// Where a search result matched, which is the group it is listed in. In the
-/// order the groups are listed.
+/// Where result matched = group it's listed in. Group order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum MatchKind {
     /// An article whose title holds a term.
     Title = 1,
-    /// A FEED, whose name holds every term -- see [`SearchQuery::matches`].
-    /// Never an article: [`SearchQuery::classify`] does not return it.
+    /// FEED whose name holds every term (see [`SearchQuery::matches`]). Never
+    /// article: [`SearchQuery::classify`] doesn't return it.
     Feed = 2,
     /// An article whose body's text holds a term, and whose title does not.
     Text = 3,
 }
 
 impl MatchKind {
-    /// The kind as SQL hands it back: 1 or 3 for an article, as
-    /// [`SearchQuery::classify`] does; anything else is no match.
+    /// Kind as SQL returns it: 1 or 3 for article, as
+    /// [`SearchQuery::classify`]; else no match.
     #[must_use]
     pub fn from_sql(value: i64) -> Option<MatchKind> {
         match value {
@@ -79,13 +71,11 @@ impl MatchKind {
     }
 }
 
-/// How much of a body an excerpt shows before the match, in characters:
-/// about half a line on a phone, so the match lands on the excerpt's first
-/// line with what leads up to it.
+/// Body chars excerpt shows before match: ~half phone line, so match lands on
+/// excerpt's first line with lead-in.
 const EXCERPT_LEAD: usize = 40;
-/// How long an excerpt is at most, in characters. A little more than the
-/// three lines the list shows, so the view rather than this decides where
-/// the text is cut.
+/// Max excerpt length, chars. Little over list's three lines: view decides cut,
+/// not this.
 const EXCERPT_LENGTH: usize = 200;
 
 /// A parsed query: its terms, case-folded. Never empty.
@@ -95,8 +85,8 @@ pub struct SearchQuery {
 }
 
 impl SearchQuery {
-    /// Parse what the reader typed. `None` when there is nothing to search
-    /// for, which callers treat as "no results" rather than "everything".
+    /// Parse what reader typed. `None` = nothing to search; callers read as "no
+    /// results", not "everything".
     #[must_use]
     pub fn parse(raw: &str) -> Option<SearchQuery> {
         let terms: Vec<String> = raw.split_whitespace().map(fold).collect();
@@ -120,12 +110,11 @@ impl SearchQuery {
         self.terms.iter().all(|t| text.contains(t.as_str()))
     }
 
-    /// Where an article matches -- [`MatchKind::Title`] or
-    /// [`MatchKind::Text`] -- or `None` when it does not: every term must be
-    /// somewhere in its title or the text of its body.
+    /// Where article matches ([`MatchKind::Title`] or [`MatchKind::Text`]), or
+    /// `None`: every term must be in title or body text.
     ///
-    /// The body is the expensive part, so it is stripped and folded only when
-    /// the title has not already accounted for every term.
+    /// Body expensive: stripped and folded only when title hasn't covered every
+    /// term.
     #[must_use]
     pub fn classify(&self, title: &str, content_html: &str) -> Option<MatchKind> {
         let title = fold(title);
@@ -137,10 +126,9 @@ impl SearchQuery {
         if !rest.is_empty() {
             let mut body = html_text(content_html);
             if rest.iter().all(|t| t.is_ascii()) {
-                // In place, and several times faster than `to_lowercase`. The
-                // same answer for an ASCII term, but for a handful of exotic
-                // code points that `to_lowercase` folds INTO ASCII (the Kelvin
-                // sign becomes `k`), which no reader will miss.
+                // In place, several times faster than `to_lowercase`. Same for
+                // ASCII term, except few exotic code points `to_lowercase`
+                // folds INTO ASCII (Kelvin sign → `k`); no reader misses them.
                 body.make_ascii_lowercase();
             } else {
                 body = fold(&body);
@@ -156,11 +144,10 @@ impl SearchQuery {
         })
     }
 
-    /// `text` as Qt `StyledText`, with every occurrence of a term in bold.
+    /// `text` as Qt `StyledText`, every term occurrence bold.
     ///
-    /// For a title or a feed name in a result row. The text is FOREIGN, so
-    /// it is escaped -- the only markup in the result is the `<b>` added
-    /// here, which is what lets QML render it as `StyledText` (§9.3).
+    /// Title or feed name in result row. FOREIGN text, escaped: only markup =
+    /// added `<b>`, letting QML render `StyledText` (§9.3).
     #[must_use]
     pub fn highlight(&self, text: &str) -> String {
         let mut out = String::with_capacity(text.len().saturating_add(16));
@@ -179,12 +166,11 @@ impl SearchQuery {
         out
     }
 
-    /// The text around the first match in a body, as plain text, or `None`
-    /// when no term is in its text.
+    /// Text around first body match, plain; `None` when no term in text.
     ///
-    /// A few words before the match and a few lines after it, cut at word
-    /// boundaries, with an ellipsis where the body goes on. Whitespace is
-    /// collapsed: a body's line breaks are its markup's, not a reader's.
+    /// Few words before, few lines after, cut at word boundaries, ellipsis
+    /// where body continues. Whitespace collapsed: body line breaks are
+    /// markup's, not reader's.
     #[must_use]
     pub fn excerpt(&self, content_html: &str) -> Option<String> {
         let text = html_text(content_html)
@@ -193,20 +179,20 @@ impl SearchQuery {
             .join(" ");
         let (first, _) = self.spans(&text).into_iter().next()?;
 
-        // In characters from here on: a byte count would cut a line of
-        // Cyrillic to half the length of one in English.
+        // Chars from here: byte count would cut Cyrillic line to half English
+        // length.
         let chars: Vec<(usize, char)> = text.char_indices().collect();
         let at = chars.iter().position(|&(i, _)| i == first)?;
         let mut from = at.saturating_sub(EXCERPT_LEAD);
         if from > 0 {
-            // Forward to the start of a word, but never past the match.
+            // Forward to word start, never past match.
             from = (from..at)
                 .find(|&i| chars.get(i.wrapping_sub(1)).is_some_and(|&(_, c)| c == ' '))
                 .unwrap_or(at);
         }
         let mut to = from.saturating_add(EXCERPT_LENGTH).min(chars.len());
         if to < chars.len() {
-            // Back to the end of a word, unless that loses the match.
+            // Back to word end, unless that loses match.
             if let Some(space) = (at.saturating_add(1)..to)
                 .rev()
                 .find(|&i| chars.get(i).is_some_and(|&(_, c)| c == ' '))
@@ -226,16 +212,14 @@ impl SearchQuery {
         Some(out)
     }
 
-    /// Where the terms are in `text`: byte ranges of the ORIGINAL text,
-    /// sorted, with overlapping and touching ones merged.
+    /// Where terms are in `text`: byte ranges of ORIGINAL text, sorted,
+    /// overlapping and touching merged.
     fn spans(&self, text: &str) -> Vec<(usize, usize)> {
-        // The folded text is searched, and every folded byte maps back to the
-        // character it came from. `to_lowercase` folds a character the same
-        // number of bytes whether it does it alone or in a string -- its one
-        // context rule, the Greek final sigma, swaps one two-byte sigma for
-        // another -- so the map built a character at a time fits the string
-        // folded whole. If it ever did not, nothing is marked: a missing bold
-        // is better than a misplaced one.
+        // Folded text searched; every folded byte maps back to source char.
+        // `to_lowercase` folds a char to same byte count alone or in string
+        // (only context rule, Greek final sigma, swaps two-byte sigma for
+        // another): per-char map fits whole-string fold. If ever not, nothing
+        // marked: missing bold beats misplaced.
         let folded = fold(text);
         let mut origin = Vec::with_capacity(folded.len().saturating_add(1));
         for (at, ch) in text.char_indices() {
@@ -253,16 +237,15 @@ impl SearchQuery {
             while let Some(hit) = folded.get(from..).and_then(|rest| rest.find(term.as_str())) {
                 let start = from.saturating_add(hit);
                 let end = start.saturating_add(term.len());
-                // The END maps to the start of the character after the match:
-                // a match that ends inside one character's folding (a dotted
-                // capital I folds to two) stops short of it.
+                // END maps to start of char after match: match ending inside
+                // one char's folding (dotted capital I → two) stops short of
+                // it.
                 if let (Some(&a), Some(&b)) = (origin.get(start), origin.get(end)) {
                     if a < b {
                         found.push((a, b));
                     }
                 }
-                // On to the next character; past the end, `get` above ends
-                // the loop.
+                // Next char; past end, `get` above ends loop.
                 from = start.saturating_add(1);
                 while from < folded.len() && !folded.is_char_boundary(from) {
                     from = from.saturating_add(1);
@@ -283,34 +266,31 @@ impl SearchQuery {
 
 /// Case-fold for comparison.
 ///
-/// `to_lowercase` rather than ASCII folding, which is what SQLite's own `LIKE`
-/// does: a German or Finnish reader typing `ä` must find `Ä`.
+/// `to_lowercase`, not ASCII folding (SQLite `LIKE`): German or Finnish reader
+/// typing `ä` must find `Ä`.
 fn fold(s: &str) -> String {
     s.to_lowercase()
 }
 
-/// Inline elements: closing one of these does not end a word, so they are
-/// removed without leaving a space behind. `<b>Wo</b>rd` is the word `Word`.
+/// Inline elements: closing one doesn't end word, removed without space.
+/// `<b>Wo</b>rd` = `Word`.
 const INLINE: &[&str] = &[
     "a", "abbr", "b", "bdi", "bdo", "cite", "code", "data", "dfn", "em", "i", "kbd", "mark", "q",
     "s", "samp", "small", "span", "strike", "strong", "sub", "sup", "time", "u", "var", "wbr",
 ];
 
-/// The text of an HTML fragment, for searching.
+/// HTML fragment text, for searching.
 ///
-/// Not a parser, and not the content transform: nothing here is rendered, so
-/// all it has to get right is which characters a reader would have seen.
-/// Tags are removed (block-level ones leave a space, so two paragraphs do not
-/// run together into one word), and the character references a sanitised body
-/// actually contains are decoded. Anything it does not recognise passes
-/// through as text, which at worst makes a term findable that should not be.
+/// Not parser, not content transform: nothing rendered; only must get right
+/// which chars reader would have seen. Tags removed (block-level leave space:
+/// two paragraphs don't merge into one word); references sanitised bodies
+/// contain decoded. Unrecognised passes through as text: worst case, term
+/// findable that shouldn't be.
 #[must_use]
 pub fn html_text(html: &str) -> String {
-    // Scanned as BYTES, which is what makes this cheap enough to run over
-    // every body in the mirror on each search: `<`, `>`, `&` and `;` are
-    // ASCII, and an ASCII byte in UTF-8 is always a whole character, so every
-    // index found here is a character boundary and every slice below is one
-    // `get` that cannot fail.
+    // Scanned as BYTES: cheap enough for every body each search. `<`, `>`, `&`,
+    // `;` are ASCII; ASCII byte in UTF-8 always whole char, so every index =
+    // char boundary, every slice below = infallible `get`.
     let bytes = html.as_bytes();
     let mut out = String::with_capacity(html.len());
     let mut copied = 0;
@@ -322,8 +302,7 @@ pub fn html_text(html: &str) -> String {
         let mark = at.saturating_add(found);
         out.push_str(html.get(copied..mark).unwrap_or_default());
         if bytes.get(mark) == Some(&b'<') {
-            // An unterminated tag ends the text: what follows is not
-            // something a reader would have seen.
+            // Unterminated tag ends text: rest not something reader saw.
             let after = mark.saturating_add(1);
             let Some(len) = bytes
                 .get(after..)
@@ -352,10 +331,9 @@ pub fn html_text(html: &str) -> String {
     out
 }
 
-/// Whether a tag's text (between `<` and `>`) names an inline element.
+/// Whether tag text (between `<` and `>`) names inline element.
 ///
-/// Compared in place rather than by building the lowercased name: this runs
-/// once per tag in every body in the mirror.
+/// Compared in place, no lowercased copy: runs per tag in every body.
 fn is_inline(tag: &str) -> bool {
     let tag = tag.strip_prefix('/').unwrap_or(tag);
     let end = tag
@@ -365,11 +343,10 @@ fn is_inline(tag: &str) -> bool {
     INLINE.iter().any(|n| n.eq_ignore_ascii_case(name))
 }
 
-/// Decode a character reference at the start of `s` -- the text after `&`.
+/// Decode character reference at start of `s` (text after `&`).
 ///
-/// Returns the character and how many bytes of `s` it used, including the
-/// `;`. Only references that end in `;` within a short distance are decoded;
-/// anything else is not a reference and is left as text.
+/// Returns char and bytes used, incl. `;`. Only references ending in `;` within
+/// short distance decoded; else left as text.
 fn decode_entity(s: &str) -> Option<(char, usize)> {
     const LONGEST: usize = 10;
     let semi = s.get(..=LONGEST).unwrap_or(s).find(';')?;
@@ -395,12 +372,11 @@ fn decode_entity(s: &str) -> Option<(char, usize)> {
     Some((ch, semi.checked_add(1)?))
 }
 
-/// Register [`SQL_FUNCTION`] on a connection.
+/// Register [`SQL_FUNCTION`] on connection.
 ///
-/// `vuo_search_kind(query, title, content)` is the [`MatchKind`] as a number
-/// when the article matches, 0 when it does not, and 0 for a
-/// query with no terms. The query is parsed once per statement and cached by
-/// SQLite, not once per row.
+/// `vuo_search_kind(query, title, content)` = [`MatchKind`] as number when
+/// article matches, 0 when not, 0 for query without terms. Query parsed once
+/// per statement, cached by SQLite, not per row.
 pub(crate) fn register(conn: &Connection) -> rusqlite::Result<()> {
     conn.create_scalar_function(
         SQL_FUNCTION,
@@ -417,8 +393,8 @@ fn sql_match(ctx: &Context<'_>) -> rusqlite::Result<i64> {
     let Some(query) = query.as_ref() else {
         return Ok(0);
     };
-    // A NULL or non-text column is no text, not an error: one odd row must
-    // not abort the whole search.
+    // NULL or non-text column = no text, not error: one odd row mustn't abort
+    // search.
     let text = |i: usize| ctx.get_raw(i).as_str().unwrap_or_default();
     Ok(query
         .classify(text(1), text(2))
@@ -462,7 +438,7 @@ mod tests {
         let q = SearchQuery::parse("harbour dusk").unwrap();
         assert!(hit(&q, "A harbour", "<p>at dusk</p>"));
         assert!(!hit(&q, "A harbour", "<p>at dawn</p>"));
-        // Both terms left for the body, and only one of them in it.
+        // Both terms left for body, only one in it.
         assert!(!hit(&q, "", "<p>the harbour at dawn</p>"));
         assert!(hit(&q, "", "<p>the harbour at dusk</p>"));
     }
@@ -490,8 +466,8 @@ mod tests {
 
     #[test]
     fn the_author_is_not_searched() {
-        // Not a parameter any more: what a row cannot show, a search does
-        // not find an article by. This pins the SQL function's arity too.
+        // Not a parameter: what row can't show, search doesn't find by. Pins
+        // SQL function arity too.
         let conn = Connection::open_in_memory().unwrap();
         register(&conn).unwrap();
         conn.query_row(
@@ -549,7 +525,7 @@ mod tests {
 
     #[test]
     fn a_highlight_is_escaped_so_only_its_own_bold_is_markup() {
-        // §9.3: the title is foreign text, and the result is StyledText.
+        // §9.3: title foreign, result StyledText.
         let q = SearchQuery::parse("b").unwrap();
         assert_eq!(
             q.highlight("<b>A&B</b>"),
@@ -563,7 +539,7 @@ mod tests {
     fn overlapping_terms_make_one_bold_run() {
         let q = SearchQuery::parse("harb bour").unwrap();
         assert_eq!(q.highlight("Harbour"), "<b>Harbour</b>");
-        // Touching, too: two runs side by side would be one in bold anyway.
+        // Touching too: two adjacent runs bold anyway.
         let q = SearchQuery::parse("har bour").unwrap();
         assert_eq!(q.highlight("harbour"), "<b>harbour</b>");
         let q = SearchQuery::parse("aa").unwrap();
@@ -574,11 +550,11 @@ mod tests {
     fn a_highlight_marks_the_original_characters_beyond_ascii() {
         let q = SearchQuery::parse("ääni").unwrap();
         assert_eq!(q.highlight("HYVÄ ÄÄNI!"), "HYVÄ <b>ÄÄNI</b>!");
-        // A capital that folds to two characters: a match on the first of
-        // them stops short of it rather than cutting it in half.
+        // Capital folding to two chars: match on first stops short, doesn't cut
+        // it.
         let q = SearchQuery::parse("i").unwrap();
         assert_eq!(q.highlight("\u{130}x i"), "\u{130}x <b>i</b>");
-        // The Greek final sigma folds in context, and still lines up.
+        // Greek final sigma folds in context, still lines up.
         let q = SearchQuery::parse("οδος").unwrap();
         assert_eq!(q.highlight("ΟΔΟΣ ΟΔΟΣ"), "<b>ΟΔΟΣ</b> <b>ΟΔΟΣ</b>");
     }
@@ -618,7 +594,7 @@ mod tests {
             cut.chars().count() <= EXCERPT_LENGTH + 2,
             "a few lines, not the body: {cut:?}"
         );
-        // Cut at word boundaries, so no word is cut in half at either end.
+        // Cut at word boundaries: no half word at either end.
         let inner = cut.trim_matches('\u{2026}');
         assert!(inner.starts_with("word "), "{cut:?}");
         assert!(
@@ -642,7 +618,7 @@ mod tests {
         let body = format!("<p>Harbour{}</p>", " more".repeat(80));
         let cut = q.excerpt(&body).unwrap();
         assert!(cut.starts_with("Harbour more"), "{cut:?}");
-        // One word too long to cut at: shown from the match.
+        // One word too long to cut: shown from match.
         let body = format!("<p>{}harbour</p>", "x".repeat(100));
         assert_eq!(q.excerpt(&body).as_deref(), Some("\u{2026}harbour"));
     }

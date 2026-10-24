@@ -1,9 +1,8 @@
 # cargo-deny configuration.
 #
-# Runs inside `make check`, not as a separate nightly ritual. The rationale is
-# in docs/scope.md §8.3: the SailfishOS Rust floor already constrains
-# dependency upgrades, so learning early that an advisory applies to a version
-# that cannot be bumped is strictly better than learning it at release.
+# Runs inside `make check`, not separate nightly ritual. Rationale:
+# docs/scope.md §8.3; SailfishOS Rust floor constrains upgrades, so learning
+# early that an advisory hits an unbumpable version beats learning at release.
 
 [advisories]
 db-urls = ["https://github.com/rustsec/advisory-db"]
@@ -11,9 +10,9 @@ yanked = "deny"
 ignore = []
 
 [licenses]
-# Vuo is GPL-3.0-or-later, so permissive dependency licences are compatible.
-# Copyleft dependencies are not automatically a problem, but they should be a
-# deliberate decision rather than something a transitive bump introduces.
+# Vuo is GPL-3.0-or-later: permissive dependency licences compatible. Copyleft
+# deps not automatically a problem, but deliberate decision, not transitive-bump
+# accident.
 version = 2
 allow = [
     "Apache-2.0",
@@ -29,16 +28,14 @@ allow = [
     "Unicode-3.0",
     "Unicode-DFS-2016",
     "Zlib",
-    # Vuo's own crates. The SPDX id is the "-or-later" form, which is a
-    # different identifier from bare "GPL-3.0" -- allowing only the latter
-    # rejects the workspace's own members, which is how this was found.
+    # Vuo's own crates. SPDX id is "-or-later" form, distinct from bare
+    # "GPL-3.0"; allowing only latter rejects workspace's own members.
     "GPL-3.0-or-later",
 ]
 confidence-threshold = 0.9
 exceptions = []
-# An allowance that nothing currently uses is a warning by default. Keeping a
-# slightly wider list than today's dependency graph is deliberate: the list
-# says which licences are acceptable, not which happen to be present this week.
+# Unused allowance warns by default. List slightly wider than today's graph on
+# purpose: says which licences acceptable, not which present this week.
 unused-allowed-license = "allow"
 
 [[licenses.clarify]]
@@ -47,37 +44,32 @@ expression = "MIT AND ISC AND OpenSSL"
 license-files = [{ path = "LICENSE", hash = 0xbd0eed23 }]
 
 [bans]
-# "deny", not "warn". Both the Makefile and §8.3 name duplicate crates as a
-# subject of this gate, and under "warn" it could never turn `make check` red --
-# duplicates were reported and the target exited 0, so the check was a report,
-# not a gate. The `skip` list below is what makes a NEW duplicate visible: the
-# ones already there are outside the project's control, and each has to be
-# added deliberately.
+# "deny", not "warn": Makefile and §8.3 name duplicate crates as gate subject;
+# "warn" never turns `make check` red. `skip` list below makes NEW duplicate
+# visible: existing ones outside project control, each added deliberately.
 multiple-versions = "deny"
 wildcards = "deny"
-# Vuo's own crates depend on each other by path and carry no version
-# requirement, which is normal inside a workspace and is not the supply-chain
-# hazard `wildcards` exists to catch.
+# Vuo's crates depend on each other by path, no version requirement: normal in
+# workspace, not supply-chain hazard `wildcards` catches.
 allow-wildcard-paths = true
 highlight = "all"
 deny = [
-    # §9.1: TLS verification is not optional and gets no toggle. A dependency
-    # that pulls in a second TLS stack is a way for one to appear.
+    # §9.1: TLS verification not optional, no toggle. Dependency pulling second
+    # TLS stack is way for one to appear.
     { name = "openssl" },
     { name = "openssl-sys" },
     { name = "native-tls" },
 ]
-# The duplicates the dependency graph has today, each one a transitive pull
-# nothing in Vuo chooses. Listing them individually is the point: a NEW
-# duplicate -- one a change of ours introduced -- is not on this list and turns
-# `make check` red. Removing an entry that has since resolved is a one-line
-# change; adding one should be a deliberate note about why it is unavoidable.
+# Today's duplicates, each transitive pull nothing in Vuo chooses. Listed
+# individually on purpose: NEW duplicate (introduced by our change) isn't here,
+# turns `make check` red. Removing resolved entry = one line; adding one =
+# deliberate note why unavoidable.
 skip = [
     # rusqlite (0.15) and indexmap/others (0.16) disagree.
     "hashbrown",
-    # proc-macro crates spanning syn 1 and syn 2; a build-time dependency only.
+    # proc-macro crates spanning syn 1 and syn 2; build-time only.
     "syn",
-    # pulled at different versions by tokio/rustls-native-certs.
+    # Pulled at different versions by tokio/rustls-native-certs.
     "windows-sys",
 ]
 skip-tree = []

@@ -4,9 +4,8 @@ version = "0.0.0"
 publish = false
 edition = "2021"
 
-# Its own workspace on purpose: cargo-fuzz builds with nightly and its own
-# flags, and pulling it into the main workspace would drag libfuzzer-sys into
-# every ordinary `cargo build`.
+# Own workspace: cargo-fuzz uses nightly and own flags; joining main workspace
+# drags libfuzzer-sys into every `cargo build`.
 [workspace]
 
 [package.metadata]

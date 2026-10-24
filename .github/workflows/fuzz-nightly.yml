@@ -1,7 +1,6 @@
-# The long fuzz run (§8.3: "short in PR CI, long on a schedule").
+# Long fuzz run (§8.3: short in PR CI, long on schedule).
 #
-# The corpus is cached between runs so each night continues where the last left
-# off rather than restarting from the seeds.
+# Corpus cached between runs: each night continues from last, not from seeds.
 
 name: Fuzz (nightly)
 
@@ -10,9 +9,8 @@ on:
     - cron: "27 3 * * *"
   workflow_dispatch:
 
-# The corpus cache and the crash artifacts travel on the runtime's own token,
-# not on GITHUB_TOKEN, so the checkout is the only thing this workflow needs a
-# token for at all.
+# Corpus cache and crash artifacts use runtime's own token, not GITHUB_TOKEN;
+# only checkout needs a token.
 permissions:
   contents: read
 
@@ -26,8 +24,7 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
-          # Nothing here pushes with git, so the token is not left behind in
-          # .git/config for a later step to find.
+          # Nothing pushes with git: token not left in .git/config.
           persist-credentials: false
       - run: rustup toolchain install nightly --profile minimal
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
@@ -44,21 +41,18 @@ jobs:
 
       - name: Fuzz for 30 minutes
         env:
-          # See the note in ci.yml: rust-toolchain.toml pins a stable release
-          # and would
-          # otherwise override the nightly toolchain cargo-fuzz requires.
+          # See ci.yml: rust-toolchain.toml would override nightly cargo-fuzz
+          # needs.
           RUSTUP_TOOLCHAIN: nightly
         run: |
-          # cargo-fuzz defaults --target to the triple IT was built for, and
-          # the prebuilt binary install-action fetches is musl-static. A
-          # sanitizer cannot be linked against a static libc, so the build
-          # fails with "sanitizer is incompatible with statically linked libc"
-          # and, confusingly, "can't find crate for `core`". Pin the target to
-          # the actual host instead of inheriting the tool's own.
+          # cargo-fuzz defaults --target to its own build triple; install-action
+          # binary is musl-static, and sanitizer can't link static libc
+          # ("sanitizer is incompatible with statically linked libc", "can't
+          # find crate for `core`"). Pin host triple.
           HOST=$(rustc -vV | sed -n 's/^host: //p')
           echo "fuzzing for host target $HOST"
-          # Adds any seed the restored corpus does not already contain, without
-          # overwriting what previous nights minimised.
+          # Adds seeds missing from restored corpus; doesn't overwrite minimised
+          # entries.
           scripts/fuzz-seed.sh ${{ matrix.target }}
           cd crates/vuo-core/fuzz
           cargo fuzz run --target "$HOST" ${{ matrix.target }} \

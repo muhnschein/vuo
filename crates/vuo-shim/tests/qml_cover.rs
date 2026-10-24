@@ -1,20 +1,17 @@
-//! The cover: what it says, and how it says it.
+//! Cover: what it says, how.
 //!
-//! The QML load test compiles and instantiates this file with every property
-//! at its default. What it cannot see is what the cover does as the count
-//! and sync move underneath it.
+//! QML load test instantiates file with defaults; can't see cover behaviour as count
+//! and sync move.
 //!
-//! The count is NEGATIVE SPACE in the texture: the lines flow around the
-//! digits, so every count has a mask of its own in `qml/art/cover/` and the
-//! cover's one job is to name the right one. Nothing unread has no number at
-//! all: `none.png`, the pattern alone, with no outline. `qml_loads.rs` checks the masks
-//! the QML names literally; the cover's is computed, so the set is checked
-//! here instead, and so is the naming.
+//! Count = NEGATIVE SPACE in texture: lines flow around digits; every count has own
+//! mask in `qml/art/cover/`; cover's one job is naming right one. Nothing unread = no
+//! number: `none.png`, pattern alone, no outline. `qml_loads.rs` checks masks QML names
+//! literally; cover's name is computed, so set and naming checked here.
 //!
 //! Run under `QT_QPA_PLATFORM=offscreen`; `make check` sets it.
 
-// Test code: the panic denials guard foreign-input paths in production, not
-// assertions in tests. `borrow_as_ptr` is the Qt harness's engine pointer.
+// Test code: panic denials guard production foreign-input paths, not test
+// assertions. `borrow_as_ptr` = Qt harness's engine pointer.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -25,8 +22,7 @@
 
 use qmetaobject::{QByteArray, QMetaType, QString, QVariant, QmlEngine};
 
-/// Loads the cover at a size, since the stub `CoverBackground` has none of
-/// its own, and reads it back.
+/// Loads cover at a size (stub `CoverBackground` has none), reads it back.
 const PROBE_QML: &str = r"
     import QtQuick 2.0
     Item {
@@ -38,7 +34,7 @@ const PROBE_QML: &str = r"
             loader.item.refresh.connect(function() { refreshes++ })
             return 'ok'
         }
-        /// Tap a cover action, and say what the cover asked the app for.
+        /// Tap cover action, report what cover asked app for.
         function tap(name) {
             var action = findIn(loader.item, name)
             if (!action) { return 'missing:' + name }
@@ -95,11 +91,10 @@ fn stubs_dir() -> std::path::PathBuf {
     repo_root().join("qml-stubs")
 }
 
-/// The mask the cover names when nothing is unread: no digits in it, and so
-/// no outline beside it.
+/// Mask cover names when nothing unread: no digits, so no outline beside it.
 const NONE: &str = "none";
 
-/// Every mask the cover can name: the counts, the cap, and nothing unread.
+/// Every mask cover can name: counts, cap, nothing unread.
 fn cover_keys() -> Vec<String> {
     let mut keys: Vec<String> = (1..=99).map(|n| n.to_string()).collect();
     keys.push("99+".to_owned());
@@ -107,8 +102,7 @@ fn cover_keys() -> Vec<String> {
     keys
 }
 
-/// One test, because `QmlEngine::new()` builds a `QApplication` and there may
-/// be only one of those per process.
+/// One test: `QmlEngine::new()` builds `QApplication`; one per process.
 #[test]
 fn the_cover_names_the_mask_for_its_count_and_says_how_sync_is() {
     let mut engine = QmlEngine::new();
@@ -147,14 +141,13 @@ fn the_cover_names_the_mask_for_its_count_and_says_how_sync_is() {
                 "the cover must draw the mask painted around its count: \
                  expected a source ending in {expected:?}, got {source:?}"
             );
-            // And its outline, from the same count. The two are separate
-            // bindings over separate files, so one can follow the count
-            // while the other does not -- which would draw this count's
-            // pattern with some other count's line over it, and look like
-            // a painter bug rather than a binding one.
+            // Outline, from same count. Separate bindings over separate files:
+            // one could follow count while other doesn't, drawing this count's
+            // pattern with another count's line (looks like painter bug, is
+            // binding bug).
             let edge = get!("textArt", "edgeSource");
             if $key == NONE {
-                // No number, so no outline of one -- and no file to name.
+                // No number, no outline, no file to name.
                 assert_eq!(
                     edge, "",
                     "with nothing unread the cover must draw no outline"
@@ -178,9 +171,9 @@ fn the_cover_names_the_mask_for_its_count_and_says_how_sync_is() {
     );
 
     // ------------------------------------------------------------ the count
-    // From the start: nothing unread draws no number at all -- not a 0 the
-    // lines flow around, but the pattern alone. The zero is still there as
-    // data, for anything that reads the cover rather than looks at it.
+    // From start: nothing unread draws no number (not a 0 lines flow around):
+    // pattern alone. Zero still in data for anything reading cover rather than
+    // looking.
     mask!(NONE);
     assert_eq!(
         get!("unreadTotal", "text"),
@@ -199,7 +192,7 @@ fn the_cover_names_the_mask_for_its_count_and_says_how_sync_is() {
     mask!("99");
     assert_eq!(get!("unreadTotal", "text"), "99");
 
-    // Past the cap every count shares one mask, and the data says the cap.
+    // Past cap every count shares one mask; data says cap.
     assert_eq!(call!("count", 100), "ok");
     mask!("99+");
     assert_eq!(get!("unreadTotal", "text"), "99+");
@@ -207,8 +200,8 @@ fn the_cover_names_the_mask_for_its_count_and_says_how_sync_is() {
     mask!("99+");
     assert_eq!(get!("unreadTotal", "text"), "99+");
 
-    // A count below zero cannot happen; if it did, it would not name a mask
-    // that is not there, and would draw no number.
+    // Negative count can't happen; if it did, names no missing mask, draws no
+    // number.
     assert_eq!(call!("count", -3), "ok");
     mask!(NONE);
     assert_eq!(get!("unreadTotal", "text"), "0");
@@ -216,9 +209,8 @@ fn the_cover_names_the_mask_for_its_count_and_says_how_sync_is() {
     mask!("4");
 
     // ---------------------------------------------------------- the texture
-    // The whole cover, with nothing cut out of it: the room for the number
-    // is in the mask, and a fade band would take a strip off the top of a
-    // pattern that is the cover's whole face.
+    // Whole cover, nothing cut out: room for number is in mask; fade band would
+    // take strip off pattern that is cover's whole face.
     let fade_from = number!(get!("textArt", "fadeFrom"));
     let fade_to = number!(get!("textArt", "fadeTo"));
     assert!(
@@ -232,10 +224,9 @@ fn the_cover_names_the_mask_for_its_count_and_says_how_sync_is() {
     );
 
     // ------------------------------------------------------- what sync says
-    // The room for the status line is made by the TEXTURE, which runs out
-    // towards the foot of the cover while there is something to read there
-    // and is whole again afterwards. Nothing is laid over the pattern, so
-    // what this checks is the mask's own band, not a layer.
+    // Room for status line made by TEXTURE: runs out towards cover foot while
+    // something to read there, whole again after. Nothing laid over pattern:
+    // checks mask's own band, not layer.
     macro_rules! sinks {
         ($expected:expr, $why:expr) => {{
             let from = number!(get!("textArt", "fadeOutFrom"));
@@ -262,15 +253,12 @@ fn the_cover_names_the_mask_for_its_count_and_says_how_sync_is() {
     );
     assert_eq!(get!("syncStatusLabel", "text"), "Refreshing");
 
-    // The line never runs off the cover's edges.
+    // Line never runs off cover edges.
     //
-    // A `Row` centred on the cover hands a `Label` whatever width it asks
-    // for, and a `Label` asks for its whole string on one line; the German
-    // for "Refresh failed" is half again as wide as the cover, so the row
-    // grew past both edges and the phrase was clipped at BOTH ends. The
-    // catalogue that broke it is not the one this test can load, so the
-    // cover is squeezed instead until English cannot fit either: the rule
-    // is geometric, and so is the check.
+    // `Row` centred on cover gives `Label` whatever width it asks; `Label` asks
+    // for whole string on one line. German "Refresh failed" ≈ 1.5× cover width:
+    // clipped at BOTH ends. Test can't load that catalogue, so cover squeezed
+    // until English can't fit either: rule geometric, check too.
     assert_eq!(
         call!("fits"),
         "fits",
@@ -302,7 +290,7 @@ fn the_cover_names_the_mask_for_its_count_and_says_how_sync_is() {
     );
     assert_eq!(get!("syncStatusLabel", "text"), "");
 
-    // §9.3: the server's own words never reach the cover.
+    // §9.3: server's own words never reach cover.
     assert_eq!(
         call!(
             "failure",
@@ -327,7 +315,7 @@ fn the_cover_names_the_mask_for_its_count_and_says_how_sync_is() {
     mask!("4");
 
     // ------------------------------------------------------------ actions
-    // The refresh action asks the app for a refresh.
+    // Refresh action asks app for refresh.
     assert_eq!(
         call!("tap", QString::from("refreshAction")),
         "refresh 1",
@@ -335,19 +323,17 @@ fn the_cover_names_the_mask_for_its_count_and_says_how_sync_is() {
     );
 }
 
-/// Every mask the cover can name is there, and is a coverage mask.
+/// Every mask cover can name exists, and is coverage mask.
 ///
-/// TWO per count: `<count>.png`, the pattern, and `<count>-edge.png`, the
-/// outline the cover lays over it in the ambience's colour. The second is
-/// the easier one to lose and the harder one to notice -- a missing pattern
-/// is a bare cover, while a missing outline is a cover that merely looks
-/// like every other count's without its line -- so both are checked here.
-/// `none.png` alone has no outline: it has no number to trace.
+/// TWO per count: `<count>.png` (pattern) and `<count>-edge.png` (outline laid
+/// over in ambience colour). Second easier to lose, harder to notice (missing
+/// pattern = bare cover; missing outline = cover looking like every other
+/// count's minus line): both checked. `none.png` alone has no outline: no
+/// number to trace.
 ///
-/// The cover computes both sources, so `qml_loads.rs`, which reads literal
-/// sources out of the QML, cannot see them. Qt reports a missing image only
-/// as a warning, and a mask re-exported as RGBA would tint the cover solid,
-/// for the reason given over there.
+/// Cover computes both sources: `qml_loads.rs` (reads literal sources) can't
+/// see them. Qt reports missing image only as warning; mask re-exported as RGBA
+/// tints cover solid (reason there).
 #[test]
 fn every_mask_the_cover_can_name_exists_and_is_a_mask() {
     let dir = repo_root().join("qml/art/cover");
@@ -368,8 +354,8 @@ fn every_mask_the_cover_can_name_exists_and_is_a_mask() {
                 problems.push(format!("{name} is not a PNG"));
                 continue;
             }
-            // IHDR is always first: 8 bytes of signature, 8 of chunk header,
-            // then width, height, bit depth, colour type.
+            // IHDR always first: 8 bytes signature, 8 chunk header, then width,
+            // height, bit depth, colour type.
             let depth = bytes.get(24).copied().unwrap_or(0);
             let colour = bytes.get(25).copied().unwrap_or(255);
             if (depth, colour) != (8, 0) {
@@ -381,8 +367,7 @@ fn every_mask_the_cover_can_name_exists_and_is_a_mask() {
         }
     }
 
-    // And nothing else: a mask for a count the cover cannot name is dead
-    // weight in every package.
+    // Nothing else: mask for unnameable count = dead weight in every package.
     for entry in std::fs::read_dir(&dir)
         .expect("qml/art/cover exists")
         .flatten()
@@ -400,9 +385,8 @@ fn every_mask_the_cover_can_name_exists_and_is_a_mask() {
     );
 }
 
-/// An 8-bit grayscale PNG, as `scripts/png-mask.py` writes them, read back
-/// to its rows. Nothing else is accepted: the test above already holds the
-/// masks to that format.
+/// 8-bit grayscale PNG as `scripts/png-mask.py` writes, read back to rows.
+/// Nothing else accepted: test above holds masks to that format.
 fn read_mask(name: &str) -> (usize, usize, Vec<u8>) {
     use std::io::Read as _;
     let bytes = std::fs::read(repo_root().join("qml/art/cover").join(name)).unwrap();
@@ -451,7 +435,7 @@ fn read_mask(name: &str) -> (usize, usize, Vec<u8>) {
     (w, h, px)
 }
 
-/// PNG's Paeth predictor: whichever neighbour is nearest their linear guess.
+/// PNG Paeth predictor: neighbour nearest their linear guess.
 fn paeth(left: u8, up: u8, up_left: u8) -> u8 {
     let guess = i16::from(left) + i16::from(up) - i16::from(up_left);
     let off = |v: u8| (guess - i16::from(v)).abs();
@@ -464,8 +448,8 @@ fn paeth(left: u8, up: u8, up_left: u8) -> u8 {
     }
 }
 
-/// Where a count's outline sits across its master: the middle of the
-/// outline's ink box, in pixels right of the master's middle.
+/// Where count's outline sits across master: middle of outline ink box, px
+/// right of master's middle.
 fn outline_offset(key: &str) -> f64 {
     let (w, h, px) = read_mask(&format!("{key}-edge.png"));
     let inked: Vec<usize> = (0..w)
@@ -476,19 +460,13 @@ fn outline_offset(key: &str) -> f64 {
     px_f(first + last) / 2.0 - px_f(w - 1) / 2.0
 }
 
-/// The 1, the 3 and the 4 sit where they LOOK centred, which is not where
-/// the painter's weight rule alone put them -- see `coverNudge` in
-/// tools/textart/render.qml. Off a device, over five rounds: in the end
-/// all three read right of where the rule put them.
+/// 1, 3, 4 sit where they LOOK centred, not where painter's weight rule alone
+/// puts them: see `coverNudge` in tools/textart/render.qml. Settled on device:
+/// all three right of rule.
 ///
-/// In pixels of the 512-wide master, on the outline's ink box, and each
-/// held to within a pixel of where it was settled. The rule alone left the
-/// 1 at -18.5, the 3 at -9 and the 4 at +1.5; the rounds on a phone had
-/// them at -25.5, +3 and +7.5, then -30.5, -2 and -4.5, then the 1 alone
-/// at -35.5, then -40.5 and -7 for the 1 and the 3. No earlier set
-/// passes, so a repaint that
-/// drops the nudge, or masks never repainted after it changed, fail here.
-/// The 2 is the control: nobody asked for it to move, and it has not.
+/// In px of 512-wide master, on outline ink box, each within a pixel of settled
+/// position. Repaint dropping nudge, or masks not repainted after nudge
+/// changed, fail here. 2 is control: never asked to move, hasn't.
 #[test]
 fn the_one_three_and_four_are_centred_by_eye() {
     for (key, want) in [("1", -37.5), ("3", -4.0), ("4", -9.5), ("2", -5.0)] {

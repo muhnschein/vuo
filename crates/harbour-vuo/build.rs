@@ -1,32 +1,25 @@
-//! Build script for the application binary: compiles the C++ glue in
-//! `src/main.rs` against `sailfishapp` and Qt when the `sailfishapp` feature
-//! is on, and links with `--as-needed` so no unused Qt library is recorded
-//! as needed.
-// A build script talks to cargo through `cargo:` lines on stdout.
+//! Build script for app binary: compiles C++ glue in `src/main.rs` against
+//! `sailfishapp` and Qt when `sailfishapp` feature on; links `--as-needed` so
+//! unused Qt libs aren't recorded as needed.
+// Build script talks to cargo via `cargo:` lines on stdout.
 #![allow(clippy::print_stdout)]
 
 fn main() {
-    // The C++ glue is compiled only for the device build. On a host without
-    // the SailfishOS SDK there are no sailfishapp headers, and requiring them
-    // unconditionally would make the whole workspace unbuildable off-device --
-    // which is exactly what §5 says the layering must avoid.
+    // C++ glue only for device build. Host has no sailfishapp headers;
+    // requiring them would make workspace unbuildable off-device (§5 layering).
     #[cfg(feature = "sailfishapp")]
     {
-        // Inside the SDK these are absolute paths in the target rootfs, which
-        // sb2 maps for us, so the default prefix is empty and behaviour there
-        // is unchanged. A cross-build driven from OUTSIDE sb2 -- which is how
-        // an RPM gets produced while the SDK tooling's cargo 1.75 cannot parse
-        // this lockfile (docs/sdk-build.md) -- sees the same rootfs as a plain
-        // directory, and needs every include rewritten under it.
+        // Inside SDK: absolute rootfs paths, sb2 maps them; default prefix
+        // empty. Cross-build from OUTSIDE sb2 (how RPM gets built, SDK cargo
+        // 1.75 can't parse lockfile, docs/sdk-build.md) sees rootfs as plain
+        // dir: rewrite every include under it.
         let sysroot = std::env::var("VUO_SYSROOT").unwrap_or_default();
 
         let mut config = cpp_build::Config::new();
         config.include(format!("{sysroot}/usr/include/sailfishapp"));
-        // `main.rs`'s cpp! block includes <QtQuick>, <QGuiApplication> and
-        // <QQuickView>. qmetaobject's own crates find Qt through
-        // QT_INCLUDE_PATH, but that does not reach this Config -- and this
-        // block has never been compiled anywhere, because the SDK build has
-        // never got past the Rust version, so nothing has needed it until now.
+        // `main.rs` cpp! block includes `<QtQuick>`, `<QGuiApplication>`,
+        // `<QQuickView>`. qmetaobject finds Qt via QT_INCLUDE_PATH, but that
+        // doesn't reach this Config.
         let qt = std::env::var("QT_INCLUDE_PATH")
             .unwrap_or_else(|_| format!("{sysroot}/usr/include/qt5"));
         for module in ["", "/QtCore", "/QtGui", "/QtQml", "/QtQuick"] {
@@ -39,19 +32,16 @@ fn main() {
             println!("cargo:rustc-link-search=native={sysroot}/usr/lib64");
         }
     }
-    // Drop the libraries no symbol in the binary refers to.
+    // Drop libraries no symbol in binary refers to.
     //
-    // `qttypes` passes `-lQt5Widgets` unconditionally (its build.rs), with no
-    // feature to turn it off. Once the vendored qmetaobject stops building its
-    // engine on `QApplication` nothing refers to QtWidgets, and this drops the
-    // DT_NEEDED entry that would otherwise fail Harbour's allowed-libraries
-    // check -- see docs/packaging.md. Order matters: as a `rustc-link-arg-bins`
-    // it lands ahead of the `-l` flags the build scripts emit, which is the
-    // only position where `--as-needed` has any effect on them.
+    // `qttypes` passes `-lQt5Widgets` unconditionally (its build.rs). Vendored
+    // qmetaobject doesn't use `QApplication`, so nothing refers to QtWidgets;
+    // this drops DT_NEEDED entry that fails Harbour allowed-libraries check
+    // (see docs/packaging.md). Order matters: `rustc-link-arg-bins` lands ahead
+    // of build scripts' `-l` flags, only position where `--as-needed` affects
+    // them.
     //
-    // It prunes ONLY libraries nothing needs, so it is right for the others
-    // too. It is not a way to hide a real dependency: with `QApplication` still
-    // in use the library is genuinely needed and this keeps it.
+    // Prunes ONLY unneeded libs; can't hide a real dependency.
     println!("cargo:rustc-link-arg-bins=-Wl,--as-needed");
 
     println!("cargo:rerun-if-changed=src/main.rs");

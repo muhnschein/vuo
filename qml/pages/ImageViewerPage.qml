@@ -28,39 +28,34 @@ import Sailfish.Silica 1.0
 Page {
     id: page
 
-    /// The image, exactly as the article view loaded it.
+    /// Image exactly as article view loaded it.
     property string source: ""
-    /// The image's alt text. FOREIGN TEXT, so PlainText below.
+    /// Image alt text. FOREIGN TEXT, PlainText below.
     property string alt: ""
-    /// How wide the article drew this image, 0 when it is not known. The
-    /// article's decode at that size is still in Qt's cache -- the article is
-    /// the page underneath -- and asking for the same size is what makes the
-    /// first frame here cost nothing.
+    /// Width article drew image at, 0 if unknown. Article (page underneath)
+    /// decode at that size still in Qt cache; same size = free first frame.
     property real previewWidth: 0
 
-    /// Whether the page is in place: its transition is over. Until then a
-    /// decode and a texture upload are the frames the transition drops, so
-    /// the full image waits for this and the preview carries the page there.
+    /// Page in place: transition over. Before that, decode + texture upload =
+    /// dropped transition frames; full image waits, preview carries page.
     property bool settled: false
     onStatusChanged: if (page.status === PageStatus.Active) page.settled = true
     Component.onCompleted: if (page.status === PageStatus.Active) page.settled = true
 
-    /// The image's own size, which the page is laid out from: the full
-    /// image's once it is decoded, the preview's until then -- same shape
-    /// either way. 0 until either has one. (Plain properties, so the viewer's
-    /// test can give the page an image without decoding one.)
+    /// Image's own size, layout base: full image's once decoded, preview's
+    /// until then (same shape). 0 until either has one. Plain properties:
+    /// viewer test can give image without decoding.
     property real naturalWidth: picture.implicitWidth > 0 && picture.implicitHeight > 0
                                 ? picture.implicitWidth : preview.implicitWidth
     property real naturalHeight: picture.implicitWidth > 0 && picture.implicitHeight > 0
                                  ? picture.implicitHeight : preview.implicitHeight
 
-    /// How much bigger than fitted the image is drawn. 1 fits it.
+    /// Zoom over fitted size. 1 = fits.
     property real zoom: 1
     readonly property real maximumZoom: 5
 
-    /// The size the image is drawn at when it is fitted to the page. Falls
-    /// back to the page until the image has been decoded, which is also what
-    /// keeps this from dividing by zero.
+    /// Drawn size when fitted to page. Falls back to page until decoded; also
+    /// avoids divide by zero.
     readonly property real fittedWidth: {
         if (page.naturalWidth <= 0 || page.naturalHeight <= 0) {
             return page.width
@@ -72,27 +67,25 @@ Page {
         ? page.fittedWidth * page.naturalHeight / page.naturalWidth
         : page.height
 
-    /// The most pixels an image is decoded to on either edge: twice the
-    /// screen's, so a zoom of two is still sharp. Qt only scales down a
-    /// source larger than the size asked for, so this is also what keeps a
-    /// 30-megapixel image from being held at full size.
+    /// Max decoded pixels per edge: twice screen's, zoom 2 still sharp. Qt only
+    /// downscales source larger than requested; also stops 30-megapixel image
+    /// held at full size.
     readonly property int decodeBound: 2 * Math.max(Screen.width, Screen.height)
 
-    /// Kept inside the content. The flickable would do this itself, but only
-    /// once it has been laid out, and this runs before that.
+    /// Clamp inside content. Flickable does it only after layout; this runs
+    /// before.
     function within(value, limit) {
         return Math.max(0, Math.min(Math.max(0, limit), value))
     }
 
-    /// Where the image's leading edge sits when it is smaller than the view.
+    /// Image leading edge when smaller than view.
     function inset(size, viewport) {
         return Math.max(0, (Math.max(size, viewport) - size) / 2)
     }
 
-    /// Change the zoom, keeping whatever is under (`viewX`, `viewY`) under it
-    /// afterwards. The coordinates are the view's, not the image's: mixing
-    /// the two, or leaving out the inset that centres a small image, is what
-    /// throws the reader somewhere else on a double tap.
+    /// Change zoom, keep what's under (`viewX`, `viewY`) there. View coords,
+    /// not image's: mixing them, or dropping small-image centring inset, throws
+    /// reader elsewhere on double tap.
     function zoomAt(target, viewX, viewY) {
         var next = Math.max(1, Math.min(page.maximumZoom, target))
         var wide = page.fittedWidth * page.zoom
@@ -100,7 +93,7 @@ Page {
         if (wide <= 0 || high <= 0 || next === page.zoom) {
             return
         }
-        // Where that point sits in the image, 0..1, before the change.
+        // Point's position in image, 0..1, before change.
         var across = (flick.contentX + viewX - page.inset(wide, flick.width)) / wide
         var down = (flick.contentY + viewY - page.inset(high, flick.height)) / high
 
@@ -108,7 +101,7 @@ Page {
 
         var wideAfter = page.fittedWidth * next
         var highAfter = page.fittedHeight * next
-        // And where it has to be for that point to stay put on the screen.
+        // Where it must be to stay put on screen.
         flick.contentX = page.within(
             page.inset(wideAfter, flick.width) + across * wideAfter - viewX,
             Math.max(wideAfter, flick.width) - flick.width)
@@ -117,15 +110,15 @@ Page {
             Math.max(highAfter, flick.height) - flick.height)
     }
 
-    /// What a double tap does: in on what was tapped, or back out.
+    /// Double tap: zoom in on tapped point, or back out.
     function toggleZoom(viewX, viewY) {
         page.zoomAt(page.zoom > 1 ? 1 : 3, viewX, viewY)
     }
 
     allowedOrientations: Orientation.All
 
-    // The window is transparent -- the ambience is drawn behind it -- and a
-    // photograph is not something to look at through a wallpaper.
+    // Window transparent (ambience behind); photo shouldn't show through
+    // wallpaper.
     Rectangle {
         anchors.fill: parent
         color: "black"
@@ -148,18 +141,18 @@ Page {
             pinch.minimumScale: 1
             pinch.maximumScale: page.maximumZoom
 
-            /// Where the zoom was when the fingers went down: a pinch reports
-            /// its scale relative to its own start, not to the image.
+            /// Zoom at fingers down: pinch scale relative to own start, not
+            /// image.
             property real startZoom: 1
-            /// And where on the screen they went down, which is the point the
-            /// image has to stay still under.
+            /// Screen point where fingers went down: image stays still under
+            /// it.
             property real focusX: 0
             property real focusY: 0
 
             onPinchStarted: {
                 pincher.startZoom = page.zoom
-                // This area is the flickable's content, so its coordinates
-                // are content coordinates; zoomAt wants the view's.
+                // Area = flickable content, coords are content coords; zoomAt
+                // wants view's.
                 pincher.focusX = pinch.startCenter.x - flick.contentX
                 pincher.focusY = pinch.startCenter.y - flick.contentY
             }
@@ -172,14 +165,14 @@ Page {
 
                 width: page.fittedWidth * page.zoom
                 height: page.fittedHeight * page.zoom
-                // Centred while the image is smaller than the view, and at
-                // the origin once it is bigger and the flickable pans it.
+                // Centred while smaller than view; at origin once bigger
+                // (flickable pans).
                 x: Math.max(0, (flick.contentWidth - frame.width) / 2)
                 y: Math.max(0, (flick.contentHeight - frame.height) / 2)
 
-                // The article's decode of the same image, at the size the
-                // article asked for (ArticlePage.qml): a cache hit, under the
-                // full image and gone once that is there.
+                // Article's decode of same image at article's requested size
+                // (ArticlePage.qml): cache hit, under full image, gone once
+                // that arrives.
                 Image {
                     id: preview
                     anchors.fill: parent
@@ -199,9 +192,8 @@ Page {
                     smooth: !flick.moving
                     sourceSize.width: page.decodeBound
                     sourceSize.height: page.decodeBound
-                    // Once the page is in place when a preview carries it
-                    // there; at once when none does, since an empty page is
-                    // worse than a dropped frame.
+                    // After page in place when preview carries it; at once when
+                    // none (empty page worse than dropped frame).
                     source: page.settled || page.previewWidth <= 0 ? page.source : ""
                 }
 
@@ -217,7 +209,7 @@ Page {
         }
     }
 
-    // Only while the image is still coming and nothing stands in for it.
+    // Only while image loading and nothing stands in.
     BusyIndicator {
         anchors.centerIn: parent
         size: BusyIndicatorSize.Large
@@ -248,7 +240,7 @@ Page {
         wrapMode: Text.Wrap
         maximumLineCount: 4
         elide: Text.ElideRight
-        // §9.3: the feed's words.
+        // §9.3: feed's words.
         textFormat: Text.PlainText
         text: page.alt
         font.pixelSize: Theme.fontSizeExtraSmall

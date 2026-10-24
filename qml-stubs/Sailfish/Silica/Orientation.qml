@@ -1,8 +1,6 @@
 import QtQuick 2.6
-// Silica exposes this as a C++ enum. QML property names may not begin with an
-// upper-case letter, so the stub uses a QML `enum` declaration instead --
-// available since Qt 5.10, which is fine because stubs are host-only and are
-// never shipped to a device running Qt 5.6.
+// Silica C++ enum. Property names can't start upper-case, so QML `enum` (Qt
+// 5.10+). Fine: stubs host-only, never shipped to Qt 5.6 device.
 QtObject {
     enum Value {
         None = 0,

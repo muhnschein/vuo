@@ -1,22 +1,19 @@
 # LeakSanitizer suppressions for scripts/leak-check.sh.
 #
-# Each line hides every leak whose allocation stack passes through a frame
-# matching it, at any depth. A broad one -- a whole library, or anything
-# the event loop calls -- would hide our own leaks too, since everything in
-# the shim runs under Qt's event loop. So only functions that never call
-# back into our code belong here, each with the reason it is there.
+# Each line hides every leak whose allocation stack passes a matching frame, any
+# depth. Broad entry (whole library, anything event loop calls) hides our leaks
+# too (shim runs under Qt event loop). Only functions never calling back into
+# our code, each with reason.
 #
-# Taken from piirit's, which measured them on the same Qt 5.15 (Ubuntu's)
-# across its whole suite; kept only as long as vuo's run still needs them.
+# From piirit's, measured on same Qt 5.15 (Ubuntu) across its suite; kept only
+# while vuo's run needs them.
 
-# The offscreen platform plugin makes its QScreen, QPlatformScreen and
-# cursor at startup and never deletes them; they point at each other, so
-# LeakSanitizer sees a cycle nothing reaches. Qt's own, once per process,
-# and only on the offscreen platform the tests run on.
+# Offscreen platform plugin creates QScreen, QPlatformScreen, cursor at startup,
+# never deletes; mutual pointers → LeakSanitizer sees unreachable cycle. Qt's
+# own, once per process, offscreen platform only.
 leak:QGuiApplicationPrivate::createPlatformIntegration
 
-# Connections QML makes to that same screen -- the `Screen` attached
-# property, and the window watching its screen -- which live in the
-# leaked screen's connection list and so are reported with it.
+# QML connections to same screen (`Screen` attached property, window watching
+# its screen) live in leaked screen's connection list, reported with it.
 leak:QQuickScreenInfo::setWrappedScreen
 leak:QQuickWindowPrivate::init

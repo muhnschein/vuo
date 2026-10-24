@@ -1,54 +1,43 @@
-# An ephemeral Miniflux, for verifying the contract questions §11 raises
-# against a real server rather than against a mock built from assumptions.
+# Ephemeral Miniflux: check §11 contract questions against real server, not
+# mock.
 #
-# §8.3 explains why this job is worth its setup cost: cursor semantics and
-# bulk-mutation idempotency are contract questions about *someone else's
-# server*. Verifying them once by hand and writing the answer into a comment
-# means finding out by regression when the server updates.
+# §8.3: cursor semantics and bulk-mutation idempotency are questions about
+# someone else's server; checked once by hand = found by regression on update.
 #
-# Two consequences of the distroless image, planned for rather than discovered:
+# Distroless image:
 #
-#   1. There is no shell in the container, so readiness CANNOT be a curl
-#      healthcheck in the service definition. The runner polls the health
-#      endpoint itself instead.
-#   2. Distroless builds cover fewer architectures than the Alpine ones. Fine
-#      on x86_64 runners; worth checking before anyone tries this on ARM.
+#   1. No shell in container: readiness can't be curl healthcheck in service
+#      definition. Runner polls health endpoint instead.
+#   2. Distroless covers fewer architectures than Alpine. Fine on x86_64; check
+#      before ARM.
 #
-# ON PINNING (please read before relying on this job)
+# PINNING
 #
-# §8.3 says to pin by digest, not by tag, and bump deliberately. The images
-# below are currently pinned only to an exact VERSION TAG, which gets most of
-# the benefit -- an unpinned `latest` is what turns an upstream release into a
-# mystery CI failure -- but not all of it, since a tag can in principle be
-# repointed.
+# §8.3 says pin by digest, bump deliberately. Images below pinned to exact
+# version tag only: no `latest` surprises, but tag can be repointed.
 #
-# The digests are absent because the environment this workflow was written in
-# could not reach the registry to resolve them, and inventing a plausible-
-# looking sha256 would be worse than leaving it undone: it would fail at pull
-# time with an error nobody could interpret. Before treating this job's result
-# as authoritative, run:
+# No digests: registry unreachable where this was written, and invented sha256
+# fails at pull with useless error. Before trusting this job, run:
 #
 #     docker manifest inspect miniflux/miniflux:2.3.3-distroless \
 #       | jq -r '.manifests[0].digest'
 #
-# and replace each `image:` with `name@sha256:...`. The check-pins step below
-# will stop reminding you once that is done.
+# and replace each `image:` with `name@sha256:...`. check-pins step below stops
+# warning once done.
 
 name: Miniflux integration
 
-# Scheduled and manual only, deliberately. §8.3 asks for "a separate scheduled
-# or opt-in job", and it means it: this job depends on a third-party container
-# registry and on a server Vuo does not control, so gating every pull request
-# on it would make the project's merge-ability depend on someone else's uptime.
-# `make check` is the gate; this is the periodic contract check.
+# Scheduled and manual only (§8.3: separate scheduled or opt-in job). Depends on
+# third-party registry and server Vuo doesn't control; gating PRs on it = merge
+# depends on someone else's uptime. `make check` is gate; this is periodic
+# contract check.
 on:
   schedule:
     - cron: "17 5 * * 1"
   workflow_dispatch:
 
-# The job talks to a Miniflux it starts itself and to no part of GitHub beyond
-# the checkout. The API key it mints belongs to that throwaway instance, not to
-# this repository, so nothing here wants a writable token.
+# Talks only to its own Miniflux and checkout. API key belongs to throwaway
+# instance, not repo: no writable token wanted.
 permissions:
   contents: read
 
@@ -62,27 +51,21 @@ jobs:
         # TODO(pin): replace with an @sha256: digest. See the note at the top.
         image: postgres:16-alpine
         ports:
-          # Miniflux runs with --network host, so it reaches Postgres on the
-          # RUNNER's localhost. A service container with no `ports:` is only
-          # reachable over the job's bridge network under its service alias,
-          # which a host-network container cannot resolve -- so without this
-          # the readiness poll just times out with no useful error.
+          # Miniflux runs --network host, so reaches Postgres on runner's
+          # localhost. Service without `ports:` only reachable on bridge network
+          # by alias, which host-network container can't resolve: readiness poll
+          # times out silently.
           - 5432:5432
         env:
           POSTGRES_USER: miniflux
           POSTGRES_DB: miniflux
-          # No password, rather than a password committed to the repository.
+          # No password, not committed password.
           #
-          # SonarQube raised the connection string below as a disclosed
-          # credential (secrets:S6698), and it was right in form even though
-          # the value guards nothing: the container is ephemeral, bound to the
-          # runner's localhost, and destroyed with the job. It cannot be
-          # randomised either -- `services:` start before any step runs, so
-          # nothing a step generates can reach them.
-          #
-          # `trust` removes the credential instead of hiding it. What it grants
-          # is local, unauthenticated access to a database that exists for one
-          # job and holds nothing but fixtures.
+          # SonarQube flags connection string as credential (secrets:S6698).
+          # Value guards nothing (ephemeral, runner localhost), and can't be
+          # randomised: `services:` start before any step. `trust` removes
+          # credential instead of hiding it: local, unauthenticated access to
+          # one-job database of fixtures.
           POSTGRES_HOST_AUTH_METHOD: trust
         options: >-
           --health-cmd "pg_isready -U miniflux"
@@ -93,14 +76,12 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
-          # Nothing here pushes with git, so the token is not left behind in
-          # .git/config for a later step to find.
+          # Nothing pushes with git: token not left in .git/config.
           persist-credentials: false
 
       - name: Remind about digest pinning
-        # Deliberately a warning rather than a failure: a job that refuses to
-        # run until someone edits it is a job nobody ever fixes. A visible
-        # annotation on every run is harder to ignore than a comment.
+        # Warning, not failure: job that refuses to run until edited never gets
+        # fixed. Annotation on every run harder to ignore.
         run: |
           if grep -q 'TODO(pin)' .github/workflows/miniflux-integration.yml; then
             echo "::warning file=.github/workflows/miniflux-integration.yml::Container images are pinned by tag, not by digest (§8.3 asks for digests). See the note at the top of this workflow."
@@ -108,12 +89,8 @@ jobs:
 
       - name: Start Miniflux
         env:
-          # 2.3.3, and not an older pin: Vuo's write floor is 2.3.2 (absolute
-          # `starred` in `PUT /v1/entries`), so the starred half of the bulk
-          # contract test only runs against this or newer. The 2.2.13 this
-          # originally pinned is what discovered the floor -- its 400 is the
-          # finding of 2026-10-05 -- but a job pinned below it can no longer
-          # verify what Vuo now depends on.
+          # 2.3.3 minimum: Vuo write floor is 2.3.2 (absolute `starred` in `PUT
+          # /v1/entries`); starred half of bulk contract test needs it.
           # TODO(pin): replace with an @sha256: digest. See the note at the top.
           MINIFLUX_IMAGE: miniflux/miniflux:2.3.3-distroless
         run: |
@@ -128,8 +105,7 @@ jobs:
             "$MINIFLUX_IMAGE"
 
       - name: Wait for readiness
-        # Polled from the runner, not with a container healthcheck: the
-        # distroless image has no shell to run one in.
+        # Polled from runner: distroless image has no shell for healthcheck.
         run: |
           for i in $(seq 1 60); do
             if curl -fsS http://127.0.0.1:8080/healthcheck >/dev/null 2>&1; then
@@ -144,16 +120,13 @@ jobs:
           exit 1
 
       - name: Serve the fixture feed
-        # Miniflux runs with --network host, so it reaches the runner's
-        # 127.0.0.1 directly. Serving the feed locally makes the seed
-        # deterministic and independent of the runner's outbound network.
+        # Miniflux on --network host reaches runner's 127.0.0.1. Local feed:
+        # seed deterministic, no outbound network needed.
         #
-        # It also needs FETCHER_ALLOW_PRIVATE_NETWORKS=1 above: since 2.3.x
-        # the fetcher refuses private and loopback hosts outright (an SSRF
-        # guard), so without that flag feed creation 500s with "refusing to
-        # access private network host". The flag is honest here -- the guard
-        # protects a real instance from attacker-supplied feed URLs, and this
-        # instance is ephemeral and exists to be pointed at exactly this URL.
+        # Needs FETCHER_ALLOW_PRIVATE_NETWORKS=1 above: since 2.3.x fetcher
+        # refuses private/loopback hosts (SSRF guard); else feed creation 500s
+        # with "refusing to access private network host". Fine here: ephemeral
+        # instance, this URL only.
         run: |
           (cd tests/fixtures && python3 -m http.server 8099 --bind 127.0.0.1 >/dev/null 2>&1 &)
           for i in $(seq 1 20); do
@@ -166,12 +139,9 @@ jobs:
       - name: Create an API key and seed entries
         id: seed
         run: |
-          # Downloaded to a file and read with jq, rather than piped into
-          # python3. Nothing here ever executed what it downloaded -- the
-          # program was a literal in this file and the response was its stdin
-          # -- but `curl ... | <interpreter>` is the shape of the mistake that
-          # does, and SonarQube flags the shape (githubactions:S8482). It is
-          # the right shape to refuse; this reads as data, and says so.
+          # To file, read with jq, not piped into python3. `curl ... |
+          # <interpreter>` is shape SonarQube flags (githubactions:S8482); this
+          # reads data.
           curl -fsS -u vuo:vuo-test-password \
             -X POST http://127.0.0.1:8080/v1/api-keys \
             -H 'Content-Type: application/json' \
@@ -181,31 +151,26 @@ jobs:
           echo "::add-mask::$token"
           echo "token=$token" >> "$GITHUB_OUTPUT"
 
-          # The OPML of real feeds stays, for breadth.
+          # OPML of real feeds: breadth.
           curl -fsS -X POST http://127.0.0.1:8080/v1/import \
             -H "X-Auth-Token: $token" \
             --data-binary @tests/fixtures/seed.opml || true
 
-          # And the local fixture, which is what the contract tests rely on.
+          # Local fixture: what contract tests rely on.
           curl -fsS -X POST http://127.0.0.1:8080/v1/feeds \
             -H "X-Auth-Token: $token" \
             -H 'Content-Type: application/json' \
             -d '{"feed_url":"http://127.0.0.1:8099/seed-feed.xml","category_id":1}'
 
       - name: Wait for entries to exist
-        # The contract tests now FAIL rather than skip on an empty instance, so
-        # the job has to guarantee the precondition. It used to import and run
-        # immediately, before the poller had fetched anything: both contract
-        # tests then took their "too few entries" early return, which cargo
-        # reports as a pass, and the job went green having asserted nothing.
+        # Contract tests FAIL on empty instance, so job must wait for entries.
+        # Poller needs time after import.
         env:
           TOKEN: ${{ steps.seed.outputs.token }}
         run: |
           for i in $(seq 1 60); do
-            # As above: to a file, then jq. The tolerance matters as much as
-            # the parse -- this polls an instance that is still starting, so a
-            # failed request or unparseable body means "not ready yet", not
-            # "fail the job".
+            # To file, then jq. Instance still starting: failed request or
+            # unparseable body = not ready yet, not job failure.
             total=0
             if curl -fsS -H "X-Auth-Token: $TOKEN" \
                 'http://127.0.0.1:8080/v1/entries?limit=1' \
@@ -223,7 +188,7 @@ jobs:
           docker logs miniflux || true
           exit 1
 
-      # rust-toolchain.toml's release, which rustup installs on first use.
+      # rust-toolchain.toml release; rustup installs on first use.
       - run: rustc --version
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
 
@@ -231,12 +196,9 @@ jobs:
         env:
           VUO_LIVE_BASE_URL: http://127.0.0.1:8080
           VUO_LIVE_TOKEN: ${{ steps.seed.outputs.token }}
-        # SKIP_QT=1 because this job installs no Qt, and `live-test` needs
-        # none: it is pure Rust against a HTTP API. The Makefile's qmake guard
-        # is scoped to the Qt-bearing goals now, but say it here anyway, so a
-        # future tightening of that guard cannot cost this job another five
-        # weeks of silent failures. Every previous run died at parse time on
-        # that guard, in under a second, having asserted nothing.
+        # SKIP_QT=1: job installs no Qt; `live-test` is pure Rust over HTTP.
+        # Makefile's qmake guard already scoped to Qt goals; explicit here so a
+        # tighter guard can't silently break this job.
         run: make live-test SKIP_QT=1
 
       - name: Miniflux logs

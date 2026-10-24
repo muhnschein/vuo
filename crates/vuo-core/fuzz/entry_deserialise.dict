@@ -1,5 +1,5 @@
-# Field names and values libFuzzer would otherwise have to synthesise byte by
-# byte before any of the validation code is reachable at all.
+# Field names and values libFuzzer would otherwise synthesise byte by byte
+# before reaching validation.
 "total"
 "entries"
 "entry_ids"
@@ -33,16 +33,16 @@
 "checked_at"
 "parsing_error_count"
 "disabled"
-# Status values, including the one only a pre-2.3 server sends.
+# Status values, incl. one only pre-2.3 server sends.
 "unread"
 "read"
 "removed"
-# Schemes the domain types must refuse, and the two they must accept.
+# Schemes domain types must refuse, and the two they accept.
 "javascript:"
 "data:"
 "file:"
 "http://"
 "https://"
-# A well-formed timestamp, so mutations explore around a parseable one.
+# Well-formed timestamp: mutations explore around parseable one.
 "2026-01-02T03:04:05Z"
 "+02:00"

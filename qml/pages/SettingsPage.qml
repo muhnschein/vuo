@@ -6,18 +6,16 @@ Page {
     id: page
     allowedOrientations: Orientation.All
 
-    // Set once the stored account has been read into the controls below.
+    // Set once stored account read into controls below.
     //
-    // Every control used to both bind its value to `settings` AND write back
-    // on change. That is a two-way binding on a QObject whose properties all
-    // share ONE notify signal, so any write re-evaluated every other control's
-    // binding -- and a control that had not been populated yet would write its
-    // own default straight back over what was loaded. Values now flow one way,
-    // in `Component.onCompleted`, and back only on a real user change.
+    // Values flow one way: into controls in `Component.onCompleted`, back only
+    // on real user change. No two-way bindings: all `settings` properties share
+    // ONE notify signal, so any write re-evaluates every control's binding, and
+    // unpopulated control writes its default over loaded value.
     property bool ready: false
 
-    // Backed by Rust: reads and writes the account file (mode 0600, outside
-    // the SQLite mirror) and the media/sync preferences.
+    // Rust-backed: reads/writes account file (mode 0600, outside SQLite mirror)
+    // and media/sync preferences.
     Settings {
         id: settings
         onConnectionTested: {
@@ -27,9 +25,8 @@ Page {
         }
     }
 
-    // The worker answers on its own thread, so its result is left in a slot
-    // the UI drains. Only runs while this page is showing, and only after the
-    // user has actually asked for a test.
+    // Worker answers on own thread; result left in slot UI drains. Runs only
+    // while page showing and after user asked for test.
     Timer {
         id: noticePoll
         interval: 400
@@ -42,8 +39,8 @@ Page {
         }
     }
 
-    // Read the stored account, then push it into the controls. Nothing called
-    // this before, so the page always opened blank -- see Settings::reload.
+    // Read stored account, push into controls; else page opens blank. See
+    // Settings::reload.
     Component.onCompleted: {
         settings.reload()
         serverField.text = settings.serverUrl
@@ -58,7 +55,7 @@ Page {
         page.ready = true
     }
 
-    // Save on leaving, so a half-typed key is not written on every keystroke.
+    // Save on leaving: half-typed key not written per keystroke.
     Component.onDestruction: if (page.ready) settings.save()
 
     SilicaFlickable {
@@ -87,10 +84,9 @@ Page {
                 id: keyField
                 width: parent.width
                 label: qsTr("API key")
-                // Not a password field by accident: an API key is a
-                // credential, and shoulder-surfing is a real threat on a
-                // phone. §4 prefers key auth precisely so it can be revoked
-                // per device.
+                // Password field on purpose: API key = credential,
+                // shoulder-surfing real on phone. §4 prefers key auth:
+                // revocable per device.
                 echoMode: TextInput.Password
                 inputMethodHints: Qt.ImhNoAutoUppercase | Qt.ImhNoPredictiveText
                 onTextChanged: if (page.ready) settings.apiKey = text
@@ -124,8 +120,8 @@ Page {
                 x: Theme.horizontalPageMargin
                 width: parent.width - Theme.horizontalPageMargin * 2
                 wrapMode: Text.Wrap
-                // `detail` is the server's own text on failure and a username
-                // on success. Foreign either way.
+                // `detail` = server text on failure, username on success.
+                // Foreign either way.
                 textFormat: Text.PlainText
                 font.pixelSize: Theme.fontSizeExtraSmall
                 color: ok ? Theme.highlightColor : Theme.errorColor
@@ -175,9 +171,8 @@ Page {
 
             SectionHeader { text: qsTr("Synchronisation") }
 
-            // The worker keeps this cadence itself, while the app is open or
-            // on the cover: Vuo is one process, as Harbour requires, so there
-            // is no timer outside it to do so.
+            // Worker keeps cadence itself while app open or on cover: one
+            // process (Harbour rule), no outside timer.
             ComboBox {
                 id: refreshCombo
                 width: parent.width
@@ -199,15 +194,13 @@ Page {
                 textFormat: Text.PlainText
                 font.pixelSize: Theme.fontSizeExtraSmall
                 color: Theme.secondaryColor
-                // The two cadences are easy to confuse, and only one of them
-                // is set here.
+                // Two cadences easy to confuse; only one set here.
                 text: qsTr("Vuo syncs only while it is open or on the cover. How often Miniflux checks your feeds is set on the server.")
             }
 
-            // Consulted only for the work Vuo starts BY ITSELF. Anything the
-            // reader asks for -- the pulley's Refresh, the cover's, adding a
-            // feed -- goes out whatever the connection, which is why the
-            // description below says only the automatic syncs wait.
+            // Only for work Vuo starts BY ITSELF. Reader-requested (pulley
+            // Refresh, cover's, adding feed) goes out on any connection;
+            // description says only automatic syncs wait.
             TextSwitch {
                 id: wifiOnlySwitch
                 text: qsTr("Only sync on Wi-Fi")
@@ -215,23 +208,20 @@ Page {
                 onClicked: settings.wifiOnly = checked
             }
 
-            // Read by the root window, which raises the notification; the
-            // worker only syncs, and knows nothing about it. Off until the
-            // reader turns it on -- see `Account::notify_new_articles`.
+            // Read by root window, which raises notification; worker only
+            // syncs, knows nothing of it. Off until reader enables; see
+            // `Account::notify_new_articles`.
             TextSwitch {
                 id: notifySwitch
                 text: qsTr("Notify about new articles")
                 onClicked: settings.notifyNewArticles = checked
             }
 
-            // The mirror is a cache of the server, and nothing ever removed
-            // anything from it: a phone that had read a year of feeds still
-            // held every article body it had ever seen. This is the only
-            // control that shrinks it.
+            // Mirror = server cache; only this control shrinks it. Without it
+            // phone keeps every article body ever seen.
             //
-            // "Keep everything" is index 0 and the default, because that is
-            // what every version before this one did. An update does not start
-            // deleting the reader's articles on its own.
+            // "Keep everything" = index 0, default: update must not start
+            // deleting reader's articles by itself.
             ComboBox {
                 id: retentionCombo
                 width: parent.width
@@ -253,29 +243,20 @@ Page {
                 textFormat: Text.PlainText
                 font.pixelSize: Theme.fontSizeExtraSmall
                 color: Theme.secondaryColor
-                // Saying exactly what survives matters more than saying what
-                // goes: a reader deciding this needs to know their favourites
-                // are safe before they pick anything but "Forever".
+                // Saying what survives matters more than what goes: reader must
+                // know favourites safe before picking anything but "Forever".
                 text: qsTr("Read articles older than this are deleted from this phone, but not from your Miniflux server. Favourites and unread articles are always kept.")
             }
 
-            // "Only on Wi-Fi" used to sit here, and was removed because it
-            // was a control for absent CODE: nothing in the sync path read
-            // `wifi_only`, so the switch moved a value nobody consulted. The
-            // stored field was kept "for whenever the behaviour is actually
-            // implemented", which is what the switch above now is -- it sits
-            // in the Synchronisation section, beside the cadence it qualifies,
-            // rather than back down here.
 
             SectionHeader { text: qsTr("Advanced") }
 
             TextSwitch {
                 id: caSwitch
                 text: qsTr("Use a custom CA certificate")
-                // Only https does a handshake for a CA to apply to, so on an
-                // http:// instance -- one reached over a VPN, say -- this
-                // setting has nothing to act on and is shown as unavailable
-                // rather than as something that might be needed.
+                // Only https has handshake for CA to apply to; on http://
+                // instance (e.g. over VPN) nothing to act on, shown unavailable
+                // rather than maybe-needed.
                 enabled: serverField.text.indexOf("https:") === 0
                 description: enabled
                     ? qsTr("Copy the certificate to ~/.local/share/harbour-vuo/harbour-vuo/ca.pem.")

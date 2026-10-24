@@ -1,47 +1,33 @@
-//! The hardened HTTP layer.
+//! Hardened HTTP layer.
 //!
-//! Every rule in §9.1 is implemented here, and each one has a comment saying
-//! which attack it closes, because the reasoning is not recoverable from the
-//! code alone.
+//! Every §9.1 rule here, each commented with the attack it closes (not recoverable from code).
 //!
-//! # The redirect problem, and why redirects are followed by hand
+//! # Redirects followed by hand
 //!
-//! §9.1: *do not follow redirects with the API token attached. The token
-//! travels in a custom header, and HTTP clients that strip credentials on
-//! cross-origin redirect typically only special-case `Authorization`.*
+//! §9.1: don't follow redirects with API token attached; clients stripping credentials cross-origin
+//! usually special-case only `Authorization`.
 //!
-//! That is exactly `reqwest`'s behaviour. Its built-in redirect policies strip
-//! `Authorization`, `Cookie` and `Proxy-Authorization` when the origin changes
-//! — but `X-Auth-Token` is not on that list, because it is not a standard
-//! header. A hostile or merely compromised instance answering `302` with a
-//! `Location` on an attacker's host would hand over the user's API key.
+//! So does `reqwest`: strips `Authorization`, `Cookie`, `Proxy-Authorization` on origin change, not
+//! `X-Auth-Token` (non-standard). Hostile or compromised instance answering `302` to attacker host
+//! would get API key.
 //!
-//! So the client is built with [`redirect::Policy::none`](reqwest::redirect::Policy::none) and redirects are
-//! resolved in [`Transport::send`], where the token is attached per hop
-//! against an explicit origin check.
+//! So client uses [`redirect::Policy::none`](reqwest::redirect::Policy::none); [`Transport::send`]
+//! resolves redirects, attaching token per hop after explicit origin check.
 //!
-//! # How a per-host CA is achieved with a client that has no per-host CA API
+//! # Per-host CA without per-host CA API
 //!
-//! §9.1 asks for *an explicit, per-host, user-supplied CA certificate — narrow,
-//! auditable, and it does not silently disable verification for every other
-//! host.* `reqwest` has no way to scope a root certificate to one host.
+//! §9.1: explicit, per-host, user-supplied CA; narrow, auditable, no global verification bypass.
+//! `reqwest` can't scope a root to one host.
 //!
-//! The scoping is achieved structurally instead: the extra CA is installed on
-//! the **API client only**, that client is constructed per account, and the
-//! redirect policy above guarantees it never contacts any origin but the
-//! configured one. So a user's private CA is trusted for exactly the one host
-//! it was supplied for, which is the property §9.1 actually wants.
+//! Done structurally: extra CA on **API client only**, client built per account, redirect policy
+//! keeps it on configured origin. Private CA trusted for exactly one host.
 //!
-//! A note on media, because it is easy to assume otherwise:
-//! [`Transport::media_client`] exists and carries neither the token nor the
-//! extra CA, but article images are fetched by **Qt**, from the QML `Image`
-//! element, not through this crate. What Rust decides is *which URLs the UI is
-//! given at all* -- the media policy runs in the transform, before a URL ever
-//! reaches QML -- and that is where the §9.3 guarantee actually lives. The
-//! client here is for media Rust fetches itself (currently none) and for tests.
+//! Media: [`Transport::media_client`] carries neither token nor extra CA, but article images are
+//! fetched by **Qt** (QML `Image`), not this crate. Rust decides *which URLs UI gets*: media policy
+//! runs in transform, before URL reaches QML; that's where §9.3 lives. Client here = media Rust
+//! fetches itself (none now) and tests.
 //!
-//! There is deliberately no way to disable verification. Not a setting, not a
-//! feature flag, not an environment variable.
+//! No way to disable verification: no setting, feature flag, env var.
 
 use std::time::Duration;
 
@@ -51,30 +37,28 @@ use url::Url;
 use crate::error::{Error, Result, TransportKind};
 use crate::redact::{ApiToken, SafeUrl};
 
-/// Miniflux's API-key header. Not `Authorization`, which is why the redirect
-/// handling above has to be manual.
+/// Miniflux API-key header. Not `Authorization`, hence manual redirects.
 const AUTH_HEADER: &str = "X-Auth-Token";
 
-/// Limits and settings for a [`Transport`]; the defaults suit a phone.
+/// Limits and settings for a [`Transport`]; defaults suit a phone.
 #[derive(Debug, Clone)]
 pub struct TransportConfig {
     /// Maximum time to establish a connection to the server.
     pub connect_timeout: Duration,
-    /// Maximum time between bytes. A server that accepts a connection and then
-    /// dribbles must not wedge a sync forever.
+    /// Max time between bytes. Server that accepts then dribbles must not wedge
+    /// sync.
     pub read_timeout: Duration,
-    /// Ceiling on a whole `send`, INCLUDING every redirect hop.
+    /// Ceiling on whole `send`, INCLUDING every redirect hop.
     ///
-    /// Applied as a shrinking deadline rather than per-hop: a per-hop timeout
-    /// multiplied by `max_redirects` would let a server that redirects slowly
-    /// hold a sync open for four times this long.
+    /// Shrinking deadline, not per-hop: per-hop × `max_redirects` lets slow
+    /// redirector hold sync 4× longer.
     pub request_timeout: Duration,
     /// Hard cap on any response body (§9.1: this is a phone).
     pub max_response_bytes: usize,
     /// Most redirect hops [`Transport::send`] follows before refusing.
     pub max_redirects: usize,
-    /// PEM for a user-supplied CA, for self-hosted instances with a private
-    /// certificate authority. Trusted only by the API client (see module docs).
+    /// PEM for user-supplied CA (self-hosted, private CA). Trusted only by API
+    /// client (see module docs).
     pub extra_ca_pem: Option<Vec<u8>>,
     /// The `User-Agent` sent with every request.
     pub user_agent: String,
@@ -86,8 +70,8 @@ impl Default for TransportConfig {
             connect_timeout: Duration::from_secs(15),
             read_timeout: Duration::from_secs(30),
             request_timeout: Duration::from_secs(120),
-            // Large enough for a page of 500 entries with full content,
-            // small enough that a hostile length cannot exhaust the device.
+            // Fits page of 500 entries with full content; hostile length can't
+            // exhaust device.
             max_response_bytes: 32 * 1024 * 1024,
             max_redirects: 3,
             extra_ca_pem: None,
@@ -99,13 +83,12 @@ impl Default for TransportConfig {
 /// A response body already read, bounded, into memory.
 #[derive(Debug)]
 pub struct BoundedResponse {
-    /// The HTTP status code, which may be any non-redirect status.
+    /// HTTP status, any non-redirect.
     pub status: u16,
     /// The whole body, no longer than the configured cap.
     pub body: Vec<u8>,
-    /// The `Date` header, parsed. The sync cursor is anchored to the server's
-    /// clock rather than the phone's, because the phone's is not trustworthy
-    /// and the comparison happens server-side.
+    /// `Date` header, parsed. Sync cursor anchors to server clock: phone clock
+    /// untrusted, comparison happens server-side.
     pub server_date: Option<chrono::DateTime<chrono::Utc>>,
 }
 
@@ -122,21 +105,18 @@ pub struct Transport {
 }
 
 impl Transport {
-    /// Build a transport for one account.
+    /// Build transport for one account.
     ///
-    /// Note there is no cookie jar, and no call to disable one: `reqwest`'s
-    /// cookie support lives behind the `cookies` feature, which this crate
-    /// does not enable. Cookies are therefore absent by construction rather
-    /// than by configuration -- a stronger guarantee, since it cannot be
-    /// undone by a later edit to this function. Vuo authenticates with a
-    /// header, so a cookie could only ever be something a server set that we
-    /// would then replay somewhere we did not intend.
+    /// No cookie jar: `reqwest` cookies need `cookies` feature, not enabled.
+    /// Absent by construction, so no later edit here can undo it. Vuo
+    /// authenticates by header; cookie could only be server-set state replayed
+    /// where unintended.
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Config`] when `origin` is not `http` or `https` or has
-    /// no host, when `extra_ca_pem` is not valid PEM or holds no certificates,
-    /// or when either HTTP client cannot be built.
+    /// [`Error::Config`] when `origin` not `http`/`https` or has no host,
+    /// `extra_ca_pem` invalid PEM or holds no certificates, or either HTTP
+    /// client can't be built.
     pub fn new(origin: Url, token: ApiToken, config: &TransportConfig) -> Result<Self> {
         if !matches!(origin.scheme(), "http" | "https") {
             return Err(Error::Config(format!(
@@ -154,22 +134,20 @@ impl Transport {
                 .connect_timeout(config.connect_timeout)
                 .read_timeout(config.read_timeout)
                 .timeout(config.request_timeout)
-                // Redirects are resolved by hand; see the module docs.
+                // Redirects resolved by hand; see module docs.
                 .redirect(reqwest::redirect::Policy::none())
         };
 
         let mut api_builder = base();
         if let Some(pem) = &config.extra_ca_pem {
-            // Additive: the platform roots stay trusted, so supplying a
-            // private CA does not turn off verification for anything.
+            // Additive: platform roots stay trusted; private CA disables no
+            // verification.
             let certs = reqwest::Certificate::from_pem_bundle(pem).map_err(|e| {
                 Error::Config(format!("the supplied CA certificate is not valid PEM: {e}"))
             })?;
-            // `from_pem_bundle` answers `Ok(vec![])` for input that contains no
-            // PEM blocks at all rather than reporting an error. Without this
-            // check a typo'd or truncated certificate file would silently
-            // become "no extra CA", and the user would see an opaque TLS
-            // failure at sync time instead of an actionable one at setup time.
+            // `from_pem_bundle` returns `Ok(vec![])` for input without PEM
+            // blocks. Without this, typo'd/truncated cert = silently "no extra
+            // CA", opaque TLS failure at sync instead of clear error at setup.
             if certs.is_empty() {
                 return Err(Error::Config(
                     "the supplied CA file contains no certificates".to_owned(),
@@ -184,9 +162,8 @@ impl Transport {
             .build()
             .map_err(|e| Error::Config(format!("could not build the HTTP client: {e}")))?;
 
-        // The media client gets neither the token nor the extra CA, and is
-        // used for third-party hosts. Keeping it separate is what makes the
-        // API client's private CA genuinely host-scoped.
+        // Media client: no token, no extra CA, for third-party hosts.
+        // Separation keeps API client's private CA host-scoped.
         let media = base()
             .build()
             .map_err(|e| Error::Config(format!("could not build the media HTTP client: {e}")))?;
@@ -202,41 +179,40 @@ impl Transport {
         })
     }
 
-    /// The configured server origin, the only one the token is sent to.
+    /// Configured server origin; only one token goes to.
     #[must_use]
     pub fn origin(&self) -> &Url {
         &self.origin
     }
 
-    /// A client for fetching media: no token, no cookies, no private CA.
+    /// Client for media: no token, no cookies, no private CA.
     ///
-    /// Not used by the article view -- Qt fetches images itself. See the note
-    /// in the module docs about where the §9.3 guarantee actually lives.
+    /// Not used by article view (Qt fetches images). See module docs on where
+    /// §9.3 lives.
     #[must_use]
     pub fn media_client(&self) -> &reqwest::Client {
         &self.media
     }
 
-    /// True when `url` is the configured instance's origin.
+    /// True when `url` is configured instance's origin.
     fn is_configured_origin(&self, url: &Url) -> bool {
         url.scheme() == self.origin.scheme()
             && url.host_str() == self.origin.host_str()
             && url.port_or_known_default() == self.origin.port_or_known_default()
     }
 
-    /// Perform a request, following redirects under an explicit policy.
+    /// Request, following redirects under explicit policy.
     ///
-    /// Any non-redirect status, including 4xx and 5xx, comes back as `Ok` for
-    /// the caller to interpret; the exceptions are 304 to 306.
+    /// Any non-redirect status (4xx, 5xx too) returns `Ok` for caller; except
+    /// 304-306.
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Transport`] when the server cannot be reached, TLS
-    /// fails, the request times out (the deadline covers every hop), a redirect
-    /// is refused (too many hops, no or an invalid `Location`, a downgrade from
-    /// https, or a jump off the configured origin), or the body exceeds
-    /// [`TransportConfig::max_response_bytes`], declared or as read. Returns
-    /// [`Error::Http`] for a 304, 305 or 306 response.
+    /// [`Error::Transport`] when server unreachable, TLS fails, timeout
+    /// (deadline covers every hop), redirect refused (too many hops,
+    /// missing/invalid `Location`, https downgrade, off configured origin), or
+    /// body over [`TransportConfig::max_response_bytes`] (declared or read).
+    /// [`Error::Http`] for 304, 305, 306.
     pub async fn send(
         &self,
         method: reqwest::Method,
@@ -245,22 +221,18 @@ impl Transport {
     ) -> Result<BoundedResponse> {
         let mut current = url;
         let mut hops = 0usize;
-        // One deadline for the whole call, not one per hop.
+        // One deadline for whole call, not per hop.
         let started = std::time::Instant::now();
 
         loop {
             let safe = SafeUrl::from(&current);
 
-            // The token is attached only for the configured origin.
+            // Token attached only for configured origin.
             //
-            // Belt-and-braces: the origin check below refuses an off-origin hop
-            // outright, so `current` is always the configured origin by the
-            // time it gets here and this condition is always true. It stays as
-            // a second line of defence if that refusal is ever loosened -- but
-            // being unreachable, it has no behaviour a test can observe, and
-            // the comment in
-            // `tests::the_token_is_withheld_from_any_origin_but_the_configured_one`
-            // says so rather than implying coverage that does not exist.
+            // Belt-and-braces: origin check below refuses off-origin hops, so
+            // condition always true here. Second line of defence if refusal
+            // loosens; unreachable, so no test can observe it (see
+            // `tests::the_token_is_withheld_from_any_origin_but_the_configured_one`).
             let remaining = self.request_timeout.checked_sub(started.elapsed());
             let Some(remaining) = remaining.filter(|r| !r.is_zero()) else {
                 return Err(Error::Transport {
@@ -286,11 +258,9 @@ impl Transport {
             let response = req.send().await.map_err(|e| classify(&e, &safe))?;
             let status = response.status();
 
-            // 304/305/306 are in the 3xx range but are not redirects to
-            // follow: 304 carries no Location by design. Vuo never sends a
-            // conditional request header, so a 304 here means the server (or
-            // something in front of it) is misbehaving -- report that, rather
-            // than the confusing "redirect without a Location header".
+            // 304/305/306 are 3xx but not redirects; 304 has no Location. Vuo
+            // sends no conditional headers, so 304 = misbehaving server/proxy:
+            // say that, not "redirect without a Location header".
             if matches!(status.as_u16(), 304..=306) {
                 return Err(Error::Http {
                     status: status.as_u16(),
@@ -323,7 +293,7 @@ impl Transport {
                     detail: format!("redirect Location is not a valid URL: {e}"),
                 })?;
 
-                // Refuse a downgrade to plaintext (§9.1).
+                // Refuse downgrade to plaintext (§9.1).
                 if current.scheme() == "https" && next.scheme() != "https" {
                     return Err(Error::Transport {
                         endpoint: safe,
@@ -332,11 +302,9 @@ impl Transport {
                     });
                 }
 
-                // Refuse to leave the configured origin at all. This is
-                // stricter than merely dropping the token: an API that
-                // redirects off-instance is either misconfigured or hostile,
-                // and following it silently would be surprising either way.
-                // The user sees an actionable error about their server URL.
+                // Refuse leaving configured origin at all, stricter than
+                // dropping token: API redirecting off-instance is misconfigured
+                // or hostile. User gets actionable error about server URL.
                 if !self.is_configured_origin(&next) {
                     return Err(Error::Transport {
                         endpoint: safe,
@@ -357,9 +325,8 @@ impl Transport {
                 .and_then(|s| chrono::DateTime::parse_from_rfc2822(s).ok())
                 .map(|d| d.with_timezone(&chrono::Utc));
 
-            // Reject on the declared length before reading a byte, then
-            // enforce again while reading -- Content-Length is foreign input
-            // and may be absent or a lie in either direction.
+            // Reject on declared length before reading, enforce again while
+            // reading: Content-Length is foreign, may be absent or lie.
             if let Some(len) = response.content_length() {
                 if len > self.config_max_bytes as u64 {
                     return Err(Error::Transport {
@@ -379,12 +346,10 @@ impl Transport {
         }
     }
 
-    /// Read a body incrementally, abandoning it the moment it exceeds the cap.
+    /// Read body incrementally, abandon once over cap.
     ///
-    /// §9.1: *bound every response. Cap body size and read incrementally.* The
-    /// incremental part is the point -- calling `bytes()` and checking the
-    /// length afterwards would have already made the allocation this is
-    /// supposed to prevent.
+    /// §9.1: bound every response, cap body, read incrementally. `bytes()` then
+    /// length check = allocation already made.
     async fn read_bounded(&self, response: reqwest::Response, safe: &SafeUrl) -> Result<Vec<u8>> {
         let mut out: Vec<u8> = Vec::new();
         let mut stream = response.bytes_stream();
@@ -403,23 +368,18 @@ impl Transport {
     }
 }
 
-/// Turn a `reqwest::Error` into ours **without** keeping it as a source.
+/// Turn `reqwest::Error` into ours **without** keeping it as source.
 ///
-/// `reqwest::Error`'s `Display` embeds the URL it failed on. Chaining one
-/// would leak any userinfo in the configured base URL through the error chain,
-/// defeating the redaction in [`crate::redact`]. Only the classification is
-/// kept; the detail string is written here and contains nothing foreign.
+/// Its `Display` embeds failing URL; chaining leaks base-URL userinfo past
+/// [`crate::redact`]. Keep classification only; detail string fixed, nothing
+/// foreign.
 fn classify(e: &reqwest::Error, endpoint: &SafeUrl) -> Error {
-    // `is_connect` FIRST, and deliberately so: reqwest sets `is_timeout` on a
-    // connect timeout as well, so testing timeout first collapsed "nothing
-    // answered at that address" into a bare "timed out". Those need different
-    // actions from the user -- one is the network or the VPN, the other is a
-    // server that accepted the connection and then stalled -- and the vaguer of
-    // the two was winning every time.
+    // `is_connect` FIRST: reqwest sets `is_timeout` on connect timeouts too.
+    // "Nothing answered" (network/VPN) and "accepted then stalled" (server)
+    // need different user actions.
     let kind = if e.is_connect() {
-        // reqwest folds TLS failures into connect errors. Distinguishing them
-        // matters for the message the user sees: "check your certificate" and
-        // "check your network" are different actions.
+        // reqwest folds TLS failures into connect errors. Split them: "check
+        // certificate" vs "check network" are different actions.
         if format!("{e:?}").contains("certificate") || format!("{e:?}").contains("Tls") {
             TransportKind::Tls
         } else {
@@ -428,16 +388,15 @@ fn classify(e: &reqwest::Error, endpoint: &SafeUrl) -> Error {
     } else if e.is_timeout() {
         TransportKind::Timeout
     } else {
-        // Body and decode failures are deliberately not distinguished here:
-        // callers act on the retry classification, and both are equally
-        // "the response was unusable".
+        // Body and decode failures not split: callers act on retry class; both
+        // = "response unusable".
         TransportKind::Other
     };
 
     Error::Transport {
         endpoint: endpoint.clone(),
         kind,
-        // Deliberately a fixed string per class, not `e.to_string()`.
+        // Fixed string per class, not `e.to_string()`.
         detail: match kind {
             TransportKind::Timeout => "the server did not respond in time",
             TransportKind::Tls => "the server's certificate could not be verified",
@@ -462,15 +421,11 @@ mod tests {
 
     #[tokio::test]
     async fn an_unreachable_server_says_so_rather_than_just_timing_out() {
-        // A connect timeout sets BOTH `is_timeout` and `is_connect` on the
-        // reqwest error, and the classifier tested timeout first -- so a server
-        // nothing answered at reported the vaguer "timed out", which points at
-        // the server rather than at the network or the VPN that is actually
-        // the thing to check. Reported from a device.
+        // Connect timeout sets BOTH `is_timeout` and `is_connect`; must
+        // classify as connect (network/VPN), not vague "timed out".
         //
-        // 203.0.113.0/24 is TEST-NET-3 (RFC 5737): reserved for documentation
-        // and routed nowhere, so this connects to nothing without depending on
-        // the runner having no network.
+        // 203.0.113.0/24 = TEST-NET-3 (RFC 5737), routed nowhere: connects to
+        // nothing whether runner has network or not.
         let config = TransportConfig {
             connect_timeout: Duration::from_millis(250),
             request_timeout: Duration::from_secs(5),
@@ -518,7 +473,7 @@ mod tests {
         let t = transport("https://miniflux.example/").unwrap();
         assert!(t.is_configured_origin(&Url::parse("https://miniflux.example/v1/me").unwrap()));
         assert!(t.is_configured_origin(&Url::parse("https://miniflux.example:443/v1").unwrap()));
-        // A different host is a different origin even if it looks similar.
+        // Different host = different origin even if similar.
         assert!(!t.is_configured_origin(&Url::parse("https://miniflux.example.evil/v1").unwrap()));
         assert!(!t.is_configured_origin(&Url::parse("http://miniflux.example/v1").unwrap()));
         assert!(!t.is_configured_origin(&Url::parse("https://miniflux.example:8443/v1").unwrap()));
@@ -543,20 +498,13 @@ mod tests {
 
     #[test]
     fn the_token_is_withheld_from_any_origin_but_the_configured_one() {
-        // The origin comparison itself, which is what the off-origin redirect
-        // refusal decides on. Getting it wrong -- accepting a different port,
-        // a different scheme, or a suffix like `miniflux.example.evil.invalid`
-        // -- is a key leak, and the integration test can only exercise one
-        // foreign origin.
+        // Origin comparison behind off-origin redirect refusal. Accepting other
+        // port, scheme, or suffix like `miniflux.example.evil.invalid` = key
+        // leak; integration test exercises only one foreign origin.
         //
-        // Note what this does NOT cover, because nothing can: the conditional
-        // at the attach site (`if self.is_configured_origin(&current)`).
-        // `current` only ever advances past the refusal above, so it is always
-        // the configured origin by construction, and attaching the header
-        // unconditionally there is behaviourally identical. It is deliberate
-        // belt-and-braces for a state the refusal makes unreachable -- not a
-        // second layer with its own observable behaviour, and not something a
-        // test can distinguish.
+        // Not covered, can't be: conditional at attach site (`if
+        // self.is_configured_origin(&current)`). `current` only advances past
+        // refusal, so always configured origin; belt-and-braces, unobservable.
         let t = Transport::new(
             Url::parse("https://miniflux.example:8080/").unwrap(),
             ApiToken::new("t"),
@@ -571,21 +519,19 @@ mod tests {
         for foreign in [
             // a different port
             "https://miniflux.example:8443/v1/entries",
-            // the default port for the scheme, which is NOT 8080
+            // scheme's default port, NOT 8080
             "https://miniflux.example/v1/entries",
             // a different scheme
             "http://miniflux.example:8080/v1/entries",
             // a different host
             "https://evil.invalid:8080/v1/entries",
-            // A SUBDOMAIN. `ends_with` accepts this, and it is the classic
-            // way an origin check written as a suffix comparison leaks a
-            // credential -- anyone who can create a host under the domain gets
-            // the token.
+            // SUBDOMAIN. `ends_with` accepts it: classic suffix-check
+            // credential leak; anyone with a host under the domain gets token.
             "https://evil.miniflux.example:8080/v1/entries",
-            // A host that merely ends with the same characters, which a
-            // careless suffix comparison also accepts.
+            // Host merely ending in same chars; careless suffix check accepts
+            // it.
             "https://notminiflux.example:8080/v1/entries",
-            // And the other direction: a longer host that starts the same.
+            // Other direction: longer host starting the same.
             "https://miniflux.example.evil.invalid:8080/v1/entries",
             "https://miniflux.example.co:8080/v1/entries",
         ] {
@@ -598,14 +544,10 @@ mod tests {
 
     #[test]
     fn there_is_no_way_to_disable_verification() {
-        // A guard against someone adding a "trust invalid certs" toggle later.
-        // §9.1 is explicit that this gets no setting.
+        // Guard against later "trust invalid certs" toggle. §9.1: no setting.
         //
-        // Scans the WHOLE crate, not `include_str!("transport.rs")`. Reading
-        // only its own file made the guard trivial to walk around: a
-        // `ClientBuilder` configured in any sibling module -- api/icon.rs,
-        // api/client.rs, a new api/media.rs -- was invisible to it, and
-        // `reqwest` is a workspace dependency so any of them can build one.
+        // Scans WHOLE crate, not just this file: `reqwest` is a workspace
+        // dependency, any module can build a `ClientBuilder`.
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
         let mut files = Vec::new();
         collect_rs(&root, &mut files);
@@ -614,13 +556,13 @@ mod tests {
             "found too few sources to be scanning the crate"
         );
 
-        // The needles are assembled at runtime so that this test's own text
-        // does not contain the literals it forbids.
+        // Needles assembled at runtime so this test's text lacks the forbidden
+        // literals.
         let needles = [
             ["danger_accept", "_invalid_certs"].concat(),
             ["danger_accept", "_invalid_hostnames"].concat(),
             ["tls_built_in", "_root_certs"].concat(),
-            // Hands the whole verifier over to a caller-supplied one.
+            // Hands whole verifier to caller-supplied one.
             ["use_preconfigured", "_tls"].concat(),
             ["dangerous", "()"].concat(),
             ["cookie", "_store"].concat(),
@@ -628,7 +570,7 @@ mod tests {
 
         for file in files {
             let source = std::fs::read_to_string(&file).unwrap_or_default();
-            // This test's own module is where the needles are written down.
+            // This test module holds the needles.
             let source = source.split("#[cfg(test)]").next().unwrap_or("").to_owned();
             for needle in &needles {
                 assert!(

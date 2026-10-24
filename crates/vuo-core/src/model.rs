@@ -1,24 +1,19 @@
 //! Strict domain types.
 //!
 //! §9.2: *deserialise into permissive types and validate into strict domain
-//! types at the boundary.* [`crate::api::wire`] is the permissive half; this is
-//! the strict half. Once a value has one of these types, the rest of the crate
-//! can rely on its invariants without re-checking.
+//! types at the boundary.* [`crate::api::wire`] = permissive half; this =
+//! strict. Holding one of these types = invariants hold, no re-check.
 //!
-//! # On server-assigned identifiers
+//! # Server-assigned identifiers
 //!
-//! §9.2 also says not to trust server-assigned identifiers to be well-behaved:
-//! *not necessarily positive, not necessarily monotonic, not necessarily
-//! stable across a restore.* So [`EntryId`] is a plain `i64` wrapper with no
-//! positivity constraint, and nothing in Vuo treats a larger id as meaning
-//! "newer".
+//! §9.2: ids *not necessarily positive, not necessarily monotonic, not
+//! necessarily stable across a restore.* So [`EntryId`] = plain `i64` wrapper,
+//! no positivity constraint; larger id never means "newer".
 //!
-//! The sync cursor does paginate on `after_entry_id`, which is worth being
-//! precise about: that relies only on ids being **totally ordered and stable
-//! within a single pass**, which is a property of the server's `ORDER BY id`
-//! and its primary key. It does *not* assume ids are positive, dense, or
-//! correlated with time. A restore that renumbers everything changes which
-//! rows a pass sees but cannot make the pagination skip a row within a pass.
+//! Sync cursor paginates on `after_entry_id`: relies only on ids **totally
+//! ordered and stable within one pass** (server's `ORDER BY id`, primary key).
+//! Not positive, dense, or time-correlated. Restore renumbering everything
+//! changes which rows pass sees; can't skip row within pass.
 
 use chrono::{DateTime, Utc};
 
@@ -65,13 +60,11 @@ id_type!(FeedId, "A server-assigned feed identifier.");
 id_type!(CategoryId, "A server-assigned category identifier.");
 id_type!(IconId, "A server-assigned icon identifier.");
 
-/// The read state of an entry.
+/// Entry read state.
 ///
-/// Deliberately only two variants. Pre-2.3 servers can still emit `"removed"`,
-/// which is not a state Vuo mirrors -- a removed entry should not be in the
-/// local database at all. The converter maps it to a per-item rejection so the
-/// sync drops the row and continues rather than storing a third state that the
-/// UI would then have to render.
+/// Two variants only. Pre-2.3 servers can emit `"removed"`: not mirrored
+/// (removed entry doesn't belong locally). Converter maps it to per-item
+/// rejection: sync drops row, continues; UI never renders third state.
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
 )]
@@ -113,25 +106,23 @@ pub struct Entry {
     pub starred: bool,
     /// Foreign text. Renders as `Text.PlainText` only (§9.3).
     pub title: String,
-    /// `None` when the server sent nothing parseable or a non-http(s) scheme.
-    /// A bad link is not a reason to discard the article body.
+    /// `None` when server sent nothing parseable or non-http(s) scheme. Bad
+    /// link no reason to discard body.
     pub url: Option<MediaUrl>,
     /// The discussion page, if the feed links one. `None` on the same terms as `url`.
     pub comments_url: Option<MediaUrl>,
     /// Foreign text. Plain text only.
     pub author: String,
-    /// Raw article HTML as delivered. Transformed to render blocks lazily, at
-    /// display time, rather than at sync time: the transform's output is
-    /// larger than its input and depends on settings (media policy) that the
-    /// user can change without re-syncing.
+    /// Raw article HTML as delivered. Transformed to render blocks lazily at
+    /// display, not sync: output larger than input, depends on settings (media
+    /// policy) user changes without re-sync.
     pub content: String,
     /// When the feed says the entry was published.
     pub published_at: Option<DateTime<Utc>>,
     /// When the server first stored the entry.
     pub created_at: Option<DateTime<Utc>>,
-    /// The server's `changed_at`. Bumped on insert and on every status or
-    /// starred mutation -- including Vuo's own replayed writes, which is why
-    /// the pull has to tolerate seeing its own echo.
+    /// Server's `changed_at`. Bumped on insert and every status/starred
+    /// mutation, incl. Vuo's own replayed writes: pull tolerates own echo.
     pub changed_at: Option<DateTime<Utc>>,
     /// The server's reading-time estimate in minutes. Clamped to be non-negative.
     pub reading_time: i32,
@@ -150,8 +141,7 @@ pub struct Enclosure {
     pub entry_id: EntryId,
     /// `None` when the server sent nothing parseable or a non-http(s) scheme.
     pub url: Option<MediaUrl>,
-    /// Claimed MIME type. Foreign, advisory, and not to be trusted for
-    /// dispatch decisions on its own.
+    /// Claimed MIME type. Foreign, advisory; not trusted alone for dispatch.
     pub mime_type: String,
     /// Claimed size in bytes. Foreign and advisory; clamped to be non-negative.
     pub size: i64,
@@ -199,10 +189,10 @@ pub struct Category {
     pub hide_globally: bool,
 }
 
-/// A decoded, content-validated feed icon.
+/// Decoded, content-validated feed icon.
 ///
-/// Constructed only by [`crate::api::icon::decode_icon`], which sniffs the
-/// magic bytes rather than believing `mime_type` (§9.3).
+/// Only built by [`crate::api::icon::decode_icon`]: sniffs magic bytes, doesn't
+/// believe `mime_type` (§9.3).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Icon {
     /// The icon's server-assigned identifier.
@@ -230,8 +220,8 @@ pub enum ImageFormat {
     Bmp,
     /// Windows icon (`.ico`).
     Ico,
-    /// SVG. Recognised only so it can be refused: [`crate::api::icon::decode_icon`]
-    /// never produces an [`Icon`] in this format.
+    /// SVG. Recognised only to refuse: [`crate::api::icon::decode_icon`] never
+    /// produces [`Icon`] in this format.
     Svg,
 }
 
@@ -251,11 +241,10 @@ impl ImageFormat {
     }
 }
 
-/// The Miniflux server version, parsed enough to gate request construction.
+/// Miniflux server version, parsed enough to gate request construction.
 ///
-/// Several request-building rules differ across the version window Vuo has to
-/// tolerate, and getting them wrong is not cosmetic: sending `limit=0` to a
-/// 2.2.x server requests the entire corpus in one response.
+/// Request rules differ across tolerated window; not cosmetic: `limit=0` to
+/// 2.2.x requests entire corpus in one response.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ServerVersion {
     /// The version string as the server reported it, trimmed.
@@ -292,53 +281,44 @@ impl ServerVersion {
 
     /// `GET /v1/entries/ids` exists from 2.3.2.
     ///
-    /// Used for cheap deletion reconciliation; older servers need a full
-    /// re-pull instead.
+    /// Cheap deletion reconcile; older servers need full re-pull.
     #[must_use]
     pub fn has_entry_ids_endpoint(&self) -> bool {
         self.at_least(2, 3, 2)
     }
 
-    /// 2.3.x enforces `limit <= 1000` with a hard 400.
+    /// 2.3.x enforces `limit <= 1000`, hard 400.
     ///
-    /// Vuo caps every request at 1000 regardless -- `EntriesQuery::with_limit`
-    /// clamps, and `api::client::tests::limit_can_never_be_zero_or_unbounded`
-    /// is what holds that. This gate is only about whether the SERVER would
-    /// reject a larger one, which `sync` uses to decide how to page.
-    ///
-    /// (There used to be a `max_entry_limit()` beside this whose two branches
-    /// both returned 1000 and which no request path called, plus a test
-    /// guarding it. Both are gone: a test over a function nothing calls cannot
-    /// fail for a reason anyone cares about.)
+    /// Vuo caps every request at 1000 anyway: `EntriesQuery::with_limit`
+    /// clamps, held by
+    /// `api::client::tests::limit_can_never_be_zero_or_unbounded`. Gate only
+    /// says whether SERVER rejects larger; `sync` uses it to decide paging.
     #[must_use]
     pub fn enforces_entry_limit_cap(&self) -> bool {
         self.at_least(2, 3, 0)
     }
 
-    /// `PUT /v1/entries` takes an absolute `starred` set from 2.3.2.
+    /// `PUT /v1/entries` takes absolute `starred` set from 2.3.2.
     ///
-    /// Verified against real servers by the live contract tests on 2026-10-05
-    /// and by reading the handler source either side of the boundary: 2.2.13
-    /// and 2.3.1 reject a starred-only body with a 400 ("invalid entry
-    /// status"), 2.3.2 and 2.3.3 accept it. Below this floor the outbox's
-    /// absolute-set design cannot be honoured, so Vuo refuses entry-state
-    /// writes ENTIRELY -- status included, which those servers do accept --
-    /// and leaves every intent queued. Partial support is what made stars
-    /// vanish: the 400 from a star write matched `would_discard`, and the
-    /// user's intent was dropped as a malformed payload. Refusing keeps it
-    /// queued until the instance is upgraded. See `api::client::update_entries`.
+    /// Verified by live contract tests and handler source either side: 2.2.13,
+    /// 2.3.1 reject starred-only body with 400 ("invalid entry status"); 2.3.2,
+    /// 2.3.3 accept. Below floor absolute-set design can't be honoured: Vuo
+    /// refuses entry-state writes ENTIRELY (status too, though accepted) and
+    /// keeps every intent queued. Partial support would let star write's 400
+    /// match `would_discard` and drop intent as malformed. See
+    /// `api::client::update_entries`.
     #[must_use]
     pub fn supports_entry_state_writes(&self) -> bool {
         self.at_least(2, 3, 2)
     }
 }
 
-/// What a version string with no leading number (such as an unbuilt
-/// "development" build's) is read as: the oldest version Vuo supports.
+/// Version string with no leading number (e.g. unbuilt "development" build)
+/// read as oldest supported version.
 impl Default for ServerVersion {
     fn default() -> Self {
-        // Assume the oldest behaviour Vuo supports when the server will not
-        // say. Assuming the newest would mean using endpoints that 404.
+        // Server won't say → assume oldest supported behaviour. Newest would
+        // call endpoints that 404.
         ServerVersion {
             raw: "unknown".to_owned(),
             major: 2,
@@ -360,8 +340,8 @@ mod tests {
 
     #[test]
     fn ids_may_be_zero_or_negative() {
-        // §9.2: server-assigned ids are not assumed well-behaved. The type
-        // must not silently exclude values the server can legitimately send.
+        // §9.2: server ids not assumed well-behaved. Type must not exclude
+        // values server can legitimately send.
         assert_eq!(EntryId(0).get(), 0);
         assert_eq!(EntryId(-5).get(), -5);
         assert!(EntryId(-5) < EntryId(0), "ordering must still be total");
@@ -404,13 +384,11 @@ mod tests {
 
     #[test]
     fn unknown_version_assumes_the_oldest_supported_behaviour() {
-        // Assert the DEFAULT, not one consequence of it. `ServerVersion` gates
-        // three behaviours -- has_entry_ids_endpoint() and
-        // supports_entry_state_writes() at >= 2.3.2, and
-        // enforces_entry_limit_cap() at >= 2.3.0 -- and checking only the first
-        // left any default in [2.3.0, 2.3.2) passing while silently flipping
-        // the others.
-        // Guessing high would mean calling endpoints that 404.
+        // Assert DEFAULT, not one consequence. `ServerVersion` gates three
+        // behaviours: has_entry_ids_endpoint() and
+        // supports_entry_state_writes() at >= 2.3.2, enforces_entry_limit_cap()
+        // at >= 2.3.0. Checking only first lets default in [2.3.0, 2.3.2) pass
+        // while flipping others. Guessing high calls endpoints that 404.
         let v = ServerVersion::default();
         assert_eq!((v.major, v.minor, v.patch), (2, 0, 0));
         assert!(!v.has_entry_ids_endpoint());

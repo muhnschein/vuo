@@ -1,17 +1,16 @@
-//! Outbox reconciliation, tested deterministically rather than incidentally.
+//! Outbox reconciliation, tested deterministically, not incidentally.
 //!
-//! §8.3 names four properties, and each has a test here:
+//! §8.3 names four properties, each tested here:
 //!
-//! - replay is idempotent;
-//! - a process killed mid-flight resumes without losing or double-applying;
-//! - an offline burst of marks reconciles correctly on reconnect;
-//! - a server-side change to an entry mutated locally resolves by a stated rule.
+//! - replay idempotent;
+//! - process killed mid-flight resumes without losing or double-applying;
+//! - offline burst of marks reconciles correctly on reconnect;
+//! - server-side change to locally mutated entry resolves by stated rule.
 //!
-//! The stated rule, for the last one, is **local intent wins per field**. See
-//! `db::store` for why it is per field and not per entry.
+//! Rule: **local intent wins per field**. Why per field: `db::store`.
 
-// Test code: see the note in vuo-core's lib.rs. The unwrap/panic denials
-// guard foreign-input paths in production, not assertions in tests.
+// Test code: see note in vuo-core's lib.rs. unwrap/panic denials guard
+// production foreign-input paths, not test assertions.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -84,14 +83,13 @@ async fn replay_is_idempotent() {
     assert_eq!(first.confirmed, 3);
     assert_eq!(outbox::len(db.conn()).unwrap(), 0);
 
-    // A second flush has nothing to send, and sends nothing.
+    // Second flush has nothing to send, sends nothing.
     let second = replay::flush(&mut db, &client).await.unwrap();
     assert_eq!(second.confirmed, 0);
 
     let bodies = update_bodies(&server.received_requests().await.unwrap());
     assert_eq!(bodies.len(), 1, "the second flush must not re-send");
-    // What went on the wire is an absolute value, which is what makes
-    // resending it safe in the first place.
+    // Wire carries absolute value: what makes resend safe.
     assert_eq!(
         bodies.first().and_then(|b| b.get("status")),
         Some(&Value::from("read"))
@@ -100,22 +98,18 @@ async fn replay_is_idempotent() {
 
 #[tokio::test]
 async fn a_process_killed_mid_flight_resumes_without_losing_or_double_applying() {
-    // The server applies the change, then the process dies before it can
-    // record the confirmation. The intent must still be queued, and resending
-    // it must be harmless.
+    // Server applies change, process dies before recording confirmation. Intent must
+    // stay queued; resend harmless.
     //
-    // The crash is simulated OUTSIDE `flush` -- the batch is sent by hand --
-    // so what this test actually pins is the idempotency of a resend: the same
-    // absolute value, twice, is a no-op. It deliberately does not carry the two
-    // neighbouring properties, which have their own tests because this shape
-    // cannot see them:
+    // Crash simulated OUTSIDE `flush` (batch sent by hand): pins resend idempotency
+    // (same absolute value twice = no-op). Neighbouring properties have own tests,
+    // invisible to this shape:
     //
-    //   - that `flush` sends BEFORE it clears the row, so a failure mid-request
-    //     does not lose the intent -- `a_transient_failure_keeps_the_intent_queued` and
+    //   - that `flush` sends BEFORE it clears the row, so a failure mid-request does
+    //     not lose the intent -- `a_transient_failure_keeps_the_intent_queued` and
     //     `a_misconfigured_server_url_never_discards_queued_work`;
-    //   - that a re-toggle during the in-flight window survives, which is why
-    //     `confirm` compares before deleting -- `a_retoggle_during_the_request_
-    //     is_not_lost`.
+    //   - that a re-toggle during the in-flight window survives, which is why `confirm`
+    //     compares before deleting -- `a_retoggle_during_the_request_ is_not_lost`.
     let server = MockServer::start().await;
     mount_version(&server, "2.3.3").await;
     Mock::given(method("PUT"))
@@ -129,7 +123,7 @@ async fn a_process_killed_mid_flight_resumes_without_losing_or_double_applying()
     db.with_tx(|tx| outbox::queue(tx, EntryId(1), DesiredValue::Starred(true), 1))
         .unwrap();
 
-    // Simulate the crash: send the batch by hand, and never confirm it.
+    // Simulate crash: send batch by hand, never confirm.
     let batch = outbox::batches(&outbox::pending(db.conn()).unwrap());
     let sent = batch.first().cloned().expect("one batch");
     client
@@ -143,7 +137,7 @@ async fn a_process_killed_mid_flight_resumes_without_losing_or_double_applying()
         "an unconfirmed intent must survive the crash"
     );
 
-    // Restart: the next flush resends and then confirms.
+    // Restart: next flush resends, then confirms.
     let outcome = replay::flush(&mut db, &client).await.unwrap();
     assert_eq!(outcome.confirmed, 1);
     assert_eq!(outbox::len(db.conn()).unwrap(), 0);
@@ -155,8 +149,8 @@ async fn a_process_killed_mid_flight_resumes_without_losing_or_double_applying()
         bodies.get(1),
         "and both times it was identical"
     );
-    // Double-applying an absolute set is a no-op, which is the whole point:
-    // had this been the server's toggle endpoint, the star would now be off.
+    // Double-applying absolute set = no-op, the point: server's toggle endpoint
+    // would have turned star off.
     assert_eq!(
         bodies.first().and_then(|b| b.get("starred")),
         Some(&Value::from(true))
@@ -175,8 +169,8 @@ async fn an_offline_burst_reconciles_on_reconnect() {
     let client = client_for(&server);
     let mut db = seeded_db(1200);
 
-    // Offline: the user reads everything and stars a few, toggling some of
-    // them repeatedly the way a real person does.
+    // Offline: user reads everything, stars a few, toggling some repeatedly
+    // like real person.
     db.with_tx(|tx| {
         for id in 1..=1200 {
             outbox::queue(tx, EntryId(id), DesiredValue::Status(EntryStatus::Read), 10)?;
@@ -207,7 +201,7 @@ async fn an_offline_burst_reconciles_on_reconnect() {
         "1200 marks chunk into 3 requests, plus 1 for the stars"
     );
 
-    // Every id appears exactly once across the whole flush.
+    // Every id exactly once across whole flush.
     let mut seen: Vec<i64> = Vec::new();
     for body in &bodies {
         if let Some(ids) = body.get("entry_ids").and_then(|v| v.as_array()) {
@@ -216,8 +210,7 @@ async fn an_offline_burst_reconciles_on_reconnect() {
     }
     assert_eq!(seen.len(), 1203);
 
-    // And the stars settled on the final value the user chose, not an
-    // intermediate one.
+    // Stars settled on user's final value, not intermediate.
     let star_body = bodies
         .iter()
         .find(|b| b.get("starred").is_some())
@@ -227,12 +220,11 @@ async fn an_offline_burst_reconciles_on_reconnect() {
 
 #[tokio::test]
 async fn a_server_change_to_a_locally_mutated_entry_resolves_by_the_stated_rule() {
-    // The rule: local intent wins, PER FIELD.
+    // Rule: local intent wins, PER FIELD.
     //
-    // The user stars entry 1 offline. Meanwhile the server (another device)
-    // marks it read. The pull must accept the remote read status while
-    // preserving the local pending star -- resolving per entry would drop one
-    // or the other.
+    // User stars entry 1 offline; server (other device) marks it read. Pull
+    // accepts remote read status, keeps local pending star; per entry drops one
+    // or other.
     let mut db = seeded_db(1);
     db.with_tx(|tx| outbox::queue(tx, EntryId(1), DesiredValue::Starred(true), 1))
         .unwrap();
@@ -263,9 +255,9 @@ async fn a_server_change_to_a_locally_mutated_entry_resolves_by_the_stated_rule(
 
 #[tokio::test]
 async fn the_servers_toggle_endpoints_are_never_called() {
-    // PUT /v1/entries/{id}/star is `SET starred = NOT starred`. Replaying one
-    // flips the value back, so it must never appear in a replay path. This is
-    // the single most important thing to get wrong, so it gets its own test.
+    // PUT /v1/entries/{id}/star = `SET starred = NOT starred`. Replay flips
+    // back, so never in replay path. Single most important thing to get wrong:
+    // own test.
     let server = MockServer::start().await;
     mount_version(&server, "2.3.3").await;
     Mock::given(method("PUT"))
@@ -330,17 +322,15 @@ async fn a_transient_failure_keeps_the_intent_queued() {
 
 #[tokio::test]
 async fn a_misconfigured_server_url_never_discards_queued_work() {
-    // THE regression, driven end to end through `flush`.
+    // End to end through `flush`.
     //
-    // `is_transient()` is false for a policy-refused redirect, and the flush
-    // used to drop anything that was not transient -- so pointing Vuo at a URL
-    // that redirects off-origin (a typo, a moved instance, a captive portal)
-    // silently destroyed every queued mark and star.
+    // `is_transient()` false for policy-refused redirect; dropping
+    // non-transient would make off-origin redirect (typo, moved instance,
+    // captive portal) silently destroy every queued mark and star.
     //
-    // The unit tests in sync::replay cannot protect this. They assert on
-    // `would_discard`, a pure predicate, and a predicate cannot see its caller
-    // change: restoring the exact historical bug in `flush` leaves all nine of
-    // them green. Only a real failure through `flush` distinguishes them.
+    // Unit tests in sync::replay can't protect this: they assert on
+    // `would_discard`, pure predicate blind to caller change. Only real failure
+    // through `flush` distinguishes.
     let server = MockServer::start().await;
     mount_version(&server, "2.3.3").await;
     Mock::given(method("PUT"))
@@ -414,8 +404,8 @@ async fn revoked_credentials_stop_the_flush_without_dropping_work() {
         "nothing may be dropped"
     );
 
-    // It stopped after the first batch rather than hammering the server with
-    // every remaining chunk.
+    // Stopped after first batch, didn't hammer server with every remaining
+    // chunk.
     let sent = update_bodies(&server.received_requests().await.unwrap());
     assert_eq!(sent.len(), 1, "every later batch would fail identically");
 }
@@ -448,16 +438,14 @@ async fn a_permanent_rejection_is_dropped_rather_than_blocking_the_queue() {
 
 #[tokio::test]
 async fn a_pre_2_3_2_server_keeps_intents_queued_instead_of_dropping_them() {
-    // The regression the 2.3.2 write floor exists for. On a 2.2.13 the
-    // starred half of `PUT /v1/entries` is not merely unsupported -- the
-    // request 400s ("invalid entry status"), and a 400 is exactly what
-    // `would_discard` reads as "the payload is malformed forever", so the
-    // user's star was DELETED from the outbox. Verified against a real
-    // 2.2.13 on 2026-10-05, which is what the live contract tests are for.
+    // Why 2.3.2 write floor exists. On 2.2.13 starred half of `PUT /v1/entries`
+    // 400s ("invalid entry status"); 400 = what `would_discard` reads as
+    // "malformed forever", so star would be DELETED from outbox. Verified
+    // against real 2.2.13 (live contract tests' job).
     //
-    // The client now refuses before sending, and the refusal is neither
-    // transient nor a permanent payload rejection: the intent stays queued
-    // until the instance is upgraded, and nothing reaches the wire.
+    // Client refuses before sending; refusal neither transient nor permanent
+    // payload rejection: intent queued until instance upgraded, nothing on
+    // wire.
     let server = MockServer::start().await;
     mount_version(&server, "2.2.13").await;
     Mock::given(method("PUT"))
@@ -495,11 +483,9 @@ async fn a_pre_2_3_2_server_keeps_intents_queued_instead_of_dropping_them() {
 
 #[tokio::test]
 async fn a_server_upgraded_while_running_gets_the_queued_intents() {
-    // The other half of the floor: the intents a 2.2.13 kept queued go out
-    // once the instance is upgraded, without restarting Vuo. The client
-    // used to hold the first version it heard in a `OnceLock`, so the daily
-    // version check the sync makes (`server_version_ttl_secs`) could fetch
-    // the new answer and the write floor would go on reading the old one.
+    // Other half of floor: intents a 2.2.13 kept queued go out once upgraded,
+    // no Vuo restart. Client re-reads version each daily check
+    // (`server_version_ttl_secs`), doesn't pin first answer.
     let server = MockServer::start().await;
     mount_version(&server, "2.2.13").await;
     let client = client_for(&server);
@@ -510,7 +496,7 @@ async fn a_server_upgraded_while_running_gets_the_queued_intents() {
     let outcome = replay::flush(&mut db, &client).await.unwrap();
     assert_eq!(outcome.deferred, 1, "still refused on the old server");
 
-    // The owner upgrades, and the next sync pass asks again.
+    // Owner upgrades; next sync pass asks again.
     server.reset().await;
     mount_version(&server, "2.3.3").await;
     Mock::given(method("PUT"))
@@ -530,7 +516,7 @@ async fn a_server_upgraded_while_running_gets_the_queued_intents() {
 
 #[tokio::test]
 async fn a_retoggle_during_the_request_is_not_lost() {
-    // The compare-and-delete case, end to end.
+    // Compare-and-delete, end to end.
     let server = MockServer::start().await;
     mount_version(&server, "2.3.3").await;
     Mock::given(method("PUT"))
@@ -546,15 +532,15 @@ async fn a_retoggle_during_the_request_is_not_lost() {
     let batch = outbox::batches(&outbox::pending(db.conn()).unwrap());
     let sent = batch.first().cloned().unwrap();
 
-    // The request goes out...
+    // Request goes out...
     client
         .update_entries(&sent.entry_ids, vuo_core::api::EntryMutation::Starred(true))
         .await
         .unwrap();
-    // ...and while it is in flight the user changes their mind.
+    // ...user changes mind while in flight...
     db.with_tx(|tx| outbox::queue(tx, EntryId(1), DesiredValue::Starred(false), 2))
         .unwrap();
-    // ...and only then does the confirmation land.
+    // ...only then confirmation lands.
     let cleared = db.with_tx(|tx| outbox::confirm(tx, &sent)).unwrap();
 
     assert_eq!(

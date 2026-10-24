@@ -1,16 +1,14 @@
-//! The image viewer: where a zoom leaves the image.
+//! Image viewer: where zoom leaves image.
 //!
-//! The QML load test instantiates the page with every property at its
-//! default. What it cannot see is the geometry of a zoom -- and a zoom that
-//! does not keep the tapped spot under the finger is the "jolt" a reader
-//! sees as the image jumping somewhere else on a double tap. So this loads
-//! the page at a phone's size, gives it an image's shape, zooms, and reads
-//! back what is under the same point of the screen.
+//! Load test instantiates page with defaults; can't see zoom geometry. Zoom not
+//! keeping tapped spot under finger = "jolt" (image jumps on double tap). Loads
+//! page at phone size, gives image shape, zooms, reads back what's under same
+//! screen point.
 //!
 //! Run under `QT_QPA_PLATFORM=offscreen`; `make check` sets it.
 
-// Test code: the panic denials guard foreign-input paths in production, not
-// assertions in tests. `borrow_as_ptr` is the Qt harness's engine pointer.
+// Test code: panic denials guard production foreign-input paths, not test
+// assertions. `borrow_as_ptr` = Qt harness's engine pointer.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -51,9 +49,8 @@ const PROBE_QML: &str = r"
         }
         function zoomAt(target, x, y) { loader.item.zoomAt(target, x, y); return 'ok' }
         function toggle(x, y) { loader.item.toggleZoom(x, y); return 'ok' }
-        // Where in the image, 0..1 on each axis, the point (x, y) of the
-        // screen is -- read from where the frame actually is, not from the
-        // page's own arithmetic.
+        // Where in image (0..1 per axis) screen point (x, y) is: read from
+        // frame's actual position, not page's own arithmetic.
         function under(x, y) {
             var flick = findIn(loader.item, 'imageFlick')
             var frame = findIn(loader.item, 'imageFrame')
@@ -79,8 +76,7 @@ fn viewer_url() -> String {
     )
 }
 
-/// One test, because `QmlEngine::new()` builds a `QApplication` and there may
-/// be only one of those per process.
+/// One test: `QmlEngine::new()` builds `QApplication`; one per process.
 #[test]
 fn a_zoom_keeps_the_spot_it_zooms_into_where_it_was() {
     let mut engine = QmlEngine::new();
@@ -135,36 +131,35 @@ fn a_zoom_keeps_the_spot_it_zooms_into_where_it_was() {
 
     assert_eq!(call!("load", QString::from(viewer_url())), "ok");
 
-    // A Flickable that is not interactive does not hand the second finger
-    // of a pinch on to the PinchArea inside it, so a viewer that only pans
-    // once zoomed in can never be pinched in the first place.
+    // Non-interactive Flickable doesn't pass pinch's second finger to inner
+    // PinchArea: viewer panning only when zoomed could never be pinched at all.
     assert_eq!(
         get!("imageFlick", "interactive"),
         "true",
         "the viewer must take a pinch at the fitted size"
     );
 
-    // A square image on a 540x960 portrait page: fitted at 540x540, and
-    // centred, with 210 above and below it.
+    // Square image on 540x960 portrait page: fitted 540x540, centred, 210 above
+    // and below.
     assert_eq!(call!("shape", 1000.0, 1000.0), "ok");
     assert_eq!(number!(get!("imageFrame", "width")), 540.0);
     assert_eq!(number!(get!("imageFrame", "y")), 210.0);
     assert_near!(under!(270, 480), (0.5, 0.5), "fitted, the image is centred");
 
-    // A double tap below and right of the centre: in, with the tapped spot
-    // still under the finger. Forgetting the 210 the image was centred by
-    // moves the spot by exactly that, which is the jump a reader sees.
+    // Double tap below-right of centre: in, tapped spot still under finger.
+    // Forgetting the 210 centring offset moves spot by exactly that (the jump
+    // reader sees).
     let before = under!(400, 600);
     assert_eq!(call!("toggle", 400.0, 600.0), "ok");
     assert_eq!(number!(get!("page", "zoom")), 3.0);
     assert_near!(before, under!(400, 600), "a double tap in");
 
-    // And a pinch on from there, about another spot, keeps that one.
+    // Pinch from there about another spot keeps that one.
     let before = under!(150, 700);
     assert_eq!(call!("zoomAt", 4.0, 150.0, 700.0), "ok");
     assert_near!(before, under!(150, 700), "a pinch while zoomed in");
 
-    // Out again: the whole image, centred, whatever was panned to.
+    // Out again: whole image, centred, whatever was panned to.
     assert_eq!(call!("toggle", 150.0, 700.0), "ok");
     assert_eq!(number!(get!("page", "zoom")), 1.0);
     assert_near!(
@@ -173,15 +168,15 @@ fn a_zoom_keeps_the_spot_it_zooms_into_where_it_was() {
         "back out, the image is centred"
     );
 
-    // A pinch goes no further than the limit either way.
+    // Pinch stops at limit either way.
     assert_eq!(call!("zoomAt", 50.0, 270.0, 480.0), "ok");
     assert_eq!(number!(get!("page", "zoom")), 5.0);
     assert_eq!(call!("zoomAt", 0.2, 270.0, 480.0), "ok");
     assert_eq!(number!(get!("page", "zoom")), 1.0);
 
-    // A panorama: fitted to the width, 540x135, and zoomed in about a spot
-    // on it. Sideways the spot stays put; up and down the image is still
-    // shorter than the screen, so it stays centred rather than following.
+    // Panorama: fitted to width, 540x135, zoomed about spot. Sideways spot
+    // stays; image still shorter than screen vertically, stays centred, doesn't
+    // follow.
     assert_eq!(call!("shape", 4000.0, 1000.0), "ok");
     assert_eq!(number!(get!("imageFrame", "height")), 135.0);
     let before = under!(100, 480);

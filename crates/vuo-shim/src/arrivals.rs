@@ -1,26 +1,20 @@
-//! What the new-articles notification needs from the mirror.
+//! What new-articles notification needs from mirror.
 //!
-//! The notification itself is QML's to raise -- `Nemo.Notifications` is a QML
-//! module, and the home screen is reached through it -- so this object does
-//! what the models do: it reads the mirror when asked, and hands back plain
-//! values. The decision of what to tell the home screen is
-//! [`vuo_core::notify::Announcer`]'s, where it is tested without Qt; this is
-//! the thin wrapper that feeds it and remembers its answer.
+//! QML raises notification (`Nemo.Notifications` = QML module, reaches home
+//! screen), so this does what models do: reads mirror when asked, returns plain
+//! values. Decision = [`vuo_core::notify::Announcer`]'s, tested without Qt;
+//! this = thin wrapper feeding it, remembering answer.
 //!
-//! # When it is asked
+//! # When asked
 //!
-//! By the root window, each time its poll finds that the mirror changed, and
-//! each time the app comes to the front or goes to the cover. There is no push
-//! from the worker, for the reason there is none into the models: QML owns this
-//! object, so Rust has no handle to call into. The consequence is worth
-//! stating, because it is visible: while Vuo is on its cover, the poll runs at
-//! a quarter of the sync interval (`settings::cover_poll_ms_for`), so a
-//! notification can arrive up to that long after the sync that found the
-//! articles -- exactly as late as the cover's own count, and for the same
-//! reason.
+//! By root window, each time poll finds mirror changed, and each time app comes
+//! to front or goes to cover. No push from worker (QML owns object; Rust has no
+//! handle). Visible consequence: on cover, poll runs at quarter of sync
+//! interval (`settings::cover_poll_ms_for`); notification can lag finding sync
+//! that long, same as cover's count.
 
-// See the note at the top of settings.rs: the `QObject` derive for a plain
-// `QObject` base expands to glue clippy reads as a useless transmute.
+// See note atop settings.rs: `QObject` derive for plain `QObject` base expands
+// to glue clippy reads as useless transmute.
 #![allow(clippy::useless_transmute)]
 
 use qmetaobject::{qt_base_class, qt_method, QObject};
@@ -29,14 +23,14 @@ use vuo_core::notify::{Announcement, Announcer};
 
 use crate::context::AppContext;
 
-/// What `Arrivals::review` tells QML to do. Integers, because this
-/// `qmetaobject` has no `qml_register_enum` on Qt 5.6 (see the crate docs).
+/// What `Arrivals::review` tells QML. Integers: this `qmetaobject` has no
+/// `qml_register_enum` on Qt 5.6 (crate docs).
 ///
-/// Leave the notification as it is.
+/// Leave notification as is.
 pub const ANNOUNCE_NOTHING: i32 = 0;
 /// Publish it, with a banner: something new arrived.
 pub const ANNOUNCE_BANNER: i32 = 1;
-/// Publish it without a banner: the count changed, but nothing new arrived.
+/// Publish without banner: count changed, nothing new arrived.
 pub const ANNOUNCE_QUIET: i32 = 2;
 /// Close it.
 pub const ANNOUNCE_WITHDRAW: i32 = 3;
@@ -46,24 +40,19 @@ pub const ANNOUNCE_WITHDRAW: i32 = 3;
 pub struct Arrivals {
     base: qt_base_class!(trait QObject),
 
-    /// Look at the mirror and say what the notification should do: one of
-    /// the `ANNOUNCE_*` constants.
+    /// Look at mirror, say what notification should do: one of `ANNOUNCE_*`.
     ///
-    /// `active` is whether the reader has Vuo in front of them. While they
-    /// do, nothing is news -- the list is right there -- so every arrival is
-    /// acknowledged as it lands and whatever notification is up comes down.
-    /// `enabled` is the Settings switch.
+    /// `active`: reader has Vuo in front. Then nothing is news (list right
+    /// there): every arrival acknowledged on landing, notification comes down.
+    /// `enabled` = Settings switch.
     review: qt_method!(fn(&mut self, active: bool, enabled: bool) -> i32),
-    /// The home screen closed the notification: the reader swiped it away,
-    /// cleared the lot, or tapped it. Acknowledges exactly the articles it
-    /// covered, so the next one counts only what came after.
+    /// Home screen closed notification (swiped, cleared all, tapped).
+    /// Acknowledges exactly covered articles; next counts only what came after.
     dismissed: qt_method!(fn(&mut self)),
-    /// How many articles the notification covers, after a `review` that
-    /// said to publish.
+    /// Articles notification covers, after `review` said publish.
     articleCount: qt_method!(fn(&self) -> i32),
-    /// How many articles are unread in all, as of that same `review`: the
-    /// cover's number, which the notification states beside its own when
-    /// the two differ. See [`vuo_core::notify`].
+    /// Unread total as of same `review`: cover's number, stated beside own when
+    /// they differ. See [`vuo_core::notify`].
     unreadTotal: qt_method!(fn(&self) -> i32),
 
     announcer: Announcer,
@@ -89,7 +78,7 @@ impl Arrivals {
 
     /// [`Arrivals::review`], answering in the core's own type.
     fn decide(&mut self, active: bool, enabled: bool) -> Announcement {
-        // No account yet, so no mirror and nothing that could have arrived.
+        // No account: no mirror, nothing arrived.
         let Some(ctx) = self.context() else {
             return self.announcer.withdraw();
         };
@@ -98,13 +87,12 @@ impl Arrivals {
             return self.announcer.withdraw();
         }
         if !enabled {
-            // Left flagged rather than acknowledged. Nobody has seen them; if
-            // the switch is turned on, the next arrival's notification counts
-            // them too -- and opening Vuo clears them either way.
+            // Left flagged, not acknowledged: nobody saw them. Switch on → next
+            // notification counts them; opening Vuo clears them anyway.
             return self.announcer.withdraw();
         }
-        // A read that fails leaves the notification as it is. It is a status
-        // line on another screen, and the next sync asks again.
+        // Failed read leaves notification as is: status line on other screen;
+        // next sync asks again.
         let looked = ctx.read(|db| {
             let conn = db.conn();
             store::arrivals(conn).and_then(|ids| Ok((ids, store::unread_count(conn)?)))
@@ -123,8 +111,8 @@ impl Arrivals {
         let Some(ctx) = self.context() else { return };
         let written = ctx.write(|db| db.with_tx(|tx| store::acknowledge_arrivals(tx, &covered)));
         if !matches!(written, Some(Ok(_))) {
-            // Costs one notification that counts a few articles twice. Not
-            // worth more than a log line, and not worth a retry loop.
+            // Costs one notification counting few articles twice. Log line, no
+            // retry loop.
             tracing::debug!("could not acknowledge a dismissed notification's articles");
         }
     }
@@ -138,11 +126,10 @@ impl Arrivals {
     }
 }
 
-/// The reader is looking at Vuo: nothing that has arrived is news any more.
+/// Reader looking at Vuo: nothing arrived is news.
 ///
-/// Checked with a read first. This runs every time the mirror changes while
-/// the app is open -- every tap that marks something read -- and the write
-/// almost always has nothing to do. See [`store::any_arrivals`].
+/// Read first. Runs on every mirror change while open (every mark-read tap);
+/// write almost always has nothing to do. See [`store::any_arrivals`].
 fn acknowledge_everything(ctx: &AppContext) {
     let pending = ctx
         .read(|db| store::any_arrivals(db.conn()))
@@ -174,7 +161,7 @@ mod tests {
     use vuo_core::db::Database;
     use vuo_core::model::{Entry, EntryId, EntryStatus, Feed, FeedId};
 
-    /// Undated, as the other shim tests' entries are.
+    /// Undated, like other shim tests' entries.
     fn entry(id: i64) -> Entry {
         Entry {
             id: EntryId(id),
@@ -195,7 +182,7 @@ mod tests {
         }
     }
 
-    /// As the pull would: a new, unread entry inside the window.
+    /// As pull would: new unread entry inside window.
     fn arrive(ctx: &AppContext, id: i64) {
         ctx.write(|db| {
             db.with_tx(|tx| store::upsert_entry(tx, &entry(id), 2, store::Arrival::Announce))
@@ -204,8 +191,8 @@ mod tests {
         .expect("an arrival");
     }
 
-    /// As the pull would an article it holds already, or one from before the
-    /// window: in the mirror with `status`, and not an arrival.
+    /// As pull would an already-held article, or one from before window: in
+    /// mirror with `status`, not arrival.
     fn hold(ctx: &AppContext, id: i64, status: EntryStatus) {
         let e = Entry {
             status,
@@ -279,7 +266,7 @@ mod tests {
             "a poll that finds the same two says nothing"
         );
 
-        // The reader opens Vuo.
+        // Reader opens Vuo.
         assert_eq!(arrivals.review(true, true), ANNOUNCE_WITHDRAW);
         assert!(
             flagged(&ctx).is_empty(),
@@ -296,7 +283,7 @@ mod tests {
         arrive(&ctx, 2);
         assert_eq!(arrivals.review(false, true), ANNOUNCE_BANNER);
 
-        // A sync lands between the notification going up and the swipe.
+        // Sync lands between notification going up and swipe.
         arrive(&ctx, 3);
         arrivals.dismissed();
         assert_eq!(flagged(&ctx), vec![3], "1 and 2 were covered; 3 was not");
@@ -309,7 +296,7 @@ mod tests {
     #[test]
     fn the_notification_states_the_covers_unread_total_and_follows_it() {
         let (_dir, ctx, mut arrivals) = with_context();
-        // Three left unread from before; two new ones arrive.
+        // Three unread from before; two new arrive.
         for id in 1..=3 {
             hold(&ctx, id, EntryStatus::Unread);
         }
@@ -318,8 +305,8 @@ mod tests {
         assert_eq!(arrivals.review(false, true), ANNOUNCE_BANNER);
         assert_eq!((arrivals.articleCount(), arrivals.unreadTotal()), (2, 5));
 
-        // One of the older three is read on another device. The cover drops
-        // to 4, so the notification is corrected -- without a banner.
+        // Older one read on another device. Cover drops to 4; notification
+        // corrected, no banner.
         hold(&ctx, 1, EntryStatus::Read);
         assert_eq!(arrivals.review(false, true), ANNOUNCE_QUIET);
         assert_eq!((arrivals.articleCount(), arrivals.unreadTotal()), (2, 4));
@@ -333,16 +320,16 @@ mod tests {
         assert_eq!(arrivals.review(false, false), ANNOUNCE_NOTHING);
         assert_eq!(flagged(&ctx), vec![1], "unseen, so not acknowledged");
 
-        // Turned on: the next look announces it.
+        // Turned on: next look announces it.
         assert_eq!(arrivals.review(false, true), ANNOUNCE_BANNER);
-        // Turned off while it is up: it comes down.
+        // Turned off while up: comes down.
         assert_eq!(arrivals.review(false, false), ANNOUNCE_WITHDRAW);
     }
 
     #[test]
     fn with_no_account_there_is_nothing_to_announce() {
-        // QML constructs this before any account exists; `current()` is
-        // `None` on a test thread.
+        // QML constructs this before any account; `current()` is `None` on test
+        // thread.
         let mut arrivals = Arrivals::default();
         assert_eq!(arrivals.review(false, true), ANNOUNCE_NOTHING);
         assert_eq!(arrivals.review(true, true), ANNOUNCE_NOTHING);
@@ -353,11 +340,10 @@ mod tests {
 
     /// §the QML's names for the answers are the Rust answers.
     ///
-    /// QML cannot see a Rust const -- there is no `qml_register_enum` on Qt
-    /// 5.6 -- so the root window restates these, and a restatement is a copy
-    /// that can drift. Swap two and a banner pops for every article read on
-    /// another device, or the notification never comes down; nothing else in
-    /// the build would notice, because both sides are just integers.
+    /// QML can't see Rust const (no `qml_register_enum` on Qt 5.6): root window
+    /// restates these; restatement = copy that drifts. Swapping two → banner
+    /// for every article read elsewhere, or notification never comes down; both
+    /// sides plain integers, nothing else notices.
     #[test]
     fn the_root_window_names_each_answer_with_the_same_number() {
         const WINDOW: &str = include_str!("../../../qml/harbour-vuo.qml");

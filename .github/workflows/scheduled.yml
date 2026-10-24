@@ -1,20 +1,18 @@
-# What can go wrong without anyone pushing.
+# What breaks with nobody pushing.
 #
-# ci.yml judges a change; this judges the world moving under an unchanged
-# tree. A new RustSec advisory against a crate already in Cargo.lock, a lint
-# the next stable clippy adds, an action pinned here that turns out to have a
-# known hole -- none of those arrive with a commit, so none of them would be
-# seen until the next pull request happened to trip over them. The leak check
-# is here for a different reason: it is too slow for every push.
+# ci.yml judges a change; this judges world moving under unchanged tree: new
+# RustSec advisory on locked crate, lint next stable clippy adds, pinned action
+# with known hole. None arrive with a commit. Leak check here because too slow
+# for every push.
 #
-# Weekly, and by hand from the Actions tab. A red run here blocks nothing; it
-# is the notice. Each job says what to do about its own failure.
+# Weekly, and by hand from Actions tab. Red run blocks nothing; it is the
+# notice. Each job says what to do on failure.
 name: scheduled
 
 on:
   schedule:
-    # Monday morning, off the hour, and twenty minutes after the Miniflux
-    # integration job so the two do not queue for runners together.
+    # Monday, off the hour, 20 min after Miniflux integration job: no runner
+    # queue clash.
     - cron: "37 5 * * 1"
   workflow_dispatch:
 
@@ -26,29 +24,26 @@ env:
   CARGO_INCREMENTAL: 0
 
 jobs:
-  # ci.yml's `make check` runs the advisories too, but only when something is
-  # pushed. A red run here means an advisory names a crate in the lock: bump
-  # it (within the rust-version floor), or record why it does not apply in
-  # deny.toml's `ignore`.
+  # `make check` runs advisories too, but only on push. Red = advisory names
+  # locked crate: bump it (within rust-version floor), or record why not
+  # applicable in deny.toml `ignore`.
   advisories:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
-          # Nothing here pushes with git, so the token is not left behind in
-          # .git/config for a later step to find. Every checkout in this file.
+          # Nothing pushes with git: token not left in .git/config. Every
+          # checkout here.
           persist-credentials: false
       - uses: taiki-e/install-action@f7e5d7c961414b23f5b25b2da9294395d08513ad # v2.87.26
         with:
           tool: cargo-deny
       - run: cargo deny check advisories
 
-  # rust-toolchain.toml pins the release the gate lints with, so a new lint
-  # never fails a pull request out from under it. This is the other half of
-  # that bargain: what the current stable would say, so that bumping the pin
-  # is a known amount of work rather than a surprise. Red means the next bump
-  # has fixes in it, not that anything is broken.
+  # rust-toolchain.toml pins gate's clippy so new lint never fails PR. This
+  # shows what current stable says, so bumping pin is known work. Red = next
+  # bump has fixes, nothing broken.
   next-stable-clippy:
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -56,7 +51,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
-      # The shim and the app link Qt, and their clippy is most of the tree.
+      # Shim and app link Qt; their clippy is most of tree.
       - name: Install Qt
         run: |
           sudo apt-get update
@@ -65,17 +60,15 @@ jobs:
       - run: rustup toolchain install stable --profile minimal --component clippy
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
-          # rust-cache keys on the toolchain file's release, and this job
-          # builds with `+stable`.
+          # rust-cache keys on toolchain file's release; job builds with
+          # `+stable`.
           key: next-stable
       - run: rustc +stable --version
       - run: cargo +stable clippy --locked --workspace --all-targets -- -D warnings
 
-  # scripts/leak-check.sh: every test under AddressSanitizer and
-  # LeakSanitizer. A red run is either a leak -- the log ends in a
-  # LeakSanitizer report with the allocation's stack -- or a test that
-  # asserts on a clock ASan has slowed. The script says how to run one test
-  # on its own.
+  # scripts/leak-check.sh: every test under ASan + LSan. Red = leak (log ends in
+  # LeakSanitizer report with allocation stack) or test asserting on clock ASan
+  # slowed. Script says how to run one test alone.
   leak-check:
     runs-on: ubuntu-latest
     timeout-minutes: 90
@@ -83,9 +76,8 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
-      # The same packages as ci.yml, because the same tests run, and llvm for
-      # llvm-symbolizer: scripts/lsan.supp matches by function name, which a
-      # report only has once it is symbolized.
+      # Same packages as ci.yml (same tests), plus llvm for llvm-symbolizer:
+      # scripts/lsan.supp matches by function name, needs symbolized report.
       - name: Install Qt and llvm
         run: |
           sudo apt-get update
@@ -95,16 +87,14 @@ jobs:
             qtdeclarative5-dev-tools \
             qml-module-qtquick2 \
             llvm
-      # The nightly scripts/leak-check.sh names. No rust-cache: nothing this
-      # builds is shared with another job, and a week-old cache of it would
-      # be gigabytes to restore for little.
+      # Nightly scripts/leak-check.sh names. No rust-cache: nothing shared with
+      # other jobs, week-old cache = GBs to restore for little.
       - run: rustup toolchain install nightly-2026-10-12 --profile minimal --component rust-src
       - run: scripts/leak-check.sh
 
-  # ci.yml runs zizmor offline, on what is in the tree. Online it also asks
-  # GitHub whether an action pinned here has a known advisory, and whether
-  # each pinned commit is really on the action's own repository -- facts that
-  # change without a commit here, which is why they are asked weekly.
+  # ci.yml runs zizmor offline. Online it also asks GitHub about action
+  # advisories and whether each pinned commit is on action's own repo: facts
+  # that change without a commit here.
   zizmor:
     runs-on: ubuntu-latest
     timeout-minutes: 10

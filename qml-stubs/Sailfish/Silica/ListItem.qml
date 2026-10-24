@@ -1,8 +1,7 @@
 import QtQuick 2.6
 Item {
-    // As Silica's own: a list item is as wide as the list it is in. The
-    // view's width rather than the parent's: a list's content item is only
-    // sized once the view has been polished, which a test never waits for.
+    // Like Silica: list item as wide as its list. View width, not parent's:
+    // list's content item sized only after view polished; test never waits.
     width: ListView.view ? ListView.view.width : (parent ? parent.width : 0)
     property real contentHeight: 80
     height: contentHeight

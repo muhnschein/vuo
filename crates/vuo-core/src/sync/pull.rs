@@ -1,68 +1,63 @@
-//! Pulling server state into the mirror.
+//! Pulling server state into mirror.
 //!
-//! # The cursor
+//! # Cursor
 //!
-//! §11's first open question is *which query parameters give a reliable
-//! "changed since" pull without gaps or unbounded re-fetching, and how are
-//! server-side deletions detected.* The answer, from the server's own source:
+//! §11 first question: *which query parameters give a reliable "changed since"
+//! pull without gaps or unbounded re-fetching, and how are server-side
+//! deletions detected.* Answer, from server source:
 //!
-//! **`changed_after` for the window, and a keyset on `id` for the paging.**
-//! Not `offset`. The server's generated `ORDER BY` carries exactly one
-//! expression and no id tiebreaker, so every order except `id` is *unstable*:
-//! a single mark-all-as-read stamps thousands of rows with an identical
-//! `changed_at`, and paging through them by offset silently skips and
-//! duplicates. `order=id&direction=asc&after_entry_id=N` compiles to
-//! `e.id > N` over a primary key — a true keyset cursor with no ties.
+//! **`changed_after` for window, keyset on `id` for paging.** Not `offset`.
+//! Server's `ORDER BY` has one expression, no id tiebreaker: every order but
+//! `id` is *unstable*. One mark-all-as-read stamps thousands of rows with same
+//! `changed_at`; offset paging silently skips and duplicates.
+//! `order=id&direction=asc&after_entry_id=N` compiles to `e.id > N` over
+//! primary key: true keyset cursor, no ties.
 //!
-//! **Why there are no gaps.** An entry mutated *during* a pass either has
-//! `id > last_id` (so this pass sees it) or `id <= last_id` (so it does not).
-//! In the second case its `changed_at` is at least the pass start, which is
-//! after the cursor the pass will persist, so the next pass catches it. The
-//! overlap is bounded by the skew constant rather than by the corpus size,
-//! which is what keeps the re-fetch from being unbounded.
+//! **Why no gaps.** Entry mutated *during* pass: `id > last_id` (this pass sees
+//! it) or `id <= last_id` (doesn't). Second case: `changed_at` ≥ pass start,
+//! after persisted cursor, so next pass catches it. Overlap bounded by skew
+//! constant, not corpus size: re-fetch stays bounded.
 //!
-//! **Why the cursor comes from the server's clock.** The comparison happens
-//! server-side, and a phone's clock is not trustworthy — it can be hours out,
-//! or jump when the user travels. The pass reads the `Date` header of its first
-//! response and persists that minus [`CURSOR_SKEW_SECS`], covering clock skew
-//! and transactions whose `now()` predates their commit visibility.
+//! **Why cursor from server's clock.** Comparison server-side; phone clock
+//! untrustworthy (hours out, jumps when travelling). Pass reads first
+//! response's `Date` header, persists it minus [`CURSOR_SKEW_SECS`]: covers
+//! skew and transactions whose `now()` predates commit visibility.
 //!
-//! **The cursor is persisted only after the whole pass commits.** A crash
-//! mid-pass replays from the old cursor, which is safe because upserts are
-//! idempotent, and is the only choice that cannot lose an entry.
+//! **Cursor persisted only after whole pass commits.** Crash mid-pass replays
+//! from old cursor: safe (idempotent upserts), only choice that can't lose
+//! entry.
 //!
-//! # What the cursor cannot see
+//! # What cursor can't see
 //!
-//! Two blind spots, both real, both handled elsewhere rather than papered over:
+//! Two blind spots, both real, both handled elsewhere:
 //!
-//! 1. **Deletions.** On servers from 2.3.0 an entry is hard-deleted with no
-//!    API-observable trace; before that it became `status=removed`. Neither is
-//!    reachable through `changed_after`. See [`reconcile`].
-//! 2. **Content edits.** A feed refresh that rewrites an entry's title or body
-//!    does *not* bump `changed_at`. So a `changed_after` pull never re-fetches
-//!    an edited body for an entry already held. Vuo refreshes content on user
-//!    open rather than pretending the cursor covers it.
+//! 1. **Deletions.** From 2.3.0 hard-deleted, no API trace; before, became
+//!    `status=removed`. Neither reachable via `changed_after`. See
+//!    [`reconcile`].
+//! 2. **Content edits.** Feed refresh rewriting title or body does *not* bump
+//!    `changed_at`: pull never re-fetches edited body for held entry. Vuo
+//!    refreshes content on user open; cursor doesn't pretend to cover it.
 
 use crate::api::{convert, EntriesQuery, MinifluxClient};
 use crate::db::{store, Database};
 use crate::error::Result;
 use crate::model::{Entry, EntryId};
 
-/// Seconds subtracted from the server's clock when persisting a cursor.
+/// Seconds subtracted from server's clock when persisting cursor.
 ///
-/// Covers clock skew between responses and transactions whose `now()` was
-/// taken before they became visible. Re-seeing an entry is free (upserts are
-/// idempotent); missing one is not, so this errs generously.
+/// Covers skew between responses and transactions whose `now()` predates
+/// visibility. Re-seeing entry free (idempotent upsert); missing one isn't:
+/// errs generous.
 pub const CURSOR_SKEW_SECS: i64 = 60;
 
-/// Entries requested per page. Well under the server's 1000 cap, and sized so
-/// that a failed page is cheap to retry over a phone connection.
+/// Entries per page. Well under server's 1000 cap; failed page cheap to retry
+/// over phone connection.
 pub const PAGE_SIZE: u32 = 250;
 
-/// Safety valve on the number of pages one pass will fetch.
+/// Safety valve on pages per pass.
 ///
-/// A pass that somehow fails to advance must terminate rather than loop
-/// forever against the user's data allowance.
+/// Pass failing to advance must terminate, not loop against user's data
+/// allowance.
 pub const MAX_PAGES_PER_PASS: usize = 400;
 
 /// What one [`entries`] pass did.
@@ -72,8 +67,7 @@ pub struct PullOutcome {
     pub upserted: usize,
     /// Entries dropped because they failed validation.
     pub rejected: usize,
-    /// Entries a pre-2.3 server reported as `removed` and that were deleted
-    /// locally as a result.
+    /// Entries pre-2.3 server reported `removed`, deleted locally.
     pub removed: usize,
     /// Pages requested, including the final short one.
     pub pages: usize,
@@ -81,42 +75,37 @@ pub struct PullOutcome {
     pub next_cursor: Option<i64>,
 }
 
-/// Pull categories and feeds. Cheap, and needed before entries so that an
-/// entry's feed exists when the UI joins against it.
+/// Pull categories and feeds. Cheap; needed before entries so entry's feed
+/// exists when UI joins against it.
 ///
-/// Per-item conversion failures drop that item and are not errors.
+/// Per-item conversion failures drop item, not errors.
 ///
 /// # Errors
 ///
-/// - [`Error::Transport`], [`Error::Http`] or [`Error::Protocol`] when
-///   either listing request fails.
-/// - [`Error::Db`] when writing to or reading from the mirror fails.
+/// - [`Error::Transport`], [`Error::Http`] or [`Error::Protocol`] when either
+///   listing request fails.
+/// - [`Error::Db`] when mirror write/read fails.
 ///
 /// [`Error::Transport`]: crate::error::Error::Transport
 /// [`Error::Http`]: crate::error::Error::Http
 /// [`Error::Protocol`]: crate::error::Error::Protocol
 /// [`Error::Db`]: crate::error::Error::Db
 pub async fn taxonomy(db: &mut Database, client: &MinifluxClient, generation: i64) -> Result<()> {
-    // Deliberately SEQUENTIAL, though the two listings are independent.
+    // SEQUENTIAL on purpose, though listings independent.
     //
-    // Running them together would shorten the pass by one round trip, and on a
-    // phone a shorter pass is the thing worth having. It would also cost a
-    // second connection: `reqwest` is built here without the `http2` feature,
-    // so there is no multiplexing, and two requests in flight at once means
-    // two TCP connections and two TLS handshakes rather than one connection
-    // reused. Passes are an hour apart and the pool's idle timeout is ninety
-    // seconds, so every pass starts cold and pays that in full.
+    // Concurrent saves one round trip, but costs second connection: `reqwest`
+    // built without `http2`, no multiplexing; two in flight = two TCP
+    // connections, two TLS handshakes. Passes hour apart, pool idle timeout
+    // ninety seconds: every pass cold.
     //
-    // One saved round trip is tens of milliseconds off a radio event whose
-    // tail timer is measured in seconds; an extra handshake is packets and
-    // elliptic-curve work that were not there before. The trade only turns
-    // positive with HTTP/2, and that is the change to make first -- see the
-    // module docs.
+    // Saved round trip = tens of ms off radio event with seconds-long tail;
+    // extra handshake = packets and EC work. Positive only with HTTP/2; do that
+    // first (module docs).
     let categories = client.categories().await?;
     let feeds = client.feeds().await?;
 
-    // Convert outside the transaction: a per-item rejection should not roll
-    // back the items that were fine.
+    // Convert outside transaction: per-item rejection mustn't roll back good
+    // items.
     let categories: Vec<_> = categories
         .into_iter()
         .filter_map(|c| convert::category(c).ok())
@@ -136,19 +125,17 @@ pub async fn taxonomy(db: &mut Database, client: &MinifluxClient, generation: i6
         Ok(())
     })?;
 
-    // A feed that vanished from the listing was unsubscribed, on this device or
-    // another. Its entries go with it: they are unreachable in the UI and would
-    // otherwise accumulate forever. This is the cheapest and most common
-    // deletion case, and it costs no extra request.
+    // Feed gone from listing = unsubscribed (here or elsewhere). Entries go
+    // too: unreachable in UI, else accumulate forever. Cheapest, most common
+    // deletion case, no extra request.
     let live: std::collections::HashSet<i64> = feeds.iter().map(|f| f.id.get()).collect();
     let local = store::feeds(db.conn())?;
 
-    // An EMPTY feed listing is never taken as "the user unsubscribed from
-    // everything". A reverse proxy serving a stale cached `[]`, or a partial
-    // response, would otherwise delete the entire mirror -- and unsubscribing
-    // from every feed at once is not a real workflow, whereas a cached empty
-    // body is a real failure mode. If the user genuinely has no feeds, there
-    // is nothing local to delete anyway.
+    // EMPTY feed listing never read as "unsubscribed from everything". Proxy
+    // serving stale cached `[]`, or partial response, would delete whole
+    // mirror; unsubscribing everything at once isn't real workflow, cached
+    // empty body is real failure. No feeds genuinely → nothing local to delete
+    // anyway.
     if feeds.is_empty() && !local.is_empty() {
         tracing::warn!(
             local = local.len(),
@@ -173,30 +160,22 @@ pub async fn taxonomy(db: &mut Database, client: &MinifluxClient, generation: i6
     Ok(())
 }
 
-/// Whether an entry this pass is about to write would be NEWS if it turns out
-/// to be new to the mirror.
+/// Whether entry this pass writes would be NEWS if new to mirror.
 ///
-/// The upsert decides "new to the mirror" -- only its INSERT half ever marks
-/// anything, see [`store::upsert_entry`] -- so all this has to rule out is the
-/// two ways a row can be inserted without being an article that has just
-/// appeared:
+/// Upsert decides "new to mirror" (only INSERT half marks, see
+/// [`store::upsert_entry`]); this rules out two ways a row inserts without
+/// being fresh article:
 ///
-/// - **The first pass a mirror ever has.** `cursor` is `None` and every entry
-///   the account holds is an insert. A notification announcing a whole corpus
-///   as "new" on the day Vuo is set up tells the reader nothing.
-/// - **An old entry coming back.** The cursor is `changed_after`, and an entry
-///   changes when anything touches it -- marked unread on the web, starred on
-///   another phone. One that retention pruned from this mirror (see
-///   [`store::prune_entries`]), or that a torn-listing reconcile never had,
-///   re-enters here as an insert. Its `created_at` -- when the SERVER first
-///   stored it, on the server's clock, which is the clock the cursor is on --
-///   is from before the window this pass is reading, and that is what gives
-///   it away.
+/// - **Mirror's first pass.** `cursor` `None`, every entry = insert. Announcing
+///   whole corpus as "new" on setup day tells reader nothing.
+/// - **Old entry returning.** Cursor = `changed_after`; entry changes when
+///   anything touches it (marked unread on web, starred elsewhere). One
+///   retention pruned (see [`store::prune_entries`]), or torn-listing reconcile
+///   never had, re-enters as insert. Its `created_at` (server first stored it,
+///   server clock = cursor's clock) predates window: gives it away.
 ///
-/// An entry with no `created_at` at all is given the benefit of the doubt:
-/// every Miniflux that has an API sends one, so its absence is a server this
-/// code has never met, and "the insert happened" is still the best evidence
-/// available.
+/// No `created_at` at all: benefit of doubt. Every API-capable Miniflux sends
+/// one; absence = unknown server, "insert happened" still best evidence.
 #[must_use]
 pub fn arrival_for(entry: &Entry, cursor: Option<i64>) -> store::Arrival {
     let Some(window_start) = cursor else {
@@ -210,17 +189,16 @@ pub fn arrival_for(entry: &Entry, cursor: Option<i64>) -> store::Arrival {
 
 /// One incremental entry pass.
 ///
-/// Returns the cursor to persist; the caller stores it only after everything
-/// else in the sync has committed.
+/// Returns cursor to persist; caller stores it only after rest of sync commits.
 ///
 /// # Errors
 ///
-/// - [`Error::Transport`], [`Error::Http`] or [`Error::Protocol`] when any
-///   page request fails.
-/// - [`Error::Db`] when writing a page to the mirror fails.
+/// - [`Error::Transport`], [`Error::Http`] or [`Error::Protocol`] when any page
+///   request fails.
+/// - [`Error::Db`] when writing page to mirror fails.
 ///
-/// Pages written before the failure stay written; no cursor is returned, so
-/// the next pass re-reads the window.
+/// Pages written before failure stay; no cursor returned, next pass re-reads
+/// window.
 ///
 /// [`Error::Transport`]: crate::error::Error::Transport
 /// [`Error::Http`]: crate::error::Error::Http
@@ -235,15 +213,12 @@ pub async fn entries(
     entries_with_page_cap(db, client, cursor, generation, MAX_PAGES_PER_PASS).await
 }
 
-/// [`entries`], with the page cap given explicitly.
+/// [`entries`] with explicit page cap.
 ///
-/// The cap exists so a pass cannot run forever, and holding the cursor back
-/// when it fires is what stops the next pass skipping everything beyond the
-/// stopping point. Reaching the real cap means 400 pages of 250 entries --
-/// 100,000 rows through a mock server -- and a test that slow does not get
-/// written, so the branch was dead under test: replacing its body with a panic
-/// left every test in the suite green. Injecting the cap makes it reachable in
-/// milliseconds.
+/// Cap stops endless pass; holding cursor back when it fires stops next pass
+/// skipping everything beyond stop point. Real cap = 400 pages × 250 = 100,000
+/// rows through mock server, too slow to test; injecting cap makes branch
+/// reachable in ms.
 ///
 /// # Errors
 ///
@@ -258,9 +233,8 @@ pub async fn entries_with_page_cap(
     let mut outcome = PullOutcome::default();
     let mut after: Option<EntryId> = None;
     let mut server_now: Option<i64> = None;
-    // Set when the pass stops early. The cursor must NOT advance in that case:
-    // it would mark as "seen" a window the pass never finished reading, and
-    // every entry beyond the stopping point would be skipped forever.
+    // Set when pass stops early. Cursor must NOT advance then: would mark
+    // unfinished window "seen", skipping everything past stop point forever.
     let mut incomplete = false;
 
     loop {
@@ -279,16 +253,15 @@ pub async fn entries_with_page_cap(
         let (page, date) = client.entries(&query).await?;
         outcome.pages = outcome.pages.saturating_add(1);
 
-        // Anchor to the FIRST response's Date: later pages happen after
-        // mutations that this pass will not see, and using a later clock
-        // reading would skip them.
+        // Anchor to FIRST response's Date: later pages follow mutations this
+        // pass won't see; later clock would skip them.
         if server_now.is_none() {
             server_now = date.map(|d| d.timestamp());
         }
 
         let count = page.entries.len();
-        // `total` is deliberately not used as a loop bound: with after_entry_id
-        // set it counts only rows ahead of the cursor and shrinks every page.
+        // `total` not loop bound: with after_entry_id it counts only rows ahead
+        // of cursor, shrinks every page.
         let last_id = page.entries.last().map(|e| EntryId(e.id));
 
         let decoded = convert::entries(page.entries);
@@ -303,27 +276,24 @@ pub async fn entries_with_page_cap(
             for e in &decoded.valid {
                 store::upsert_entry(tx, e, generation, arrival_for(e, cursor))?;
             }
-            // A pre-2.3 server's soft delete. This is the only deletion signal
-            // such a server gives, and it arrives through the ordinary cursor.
+            // Pre-2.3 soft delete. Only deletion signal such server gives, via
+            // ordinary cursor.
             for id in &decoded.removed {
                 store::delete_entry(tx, *id)?;
             }
             Ok(())
         })?;
 
-        // A short page means the end of the window. Note this uses the raw
-        // returned count, not the count that survived validation: a page made
-        // entirely of rejected entries is still a full page and paging must
-        // continue past it.
+        // Short page = end of window. Raw returned count, not survivors: page
+        // of all rejected entries still full, paging continues.
         if count < PAGE_SIZE as usize {
             break;
         }
         match last_id {
             Some(id) if Some(id) != after => after = Some(id),
-            // Either a full page with no last id, or a server whose
-            // `after_entry_id` did not advance the window -- both mean the
-            // next request would repeat this one. Stop, and do not pretend the
-            // window was covered.
+            // Full page without last id, or `after_entry_id` didn't advance:
+            // next request repeats this one. Stop; don't pretend window
+            // covered.
             _ => {
                 incomplete = true;
                 break;
@@ -332,16 +302,15 @@ pub async fn entries_with_page_cap(
     }
 
     outcome.next_cursor = if incomplete {
-        // Leave the cursor where it was. The next pass re-reads this window,
-        // which costs bandwidth; advancing it would cost entries.
+        // Cursor stays. Next pass re-reads window: costs bandwidth; advancing
+        // costs entries.
         None
     } else {
         server_now
             .map(|now| now.saturating_sub(CURSOR_SKEW_SECS))
-            // Falling back to the local clock is a compromise, not a
-            // preference: without a Date header there is nothing better, and
-            // keeping the old cursor forever would re-pull the same window
-            // every sync.
+            // Local clock fallback = compromise: no Date header, nothing
+            // better; keeping old cursor forever re-pulls same window every
+            // sync.
             .or_else(|| {
                 Some(
                     chrono::Utc::now()
@@ -356,19 +325,17 @@ pub async fn entries_with_page_cap(
 
 /// Cheap per-feed divergence check.
 ///
-/// `GET /v1/feeds/counters` is one small request and answers "does any feed
-/// hold a different number of entries than I think it does". Feeds whose
-/// counts agree are skipped entirely, which is what keeps the common case at
-/// near-zero bandwidth. Only when something diverges is a full id reconcile
-/// worth its cost.
+/// `GET /v1/feeds/counters`: one small request, "does any feed hold different
+/// count than I think". Agreeing feeds skipped: common case near-zero
+/// bandwidth. Full id reconcile only on divergence.
 ///
-/// Returns the feed ids that disagree.
+/// Returns disagreeing feed ids.
 ///
 /// # Errors
 ///
-/// - [`Error::Transport`], [`Error::Http`] or [`Error::Protocol`] when the
-///   counters request fails.
-/// - [`Error::Db`] when reading the local counts fails.
+/// - [`Error::Transport`], [`Error::Http`] or [`Error::Protocol`] when counters
+///   request fails.
+/// - [`Error::Db`] when reading local counts fails.
 ///
 /// [`Error::Transport`]: crate::error::Error::Transport
 /// [`Error::Http`]: crate::error::Error::Http
@@ -381,11 +348,10 @@ pub async fn diverging_feeds(db: &Database, client: &MinifluxClient) -> Result<V
     let mut server: std::collections::HashMap<i64, i64> = std::collections::HashMap::new();
     for (key, value) in counters.reads.iter().chain(counters.unreads.iter()) {
         if let Ok(id) = key.parse::<i64>() {
-            // saturating, not `+=`. These are numbers chosen by someone else
-            // (§9.2), and two i64::MAX counts for the same feed panicked on
-            // overflow in a debug build -- a reachable panic on foreign input,
-            // which §9.5 forbids outright because unwinding into Qt's C++
-            // frames is undefined behaviour.
+            // Saturating, not `+=`: numbers chosen by someone else (§9.2); two
+            // i64::MAX counts for one feed overflow-panic in debug. Reachable
+            // panic on foreign input, §9.5 forbids (unwinding into Qt C++ =
+            // UB).
             let slot = server.entry(id).or_insert(0);
             *slot = slot.saturating_add(*value);
         }
@@ -393,19 +359,16 @@ pub async fn diverging_feeds(db: &Database, client: &MinifluxClient) -> Result<V
 
     let mut diverging = Vec::new();
     for (feed_id, local_count) in &local {
-        // A feed absent from the counters response holds zero entries there.
+        // Feed absent from counters = zero entries there.
         let server_count = server.get(feed_id).copied().unwrap_or(0);
-        // ONE DIRECTION, deliberately. This exists to notice entries the
-        // server has dropped, and the only thing it can trigger is a
-        // reconcile, which only ever deletes. Holding FEWER entries than the
-        // server is the opposite problem: the cursor pull is what fills that
-        // in, and a reconcile would do nothing about it at the price of paging
-        // the whole corpus.
+        // ONE DIRECTION on purpose. Notices entries server dropped; can only
+        // trigger reconcile, which only deletes. Holding FEWER = opposite
+        // problem, cursor pull fills it; reconcile would page whole corpus for
+        // nothing.
         //
-        // The test used to be `!=`, which made a mirror that deliberately
-        // holds less than the server -- one with a retention policy set, which
-        // is every one of them after `store::prune_entries` runs once -- report
-        // every feed as diverging on every pass, forever.
+        // `!=` would make mirror deliberately holding less (any with retention,
+        // after `store::prune_entries` runs) report every feed diverging every
+        // pass.
         if *local_count > server_count {
             diverging.push(*feed_id);
         }
@@ -414,45 +377,38 @@ pub async fn diverging_feeds(db: &Database, client: &MinifluxClient) -> Result<V
     Ok(diverging)
 }
 
-/// Full deletion reconciliation via `GET /v1/entries/ids`.
+/// Full deletion reconcile via `GET /v1/entries/ids`.
 ///
-/// Requires a server from 2.3.2; check
+/// Needs server 2.3.2+; check
 /// [`crate::model::ServerVersion::has_entry_ids_endpoint`] first.
 ///
-/// # The correctness guard
+/// # Correctness guard
 ///
-/// This endpoint pages by `offset` over an `id DESC` ordering, which is *not*
-/// stable under concurrent inserts and deletes — a concurrent write shifts the
-/// window and an id can fall through the crack. Acting on that directly would
-/// delete a live entry.
+/// Endpoint pages by `offset` over `id DESC`: *not* stable under concurrent
+/// inserts/deletes; window shifts, id falls through crack. Acting on that
+/// deletes live entry.
 ///
-/// So the accumulated id count is checked against the `total` the first page
-/// reported, and a mismatch **aborts the reconcile** rather than deleting
-/// anything. A reconcile that does not run is a cache that stays slightly
-/// stale; a reconcile that runs on a torn listing destroys the user's data.
+/// So accumulated id count checked against first page's `total`; mismatch
+/// **aborts reconcile**, deletes nothing. Skipped reconcile = slightly stale
+/// cache; reconcile on torn listing destroys user data.
 ///
 /// # Errors
 ///
-/// - [`Error::Transport`], [`Error::Http`] or [`Error::Protocol`] when any
-///   page of the id listing fails, including [`Error::Http`] from a server
-///   without the endpoint.
+/// - [`Error::Transport`], [`Error::Http`] or [`Error::Protocol`] when any id
+///   listing page fails, incl. [`Error::Http`] from server without endpoint.
 /// - [`Error::Db`] when reading local ids or deleting stale entries fails.
 ///
-/// A listing that fails the guard is not an error: it returns
-/// `Ok` with `completed` false and nothing deleted.
+/// Listing failing guard not error: `Ok`, `completed` false, nothing deleted.
 ///
 /// [`Error::Transport`]: crate::error::Error::Transport
 /// [`Error::Http`]: crate::error::Error::Http
 /// [`Error::Protocol`]: crate::error::Error::Protocol
 /// [`Error::Db`]: crate::error::Error::Db
 pub async fn reconcile(db: &mut Database, client: &MinifluxClient) -> Result<Reconcile> {
-    // The server caps `limit` at 1000 and `EntriesQuery` clamps to it, so
-    // asking for 10_000 silently yielded 1000 -- and the loop's
-    // "short page means done" test then fired on the very first page. The
-    // reconcile therefore never paged at all, and on any corpus over 1000
-    // entries the total check below rejected it every single time. Use the
-    // real cap so the page-size the loop compares against is the page-size the
-    // server actually applies.
+    // Server caps `limit` at 1000, `EntriesQuery` clamps to it. Larger ask
+    // silently yields 1000, then "short page = done" fires on first page:
+    // reconcile never pages, total check rejects every corpus over 1000. Use
+    // real cap so compared page size = applied page size.
     const PAGE: u32 = 1000;
 
     let mut seen: std::collections::HashSet<i64> = std::collections::HashSet::new();
@@ -473,24 +429,21 @@ pub async fn reconcile(db: &mut Database, client: &MinifluxClient) -> Result<Rec
         }
         offset = offset.saturating_add(PAGE);
         if u64::from(offset) > 5_000_000 {
-            // Refuse to page forever against a server that never shortens.
+            // Don't page forever against server that never shortens.
             tracing::warn!("aborting deletion reconcile: the id listing never ended");
             return Ok(Reconcile::aborted());
         }
     }
 
-    // The guard. `/v1/entries/ids` pages by offset over an `id DESC` ordering,
-    // which is not stable under concurrent writes: an insert shifts the window
-    // and an id can fall through the crack. Acting on a torn listing deletes
-    // live entries, so the collected count must match the total the first page
-    // declared.
+    // Guard. `/v1/entries/ids` pages by offset over `id DESC`, unstable under
+    // concurrent writes: insert shifts window, id falls through crack. Torn
+    // listing deletes live entries: collected count must match first page's
+    // declared total.
     //
-    // A missing or NEGATIVE total disables the guard rather than passing it.
-    // The previous form (`total >= 0 && collected != total`) let a negative
-    // value skip the check entirely, so a server -- hostile, buggy, or a proxy
-    // serving a cached body -- answering `{"total": -1, "entry_ids": []}` would
-    // have deleted the user's entire mirror along with every pending outbox
-    // row. A value that cannot be checked is not a value that can be trusted.
+    // Missing or NEGATIVE total disables guard, doesn't pass it. Else server
+    // (hostile, buggy, cached proxy body) answering `{"total": -1, "entry_ids":
+    // []}` deletes whole mirror plus every pending outbox row. Uncheckable
+    // value untrusted.
     let Some(total) = declared_total.filter(|t| *t >= 0) else {
         tracing::warn!("aborting deletion reconcile: the server declared no usable total");
         return Ok(Reconcile::aborted());
@@ -529,12 +482,11 @@ pub async fn reconcile(db: &mut Database, client: &MinifluxClient) -> Result<Rec
     })
 }
 
-/// The outcome of a deletion reconcile.
+/// Deletion reconcile outcome.
 ///
-/// `completed` is not the same as "deleted something": an aborted reconcile
-/// deletes nothing and must NOT be recorded as having run, or the periodic
-/// backstop is deferred for a full interval on a mirror that was never
-/// actually checked.
+/// `completed` ≠ "deleted something": aborted reconcile deletes nothing, must
+/// NOT be recorded as run, else periodic backstop deferred a full interval on
+/// unchecked mirror.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Reconcile {
     /// `true` when the listing passed the guard and stale entries were removed.
@@ -559,16 +511,10 @@ mod tests {
 
     #[test]
     fn the_skew_is_large_enough_to_be_worth_having() {
-        // This used to be `the_skew_is_subtracted_not_added`, and computed
-        // `server_now - CURSOR_SKEW_SECS` ITSELF before asserting on its own
-        // arithmetic. No production code was called, so flipping the sign in
-        // the pass left it green -- while the direction is the entire point.
-        //
-        // The direction is now checked against the real pass, in
+        // Direction checked against real pass:
         // tests/sync_pull.rs::the_cursor_comes_from_the_servers_clock_minus_a_skew.
-        // What remains here is the one thing that test cannot see: whether the
-        // constant is a sensible size. Too small and a mutation during the
-        // pass is missed; too large and every sync re-reads hours of entries.
+        // Here: only whether constant is sensible size. Too small misses mutation
+        // during pass; too large re-reads hours every sync.
         assert!(
             (30..=300).contains(&CURSOR_SKEW_SECS),
             "a cursor skew of {CURSOR_SKEW_SECS}s is outside the range that trades \
@@ -576,11 +522,10 @@ mod tests {
         );
     }
 
-    /// Compile-time, because both sides are constants: a runtime assertion
-    /// over two consts is checked long after the mistake could have been
-    /// caught, and clippy rightly points that out.
+    /// Compile-time: both sides constants; runtime assert over consts checked
+    /// too late (clippy agrees).
     ///
-    /// 2.3.x answers 400 for `limit > 1000`, and `limit=0` means UNLIMITED on
-    /// 2.2.x -- a full-corpus dump into a phone.
+    /// 2.3.x answers 400 for `limit > 1000`; `limit=0` = UNLIMITED on 2.2.x:
+    /// full-corpus dump into phone.
     const _: () = assert!(PAGE_SIZE <= 1000 && PAGE_SIZE > 0);
 }

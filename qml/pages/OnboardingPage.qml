@@ -23,14 +23,13 @@ import "../components"
 Page {
     id: page
 
-    /// The user is ready to set an account up. The root window takes it on.
+    /// User ready to set up account. Root window takes over.
     signal continued()
 
     allowedOrientations: Orientation.All
 
-    // The cover's texture, at a page's density: the same pattern, painted
-    // much finer, which is the whole of the difference between the two
-    // masks. The middle is cleared for the words.
+    // Cover texture at page density: same pattern painted much finer (only
+    // difference between masks). Middle cleared for words.
     TextArt {
         id: art
         objectName: "textArt"

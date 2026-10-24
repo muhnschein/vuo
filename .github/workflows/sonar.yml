@@ -1,15 +1,11 @@
 # SonarQube Cloud analysis.
 #
-# Kept out of ci.yml on purpose. ci.yml is the GATE -- it installs dependencies
-# and calls `make check`, and §8's rule is that a contributor's green `make
-# check` is a green CI. This workflow is a REPORT: it cannot fail a change on
-# its own findings, and the quality gate it publishes is advice, not intake.
-# Folding it into the gate job would quietly make a hosted service part of the
-# rule that says a laptop is enough.
+# Out of ci.yml on purpose. ci.yml = GATE (`make check`; §8: green local `make
+# check` = green CI). This = REPORT: can't fail a change; its quality gate is
+# advice. Folding in would make hosted service part of the gate.
 #
-# The two inputs Sonar imports -- clippy diagnostics and coverage -- are
-# produced by `make sonar-reports`, so what runs here can be run at home. See
-# sonar-project.properties for why the scanner does not produce them itself.
+# Both inputs (clippy diagnostics, coverage) come from `make sonar-reports`:
+# runnable at home. Why scanner doesn't make them: sonar-project.properties.
 
 name: SonarQube
 
@@ -20,8 +16,7 @@ on:
     types: [opened, synchronize, reopened]
   workflow_dispatch:
 
-# Nothing here writes. SonarQube Cloud decorates pull requests through its own
-# GitHub App, not through this token.
+# Nothing writes. SonarQube Cloud decorates PRs via its own GitHub App.
 permissions:
   contents: read
 
@@ -37,47 +32,39 @@ jobs:
   sonar:
     name: SonarQube Cloud
     runs-on: ubuntu-latest
-    # A pull request from a fork gets no secrets, so SONAR_TOKEN would be
-    # empty and the scan would fail on every such PR with an authentication
-    # error that looks like a broken setup. Skip it instead; the analysis of
-    # the merge lands when the branch reaches main.
+    # Fork PRs get no secrets: empty SONAR_TOKEN, auth failure that looks like
+    # broken setup. Skip; merge analysed when branch reaches main.
     if: >-
       github.event_name != 'pull_request' ||
       github.event.pull_request.head.repo.full_name == github.repository
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
-          # Sonar reads git blame to decide what counts as new code. A shallow
-          # clone leaves every line looking as though it landed in this commit.
+          # Sonar reads git blame for new code. Shallow clone = every line looks
+          # new.
           fetch-depth: 0
-          # Nothing here pushes with git, so the token is not left behind in
-          # .git/config for a later step to find; the scan holds SONAR_TOKEN.
+          # Nothing pushes with git: token not left in .git/config; scan holds
+          # SONAR_TOKEN.
           persist-credentials: false
 
       - name: Install Qt
         run: |
           sudo apt-get update
-          # Same set as ci.yml: the -dev packages omit the QtQuick runtime
-          # plugin, and the shim's tests instantiate QtQuick items.
+          # Same as ci.yml: -dev packages omit QtQuick runtime plugin; shim
+          # tests instantiate QtQuick items.
           sudo apt-get install -y --no-install-recommends \
             qtbase5-dev \
             qtdeclarative5-dev \
             qtdeclarative5-dev-tools \
             qml-module-qtquick2
 
-      # Every action here is pinned to a full commit SHA, the version it
-      # resolved to named beside it. A tag is a moving pointer the action's
-      # owner -- or whoever compromises them -- can re-aim at a different
-      # commit, which is how tj-actions/changed-files became CVE-2025-30066;
-      # a SHA cannot be re-aimed. SonarQube flags the unpinned form as S7637,
-      # and it is right to: this job holds SONAR_TOKEN.
+      # Every action pinned to full commit SHA, version beside it. Tag is
+      # movable by owner or attacker (tj-actions/changed-files, CVE-2025-30066);
+      # SHA isn't. SonarQube S7637 flags unpinned form; job holds SONAR_TOKEN.
       #
-      # The toolchain is rust-toolchain.toml's, which rustup installs with
-      # clippy on first use, so the coverage tooling is all it adds. No
-      # action for it: dtolnay/rust-toolchain was pinned to a commit on its
-      # `stable` branch, which is rebuilt with every release, and a commit
-      # it leaves behind belongs to no branch or tag -- nothing then vouches
-      # for what this job, holding the token, runs.
+      # Toolchain from rust-toolchain.toml (rustup, clippy on first use); only
+      # adds coverage tooling. No toolchain action: its `stable` branch is
+      # rebuilt each release, leaving pinned commits on no branch or tag.
       - run: rustup component add llvm-tools-preview
 
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
@@ -90,9 +77,8 @@ jobs:
       - name: make sonar-reports
         run: make sonar-reports
 
-      # One version, in Cargo.toml. scripts/check-packaging.sh already fails a
-      # build where the spec file disagrees with it; this keeps SonarQube from
-      # becoming a third copy to forget.
+      # One version, in Cargo.toml. scripts/check-packaging.sh fails spec drift;
+      # this keeps SonarQube from being third copy.
       - name: Read the workspace version
         id: version
         run: |
@@ -105,23 +91,20 @@ jobs:
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         with:
-          # SONAR_HOST_URL is not set: unset means SonarQube Cloud, and a
-          # self-hosted Server is what needs it.
+          # SONAR_HOST_URL unset = SonarQube Cloud; only self-hosted needs it.
           args: >
             -Dsonar.projectVersion=${{ steps.version.outputs.version }}
 
-      # The scan uploads a report and exits. The server processes it
-      # afterwards, so without this the run finishes knowing nothing about its
-      # own result -- the gate, the ratings and the issue list stay on a
-      # dashboard, where neither the job log nor a reviewer can reach them.
+      # Scan uploads and exits; server processes later. Without this, gate,
+      # ratings, issues stay on dashboard, out of job log.
       #
-      # continue-on-error, and never `sonar.qualitygate.wait`: this reports and
-      # does not gate. A Sonar outage costs a warning here, not a build.
+      # continue-on-error, never `sonar.qualitygate.wait`: reports, doesn't
+      # gate. Sonar outage = warning, not failed build.
       - name: What SonarQube made of it
         if: always()
         continue-on-error: true
         env:
-          # Only used if the project is private; the endpoints are readable
-          # without it on a public one. See the script.
+          # Only needed if project private; endpoints public otherwise. See
+          # script.
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         run: scripts/sonar-report.sh

@@ -1,19 +1,16 @@
-//! Replaying the outbox against the server.
+//! Replaying outbox against server.
 //!
-//! The hard part of this is not the sending; it is knowing what a failure
-//! means. Because every payload is an absolute set (see [`crate::db::outbox`]),
-//! there is no partial-application hazard, and the retry rule reduces to one
-//! question: *could this same request ever succeed?*
+//! Hard part: knowing what failure means, not sending. Every payload absolute
+//! set (see [`crate::db::outbox`]): no partial-application hazard; retry rule =
+//! *could this same request ever succeed?*
 //!
-//! - **4xx, except 429** — no. A 400 means the payload is malformed and will
-//!   be rejected identically forever. Retrying is a loop; the batch is dropped
-//!   and reported.
-//! - **5xx, 429, transport errors** — yes. Including an ambiguous timeout,
-//!   where the server may well have applied the change: resending an absolute
-//!   value is a no-op, which is exactly why the outbox is shaped this way.
-//! - **401/403** — no, and stop the whole flush. The API key has been revoked
-//!   or the account changed; every subsequent batch will fail the same way and
-//!   hammering the server helps nobody.
+//! - **4xx, except 429**: no. 400 = malformed payload, rejected identically
+//!   forever. Retrying loops; batch dropped and reported.
+//! - **5xx, 429, transport errors**: yes. Incl. ambiguous timeout where server
+//!   may have applied change: resending absolute value = no-op (why outbox has
+//!   this shape).
+//! - **401/403**: no, and stop whole flush. Key revoked or account changed;
+//!   every later batch fails same way; hammering helps nobody.
 
 use crate::api::{EntryMutation, MinifluxClient};
 use crate::db::outbox::{self, DesiredValue};
@@ -35,19 +32,17 @@ pub struct ReplayOutcome {
 
 /// Send every pending intent, oldest first.
 ///
-/// Never holds a database transaction across an await: each batch is sent, and
-/// only then is a short transaction opened to record the result. Holding one
-/// open across the network call would block the UI's readers for the duration
-/// of a request, which on a phone with poor signal is seconds.
+/// No transaction across await: batch sent, then short transaction records
+/// result. Open across network call blocks UI readers for request duration
+/// (seconds on poor signal).
 ///
-/// A server's refusal is not an error here: each batch is confirmed,
-/// deferred or dropped, and the counts say which. A credential failure
-/// stops the flush early with `auth_failed` set.
+/// Server refusal not error: each batch confirmed, deferred or dropped; counts
+/// say which. Credential failure stops flush early with `auth_failed` set.
 ///
 /// # Errors
 ///
-/// [`Error::Db`] when reading the outbox or recording a batch's result
-/// fails. Batches already recorded stay recorded.
+/// [`Error::Db`] when reading outbox or recording batch result fails. Recorded
+/// batches stay recorded.
 pub async fn flush(db: &mut Database, client: &MinifluxClient) -> Result<ReplayOutcome> {
     let pending = outbox::pending(db.conn())?;
     let batches = outbox::batches(&pending);
@@ -61,8 +56,8 @@ pub async fn flush(db: &mut Database, client: &MinifluxClient) -> Result<ReplayO
 
         match client.update_entries(&batch.entry_ids, mutation).await {
             Ok(()) => {
-                // Compare-and-delete: a re-toggle during the request leaves a
-                // row with a different value, which must survive.
+                // Compare-and-delete: re-toggle during request leaves row with
+                // different value; must survive.
                 let cleared = db.with_tx(|tx| outbox::confirm(tx, &batch))?;
                 outcome.confirmed = outcome.confirmed.saturating_add(cleared);
                 outcome.deferred = outcome
@@ -77,16 +72,13 @@ pub async fn flush(db: &mut Database, client: &MinifluxClient) -> Result<ReplayO
                 return Ok(outcome);
             }
             Err(e) if would_discard(&e) => {
-                // The server rejected the payload itself, so resending it will
-                // be rejected identically forever. Dropping is the least-bad
-                // option: keeping it would retry endlessly and block every
-                // later intent behind it.
+                // Server rejected payload itself; resend rejected identically
+                // forever. Dropping least bad: keeping retries endlessly,
+                // blocks every later intent.
                 //
-                // Note the failure is NOT recorded on the row first: `discard`
-                // deletes the row, taking the `last_error` with it, so writing
-                // one would be theatre. The log line below is where this
-                // actually becomes visible, and `ReplayOutcome::dropped`
-                // carries the count to the UI.
+                // Failure NOT recorded on row first: `discard` deletes row with
+                // its `last_error`. Visible via log line below;
+                // `ReplayOutcome::dropped` carries count to UI.
                 db.with_tx(|tx| outbox::discard(tx, &batch))?;
                 outcome.dropped = outcome.dropped.saturating_add(batch.entry_ids.len());
                 tracing::warn!(
@@ -97,22 +89,17 @@ pub async fn flush(db: &mut Database, client: &MinifluxClient) -> Result<ReplayO
                 );
             }
             Err(e) => {
-                // Everything else stays queued -- including failures that are
-                // not "transient" in the retry sense, such as a refused
-                // redirect or an oversized response. Those mean the server is
-                // misconfigured or hostile, NOT that the user's intent is
-                // invalid, and discarding marks and stars because someone
-                // typed the wrong server URL is not a trade this app makes.
-                // They wait for a human to fix the configuration.
+                // Everything else stays queued, incl. non-"transient" failures
+                // (refused redirect, oversized response). Those = server
+                // misconfigured or hostile, NOT invalid intent; no discarding
+                // marks and stars over mistyped server URL. Waits for human to
+                // fix config.
                 db.with_tx(|tx| outbox::record_failure(tx, &batch, &e.to_string()))?;
                 outcome.deferred = outcome.deferred.saturating_add(batch.entry_ids.len());
 
-                // Both cases stay queued, so the DATABASE cannot tell them
-                // apart -- but the user debugging "sync does nothing" very much
-                // needs to. `should_retry` is the distinction its own doc
-                // comment calls the point of the pair, and until this line it
-                // had no production caller at all: nine tests asserted on a
-                // rule the app never consulted.
+                // Both cases stay queued, DATABASE can't tell apart; user
+                // debugging "sync does nothing" needs to. `should_retry` = that
+                // distinction; this is its production caller.
                 if should_retry(&e) {
                     tracing::debug!(
                         error = %e,
@@ -134,23 +121,20 @@ pub async fn flush(db: &mut Database, client: &MinifluxClient) -> Result<ReplayO
     Ok(outcome)
 }
 
-/// Whether a batch should be retried on a later pass.
+/// Whether batch retried on later pass.
 ///
-/// Note this is NOT the complement of [`would_discard`], and the gap between
-/// them is the point: an error that is neither retried nor discarded stays
-/// queued and waits for a human. Treating the two as complements is what made
-/// a mistyped server URL silently delete queued marks and stars.
+/// NOT complement of [`would_discard`]; gap is the point: neither retried nor
+/// discarded → stays queued for human. Treating as complements lets mistyped
+/// server URL silently delete queued marks and stars.
 #[must_use]
 pub fn should_retry(error: &Error) -> bool {
     !error.is_auth_failure() && error.is_transient()
 }
 
-/// Whether a batch would be DISCARDED, losing the user's intent.
+/// Whether batch would be DISCARDED, losing user's intent.
 ///
-/// [`flush`] matches on this directly rather than repeating the condition. It
-/// used to repeat it, which meant the unit tests below were exercising a
-/// parallel copy of the rule: restoring the historical bug in `flush` left
-/// every one of them green.
+/// [`flush`] matches on this directly, doesn't repeat condition: tests below
+/// exercise the real rule, not parallel copy.
 #[must_use]
 pub fn would_discard(error: &Error) -> bool {
     !error.is_auth_failure() && error.is_permanently_rejected()
@@ -207,12 +191,8 @@ mod tests {
 
     #[test]
     fn a_401_and_a_403_classify_as_auth_failures() {
-        // Named for what it checks. It used to be called
-        // `revoked_credentials_stop_the_flush`, promising a `flush` behaviour
-        // it never invoked: removing the early return from flush's auth arm,
-        // so a revoked key hammers the server with every later batch, left it
-        // green. That claim is tested end to end in
-        // tests/outbox_reconciliation.rs, which does catch that mutation.
+        // Named for what it checks. `flush` early return on auth tested end to
+        // end in tests/outbox_reconciliation.rs.
         for status in [401, 403] {
             assert!(!should_retry(&http(status)));
             assert!(http(status).is_auth_failure());
@@ -221,11 +201,9 @@ mod tests {
 
     #[test]
     fn only_a_server_side_rejection_ever_discards_user_intent() {
-        // Regression: `is_transient()` is false for a refused redirect and for
-        // an oversized body, and the flush used to drop anything that was not
-        // transient. So pointing Vuo at a URL that redirects off-origin --
-        // a typo, a moved instance, a captive portal -- silently destroyed
-        // every queued mark and star.
+        // `is_transient()` false for refused redirect and oversized body;
+        // dropping non-transient would make off-origin redirect (typo, moved
+        // instance, captive portal) destroy every queued mark and star.
         let policy_refusals = [
             crate::error::TransportKind::RedirectRefused,
             crate::error::TransportKind::BodyTooLarge,
@@ -245,8 +223,7 @@ mod tests {
             );
         }
 
-        // A genuine payload rejection is still dropped, or it would block the
-        // queue forever.
+        // Genuine payload rejection still dropped, else blocks queue forever.
         assert!(would_discard(&http(400)));
         assert!(would_discard(&http(422)));
         assert!(
@@ -262,8 +239,7 @@ mod tests {
 
     #[test]
     fn batching_a_realistic_offline_burst() {
-        // 1200 marks and a handful of stars, queued offline, become five
-        // requests rather than 1200.
+        // 1200 marks plus few stars queued offline → five requests, not 1200.
         let mut pending: Vec<_> = (1..=1200)
             .map(|i| outbox::PendingMutation {
                 entry_id: EntryId(i),
@@ -293,8 +269,8 @@ mod tests {
 
     #[test]
     fn batch_construction_is_deterministic() {
-        // Deterministic batching makes a failed flush replay identically,
-        // which is what lets `attempts` mean anything.
+        // Deterministic batching: failed flush replays identically, so
+        // `attempts` means something.
         let pending: Vec<_> = (1..=10)
             .map(|i| outbox::PendingMutation {
                 entry_id: EntryId(i),

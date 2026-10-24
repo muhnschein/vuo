@@ -24,13 +24,12 @@ Window {
     width: 1080
     height: 540
     visible: true
-    // The ground the app's dark ambience sits at. The app itself is
-    // transparent over the wallpaper; a store banner has to bring its own.
+    // Ground app's dark ambience sits at. App transparent over wallpaper; store
+    // banner brings own.
     color: "#0e1417"
 
-    // Sail Sans Pro ships with SailfishOS and is not redistributable, so the
-    // wordmark here is Fira Sans -- humanist, light, and close enough that
-    // the banner and a screenshot do not look like two different apps.
+    // Sail Sans Pro not redistributable; wordmark = Fira Sans (humanist, light,
+    // close enough that banner and screenshot look like same app).
     FontLoader { id: light; source: "FiraSans-Light.ttf" }
     FontLoader { id: book; source: "FiraSans-Regular.ttf" }
 
@@ -38,10 +37,9 @@ Window {
         id: frame
         anchors.fill: parent
 
-        // The ground, INSIDE the frame rather than on the Window.
-        // `grabToImage` captures the item tree, and a Window's `color` is not
-        // part of it -- so without this the grab comes out transparent, and
-        // white text art on transparency flattens to nothing.
+        // Ground INSIDE frame, not on Window. `grabToImage` captures item tree;
+        // Window `color` not in it, so grab transparent and white text art
+        // flattens to nothing.
         Rectangle {
             anchors.fill: parent
             color: win.color
@@ -49,8 +47,8 @@ Window {
 
         TextArtPainter {
             anchors.fill: parent
-            // Coarser than the onboarding page's 115 across: this is looked at
-            // small, in a browser, beside a paragraph of text.
+            // Coarser than onboarding's 115: viewed small in browser beside
+            // text.
             glyphsAcross: 96
             ink: 0.52
             colour: "#ffffff"
@@ -61,7 +59,7 @@ Window {
                 { x: 0.94, y: 0.86, x2: 0.82, y2: 0.66 },
                 { x: 1.04, y: 0.24, x2: 0.96, y2: 0.40 }
             ]
-            // Room for the words, as the onboarding page does it.
+            // Room for words, like onboarding page.
             clearX: win.width / 2
             clearY: win.height * 0.47
             clearRadius: win.height * 0.44
@@ -82,7 +80,7 @@ Window {
                 text: "Vuo"
                 font.family: light.name
                 font.pixelSize: 128
-                // Theme.highlightColor, as the onboarding page sets it.
+                // Theme.highlightColor, as onboarding page sets.
                 color: "#80c0ff"
             }
 
@@ -98,7 +96,7 @@ Window {
         }
     }
 
-    /// One grab of the composed frame, once the pattern has finished.
+    /// One grab of composed frame once pattern finished.
     function write() {
         frame.grabToImage(function (result) {
             console.log("wrote cover.png", result.saveToFile("cover.png"))
@@ -106,7 +104,7 @@ Window {
         })
     }
 
-    // So a painter that never finishes cannot hang the script.
+    // Never-finishing painter can't hang script.
     Timer {
         interval: 300000
         running: true

@@ -1,17 +1,10 @@
-# Resolve dependencies for the workspace's `rust-version` floor, not for
-# whatever cargo happens to run.
+# Resolve deps for workspace `rust-version` floor, not for whatever cargo runs.
 #
-# Under `resolver = "2"` cargo ignores `rust-version` when it picks versions:
-# `cargo update` on a current host takes the newest release of everything,
-# and the msrv job is the first to learn that one of them needs a newer
-# compiler than the floor. This makes it prefer the newest release that
-# still builds on the floor, which is what resolver "3" does by default --
-# and resolver "3" is not an option, because the SDK's cargo 1.75 rejects the
-# whole manifest on it (see Cargo.toml). Cargo older than 1.84 ignores this
-# key, so the SDK's cargo reads this file without complaint.
+# Resolver 2 ignores `rust-version` when picking versions: `cargo update` takes
+# newest of everything, msrv job first to notice. This prefers newest release
+# that builds on floor (resolver 3 default). Resolver 3 not an option: SDK cargo
+# 1.75 rejects whole manifest (see Cargo.toml). Cargo < 1.84 ignores this key.
 [resolver]
 incompatible-rust-versions = "fallback"
-#
-# The vendored OBS build replaces this file with its source replacement
-# (rpm/harbour-vuo.spec, `cp %SOURCE2`). That build is `--locked`, so it
-# resolves nothing and loses nothing by it.
+# Vendored OBS build replaces this file with its source replacement
+# (rpm/harbour-vuo.spec, `cp %SOURCE2`). Build is `--locked`: resolves nothing.

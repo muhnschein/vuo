@@ -1,30 +1,25 @@
-//! `QAbstractListModel` adapters over the local mirror.
+//! `QAbstractListModel` adapters over local mirror.
 //!
 //! §5: *the local SQLite mirror is the single source of truth for the UI [...]
-//! sync writes to SQLite; models observe SQLite.* These models therefore hold
-//! no authority of their own. They are a cache of rows read from the mirror,
-//! refreshed by [`reload`](EntryModel::reload) whenever something says the
-//! mirror changed. Nothing here ever talks to the network.
+//! sync writes to SQLite; models observe SQLite.* Models hold no authority:
+//! cache of mirror rows, refreshed by [`reload`](EntryModel::reload) when
+//! mirror changed. Never talk to network.
 //!
 //! # Thread affinity
 //!
-//! Every method here runs on the Qt thread. The worker never touches a
-//! `QObject`: it writes to SQLite and bumps [`crate::context::SyncSignal`]'s
-//! generation counter, and the models notice by POLLING that counter from
-//! `pollSync`, driven by a `Timer` in the QML.
+//! Everything runs on Qt thread. Worker never touches `QObject`: writes SQLite,
+//! bumps [`crate::context::SyncSignal`] generation; models notice by POLLING it
+//! from `pollSync`, driven by QML `Timer`.
 //!
-//! There is no callback into a model, and there cannot easily be one: QML
-//! constructs these objects, so Rust holds no handle to a live one. (This
-//! paragraph used to describe a `queued_callback` signal handler calling
-//! `reload`. No such handler exists — the poll is the mechanism.)
+//! No callback into model, can't easily be: QML constructs these, Rust holds no
+//! handle.
 //!
 //! # Roles, not rich text
 //!
-//! Roles expose *data*, and the QML side decides how to draw it. In particular
-//! titles and author names are exposed as plain strings and the QML must set
-//! `textFormat: Text.PlainText` (§9.3). Article body text is exposed
-//! pre-escaped by [`crate::article`], which is the one place markup is
-//! generated, and QML sets `Text.StyledText` there.
+//! Roles expose *data*; QML decides drawing. Titles and authors plain strings;
+//! QML sets `textFormat: Text.PlainText` (§9.3). Body text pre-escaped by
+//! [`crate::article`] (only place markup generated); QML sets `Text.StyledText`
+//! there.
 
 use std::collections::{HashMap, HashSet};
 
@@ -41,45 +36,37 @@ use vuo_core::search::{MatchKind, SearchQuery};
 use crate::context::AppContext;
 use crate::worker::{self, Command};
 
-/// Rows loaded into a list model at once, and how much a
-/// `loadMore` adds.
+/// Rows loaded into list model at once, and what `loadMore` adds.
 ///
-/// The list is a window onto the mirror, not the whole of it. Anything that
-/// acts on "everything in this scope" must query the database rather than
-/// iterating the loaded rows.
+/// List = window onto mirror. Anything acting on "everything in this scope"
+/// queries database, doesn't iterate loaded rows.
 ///
-/// This was 500, which was five hundred rows per model and FOUR models alive
-/// at once -- three tabs and the browse list. Every generation bump re-ran
-/// each of their queries, built up to two thousand `EntryRow`s, sorted them
-/// and compared them row by row, and a generation bump is not rare: a sync
-/// makes one, and so does every local mark-read. A phone shows about ten rows.
+/// FOUR models alive (three tabs, browse list); every generation bump (each
+/// sync, each local mark-read) re-runs each query, builds, sorts, compares
+/// rows. Phone shows ~ten rows.
 ///
-/// The cost is not only the CPU of a reload. It is resident memory, and on
-/// Sailfish resident memory is what decides whether the app is still running
-/// when the reader comes back to it -- a process killed for its footprint pays
-/// a cold start, which is far more expensive than any reload this saves.
+/// Cost = CPU and resident memory; on Sailfish resident memory decides whether
+/// app survives until reader returns. Killed process pays cold start, far worse
+/// than any reload saved.
 ///
-/// A hundred and fifty is about fifteen screens, so the reader reaches the end
-/// of the window by scrolling rather than by accident, and
-/// `loadMore` extends it by another page when they do.
+/// 150 ≈ fifteen screens: end reached by scrolling, not accident; `loadMore`
+/// extends by a page.
 pub const PAGE_SIZE: i64 = 150;
 
-/// How many results of each group a search shows at first.
+/// Results per group a search shows at first.
 ///
-/// Per group rather than one window over the whole list: a group a reader is
-/// not interested in must not push the next one off the screen, and the rows
-/// a search does not show are never read -- see [`store::search_hits`].
+/// Per group, not one window: uninteresting group mustn't push next off screen;
+/// unshown rows never read (see [`store::search_hits`]).
 pub const SEARCH_FIRST_PAGE: usize = 5;
-/// What each "Load more" under a group adds, in turn. After the last of
-/// these, the next one loads the rest: a reader that far into a group is
-/// looking for something that is not near the top.
+/// What each "Load more" under group adds, in turn. After last, next loads
+/// rest: reader that deep is after something not near top.
 pub const SEARCH_LOAD_STEPS: [usize; 2] = [10, 20];
 
 /// What one group of search results shows.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct SearchGroup {
-    /// How many of the group's results to show: [`SEARCH_FIRST_PAGE`] to
-    /// start with, `usize::MAX` once the reader has asked for them all.
+    /// How many of group shown: [`SEARCH_FIRST_PAGE`] at start, `usize::MAX`
+    /// once reader asked for all.
     shown: usize,
     /// How many times the reader has asked for more.
     loads: u8,
@@ -134,8 +121,8 @@ impl SearchGroups {
         }
     }
 
-    /// The matches the list shows: the first [`SearchGroup::shown`] of each
-    /// group, in the order they were found.
+    /// Matches list shows: first [`SearchGroup::shown`] of each group, in found
+    /// order.
     fn pick(&self, found: &[store::SearchMatch]) -> Vec<store::SearchMatch> {
         let mut room = *self;
         found
@@ -161,11 +148,11 @@ fn match_kind_from_qml(kind: &str) -> Option<MatchKind> {
     }
 }
 
-/// Model roles for [`EntryModel`], one per [`EntryRow`] field; the model's
-/// `role_names` gives each its QML name.
+/// Model roles for [`EntryModel`], one per [`EntryRow`] field; model's
+/// `role_names` gives QML names.
 ///
-/// `entryId`: [`EntryRow::id`]. Also `feedId` on [`FeedModel`], which shares
-/// this number.
+/// `entryId`: [`EntryRow::id`]. Also `feedId` on [`FeedModel`], sharing this
+/// number.
 pub const ROLE_ID: i32 = USER_ROLE;
 /// `title`: [`EntryRow::title`]. FOREIGN TEXT: `Text.PlainText`.
 pub const ROLE_TITLE: i32 = USER_ROLE + 1;
@@ -183,48 +170,43 @@ pub const ROLE_PUBLISHED: i32 = USER_ROLE + 6;
 pub const ROLE_READING_TIME: i32 = USER_ROLE + 7;
 /// `url`: [`EntryRow::url`].
 pub const ROLE_URL: i32 = USER_ROLE + 8;
-/// The name of the feed the entry came from. FOREIGN TEXT: `Text.PlainText`.
+/// Entry's feed name. FOREIGN TEXT: `Text.PlainText`.
 pub const ROLE_FEED_NAME: i32 = USER_ROLE + 9;
-/// A `data:` URI for the feed's icon, or empty when the mirror has none.
+/// `data:` URI for feed icon; empty when mirror has none.
 pub const ROLE_FEED_ICON: i32 = USER_ROLE + 10;
-/// Where a search result matched: `title`, `feed` or `text` -- the group it
-/// is listed under. Empty outside a search. A `feed` row is a FEED, not an
-/// article: see `EntryRow::feed_found`.
+/// Where search result matched: `title`, `feed`, `text` (group listed under).
+/// Empty outside search. `feed` row = FEED, not article: see
+/// `EntryRow::feed_found`.
 pub const ROLE_MATCH_KIND: i32 = USER_ROLE + 11;
-/// A search result's title with the terms in bold. `StyledText` built and
-/// ESCAPED in Rust (`SearchQuery::highlight`), so QML may render it as
-/// such (§9.3). Empty outside a search.
+/// Search result title with terms bold. `StyledText` built and ESCAPED in Rust
+/// (`SearchQuery::highlight`); QML may render as such (§9.3). Empty outside
+/// search.
 pub const ROLE_TITLE_STYLED: i32 = USER_ROLE + 12;
-/// The feed's name, likewise. Empty outside a search.
+/// Feed name, likewise. Empty outside search.
 pub const ROLE_FEED_NAME_STYLED: i32 = USER_ROLE + 13;
-/// For a result found in its body text, the lines around the match, with
-/// the terms in bold; `StyledText` as above. Empty for every other row.
+/// Body-text result: lines around match, terms bold; `StyledText` as above.
+/// Empty for other rows.
 pub const ROLE_EXCERPT: i32 = USER_ROLE + 14;
-/// For a feed a search found, how many of its articles are unread, as the
-/// feed list shows it. Zero for every other row.
+/// Feed found by search: unread count as feed list shows. Zero for other rows.
 pub const ROLE_UNREAD_COUNT: i32 = USER_ROLE + 15;
 
-/// A row as the UI needs it.
+/// Row as UI needs it.
 ///
-/// Deliberately neither [`vuo_core::model::Entry`] nor a copy of the feed
-/// chrome. The body stays in SQLite, and so do the feed's name and icon: those
-/// are looked up by `feed_id` when a delegate asks for them (see
-/// `EntryModel::chrome_for`) rather than copied in here.
+/// Neither [`vuo_core::model::Entry`] nor copy of feed chrome. Body stays in
+/// SQLite; feed name and icon looked up by `feed_id` when delegate asks (see
+/// `EntryModel::chrome_for`), not copied in.
 ///
-/// The icon is why that matters. It is a base64 `data:` URI, which for a
-/// perfectly ordinary 6 KB favicon is 8 KB of text, and the fetcher accepts
-/// icons up to 512 KB. Copying it into every row cost 8 KB x 500 rows x four
-/// models -- 16 MB resident on a mirror of the size this was reported against,
-/// with a worst case two orders of magnitude worse -- to hold at most
-/// fifty-six distinct strings. It was also compared byte by byte on every
-/// poll, because `publish_rows` diffs whole rows.
+/// Icon is why: base64 `data:` URI, ordinary 6 KB favicon = 8 KB text, fetcher
+/// accepts up to 512 KB. Per-row copy = 8 KB × rows × four models (16 MB on
+/// reported mirror, worst case 100× more) to hold ≤ 56 distinct strings, and
+/// compared byte by byte every poll (`publish_rows` diffs whole rows).
 ///
-/// `PartialEq` so a reload can tell a row that actually moved from one it has
-/// just re-read unchanged -- see [`EntryModel::reload`].
+/// `PartialEq`: reload tells moved row from re-read unchanged one (see
+/// [`EntryModel::reload`]).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct EntryRow {
-    /// The server's id for the entry; for a feed a search found, the feed's id
-    /// negated (see `feed_found`).
+    /// Server's entry id; for feed found by search, feed id negated (see
+    /// `feed_found`).
     pub id: i64,
     /// The feed the entry belongs to.
     pub feed_id: i64,
@@ -242,9 +224,8 @@ pub struct EntryRow {
     pub reading_time: i32,
     /// The article's link, or empty when there is none.
     pub url: String,
-    /// What a search result shows of why it was found. Empty strings -- no
-    /// allocation -- on every other list. See [`ROLE_MATCH_KIND`] and the
-    /// roles after it.
+    /// What search result shows of why found. Empty strings (no allocation) on
+    /// other lists. See [`ROLE_MATCH_KIND`] and following roles.
     pub match_kind: &'static str,
     /// See [`ROLE_TITLE_STYLED`].
     pub title_styled: String,
@@ -257,8 +238,7 @@ pub struct EntryRow {
 }
 
 impl EntryRow {
-    /// A search result's row: the list row, and why it was found, marked up
-    /// for the reader.
+    /// Search result row: list row, plus why found, marked up for reader.
     fn found(hit: &store::SearchHit, query: Option<&SearchQuery>) -> Self {
         let mut row = EntryRow::from(&hit.row);
         row.match_kind = match hit.kind {
@@ -280,22 +260,20 @@ impl EntryRow {
 }
 
 impl EntryRow {
-    /// A FEED a search found by its name: a row in the `feed` group, which
-    /// the list draws as the feed list draws a feed, and which opens that
-    /// feed rather than an article.
+    /// FEED a search found by name: row in `feed` group, drawn as feed list
+    /// draws feed, opens that feed, not article.
     ///
-    /// Its `id` is the feed's id NEGATED. A row's id is what a reload tells
-    /// rows apart by (see [`publish_rows`]), feeds and articles are numbered
-    /// separately, and an article's id is never below one. Nothing reads it
-    /// as an article: the list offers a feed row neither the article's menu
-    /// nor its page.
+    /// `id` = feed id NEGATED. Row id is what reload tells rows apart by (see
+    /// [`publish_rows`]); feeds and articles numbered separately; article id
+    /// never below one. Nothing reads it as article: list offers feed row
+    /// neither article menu nor page.
     fn feed_found(feed: &store::FeedMatch, query: Option<&SearchQuery>) -> Self {
         EntryRow {
             id: feed.id.get().saturating_neg(),
             feed_id: feed.id.get(),
             title: feed.title.clone(),
-            // A feed is not read or unread; it is drawn as an unread row is,
-            // at full strength, as in the feed list.
+            // Feed not read or unread; drawn like unread row, full strength, as
+            // in feed list.
             unread: true,
             match_kind: "feed",
             title_styled: query.map(|q| q.highlight(&feed.title)).unwrap_or_default(),
@@ -322,78 +300,64 @@ impl From<&store::EntryListRow> for EntryRow {
     }
 }
 
-/// A list model that re-reads its rows from the mirror wholesale and swaps the
-/// result in.
+/// List model re-reading rows from mirror wholesale, swapping result in.
 ///
-/// Both models here work that way, and both have to keep the reader's place
-/// when the re-read finds the list they already hold. That rule is subtle
-/// enough -- and was got wrong for long enough -- to be worth having in
-/// exactly one place; see [`publish_rows`], which is the whole reason this
-/// trait exists.
+/// Both models work so; both must keep reader's place when re-read finds held
+/// list. Rule subtle enough to live in exactly one place: [`publish_rows`],
+/// reason this trait exists.
 trait RowList: QAbstractListModel + Sized {
-    /// `PartialEq` so a row that was re-read unchanged can be told from one
-    /// that actually moved.
+    /// `PartialEq`: re-read unchanged row told from moved one.
     type Row: PartialEq;
 
     fn rows_held(&self) -> &[Self::Row];
     fn rows_held_mut(&mut self) -> &mut Vec<Self::Row>;
-    /// What identifies a row across a reload: the mirror's own key for it.
+    /// What identifies row across reload: mirror's own key.
     fn row_id(row: &Self::Row) -> i64;
-    /// Emit the model's `countChanged`. A `qt_signal` is an inherent method
-    /// generated per struct, which is not something a trait can name.
+    /// Emit model's `countChanged`. `qt_signal` = inherent method generated per
+    /// struct; trait can't name it.
     fn emit_count_changed(&mut self);
 }
 
-/// Swap a freshly read row set in, resetting the model ONLY when the rows it
-/// holds have actually changed.
+/// Swap freshly read rows in, resetting model ONLY when held rows actually
+/// changed.
 ///
-/// `begin_reset_model` re-lays the view out from scratch and a plain
-/// `ListView` comes back at its own top, so a reset throws the reader away
-/// from wherever they had scrolled to. `dataChanged` leaves the layout -- and
-/// so the scroll position -- alone and only re-reads the roles. Every
-/// generation bump used to take the first path, however little the mirror had
-/// actually changed.
+/// `begin_reset_model` re-lays view from scratch; plain `ListView` returns to
+/// top, throwing reader off scroll position. `dataChanged` keeps layout and
+/// scroll, only re-reads roles.
 ///
-/// The bump that made that unbearable is the reader's own: "Mark as read" from
-/// a row's context menu patches that row at the tap ([`EntryModel::mark_row`])
-/// and sends [`Command::FlushOutbox`]; the worker bumps the generation as soon
-/// as the server confirms the intent, for the settings page's pending count
-/// and nothing either list shows. A second later the poll re-read exactly the
-/// rows it already had, reset the model anyway, and the list jumped back to
-/// the top under the reader's thumb.
+/// Reader's own bump makes this matter: row's "Mark as read" patches row at tap
+/// ([`EntryModel::mark_row`]), sends [`Command::FlushOutbox`]; worker bumps
+/// generation when server confirms (for settings page's pending count, nothing
+/// lists show). Poll then re-reads same rows; resetting would jump list to top
+/// under thumb.
 ///
-/// Ids in order is the test, NOT equal rows: a row whose STATE changed -- read
-/// or starred on another tab, or by a sync -- is redrawn where it is, which is
-/// what [`EntryModel::mark_row`] already does for a local change. Rows
-/// arriving, leaving or moving is what genuinely makes a different list, and
-/// that still resets.
+/// Test = ids in order, NOT equal rows: row whose STATE changed (read or
+/// starred elsewhere, or by sync) redrawn in place, as [`EntryModel::mark_row`]
+/// does locally. Rows arriving, leaving, moving = different list, resets.
 ///
-/// Returns true when the model was RESET, which is the thing that costs the
-/// reader their place.
+/// Returns true when model RESET (what costs reader their place).
 fn publish_rows<M: RowList>(model: &mut M, fresh: Vec<M::Row>) -> bool {
     publish_rows_as(model, fresh, Publish::Reset)
 }
 
-/// How [`publish_rows_as`] tells the view about a different set of rows.
+/// How [`publish_rows_as`] tells view about different row set.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Publish {
-    /// A model reset, as every list but a search's.
+    /// Model reset, as every list but search.
     Reset,
-    /// Never a reset: a single run of ADDED rows, with everything held still
-    /// there and in its place, is inserted; anything else is every held row
-    /// removed and every fresh one inserted.
+    /// Never reset: single run of ADDED rows, all held rows still there in
+    /// place, is inserted; else every held row removed, every fresh one
+    /// inserted.
     ///
-    /// For a search. A run is the shape a group's "Load more" makes, and a
-    /// reset there would throw the reader back to the top from the bottom
-    /// of the group they asked to see more of. And a reset of any kind --
-    /// the view starting over -- hands the focus inside it to the first row,
-    /// which took it, and the keyboard, off the search field in the view's
-    /// header every time a pause in typing brought new results.
+    /// For search. Run = shape of group's "Load more"; reset would throw reader
+    /// to top from bottom of group. Any reset (view starting over) also hands
+    /// focus to first row, taking it and keyboard off search field in view
+    /// header on every typing pause.
     Search,
 }
 
-/// [`publish_rows`], told how a different set of rows reaches the view. The
-/// inserted range is [`inserted_run`]'s, which is tested on its own.
+/// [`publish_rows`], told how different rows reach view. Inserted range from
+/// [`inserted_run`], tested separately.
 fn publish_rows_as<M: RowList>(model: &mut M, fresh: Vec<M::Row>, how: Publish) -> bool {
     let held_ids: Vec<i64> = model.rows_held().iter().map(M::row_id).collect();
     let fresh_ids: Vec<i64> = fresh.iter().map(M::row_id).collect();
@@ -409,8 +373,7 @@ fn publish_rows_as<M: RowList>(model: &mut M, fresh: Vec<M::Row>, how: Publish) 
             .and_then(|end| end.checked_sub(1))
             .and_then(|end| i32::try_from(end).ok());
         if let (Some(first), Some(last)) = (first, last) {
-            // Whether a row that was already held changed state, as in the
-            // same-rows case below.
+            // Whether already-held row changed state, as same-rows case below.
             let held_after = fresh
                 .get(..at)
                 .into_iter()
@@ -445,14 +408,13 @@ fn publish_rows_as<M: RowList>(model: &mut M, fresh: Vec<M::Row>, how: Publish) 
             .all(|(held, new)| M::row_id(held) == M::row_id(new));
 
     if same_rows {
-        // Announced only when something in them moved. The entry delegate's
-        // detail line is rebuilt from font metrics on every `dataChanged`, and
-        // this runs on every bump.
+        // Announced only when something moved. Entry delegate rebuilds detail
+        // line from font metrics every `dataChanged`; this runs every bump.
         let redraw = model.rows_held() != fresh.as_slice();
         *model.rows_held_mut() = fresh;
         if redraw {
-            // A no-op on an empty model: `row_index` of a row that is not
-            // there is not an index a view can be told about.
+            // No-op on empty model: `row_index` of absent row isn't index view
+            // can be told.
             if let Some(last) = model
                 .rows_held()
                 .len()
@@ -464,15 +426,15 @@ fn publish_rows_as<M: RowList>(model: &mut M, fresh: Vec<M::Row>, how: Publish) 
                 model.data_changed(first, last);
             }
         }
-        // Emitted either way: `unreadTotal` is the mirror's, not any one
-        // list's, so it can move while every row on this one stays put.
+        // Emitted either way: `unreadTotal` is mirror's, can move while every
+        // row here stays.
         model.emit_count_changed();
         return false;
     }
 
     if how == Publish::Search {
-        // Out, then in: two changes a view applies to the rows it has, where
-        // a reset makes it start over.
+        // Out, then in: two changes view applies to held rows, where reset
+        // starts over.
         if let Some(last) = held_ids
             .len()
             .checked_sub(1)
@@ -502,10 +464,9 @@ fn publish_rows_as<M: RowList>(model: &mut M, fresh: Vec<M::Row>, how: Publish) 
     true
 }
 
-/// Where `fresh` is `held` with one run of rows added and nothing else
-/// changed: the index the run starts at in `fresh`, and its length. `None`
-/// for anything else -- rows that left, moved, or arrived in more than one
-/// place -- and for no change at all.
+/// Where `fresh` = `held` plus one run, nothing else changed: run's start index
+/// in `fresh` and length. `None` otherwise (rows left, moved, arrived in
+/// several places) and for no change.
 fn inserted_run(held: &[i64], fresh: &[i64]) -> Option<(usize, usize)> {
     let added = fresh.len().checked_sub(held.len()).filter(|&n| n > 0)?;
     let before = held.iter().zip(fresh).take_while(|(a, b)| a == b).count();
@@ -532,16 +493,15 @@ pub enum Scope {
     Feed(i64),
     /// One category's entries, by its id.
     Category(i64),
-    /// Whatever the model's search text matches -- see
-    /// `EntryModel::setSearch`. The text lives on the model rather than in
-    /// here so that `Scope` stays `Copy`, and so that re-scoping a model that
-    /// is already searching keeps what the reader typed.
+    /// Whatever model's search text matches; see `EntryModel::setSearch`. Text
+    /// on model, not here: `Scope` stays `Copy`, re-scoping a searching model
+    /// keeps typed text.
     Search,
 }
 
 impl Scope {
-    /// The store's filter for this scope. `None` for a search, which is not a
-    /// filter over the mirror's columns and has a query of its own.
+    /// Store filter for scope. `None` for search: not a column filter, has own
+    /// query.
     fn to_filter(self) -> Option<store::EntryFilter> {
         match self {
             Scope::Unread => Some(store::EntryFilter::Unread),
@@ -553,9 +513,8 @@ impl Scope {
         }
     }
 
-    /// Decode the integer pair QML passes. Qt 5.6 has no `QEnum` registration
-    /// in this crate version, so the scope crosses the boundary as two ints
-    /// rather than as a typed enum.
+    /// Decode integer pair QML passes. No `QEnum` registration on Qt 5.6 here:
+    /// scope crosses as two ints.
     #[must_use]
     pub fn from_qml(kind: i32, id: i64) -> Scope {
         match kind {
@@ -569,10 +528,9 @@ impl Scope {
     }
 }
 
-/// An entry list: the rows of one [`Scope`], re-read from the mirror when
-/// the worker changes it.
-// The bools are `qt_property!`s, each its own setting or state that QML
-// binds to by name; a bitfield would hide them from QML.
+/// Entry list: rows of one [`Scope`], re-read when worker changes mirror.
+// Bools are `qt_property!`s, each own setting/state QML binds by name; bitfield
+// hides them from QML.
 #[allow(clippy::struct_excessive_bools)]
 #[derive(QObject, Default)]
 pub struct EntryModel {
@@ -580,196 +538,170 @@ pub struct EntryModel {
 
     count: qt_property!(i32; READ row_count NOTIFY countChanged),
     countChanged: qt_signal!(),
-    /// True once a scope has been set, which is when `count` starts to mean
-    /// something. A list's "nothing to read" placeholder reads this: gated
-    /// on `count` alone it was enabled at construction, when every model
-    /// holds nothing yet, and then faded out over the rows that arrived a
-    /// moment later -- reported from a device as "Nothing to read" flashing
-    /// across the list at every launch.
+    /// True once scope set: when `count` starts meaning something. "Nothing to
+    /// read" placeholder reads this; gated on `count` alone it shows at
+    /// construction (every model empty) then fades over rows arriving a moment
+    /// later.
     ready: qt_property!(bool; READ is_ready NOTIFY countChanged),
 
-    /// Set the scope and load a fresh list. `kind`: 0 unread, 1 starred,
-    /// 2 all, 3 feed (id), 4 category (id).
+    /// Set scope, load fresh list. `kind`: 0 unread, 1 starred, 2 all, 3 feed
+    /// (id), 4 category (id).
     setScope: qt_method!(fn(&mut self, kind: i32, id: i64)),
     /// Re-read the mirror, keeping the rows on screen. See [`reload`].
     refresh: qt_method!(fn(&mut self)),
     entryIdAt: qt_method!(fn(&self, row: i32) -> i64),
 
-    /// Mark the entry at `row` read or unread.
+    /// Mark entry at `row` read or unread.
     ///
-    /// Applied to the mirror immediately and queued for the server, so it
-    /// works offline and the list updates in the same frame as the tap.
+    /// Applied to mirror at once and queued for server: works offline, list
+    /// updates same frame as tap.
     setRead: qt_method!(fn(&mut self, row: i32, read: bool)),
     /// Mark many entries read or unread at once, by id.
     ///
-    /// One transaction and one outbox flush for the lot, which is what the
-    /// selection mode needs: marking forty rows through `setRead` would be
-    /// forty transactions, forty generation bumps and forty flush commands.
-    /// Ids rather than rows, because a selection is a set of articles, and
-    /// rows shift under a reload. Ids that are not in the mirror are
-    /// skipped; the rows this model holds are patched in place, as
-    /// `setRead` does, so the list does not scroll away under the reader.
+    /// One transaction, one outbox flush for lot (selection mode); forty
+    /// `setRead`s = forty transactions, bumps, flush commands. Ids, not rows:
+    /// selection = set of articles; rows shift under reload. Ids not in mirror
+    /// skipped; held rows patched in place like `setRead`, list doesn't scroll
+    /// away.
     setReadMany: qt_method!(fn(&mut self, ids: QVariantList, read: bool)),
     setStarred: qt_method!(fn(&mut self, row: i32, starred: bool)),
-    /// Ask the worker for a NETWORK sync. This is the MANUAL REFRESH: the
-    /// one thing that takes a row the reader has finished with off the list.
+    /// Ask worker for NETWORK sync. MANUAL REFRESH: only thing taking finished
+    /// row off list.
     ///
-    /// Distinct from `refresh`, which only re-reads the local mirror. Nothing
-    /// in the UI used to reach the worker at all, so `Command::Sync` had a
-    /// handler and no sender: the app never talked to the server.
+    /// Distinct from `refresh` (re-reads local mirror only). Only UI sender of
+    /// `Command::Sync`.
     requestSync: qt_method!(fn(&mut self)),
-    /// Total unread across the whole mirror, for the cover. NOT `count`, which
-    /// is the number of rows this model is currently showing and is capped by
-    /// the page size.
+    /// Total unread across mirror, for cover. NOT `count` (rows this model
+    /// shows, capped by page size).
     unreadTotal: qt_property!(i32; READ unread_total NOTIFY countChanged),
-    /// True while a sync is in flight. Read from the worker's signal rather
-    /// than set locally, so it clears when the worker actually finishes.
+    /// True while sync in flight. Read from worker's signal, not set locally:
+    /// clears when worker actually finishes.
     syncing: qt_property!(bool; READ is_syncing NOTIFY syncingChanged),
     syncingChanged: qt_signal!(),
 
-    /// Why the last refresh failed, or empty when the last one was fine.
+    /// Why last refresh failed; empty when fine.
     ///
-    /// State on the model rather than a one-shot signal: the failure has to
-    /// survive being produced while the app is on its cover (the cover has a
-    /// Refresh of its own and no page to receive a signal), and it has to
-    /// survive a page that is not currently the visible one. FOREIGN TEXT --
-    /// the server's own words -- so the page renders it as `PlainText`.
+    /// State on model, not one-shot signal: failure must survive being produced
+    /// on cover (cover has own Refresh, no page to receive signal) and on
+    /// non-visible page. FOREIGN TEXT (server's words): page renders
+    /// `PlainText`.
     pub syncError: qt_property!(QString; NOTIFY syncStateChanged),
-    /// True when the failure was the server rejecting the API key.
+    /// True when failure = server rejecting API key.
     ///
-    /// The page shows a fixed translated line for this and offers Settings;
-    /// `syncError` is empty in that case, because a server's phrasing for a
-    /// bad key tells the user nothing they can act on.
+    /// Page shows fixed translated line, offers Settings; `syncError` empty
+    /// then: server phrasing for bad key not actionable.
     pub syncErrorIsAuth: qt_property!(bool; NOTIFY syncStateChanged),
     syncStateChanged: qt_signal!(),
-    /// Poll for worker activity. Called from a QML Timer.
+    /// Poll for worker activity. From QML Timer.
     ///
-    /// A poll rather than a push: QML owns these objects, so Rust has no list
-    /// of live models to call into, and a registry of cross-thread pointers is
-    /// exactly the kind of thing that cannot be exercised without a device.
-    /// Returns true if anything reloaded.
+    /// Poll, not push: QML owns objects, Rust has no live-model list;
+    /// cross-thread pointer registry untestable without device. Returns true if
+    /// anything reloaded.
     pollSync: qt_method!(fn(&mut self) -> bool),
-    /// Mark everything in the current scope read.
+    /// Mark everything in current scope read.
     ///
-    /// Expanded locally into concrete entry ids rather than queueing the
-    /// server's bulk endpoint, which applies a `published_at < now()` cut-off
-    /// captured at request time and would mark entries the user never saw.
+    /// Expanded locally into entry ids, not server bulk endpoint (`published_at
+    /// < now()` cut-off at request time would mark entries user never saw).
     markAllRead: qt_method!(fn(&mut self)),
-    /// Mark everything in an EXPLICIT scope as read.
+    /// Mark everything in EXPLICIT scope read.
     ///
-    /// `markAllRead` reads the scope this model happens to be in when the
-    /// remorse countdown FIRES, which is a different moment from the one the
-    /// user was looking at when they tapped. That was survivable only because
-    /// re-scoping needed a page change and a page change flushed the popup
-    /// first; swiping between tabs re-scopes without one, so arming "Mark all
-    /// as read" on Unread and swiping to All within the countdown would have
-    /// run it over every article in the mirror. Passing the scope in binds the
-    /// action to the tab that was showing when it was armed.
+    /// `markAllRead` reads scope model is in when remorse countdown FIRES, not
+    /// when user tapped. Swiping tabs re-scopes without page change: arming on
+    /// Unread, swiping to All within countdown would mark whole mirror. Scope
+    /// passed in binds action to tab showing when armed.
     markAllReadIn: qt_method!(fn(&mut self, kind: i32, id: i64)),
-    /// True when the mirror holds more rows in this scope than are loaded.
+    /// True when mirror holds more rows in scope than loaded.
     ///
-    /// The list binds its "load the next page" trigger to this, so a list that
-    /// is already showing everything does nothing at its end.
+    /// List binds "load next page" trigger to this: list showing everything
+    /// does nothing at end.
     pub hasMore: qt_property!(bool; NOTIFY hasMoreChanged),
     hasMoreChanged: qt_signal!(),
-    /// Extend the window by another [`PAGE_SIZE`].
+    /// Extend window by another [`PAGE_SIZE`].
     ///
-    /// Called from the list when the reader reaches the end of what is
-    /// loaded. A no-op when there is nothing more, so an over-eager binding
-    /// costs a comparison rather than a query.
+    /// From list when reader reaches loaded end. No-op when nothing more:
+    /// over-eager binding costs comparison, not query.
     loadMore: qt_method!(fn(&mut self)),
-    /// Set what a [`Scope::Search`] model looks for.
+    /// Set what [`Scope::Search`] model looks for.
     ///
-    /// Kept whatever the scope, and applied at once when the model is
-    /// searching. Setting the text it already has does nothing, so a binding
-    /// that re-fires costs a comparison rather than a query.
+    /// Kept whatever scope, applied at once when searching. Same text = no-op:
+    /// re-firing binding costs comparison, not query.
     setSearch: qt_method!(fn(&mut self, text: QString)),
-    /// How many results the search found in each group -- see
-    /// [`MatchKind`] -- across the whole mirror, not only the rows loaded:
-    /// articles in `title` and `text`, feeds in `feed`.
-    /// What each group's header says. Zero outside a search.
+    /// Results per group ([`MatchKind`]) across whole mirror, not only loaded
+    /// rows: articles in `title` and `text`, feeds in `feed`. Group header
+    /// text. Zero outside search.
     titleMatches: qt_property!(i32; READ title_matches NOTIFY matchesChanged),
     feedMatches: qt_property!(i32; READ feed_matches NOTIFY matchesChanged),
     textMatches: qt_property!(i32; READ text_matches NOTIFY matchesChanged),
-    /// How many of each group's results the list shows: the header's "5 of
-    /// 40". See [`SEARCH_FIRST_PAGE`].
+    /// How many of each group list shows: header's "5 of 40". See
+    /// [`SEARCH_FIRST_PAGE`].
     titleShown: qt_property!(i32; READ title_shown NOTIFY matchesChanged),
     feedShown: qt_property!(i32; READ feed_shown NOTIFY matchesChanged),
     textShown: qt_property!(i32; READ text_shown NOTIFY matchesChanged),
-    /// How many a group's next "Load more" adds, which its button says; 0
-    /// when it loads the rest. See [`SEARCH_LOAD_STEPS`].
+    /// How many group's next "Load more" adds (button text); 0 when it loads
+    /// rest. See [`SEARCH_LOAD_STEPS`].
     titleNextLoad: qt_property!(i32; READ title_next_load NOTIFY matchesChanged),
     feedNextLoad: qt_property!(i32; READ feed_next_load NOTIFY matchesChanged),
     textNextLoad: qt_property!(i32; READ text_next_load NOTIFY matchesChanged),
     matchesChanged: qt_signal!(),
-    /// Show more of one group of a search: `title`, `feed` or `text`, as the
-    /// `matchKind` role names them. The rows already shown stay where they
-    /// are; the new ones are inserted under them, and only they are read.
+    /// Show more of one search group: `title`, `feed`, `text` as `matchKind`
+    /// names. Shown rows stay; new ones inserted under, only they read.
     loadMoreIn: qt_method!(fn(&mut self, kind: QString)),
 
     rows: Vec<EntryRow>,
-    /// Every match of the last search, by id -- the rows the list shows are
-    /// picked from these, and read when they are. See
-    /// [`store::search_matches`].
+    /// Every match of last search, by id: shown rows picked from these, read
+    /// when shown. See [`store::search_matches`].
     search_found: Vec<store::SearchMatch>,
-    /// Every feed the last search found by its name. Held whole: a name and
-    /// a count each, for the few dozen feeds a mirror has. See
-    /// [`store::search_feeds`].
+    /// Every feed last search found by name. Held whole: name and count each,
+    /// few dozen feeds. See [`store::search_feeds`].
     search_feeds: Vec<store::FeedMatch>,
-    /// See `titleMatches`: counted once per search rather than per read.
+    /// See `titleMatches`: counted once per search, not per read.
     matches: store::SearchCounts,
-    /// How much of each group is shown. Back to one page each on a new
-    /// search.
+    /// How much of each group shown. Back to one page each on new search.
     groups: SearchGroups,
     scope: Option<Scope>,
     /// What a [`Scope::Search`] model looks for. See [`EntryModel::setSearch`].
     search: String,
-    /// How many rows this model is currently asked to hold.
+    /// Rows model currently asked to hold.
     ///
-    /// Zero until the first reload, which is what `Default` leaves it at and
-    /// why [`window`](EntryModel::window) reads it rather than the field being
-    /// read directly. Grows by [`PAGE_SIZE`] per
-    /// [`loadMore`](EntryModel::loadMore) and goes back to one page on any
-    /// reload that starts the list over -- a new scope, or a manual refresh.
+    /// Zero until first reload (`Default`), hence
+    /// [`window`](EntryModel::window) reads it, not field directly. Grows by
+    /// [`PAGE_SIZE`] per [`loadMore`](EntryModel::loadMore); back to one page
+    /// on any reload starting list over (new scope, manual refresh).
     limit: i64,
     /// The worker generation this model last reloaded at.
     seen_generation: u64,
-    /// The manual-refresh epoch this model's rows were loaded under. A reload
-    /// under a newer one starts from nothing rather than keeping the rows on
-    /// screen -- see [`reload`](EntryModel::reload).
+    /// Manual-refresh epoch rows loaded under. Reload under newer one starts
+    /// from nothing, doesn't keep rows on screen; see
+    /// [`reload`](EntryModel::reload).
     seen_refresh_epoch: u64,
-    /// Feed name and icon URI per feed id, shared with every other list.
+    /// Feed name and icon URI per feed id, shared with every list.
     ///
-    /// A handle on [`AppContext::feed_chrome`], which builds the map at most
-    /// once per generation for all four models. Held rather than fetched in
-    /// `data` because `data` is `&self` and is called once per role per
-    /// visible delegate.
+    /// Handle on [`AppContext::feed_chrome`] (map built ≤ once per generation
+    /// for all four models). Held, not fetched in `data`: `data` is `&self`,
+    /// called per role per visible delegate.
     feed_chrome: std::rc::Rc<HashMap<i64, crate::context::FeedChrome>>,
-    /// The spinner state this model last told QML about.
+    /// Spinner state last told to QML.
     ///
-    /// `syncing` is READ + NOTIFY, so QML re-evaluates it only when
-    /// `syncingChanged` fires -- and the only emitter was below the generation
-    /// early-return. A failure that cleared the flag without changing the
-    /// mirror therefore never reached the binding, and the spinner kept
-    /// spinning on a flag that was already false. Tracking it here means the
-    /// signal fires on the transition itself, whatever the generation did.
+    /// `syncing` is READ + NOTIFY: QML re-evaluates only on `syncingChanged`.
+    /// Failure clearing flag without changing mirror must still reach binding;
+    /// tracking here fires signal on transition itself, whatever generation
+    /// did.
     seen_running: bool,
-    /// `None` until [`EntryModel::attach`] is called from Rust — QML never
+    /// `None` until [`EntryModel::attach`] called from Rust; QML never
     /// constructs this.
     ctx: Option<std::rc::Rc<AppContext>>,
 }
 
 impl EntryModel {
-    /// Give the model a context explicitly. Only the tests call it; a model
-    /// QML builds uses the installed context.
+    /// Give model context explicitly. Tests only; QML-built model uses
+    /// installed context.
     pub fn attach(&mut self, ctx: std::rc::Rc<AppContext>) {
         self.ctx = Some(ctx);
         self.reload();
     }
 
-    /// The app context: the one attached explicitly (tests), else the global
-    /// installed at start-up. QML constructs these objects, so there is no
-    /// constructor to pass it through.
+    /// App context: explicitly attached (tests), else global installed at
+    /// start-up. QML constructs these: no constructor to pass it through.
     fn context(&self) -> Option<std::rc::Rc<AppContext>> {
         self.ctx.clone().or_else(crate::context::current)
     }
@@ -791,17 +723,16 @@ impl EntryModel {
         if applied {
             self.mark_row(id, Some(!read), None);
             self.announce_local_change(&ctx);
-            // Send opportunistically: if there is no signal the intent stays
-            // in the outbox and the next sync carries it.
+            // Send opportunistically: no signal → intent stays in outbox, next
+            // sync carries it.
             ctx.send(Command::FlushOutbox);
         }
     }
 
     fn setReadMany(&mut self, ids: QVariantList, read: bool) {
         let Some(ctx) = self.context() else { return };
-        // JavaScript numbers arrive as doubles; an id past 2^53 is not one
-        // Miniflux will ever issue, and anything that is not a number at all
-        // is dropped rather than guessed at.
+        // JS numbers arrive as doubles; id past 2^53 never issued by Miniflux;
+        // non-numbers dropped, not guessed.
         let ids: Vec<EntryId> = (&ids)
             .into_iter()
             .filter_map(|v| i64::from_qvariant(v.clone()))
@@ -846,68 +777,55 @@ impl EntryModel {
         }
     }
 
-    /// Tell the OTHER models that this one changed the mirror.
+    /// Tell OTHER models this one changed mirror.
     ///
-    /// There is one model per scope tab now, and they all read the same
-    /// entries. Marking an article read on Unread has to reach the copy of
-    /// that row held by All, or swiping across shows it still unread until the
-    /// next network sync.
+    /// One model per scope tab, all reading same entries. Mark read on Unread
+    /// must reach All's copy of row, else swiping shows it unread until next
+    /// network sync.
     ///
-    /// The generation is bumped, and then this model's own cursor is moved
-    /// PAST that bump. Without the second half the mutating model would
-    /// reload itself on its next poll -- a full reset, which scrolls the list
-    /// back to the top under the finger that just tapped. `mark_row` has
-    /// already patched this model's own row in place; the bump is for everyone
-    /// else.
+    /// Generation bumped, then this model's cursor moved PAST bump. Else
+    /// mutating model reloads itself next poll: full reset, list scrolls to top
+    /// under tapping finger. `mark_row` already patched own row; bump is for
+    /// everyone else.
     fn announce_local_change(&mut self, ctx: &AppContext) {
         ctx.signal().bump();
         self.seen_generation = ctx.signal().generation();
     }
 
     fn requestSync(&mut self) {
-        // `or_else`, not a bare `context()`: the context is built at start-up
-        // from the stored account, and on a first run there is none to build
-        // from. Without this second chance the pulley menu's Refresh did
-        // nothing at all -- no spinner, no error -- for the whole of the
-        // session in which the account was first configured.
+        // `or_else`, not bare `context()`: context built at start-up from
+        // stored account; first run has none. Without second chance, pulley
+        // Refresh does nothing all session in which account first configured.
         let Some(ctx) = self.context().or_else(crate::context::refresh_current) else {
             return;
         };
-        // A new attempt supersedes whatever the last one said.
+        // New attempt supersedes whatever last one said.
         if !self.syncError.to_string().is_empty() || self.syncErrorIsAuth {
             self.syncError = QString::from(String::new());
             self.syncErrorIsAuth = false;
             self.syncStateChanged();
         }
-        // The reader asked for a fresh list, so give them one NOW, before the
-        // network has answered: the rows they have read leave at the pull,
-        // and whatever the sync brings lands on top of a list that is already
-        // honest. Every other list starts over too -- the epoch says so, and
-        // the bump is what makes them look. This model's own cursor is moved
-        // past it, as `announce_local_change` does, or the next poll would
-        // reset a list that was just reset.
+        // Reader asked for fresh list: give it NOW, before network answers.
+        // Read rows leave at pull; sync results land on already-honest list.
+        // Every other list starts over too (epoch says so, bump makes them
+        // look). Own cursor moved past bump, as `announce_local_change`, else
+        // next poll resets just-reset list.
         ctx.signal().mark_refreshed();
         self.reload_fresh();
         self.announce_local_change(&ctx);
-        // Set before sending, not after: the worker clears this flag when the
-        // command finishes, and a fast failure can beat us to it. Setting it
-        // afterwards would leave the spinner running forever.
+        // Set before sending: worker clears flag when command finishes; fast
+        // failure can beat us. Setting after leaves spinner running forever.
         ctx.signal().set_running(true);
         if !ctx.send(Command::Sync) {
-            // The worker is gone, so nothing will ever clear the flag.
+            // Worker gone: nothing will clear flag.
             ctx.signal().set_running(false);
         }
-        // Record what we just told QML, or the spinner never stops.
+        // Record what QML was told, else spinner never stops.
         //
-        // `pollSync` reports a change by comparing the flag against
-        // `seen_running`. Raising the flag here and emitting the signal
-        // WITHOUT recording it left `seen_running` false, so when the worker
-        // lowered the flag the poll compared false against false, saw no
-        // transition, and never emitted again -- `syncing` is READ + NOTIFY,
-        // so QML kept the last value it was told. The spinner only ever
-        // stopped when a poll happened to land inside the window while the
-        // sync was still running, which on a fast local server it usually
-        // does not.
+        // `pollSync` reports change by comparing flag with `seen_running`.
+        // Raising flag and emitting WITHOUT recording leaves `seen_running`
+        // false: worker lowering flag compares false to false, no transition,
+        // no emit; `syncing` is READ + NOTIFY so QML keeps last value.
         self.seen_running = ctx.signal().is_running();
         self.syncingChanged();
     }
@@ -921,19 +839,17 @@ impl EntryModel {
             return false;
         };
 
-        // The spinner first, and BEFORE the generation guard. A refresh that
-        // fails changes the running flag without necessarily changing the
-        // mirror, and that is exactly the case the old order could not report.
+        // Spinner first, BEFORE generation guard. Failed refresh changes
+        // running flag without necessarily changing mirror.
         let running = ctx.signal().is_running();
         if running != self.seen_running {
             self.seen_running = running;
             self.syncingChanged();
         }
 
-        // Then anything the worker left for the user to read. Drained here, in
-        // the one app-wide poll, rather than by a Timer on each page: several
-        // EntryListPages are alive at once (the feed views), and per-page
-        // timers would race for a slot that holds exactly one notice.
+        // Then anything worker left for user to read. Drained here in one
+        // app-wide poll, not per-page Timer: several EntryListPages alive (feed
+        // views); per-page timers race for one-notice slot.
         self.drain_notice(ctx.signal());
 
         let generation = ctx.signal().generation();
@@ -941,19 +857,18 @@ impl EntryModel {
             return false;
         }
         self.seen_generation = generation;
-        // `reload`'s own answer -- whether it had to RESET the list -- is
-        // deliberately not this one. The QML polls every model on a tick and
-        // uses what comes back to decide whether the feed list is worth
-        // polling too, and that turns on the MIRROR having moved, not on how
-        // gently this particular list absorbed it.
+        // `reload`'s own answer (whether it RESET list) deliberately not this
+        // one. QML polls every model per tick, uses result to decide whether to
+        // poll feed list too: turns on MIRROR moving, not how gently this list
+        // absorbed it.
         self.reload();
         true
     }
 
-    /// Take a sync failure off the signal, if one is waiting.
+    /// Take sync failure off signal, if waiting.
     ///
-    /// Anything this model does not own is put back for the page that does --
-    /// the same discipline `Settings::poll_notice_from` follows.
+    /// Anything not owned put back for page that owns it (same discipline as
+    /// `Settings::poll_notice_from`).
     pub fn drain_notice(&mut self, signal: &crate::context::SyncSignal) {
         match signal.take_notice() {
             Some(crate::context::Notice::SyncFailed { auth, message }) => {
@@ -984,8 +899,7 @@ impl EntryModel {
         i32::try_from(self.matches.text).unwrap_or(i32::MAX)
     }
 
-    /// How many of a group's results are shown: what its page allows, or all
-    /// of them when there are fewer.
+    /// Results shown for group: what page allows, or all when fewer.
     fn shown_in(&self, kind: MatchKind) -> i32 {
         let shown = self.groups.get(kind).shown.min(self.matches.get(kind));
         i32::try_from(shown).unwrap_or(i32::MAX)
@@ -1032,16 +946,16 @@ impl EntryModel {
         }
         let Some(ctx) = self.context() else { return };
         self.groups.get_mut(kind).load_more();
-        // From the matches already found: asking for more of a group is not
-        // a new search, and the mirror is not scanned again for it.
+        // From matches already found: more of a group ≠ new search; mirror not
+        // rescanned.
         let rows = self.search_rows(&ctx);
         publish_rows_as(self, rows, Publish::Search);
         self.matchesChanged();
     }
 
-    /// The rows a search shows: the articles [`SearchGroups::pick`] picks
-    /// from the matches found, read and marked up, with the feeds it found
-    /// between the two groups of them -- in [`MatchKind`]'s order.
+    /// Rows search shows: articles [`SearchGroups::pick`] picks from matches,
+    /// read and marked up, feeds it found between two article groups, in
+    /// [`MatchKind`] order.
     fn search_rows(&self, ctx: &AppContext) -> Vec<EntryRow> {
         let picked = self.groups.pick(&self.search_found);
         let search = &self.search;
@@ -1089,20 +1003,14 @@ impl EntryModel {
                 .ok()
                 .flatten()
                 .is_some(),
-            // Unread/Starred/All have no single server-side scope, so expand
-            // over every entry in scope -- NOT over `self.rows`, which holds
-            // only the page the list is currently showing. Using the rows
-            // marked at most PAGE_SIZE entries and silently left the rest
-            // unread, while the UI reported success.
+            // Unread/Starred/All have no single server-side scope: expand over
+            // every entry in scope, NOT `self.rows` (only current page; would
+            // mark ≤ PAGE_SIZE, leave rest unread while UI reports success).
             _ => {
-                // Ids and nothing else. This used to go through
-                // `list_entries(.., i64::MAX, 0)`, which built the whole scope
-                // as full entries -- every title, every URL and every BODY in
-                // the mirror -- to read one integer off each. On the corpus
-                // this was reported against that was 54 MB allocated in one
-                // go, on a phone, to mark a list read.
-                // A search has no filter, and the list does not offer it
-                // "mark all as read".
+                // Ids only. Full entries for whole scope would haul every
+                // title, URL, BODY to read one integer each (54 MB single
+                // allocation on reported corpus). Search has no filter; list
+                // doesn't offer it "mark all as read".
                 let Some(filter) = scope.to_filter() else {
                     return;
                 };
@@ -1117,9 +1025,9 @@ impl EntryModel {
             }
         };
         if done {
-            // Fresh, not retained: "mark all as read" is the reader saying
-            // they are done with everything on this list, and a list that
-            // stayed full of dimmed rows would look as if nothing happened.
+            // Fresh, not retained: "mark all as read" = reader done with
+            // everything here; list full of dimmed rows would look like nothing
+            // happened.
             self.reload_fresh();
             self.announce_local_change(&ctx);
             ctx.send(Command::FlushOutbox);
@@ -1139,7 +1047,7 @@ impl EntryModel {
 
     fn setScope(&mut self, kind: i32, id: i64) {
         self.scope = Some(Scope::from_qml(kind, id));
-        // A new scope is a new list; nothing from the old one belongs on it.
+        // New scope = new list; nothing from old belongs.
         self.reload_fresh();
     }
 
@@ -1154,7 +1062,7 @@ impl EntryModel {
         }
         self.search = text;
         if self.scope == Some(Scope::Search) {
-            // A new query is a new list, exactly like a new scope.
+            // New query = new list, like new scope.
             self.reload_fresh();
         }
     }
@@ -1166,48 +1074,39 @@ impl EntryModel {
             .map_or(0, |r| r.id)
     }
 
-    /// Re-read rows from the mirror, KEEPING the rows already on screen.
+    /// Re-read rows from mirror, KEEPING rows on screen.
     ///
-    /// A row that has stopped matching its list -- read, on Unread; unstarred,
-    /// on Favourites -- stays where it is, drawn in its new state, until the
-    /// reader asks for a fresh list. Reported from a device: an article
-    /// opened and marked read vanished from Unread a moment after coming back
-    /// to it, on the poll that noticed the mirror had changed, and the rows
-    /// below it jumped up under the thumb. Rows only ever LEAVE on a manual
-    /// refresh (`requestSync`), a scope change, or "mark
-    /// all as read"; those go through `reload_fresh`.
-    /// Rows still ARRIVE here -- a sync that lands while the app is open shows
-    /// its new articles -- and a kept row the mirror no longer has (the server
-    /// deleted it) goes with it.
+    /// Row no longer matching list (read on Unread, unstarred on Favourites)
+    /// stays, drawn in new state, until reader asks for fresh list; else it
+    /// vanishes on next poll and rows below jump under thumb. Rows LEAVE only
+    /// on manual refresh (`requestSync`), scope change, or "mark all as read"
+    /// (via `reload_fresh`). Rows still ARRIVE here (sync landing while open
+    /// shows new articles); kept row mirror lost (server deleted) goes.
     ///
-    /// A full reset rather than a diff WHEN THE ROWS THEMSELVES CHANGE. For
-    /// the list sizes a phone actually scrolls that is imperceptible, and a
-    /// wrong `begin_insert_rows` range is a crash inside Qt's model machinery
-    /// rather than a visual glitch — a bad trade for a saved millisecond. A
-    /// reload that finds the same articles in the same places does not reset
-    /// at all; see `reload_keeping`.
+    /// Full reset, not diff, WHEN ROWS THEMSELVES CHANGE. Imperceptible at
+    /// phone list sizes; wrong `begin_insert_rows` range = crash inside Qt
+    /// model machinery, bad trade for a millisecond. Same articles in same
+    /// places → no reset; see `reload_keeping`.
     ///
-    /// Returns true when the model was RESET, which is the thing that costs
-    /// the reader their scroll position.
+    /// Returns true when model RESET (costs reader scroll position).
     pub fn reload(&mut self) -> bool {
         self.reload_keeping(true)
     }
 
-    /// Re-read rows from the mirror and show exactly what matches the scope.
+    /// Re-read rows, show exactly what matches scope.
     ///
-    /// Also puts the window back to one page. This is the path taken when the
-    /// list starts over -- a new scope, a manual refresh, "mark all as read"
-    /// -- and a reader who had paged down to four hundred rows in the previous
-    /// scope should not have the next one open at four hundred rows.
+    /// Also resets window to one page. Path when list starts over (new scope,
+    /// manual refresh, "mark all as read"): reader paged to 400 rows in
+    /// previous scope mustn't open next at 400.
     fn reload_fresh(&mut self) -> bool {
         self.limit = PAGE_SIZE;
         self.reload_keeping(false)
     }
 
-    /// How many rows to ask the mirror for.
+    /// Rows to ask mirror for.
     ///
-    /// `Default` leaves `limit` at zero and QML constructs these objects, so
-    /// the floor is applied here rather than trusting the field.
+    /// `Default` leaves `limit` zero, QML constructs these: floor applied here,
+    /// field not trusted.
     fn window(&self) -> i64 {
         if self.limit < PAGE_SIZE {
             PAGE_SIZE
@@ -1221,9 +1120,8 @@ impl EntryModel {
             return;
         }
         self.limit = self.window().saturating_add(PAGE_SIZE);
-        // `reload`, not `reload_fresh`: paging down is not starting over, and
-        // the rows already on screen are exactly the ones the reader is
-        // looking at.
+        // `reload`, not `reload_fresh`: paging down isn't starting over; rows
+        // on screen are what reader looks at.
         self.reload();
     }
 
@@ -1235,9 +1133,9 @@ impl EntryModel {
             return false;
         };
 
-        // A manual refresh anywhere -- the pulley on another tab, the cover's
-        // action -- starts every list over, not only the one it was pulled
-        // on. The epoch is how this model finds out it happened elsewhere.
+        // Manual refresh anywhere (pulley on another tab, cover action) starts
+        // every list over. Epoch is how this model learns it happened
+        // elsewhere.
         let epoch = ctx.signal().refresh_epoch();
         let keep_shown = keep_shown && epoch == self.seen_refresh_epoch;
         self.seen_refresh_epoch = epoch;
@@ -1256,16 +1154,14 @@ impl EntryModel {
                 .read(|db| {
                     let mut entries =
                         store::list_entries(db.conn(), filter, window, 0).unwrap_or_default();
-                    // Before the kept rows are appended: those are rows the
-                    // reader has finished with, which the scope no longer
-                    // matches, and counting them would make a part-full window
+                    // Before kept rows appended: those are finished rows scope
+                    // no longer matches; counting them makes part-full window
                     // look full.
                     full_window = i64::try_from(entries.len()).unwrap_or(i64::MAX) >= window;
                     let listed: HashSet<i64> = entries.iter().map(|e| e.id.get()).collect();
-                    // One statement per kept row rather than a built `IN (...)`
-                    // list, as the outbox does (§9.4). There are as many of
-                    // these as the reader has finished with since they last
-                    // refreshed, which is a handful, not a page.
+                    // One statement per kept row, not built `IN (...)`, as
+                    // outbox (§9.4). Handful (rows finished since last
+                    // refresh), not a page.
                     for id in shown {
                         if listed.contains(&id) {
                             continue;
@@ -1278,20 +1174,19 @@ impl EntryModel {
                 })
                 .unwrap_or_default();
             let mut rows: Vec<EntryRow> = entries.iter().map(EntryRow::from).collect();
-            // Back into the mirror's own order, newest first, so a kept row
-            // sits where it did rather than at the bottom. A stable sort, and
-            // the fresh rows arrived sorted, so this only moves the kept ones.
+            // Back into mirror order, newest first: kept row sits where it was,
+            // not at bottom. Stable sort over already-sorted fresh rows: only
+            // kept ones move.
             rows.sort_by_key(|r| (std::cmp::Reverse(r.published), std::cmp::Reverse(r.id)));
             rows
         } else {
-            // A search keeps nothing: an article does not stop matching by
-            // being read, and the results are in the search's own order --
-            // grouped by where they matched -- which the date sort above
-            // would undo. Nor does it page as a whole: `hasMore` stays false,
-            // and each group has a "Load more" of its own (`loadMoreIn`).
+            // Search keeps nothing: reading doesn't stop match, results in
+            // search order (grouped by match) which date sort would undo. No
+            // whole-list paging: `hasMore` false, each group has own "Load
+            // more" (`loadMoreIn`).
             //
-            // Searched again on every reload, since the mirror may have
-            // changed under it; a fresh one also starts every group over.
+            // Searched again each reload (mirror may have changed); fresh one
+            // restarts every group.
             if !keep_shown {
                 self.groups = SearchGroups::default();
             }
@@ -1311,25 +1206,22 @@ impl EntryModel {
             self.matchesChanged();
         }
 
-        // The chrome is not part of a row any more, so a row diff cannot see a
-        // feed that was renamed or that finally got an icon. Take the shared
-        // map first and note whether it is a different one; if the rows then
-        // turn out to be unchanged, they still have to be redrawn.
+        // Chrome not in row: row diff can't see renamed feed or new icon. Take
+        // shared map first, note if different; unchanged rows still need redraw
+        // then.
         let chrome = ctx.feed_chrome();
         let chrome_moved = !std::rc::Rc::ptr_eq(&self.feed_chrome, &chrome);
         self.feed_chrome = chrome;
 
-        // A window the mirror filled completely may have more behind it. One
-        // row short of the window is proof it does not, which is the common
-        // case and costs no extra query to establish.
+        // Window mirror filled completely may have more. One row short proves
+        // not: common case, no extra query.
         if full_window != self.hasMore {
             self.hasMore = full_window;
             self.hasMoreChanged();
         }
 
-        // Reset only if these are not the rows the list already holds --
-        // otherwise the reader loses their place for nothing. See
-        // `publish_rows`, which is where that rule lives for both models.
+        // Reset only if rows differ from held ones, else reader loses place for
+        // nothing. See `publish_rows` (rule for both models).
         let how = if scope == Scope::Search {
             Publish::Search
         } else {
@@ -1342,22 +1234,20 @@ impl EntryModel {
         reset
     }
 
-    /// The feed name and icon a row is drawn with: what [`EntryModel::data`]
-    /// hands QML for `feedName` and `feedIcon`.
+    /// Feed name and icon row is drawn with: what [`EntryModel::data`] hands
+    /// QML for `feedName` and `feedIcon`.
     ///
-    /// Borrowed out of the shared map rather than copied into the row -- see
-    /// [`EntryRow`] for why that distinction is the point of this method.
-    /// A feed the map has never heard of draws with neither, which is what an
-    /// entry whose feed has just been unsubscribed looks like for the moment
-    /// between the two reloads.
+    /// Borrowed from shared map, not copied into row (see [`EntryRow`]).
+    /// Unknown feed draws with neither: what just-unsubscribed feed's entry
+    /// looks like between two reloads.
     fn chrome_for(&self, feed_id: i64) -> Option<&crate::context::FeedChrome> {
         self.feed_chrome.get(&feed_id)
     }
 
-    /// Announce that every row needs re-reading, without moving any of them.
+    /// Announce every row needs re-reading, moving none.
     ///
-    /// A no-op on an empty model: `row_index` of a row that is not there is
-    /// not an index a view can be told about.
+    /// No-op on empty model: `row_index` of absent row isn't index view can be
+    /// told.
     fn redraw_all_rows(&mut self) {
         let Some(last) = self
             .rows
@@ -1372,7 +1262,7 @@ impl EntryModel {
         QAbstractListModel::data_changed(self, first, last);
     }
 
-    /// Update one row in place after a local mutation, without a full reload.
+    /// Update one row in place after local mutation, no full reload.
     pub fn mark_row(&mut self, id: EntryId, unread: Option<bool>, starred: Option<bool>) {
         let Some(index) = self.rows.iter().position(|r| r.id == id.get()) else {
             return;
@@ -1388,12 +1278,10 @@ impl EntryModel {
         let Ok(i) = i32::try_from(index) else { return };
         let model_index = QAbstractListModel::row_index(self, i);
         QAbstractListModel::data_changed(self, model_index, model_index);
-        // A read/unread change moves `unreadTotal`, and that is what the app
-        // cover shows. `countChanged` is its only NOTIFY and used to fire from
-        // `reload()` alone, so marking an entry read left the cover's badge
-        // stale until the next sync happened to reload the model. Harmless
-        // when it took a deliberate context-menu tap; glaring once opening an
-        // article marks it read on its own.
+        // Read/unread change moves `unreadTotal` (cover shows it).
+        // `countChanged` = its only NOTIFY: must fire here too, else cover
+        // badge stale until next reload (glaring when opening article marks it
+        // read).
         if unread.is_some() {
             self.countChanged();
         }
@@ -1432,9 +1320,8 @@ impl QAbstractListModel for EntryModel {
     }
 
     fn data(&self, index: QModelIndex, role: i32) -> QVariant {
-        // Bounds-checked rather than indexed: this is called by Qt with
-        // whatever index a delegate asks for, and `clippy::indexing_slicing`
-        // is denied for exactly this shape of code.
+        // Bounds-checked, not indexed: Qt calls with any index delegate asks;
+        // `clippy::indexing_slicing` denied for exactly this shape.
         let Ok(i) = usize::try_from(index.row()) else {
             return QVariant::default();
         };
@@ -1452,11 +1339,9 @@ impl QAbstractListModel for EntryModel {
             ROLE_PUBLISHED => row.published.into(),
             ROLE_READING_TIME => row.reading_time.into(),
             ROLE_URL => QString::from(row.url.clone()).into(),
-            // Looked up rather than held per row -- see [`EntryRow`] -- and
-            // CLONED rather than rebuilt. These are `QString`s in the shared
-            // map, so the clone is a refcount bump: this method runs for every
-            // visible row on every repaint, and it used to convert the feed's
-            // whole base64 icon each time it did.
+            // Looked up, not held per row (see [`EntryRow`]), CLONED not
+            // rebuilt: `QString`s in shared map, clone = refcount bump. Runs
+            // per visible row per repaint.
             ROLE_FEED_NAME => self
                 .chrome_for(row.feed_id)
                 .map(|c| c.name.clone())
@@ -1500,8 +1385,8 @@ impl QAbstractListModel for EntryModel {
 
 // ------------------------------------------------------------------- feeds
 
-/// Model roles for [`FeedModel`], one per [`FeedRow`] field; it reuses
-/// [`ROLE_ID`] for the feed's id.
+/// Model roles for [`FeedModel`], one per [`FeedRow`] field; reuses [`ROLE_ID`]
+/// for feed id.
 ///
 /// `title`: [`FeedRow::title`]. FOREIGN TEXT: `Text.PlainText`.
 pub const ROLE_FEED_TITLE: i32 = USER_ROLE + 1;
@@ -1517,15 +1402,14 @@ pub const ROLE_FEED_CRAWLER: i32 = USER_ROLE + 5;
 pub const ROLE_FEED_DISABLED: i32 = USER_ROLE + 6;
 /// Keep this feed out of the global unread list.
 pub const ROLE_FEED_HIDDEN: i32 = USER_ROLE + 7;
-/// A `data:` URI for the feed's icon, or empty when the mirror has none.
+/// `data:` URI for feed icon; empty when mirror has none.
 ///
-/// A separate constant from [`ROLE_FEED_ICON`] although it carries the same
-/// thing: role numbers are per-model, and the two models number theirs from
-/// `USER_ROLE` independently.
+/// Separate from [`ROLE_FEED_ICON`] though same content: role numbers per
+/// model, both number from `USER_ROLE` independently.
 pub const ROLE_FEED_ICON_URI: i32 = USER_ROLE + 8;
 
-/// `PartialEq` for the reason [`EntryRow`] has it: a reload that finds the
-/// list it already holds must not reset the model.
+/// `PartialEq` for same reason as [`EntryRow`]: reload finding held list must
+/// not reset model.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct FeedRow {
     /// The server's id for the feed.
@@ -1534,8 +1418,8 @@ pub struct FeedRow {
     pub title: String,
     /// How many of its entries are unread in the mirror.
     pub unread: i32,
-    /// Non-empty when the server last failed to refresh this feed. Foreign
-    /// text: plain text only.
+    /// Non-empty when server last failed to refresh feed. Foreign text: plain
+    /// only.
     pub error: String,
     /// The feed's category, or 0 when it has none.
     pub category_id: i64,
@@ -1545,19 +1429,15 @@ pub struct FeedRow {
     pub disabled: bool,
     /// See [`ROLE_FEED_HIDDEN`].
     pub hide_globally: bool,
-    /// The feed's icon as a `data:` URI, or empty. Built from bytes already in
-    /// the mirror, so drawing it fetches nothing (§9.3).
+    /// Feed icon as `data:` URI, or empty. Built from bytes already in mirror:
+    /// drawing fetches nothing (§9.3).
     ///
-    /// A `QString` taken from the shared chrome map, so this row and every
-    /// entry list that draws the same feed share one buffer -- see
-    /// [`crate::context::FeedChrome`]. As a Rust `String` it was a second full
-    /// copy of every icon in the mirror, and `data` made a third on every
-    /// repaint.
+    /// `QString` from shared chrome map: this row and every entry list drawing
+    /// same feed share one buffer (see [`crate::context::FeedChrome`]).
     pub icon_uri: QString,
 }
 
-/// The feed list, and the feed-level actions: subscribe, unsubscribe, edit
-/// and mark read.
+/// Feed list, and feed-level actions: subscribe, unsubscribe, edit, mark read.
 #[derive(QObject, Default)]
 pub struct FeedModel {
     base: qt_base_class!(trait QAbstractListModel),
@@ -1569,18 +1449,16 @@ pub struct FeedModel {
     pollSync: qt_method!(fn(&mut self) -> bool),
     /// Mark every unread entry in the feed at `row` as read.
     markFeedRead: qt_method!(fn(&mut self, row: i32)),
-    /// Subscribe. The *server* discovers and fetches the feed; Vuo never
-    /// downloads one itself (§3).
+    /// Subscribe. *Server* discovers and fetches feed; Vuo never downloads one
+    /// (§3).
     subscribe: qt_method!(fn(&mut self, feed_url: QString)),
     unsubscribe: qt_method!(fn(&mut self, row: i32)),
-    /// Save a feed's settings to the server, then to the mirror.
+    /// Save feed settings to server, then mirror.
     ///
-    /// A flat argument list rather than a JS object, because a `QVariantMap`
-    /// crossing this boundary in qmetaobject 0.2.10 loses type information for
-    /// bools and the page would have to re-encode them as ints anyway. Passing
-    /// `title` unchanged is how "do not rename" is expressed -- the shim
-    /// diffs against what the mirror holds and sends only what moved, so an
-    /// untouched field is never transmitted (see `FeedPatch`).
+    /// Flat argument list, not JS object: `QVariantMap` across this boundary in
+    /// qmetaobject 0.2.10 loses bool type info. Passing `title` unchanged =
+    /// "don't rename": shim diffs against mirror, sends only what moved;
+    /// untouched field never transmitted (see `FeedPatch`).
     updateFeed: qt_method!(
         fn(
             &mut self,
@@ -1592,15 +1470,14 @@ pub struct FeedModel {
             hide_globally: bool,
         ) -> bool
     ),
-    /// The pending result of the last `updateFeed`, drained by the edit page.
+    /// Pending result of last `updateFeed`, drained by edit page.
     ///
-    /// See `EntryModel::syncError`: the worker cannot call into a QML-owned
-    /// object, so a one-shot slot plus a poll is how an answer gets back.
+    /// See `EntryModel::syncError`: worker can't call into QML-owned object;
+    /// one-shot slot plus poll carries answer back.
     pub updateError: qt_property!(QString; NOTIFY updateStateChanged),
     /// Whether the last `updateFeed` succeeded; read beside `updateError`.
     pub updateOk: qt_property!(bool; NOTIFY updateStateChanged),
-    /// Bumped for every finished save, so a page can tell a repeat answer from
-    /// a stale one.
+    /// Bumped per finished save: page tells repeat answer from stale one.
     pub updateSerial: qt_property!(i32; NOTIFY updateStateChanged),
     updateStateChanged: qt_signal!(),
 
@@ -1610,17 +1487,15 @@ pub struct FeedModel {
 }
 
 impl FeedModel {
-    /// Give the model a context explicitly, instead of the installed one,
-    /// and load the list. Only the tests call it; a model QML builds uses
-    /// the installed context.
+    /// Give model context explicitly, load list. Tests only; QML-built model
+    /// uses installed context.
     pub fn attach(&mut self, ctx: std::rc::Rc<AppContext>) {
         self.ctx = Some(ctx);
         self.reload();
     }
 
-    /// The app context: the one attached explicitly (tests), else the global
-    /// installed at start-up. QML constructs these objects, so there is no
-    /// constructor to pass it through.
+    /// App context: explicitly attached (tests), else global installed at
+    /// start-up. QML constructs these: no constructor to pass it through.
     fn context(&self) -> Option<std::rc::Rc<AppContext>> {
         self.ctx.clone().or_else(crate::context::current)
     }
@@ -1629,10 +1504,9 @@ impl FeedModel {
         let Some(ctx) = self.context() else {
             return false;
         };
-        // BEFORE the generation early-return. A rejected save changes nothing
-        // in the mirror, so the generation does not move -- and a drain that
-        // happened after the early-return could therefore never report a
-        // failure, which is the one answer the edit page most needs.
+        // BEFORE generation early-return. Rejected save changes nothing in
+        // mirror, generation stays; drain after early-return could never report
+        // failure (answer edit page most needs).
         self.drain_update_notice(ctx.signal());
         let generation = ctx.signal().generation();
         if generation == self.seen_generation {
@@ -1708,9 +1582,8 @@ impl FeedModel {
         let title = title.to_string();
         let trimmed = title.trim();
         let mut update = vuo_core::api::client::FeedPatch::default();
-        // An empty title is a rejection, not an instruction: Miniflux would
-        // accept it and leave the user with a nameless row they then cannot
-        // identify in order to fix it.
+        // Empty title = rejection, not instruction: Miniflux would accept,
+        // leaving nameless row user can't identify to fix.
         if !trimmed.is_empty() && trimmed != current.title {
             update.title = Some(trimmed.to_owned());
         }
@@ -1744,9 +1617,8 @@ impl FeedModel {
                 self.updateSerial = self.updateSerial.wrapping_add(1);
                 self.updateStateChanged();
             }
-            // Not ours. Put it back for the page that is waiting on it --
-            // dropping it is how "Test connection" used to look like it did
-            // nothing.
+            // Not ours. Put back for waiting page; dropping makes "Test
+            // connection" look dead.
             Some(other) => signal.post(other),
             None => {}
         }
@@ -1763,17 +1635,15 @@ impl FeedModel {
             .map_or(0, |r| r.id)
     }
 
-    /// Re-read the feed list. Returns true when the model was RESET, which is
-    /// what costs the reader their place in the list -- see
-    /// [`EntryModel::reload`], which this mirrors.
+    /// Re-read feed list. True when model RESET (costs reader place); mirrors
+    /// [`EntryModel::reload`].
     pub fn reload(&mut self) -> bool {
         let Some(ctx) = self.context() else {
             return false;
         };
-        // The same shared map the entry lists draw from, so the two cannot
-        // disagree about what a feed looks like and neither pays for the
-        // encode twice. Taken outside `read`, which would otherwise hold the
-        // mirror borrowed while this borrows it again to build the cache.
+        // Same shared map entry lists draw from: can't disagree about feed
+        // look, encode paid once. Taken outside `read`, which would hold mirror
+        // borrowed while cache build borrows again.
         let chrome = ctx.feed_chrome();
         let rows: Vec<FeedRow> = ctx
             .read(|db| {
@@ -1791,11 +1661,9 @@ impl FeedModel {
                         crawler: f.crawler,
                         disabled: f.disabled,
                         hide_globally: f.hide_globally,
-                        // Held per row rather than looked up per delegate, as
-                        // the entry list does: a feed list is tens of rows and
-                        // holds one icon each. The clone costs nothing anyway
-                        // -- it is a `QString` refcount bump onto the shared
-                        // map's buffer, not a copy of the icon.
+                        // Held per row, not looked up per delegate like entry
+                        // list: tens of rows, one icon each. Clone = `QString`
+                        // refcount bump onto shared buffer.
                         icon_uri: chrome
                             .get(&f.id.get())
                             .map(|c| c.icon_uri.clone())
@@ -1805,11 +1673,9 @@ impl FeedModel {
             })
             .unwrap_or_default();
 
-        // Same rule as the entry list, and it matters here for its own
-        // reason: this model reloads on every generation bump the entry
-        // models report, and a feed's unread count moves on every article the
-        // reader finishes -- so without `publish_rows`, reading one article
-        // scrolled the Feeds page back to the top.
+        // Same rule as entry list, own reason: reloads on every bump entry
+        // models report; unread count moves per finished article; without
+        // `publish_rows` reading one article scrolls Feeds page to top.
         publish_rows(self, rows)
     }
 
@@ -1888,22 +1754,21 @@ mod tests {
 
     /// §a failed refresh reaches the screen, and stops the spinner.
     ///
-    /// Reported from a device twice over: a refresh that timed out span
-    /// forever AND said nothing. The spinner half is the read side of it --
-    /// `syncing` is READ + NOTIFY, and the only emitter of `syncingChanged`
-    /// sat BELOW the generation early-return, so a failure that cleared the
-    /// running flag without changing the mirror never reached the binding.
+    /// Timed-out refresh must stop spinning AND say something. `syncing` is
+    /// READ + NOTIFY; `syncingChanged` must fire above generation early-return,
+    /// else failure clearing running flag without changing mirror never reaches
+    /// binding.
     #[test]
     fn a_failure_that_changed_nothing_still_repaints_and_still_speaks() {
         let signal = SyncSignal::default();
         let mut model = EntryModel::default();
 
-        // As the Qt thread does when the user pulls to refresh.
+        // As Qt thread does on pull to refresh.
         signal.set_running(true);
         model.seen_running = true;
 
-        // As the worker's guard does on a failed refresh: the mirror did not
-        // change, so the generation stays exactly where it was.
+        // As worker guard does on failed refresh: mirror unchanged, generation
+        // stays.
         let before = signal.generation();
         signal.set_running(false);
         signal.post(Notice::SyncFailed {
@@ -1912,13 +1777,13 @@ mod tests {
         });
         assert_eq!(signal.generation(), before, "nothing changed the mirror");
 
-        // The poll must notice the transition anyway.
+        // Poll notices transition anyway.
         model.drain_notice(&signal);
         assert_eq!(model.syncError.to_string(), "could not reach the server");
         assert!(!model.syncErrorIsAuth);
 
-        // A rejected key is reported as such, with no server text: the page
-        // supplies its own translated line for that case.
+        // Rejected key reported as such, no server text: page supplies own
+        // translated line.
         signal.post(Notice::SyncFailed {
             auth: true,
             message: String::new(),
@@ -1930,23 +1795,19 @@ mod tests {
 
     /// §the spinner stops after the refresh that started it.
     ///
-    /// Reported from a device: "Refresh works, but the spinner doesn't go
-    /// away". `requestSync` raised the running flag and told QML about it, but
-    /// did not record that it had -- so the later true-to-false transition
-    /// compared false against false and was never reported. The spinner
-    /// stopped only when a poll happened to land while the sync was still in
-    /// flight.
+    /// `requestSync` raises running flag, tells QML, and records that it did;
+    /// else later true→false compares false to false, never reported, spinner
+    /// stops only if poll lands mid-sync.
     #[test]
     fn the_spinner_stops_even_when_no_poll_lands_mid_sync() {
         let signal = SyncSignal::default();
         let mut model = EntryModel::default();
 
-        // What `requestSync` does, minus the worker it has no context for.
+        // What `requestSync` does, minus worker (no context).
         signal.set_running(true);
         model.seen_running = signal.is_running();
 
-        // The worker finishes before any poll runs -- the case that used to
-        // leave the spinner up for the life of the process.
+        // Worker finishes before any poll runs.
         signal.set_running(false);
 
         let running = signal.is_running();
@@ -1985,14 +1846,13 @@ mod row_decoration_tests {
     use super::*;
     use vuo_core::model::{Entry, EntryStatus, Feed, FeedId, Icon, IconId, ImageFormat};
 
-    /// A mirror with one feed, one icon and one entry, and a context on it.
+    /// Mirror with one feed, one icon, one entry, and context on it.
     fn seeded() -> (tempfile::TempDir, std::rc::Rc<AppContext>) {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join("m.sqlite");
         let mut db = vuo_core::db::Database::open(&path).expect("mirror");
 
-        // A one-pixel PNG, so the format sniffing in the mirror is exercised
-        // rather than bypassed.
+        // One-pixel PNG: mirror's format sniffing exercised, not bypassed.
         let png: Vec<u8> = vec![
             0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48,
             0x44, 0x52,
@@ -2058,8 +1918,8 @@ mod row_decoration_tests {
 
     /// §an entry row carries the feed it came from.
     ///
-    /// Reported from a device: the list showed the age but neither the feed's
-    /// name nor its icon, so every row looked like it came from nowhere.
+    /// Row shows feed name and icon, not just age; else every row looks like it
+    /// came from nowhere.
     #[test]
     fn an_entry_row_carries_its_feed_name_and_icon() {
         let (_dir, ctx) = seeded();
@@ -2069,16 +1929,12 @@ mod row_decoration_tests {
 
         assert_eq!(model.row_count(), 1, "the seeded entry is unread");
 
-        // Through `chrome_for`, which is what `data` calls, and NOT off the
-        // row: the chrome is looked up by feed id when a delegate asks for it
-        // rather than copied into every row (see `EntryRow`), so the row
-        // struct is no longer where the answer lives.
+        // Via `chrome_for` (what `data` calls), NOT off row: chrome looked up
+        // by feed id when delegate asks (see `EntryRow`).
         //
-        // Not through `data` itself either, much as that is the QML-facing
-        // call. `data` needs a `QModelIndex`, and the only way to make one is
-        // to ask the model's C++ side -- which a model built here and never
-        // handed to QML does not have, so every index comes back invalid and
-        // every role comes back null, whatever the model holds.
+        // Not via `data` itself: needs `QModelIndex`, only obtainable from
+        // model's C++ side, which a model never handed to QML lacks; every
+        // index invalid, every role null.
         let row = model.rows().first().expect("one row");
         let chrome = model.chrome_for(row.feed_id).cloned().unwrap_or_default();
         assert_eq!(
@@ -2092,9 +1948,8 @@ mod row_decoration_tests {
             "and carry its icon as a data URI, got {icon:?}"
         );
 
-        // The names are half the contract: the delegate reaches these by the
-        // bare word, and a role that is present in Rust but unnamed here is
-        // simply `undefined` in QML.
+        // Names = half the contract: delegate reaches these by bare word; role
+        // present in Rust but unnamed here is `undefined` in QML.
         let names = <EntryModel as QAbstractListModel>::role_names(&model);
         for (role, name) in [(ROLE_FEED_NAME, "feedName"), (ROLE_FEED_ICON, "feedIcon")] {
             assert_eq!(
@@ -2107,16 +1962,13 @@ mod row_decoration_tests {
 
     /// §one encode of the feed chrome, not one per list.
     ///
-    /// Four `EntryModel`s and a `FeedModel` are alive at once and every one of
-    /// them reloads on the same generation bump. Each used to re-read every
-    /// icon blob out of SQLite and base64 it afresh on each of those reloads,
-    /// for a set that changes only when a sync brings a new feed or a new
-    /// icon. The cache lives on the context because that is the one thing the
-    /// models -- all constructed by QML, none able to reach another -- share.
+    /// Four `EntryModel`s and a `FeedModel` alive, all reload on same bump.
+    /// Per-model re-read and re-encode of every icon wasteful for set changing
+    /// only on new feed or icon. Cache on context: only thing QML-constructed
+    /// models share.
     ///
-    /// `Rc::ptr_eq` is the assertion because it is the only one that can tell
-    /// a shared map from an identical copy, and an identical copy is exactly
-    /// the bug.
+    /// `Rc::ptr_eq` assertion: only check telling shared map from identical
+    /// copy; identical copy is the bug.
     #[test]
     fn every_list_draws_from_one_feed_chrome_map() {
         let (_dir, ctx) = seeded();
@@ -2140,13 +1992,10 @@ mod row_decoration_tests {
                 && std::rc::Rc::ptr_eq(&held, &all.feed_chrome),
             "every entry list must hold the one map, not a copy of it"
         );
-        // The SAME BUFFER, not an equal string. A `QString` is implicitly
-        // shared, so a clone out of the chrome map is a refcount bump onto the
-        // one buffer -- which is what makes it affordable to hand the icon to
-        // every feed row and to rebuild it for every visible entry row on
-        // every repaint. As Rust `String`s these were separate copies of up to
-        // 683 KB of base64 apiece, and comparing them for equality could not
-        // have told the difference.
+        // SAME BUFFER, not equal string. `QString` implicitly shared: clone
+        // from chrome map = refcount bump onto one buffer, affordable per feed
+        // row and per visible entry row per repaint. Separate `String` copies
+        // (up to 683 KB base64 each) would compare equal; equality can't tell.
         let from_feed_list = feeds
             .rows()
             .first()
@@ -2163,18 +2012,17 @@ mod row_decoration_tests {
             "the feed list must share the entry lists' icon, not copy it"
         );
 
-        // A bump alone must NOT move the map. Marking one article read bumps
-        // the generation, and a list that sees the map move redraws every row
-        // -- which rebuilds each delegate's detail line from font metrics. The
-        // cheapest thing the reader can do would repaint the whole list.
+        // Bump alone must NOT move map. Mark-read bumps generation; list seeing
+        // map move redraws every row (delegate detail line from font metrics):
+        // cheapest reader action repaints whole list.
         ctx.signal().bump();
         assert!(
             std::rc::Rc::ptr_eq(&held, &ctx.feed_chrome()),
             "a bump that did not change a feed must hand back the same map"
         );
 
-        // A feed that actually changed does move it, or a renamed feed would
-        // keep its old name on every list until the app restarted.
+        // Actually changed feed does move it, else renamed feed keeps old name
+        // on every list until restart.
         ctx.write(|db| {
             db.with_tx(|tx| {
                 store::upsert_feed(
@@ -2211,8 +2059,8 @@ mod row_decoration_tests {
             Some("Tagesschau 24".to_owned())
         );
 
-        // And the list must be told, because no ROW changed: the reload's row
-        // diff cannot see a rename, so the map moving is the only signal.
+        // List must be told: no ROW changed; row diff can't see rename; map
+        // moving only signal.
         unread.reload();
         assert_eq!(
             unread.chrome_for(1).map(|c| c.name.to_string()),
@@ -2223,9 +2071,8 @@ mod row_decoration_tests {
 
     /// §the feed list exposes the settings the editor writes.
     ///
-    /// Reported from a device: "Feed settings" did nothing at all. The menu
-    /// item passes these three roles straight into the pushed page, so a role
-    /// that does not resolve makes the whole push throw.
+    /// "Feed settings" menu item passes these three roles into pushed page;
+    /// unresolved role makes whole push throw.
     #[test]
     fn a_feed_row_carries_the_settings_the_editor_edits() {
         let (_dir, ctx) = seeded();
@@ -2237,10 +2084,8 @@ mod row_decoration_tests {
         assert!(row.crawler, "the seeded feed has the crawler on");
         assert!(!row.disabled);
         assert!(!row.hide_globally);
-        // The Feeds page draws the same icon the entry list does. It came from
-        // a different query for a while -- this one had none at all -- so the
-        // page showed bare names and the reader had to recognise a feed by its
-        // title alone.
+        // Feeds page draws same icon as entry list (same chrome map), not bare
+        // names.
         let icon = row.icon_uri.to_string();
         assert!(
             icon.starts_with("data:image/png;base64,"),
@@ -2261,9 +2106,9 @@ mod row_decoration_tests {
         }
     }
 
-    /// An unread entry in the seeded feed. No publish time, like the seeded
-    /// one, so the mirror's order is by id: the shim deliberately has no
-    /// chrono, and ids are enough to tell a merge from an append.
+    /// Unread entry in seeded feed. No publish time (like seeded one): mirror
+    /// order by id. Shim has no chrono on purpose; ids enough to tell merge
+    /// from append.
     fn unread_entry(id: i64) -> Entry {
         Entry {
             id: EntryId(id),
@@ -2296,11 +2141,9 @@ mod row_decoration_tests {
 
     /// §a row the reader has finished with leaves the list when THEY say so.
     ///
-    /// Reported from a device: an article opened from Unread and marked read
-    /// vanished from the list a moment after coming back to it -- on the poll
-    /// that noticed the mirror had changed -- and the rows below it jumped up
-    /// under the thumb. The row stays now, drawn as read, through any number
-    /// of mirror changes, and leaves on the pulley's Refresh.
+    /// Article opened from Unread and marked read stays listed, drawn read,
+    /// through any number of mirror changes; leaves on pulley Refresh. Else it
+    /// vanishes on poll and rows below jump under thumb.
     #[test]
     fn a_row_read_elsewhere_stays_listed_until_the_reader_refreshes() {
         let (_dir, ctx) = seeded();
@@ -2311,8 +2154,8 @@ mod row_decoration_tests {
         model.setScope(0, 0);
         assert_eq!(ids(&model), vec![7, 5], "newest first");
 
-        // The article view marks 5 read: a local write and a bump, which is
-        // what `ArticleModel::apply_local` does.
+        // Article view marks 5 read: local write and bump, as
+        // `ArticleModel::apply_local`.
         ctx.write(|db| worker::apply_local_status(db, EntryId(5), EntryStatus::Read))
             .expect("the mirror")
             .expect("mark read");
@@ -2329,10 +2172,9 @@ mod row_decoration_tests {
         );
         assert_eq!(model.unread_total(), 1, "the cover's count is the mirror's");
 
-        // A sync lands with an older article while the read row is still
-        // there. It ARRIVES, and the read row keeps ITS place -- between the
-        // two, where the mirror's order puts it, not at the bottom where an
-        // append would.
+        // Sync lands older article while read row still there. It ARRIVES; read
+        // row keeps ITS place between them (mirror order), not at bottom
+        // (append).
         put(&ctx, &unread_entry(3));
         ctx.signal().bump();
         assert!(model.pollSync());
@@ -2342,8 +2184,8 @@ mod row_decoration_tests {
             "new rows still arrive, and a kept row sits where it did"
         );
 
-        // The reader pulls Refresh -- on any tab, or on the cover. What
-        // `requestSync` does, minus the worker it would have sent for.
+        // Reader pulls Refresh (any tab or cover). What `requestSync` does,
+        // minus worker.
         ctx.signal().mark_refreshed();
         ctx.signal().bump();
         assert!(model.pollSync());
@@ -2356,14 +2198,10 @@ mod row_decoration_tests {
 
     /// §the list must not move under the reader when nothing on it moved.
     ///
-    /// Reported from a device: marking an article read from its context menu
-    /// marked it read AND threw the reader back to the top of the list a
-    /// moment later. `setRead` patches the row where it is, so the tap itself
-    /// is fine -- but it also sends `FlushOutbox`, and the worker bumps the
-    /// generation the instant the server confirms that intent, for the
-    /// settings page's pending count and nothing this list shows. The poll
-    /// that saw the bump re-read exactly the rows it already had and reset the
-    /// model anyway; a reset re-lays a plain `ListView` out at its own top.
+    /// Context-menu mark-read: `setRead` patches row in place, sends
+    /// `FlushOutbox`; worker bumps generation when server confirms (for
+    /// settings page pending count, nothing list shows). Poll re-reads same
+    /// rows; must not reset (reset re-lays plain `ListView` at its top).
     #[test]
     fn a_bump_that_leaves_the_rows_alone_does_not_reset_the_list() {
         let (_dir, ctx) = seeded();
@@ -2374,16 +2212,15 @@ mod row_decoration_tests {
         model.setScope(0, 0);
         assert_eq!(ids(&model), vec![7, 5], "newest first");
 
-        // The reader marks 5 read from its context menu: patched in place.
+        // Reader marks 5 read from context menu: patched in place.
         model.setRead(1, true);
         assert!(
             !model.rows().get(1).expect("row 5").unread,
             "the tap itself shows immediately"
         );
 
-        // The flush confirms the intent and the worker bumps the generation.
-        // The ENTRIES are untouched by that -- all it deleted is outbox rows
-        // -- so the reload the poll runs finds the list it already holds.
+        // Flush confirms intent, worker bumps generation. ENTRIES untouched
+        // (only outbox rows deleted): poll's reload finds held list.
         ctx.signal().bump();
         assert!(
             !model.reload(),
@@ -2392,9 +2229,8 @@ mod row_decoration_tests {
         );
         assert_eq!(ids(&model), vec![7, 5], "and it keeps the rows either way");
 
-        // A row read on ANOTHER tab is redrawn where it is, too. It is kept on
-        // Unread until the reader refreshes, so the list is the same list --
-        // one row of it is just in a new state.
+        // Row read on OTHER tab redrawn in place too. Kept on Unread until
+        // refresh: same list, one row in new state.
         ctx.write(|db| worker::apply_local_status(db, EntryId(7), EntryStatus::Read))
             .expect("the mirror")
             .expect("mark read");
@@ -2407,7 +2243,7 @@ mod row_decoration_tests {
             "and it does show its new state"
         );
 
-        // A row ARRIVING is a different list, and does have to reset.
+        // Row ARRIVING = different list, must reset.
         put(&ctx, &unread_entry(3));
         assert!(
             model.reload(),
@@ -2416,9 +2252,8 @@ mod row_decoration_tests {
         assert_eq!(ids(&model), vec![7, 5, 3]);
     }
 
-    /// The Feeds page is reloaded on every bump the entry models report, and
-    /// an unread count moves on every article the reader finishes -- so the
-    /// same reset would scroll it away just as readily.
+    /// Feeds page reloads on every bump entry models report; unread count moves
+    /// per finished article: same reset would scroll it away.
     #[test]
     fn a_feed_whose_count_moved_is_redrawn_rather_than_re_laid_out() {
         let (_dir, ctx) = seeded();
@@ -2441,7 +2276,7 @@ mod row_decoration_tests {
         );
     }
 
-    /// A new scope is a new list.
+    /// New scope = new list.
     #[test]
     fn a_scope_change_shows_only_what_matches_it() {
         let (_dir, ctx) = seeded();
@@ -2450,7 +2285,7 @@ mod row_decoration_tests {
         model.attach(std::rc::Rc::clone(&ctx));
         model.setScope(0, 0);
 
-        // Read from the list itself: patched in place, so the row stays.
+        // Read from list itself: patched in place, row stays.
         model.setRead(1, true);
         assert_eq!(ids(&model), vec![7, 5]);
 
@@ -2462,7 +2297,7 @@ mod row_decoration_tests {
         );
     }
 
-    /// A kept row the mirror has lost -- the server deleted it -- goes too.
+    /// Kept row mirror lost (server deleted) goes too.
     #[test]
     fn a_kept_row_the_mirror_no_longer_has_is_dropped() {
         let (_dir, ctx) = seeded();
@@ -2485,7 +2320,7 @@ mod row_decoration_tests {
         );
     }
 
-    /// Two tabs, one refresh: the epoch reaches the tab that was not pulled.
+    /// Two tabs, one refresh: epoch reaches unpulled tab.
     #[test]
     fn a_manual_refresh_on_one_tab_starts_every_tab_over() {
         let (_dir, ctx) = seeded();
@@ -2502,7 +2337,7 @@ mod row_decoration_tests {
         assert!(all.pollSync(), "the other tab hears about the change");
         assert_eq!(ids(&all), vec![7, 5], "and All lists everything anyway");
 
-        // Refresh pulled on All: its own epoch moves, and the bump carries it.
+        // Refresh pulled on All: its epoch moves, bump carries it.
         ctx.signal().mark_refreshed();
         ctx.signal().bump();
         assert!(unread.pollSync());
@@ -2515,18 +2350,16 @@ mod row_decoration_tests {
 
     /// §the list is a window, and the window grows when the reader asks.
     ///
-    /// The whole point of a smaller `PAGE_SIZE` is that the rows the reader
-    /// cannot see are not built, sorted, compared and held resident four times
-    /// over. That is only acceptable if the ones past the window are still
-    /// REACHABLE, so this walks the path a reader scrolling to the bottom
-    /// takes: a full window says there is more, `loadMore` widens it, and a
-    /// window the mirror could not fill says there is nothing left.
+    /// Smaller `PAGE_SIZE` point: unseen rows not built, sorted, compared, held
+    /// four times over. Acceptable only if rows past window REACHABLE: walks
+    /// reader's scroll-to-bottom path. Full window says more; `loadMore`
+    /// widens; unfillable window says nothing left.
     #[test]
     fn a_full_window_can_be_extended_until_the_mirror_runs_out() {
         let (_dir, ctx) = seeded();
 
-        // One page and a bit, so the first window is full and the second is
-        // not. Entry 7 is already seeded by `seeded`.
+        // One page and a bit: first window full, second not. Entry 7 seeded by
+        // `seeded`.
         let extra = PAGE_SIZE + 10;
         ctx.write(|db| {
             db.with_tx(|tx| {
@@ -2589,8 +2422,8 @@ mod row_decoration_tests {
              behind it; saying otherwise leaves the list asking forever"
         );
 
-        // And it is a no-op once there is nothing left, so a list bouncing at
-        // its own bottom does not re-query on every bounce.
+        // No-op once nothing left: list bouncing at bottom doesn't re-query per
+        // bounce.
         let before = model.row_count();
         model.loadMore();
         assert_eq!(model.row_count(), before);
@@ -2598,9 +2431,8 @@ mod row_decoration_tests {
 
     /// §starting the list over starts the window over with it.
     ///
-    /// A reader who paged deep into Unread and then opened a feed should not
-    /// find the feed's list opening at four hundred rows -- the memory the
-    /// window costs would never be given back.
+    /// Reader deep in Unread opening a feed mustn't find it at 400 rows: window
+    /// memory never given back.
     #[test]
     fn a_new_scope_goes_back_to_one_page() {
         let (_dir, ctx) = seeded();
@@ -2619,10 +2451,9 @@ mod row_decoration_tests {
 
     /// §search: the list a search opens into, and what it follows.
     ///
-    /// The search page re-scopes its model as it is pushed and sets the text
-    /// as the reader types, in either order, and the list must show what the
-    /// text matches whichever came first. An empty field lists nothing rather
-    /// than the whole mirror.
+    /// Search page re-scopes model on push and sets text as reader types,
+    /// either order; list shows what text matches whichever came first. Empty
+    /// field lists nothing, not whole mirror.
     #[test]
     fn a_search_model_lists_what_its_text_matches() {
         let (_dir, ctx) = seeded();
@@ -2680,8 +2511,8 @@ mod row_decoration_tests {
             "and the counts follow the search"
         );
 
-        // A feed's name finds the FEED -- the seeded one is Tagesschau --
-        // and not its articles: one row, which opens the feed.
+        // Feed's name finds FEED (seeded one is Tagesschau), not its articles:
+        // one row, opens feed.
         model.setSearch("tagesschau".into());
         assert_eq!(ids(&model), vec![-1], "the feed, not its three articles");
         let feed = &model.rows()[0];
@@ -2706,7 +2537,7 @@ mod row_decoration_tests {
             "a feed's name and an article's title do not add up to a match"
         );
 
-        // The groups in order: titles, then feeds, then body text.
+        // Group order: titles, feeds, body text.
         model.setSearch("a".into());
         assert_eq!(
             model
@@ -2722,9 +2553,8 @@ mod row_decoration_tests {
             ]
         );
 
-        // Text set before the scope is applied when the scope arrives, and
-        // re-scoping keeps it: the page re-applies its scope every time it
-        // becomes active, and the reader's query must survive that.
+        // Text set before scope applied when scope arrives; re-scoping keeps
+        // it: page re-applies scope each activation, query must survive.
         let mut early = EntryModel::default();
         early.attach(std::rc::Rc::clone(&ctx));
         early.setSearch("dusk".into());
@@ -2733,7 +2563,7 @@ mod row_decoration_tests {
         early.setScope(5, 0);
         assert_eq!(ids(&early), vec![5]);
 
-        // And a model that is NOT searching ignores the text altogether.
+        // Model NOT searching ignores text altogether.
         let mut unread = EntryModel::default();
         unread.attach(std::rc::Rc::clone(&ctx));
         unread.setSearch("dusk".into());
@@ -2749,12 +2579,11 @@ mod row_decoration_tests {
     }
 
     /// §a search shows five of each group, and more of one group when asked:
-    /// ten more, then twenty more, then the rest. Only the rows shown are
-    /// read.
+    /// ten more, then twenty more, then the rest. Only shown rows read.
     #[test]
     fn a_search_shows_a_page_of_each_group_and_more_on_request() {
         let (_dir, ctx) = seeded();
-        // 45 title hits, newest first by id, and 3 body hits.
+        // 45 title hits, newest first by id, plus 3 body hits.
         for id in 100..145 {
             let mut entry = unread_entry(id);
             entry.title = format!("Harbour {id}");
@@ -2797,7 +2626,7 @@ mod row_decoration_tests {
         assert_eq!(shown(&model), (35, 0, 3));
         assert_eq!(model.title_next_load(), 0, "then the rest");
 
-        // A poll that finds the mirror changed keeps what the reader opened.
+        // Poll finding mirror changed keeps what reader opened.
         model.reload();
         assert_eq!(shown(&model), (35, 0, 3));
 
@@ -2805,12 +2634,12 @@ mod row_decoration_tests {
         assert_eq!(shown(&model), (45, 0, 3));
         assert_eq!(model.row_count(), 48);
 
-        // Nothing for a group that is not one, nor outside a search.
+        // Nothing for non-group, nor outside search.
         model.loadMoreIn("author".into());
         assert_eq!(model.row_count(), 48);
 
-        // New results never reset the list: a reset hands the focus to the
-        // first row, off the search field and its keyboard.
+        // New results never reset list: reset hands focus to first row, off
+        // search field and keyboard.
         model.search = "harbour 12".to_owned();
         assert!(
             !model.reload_fresh(),
@@ -2820,9 +2649,8 @@ mod row_decoration_tests {
         assert_eq!(model.title_shown(), 5, "a new search starts over");
         assert!(!model.reload(), "and so is a re-read");
 
-        // A new search starts every group over.
-        // ("entry 201" has its 1 in the title and its harbour in the body,
-        // so it is a title hit now.)
+        // New search restarts every group. ("entry 201": 1 in title, harbour in
+        // body → title hit now.)
         model.loadMoreIn("title".into());
         model.setSearch("harbour 1".into());
         assert_eq!(model.title_matches(), 46);
@@ -2837,8 +2665,8 @@ mod row_decoration_tests {
         assert_eq!(unread.row_count(), before);
     }
 
-    /// §the feeds a search finds are a group like the others: a page of
-    /// them, and more on request, in the feed list's order.
+    /// §the feeds a search finds are a group like the others: a page of them,
+    /// and more on request, in the feed list's order.
     #[test]
     fn a_search_pages_through_the_feeds_it_found() {
         let (_dir, ctx) = seeded();
@@ -2876,15 +2704,15 @@ mod row_decoration_tests {
         assert_eq!(ids(&model), (300..312).map(|id| -id).collect::<Vec<_>>());
         assert_eq!(model.feed_next_load(), 20);
 
-        // A new search starts the group over.
+        // New search restarts group.
         model.setSearch("harbour 30".into());
         assert_eq!(model.feed_matches(), 10);
         assert_eq!(model.feed_shown(), 5);
     }
 
-    /// A run of rows added among the rows held is told apart from every
-    /// other change, at the right place -- that range goes to Qt as an
-    /// insertion, and a wrong one is a crash inside its model machinery.
+    /// Run of rows added among held rows told apart from every other change, at
+    /// right place: range goes to Qt as insertion; wrong one crashes inside
+    /// model machinery.
     #[test]
     fn an_added_run_of_rows_is_found_and_nothing_else_is() {
         assert_eq!(inserted_run(&[1, 2, 9], &[1, 2, 3, 4, 9]), Some((2, 2)));
@@ -2906,9 +2734,8 @@ mod row_decoration_tests {
         assert_eq!(inserted_run(&[1, 1], &[1, 1, 1]), Some((2, 1)));
     }
 
-    /// "Mark all as read" has nothing to act on in a search: the list does
-    /// not offer it, and if it is called anyway it must not fall through to
-    /// a scope that marks the whole mirror.
+    /// "Mark all as read" has nothing to act on in search: list doesn't offer
+    /// it; called anyway, must not fall through to scope marking whole mirror.
     #[test]
     fn mark_all_read_in_a_search_marks_nothing() {
         let (_dir, ctx) = seeded();

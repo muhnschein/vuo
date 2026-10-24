@@ -20,31 +20,31 @@ import "../components"
 Page {
     id: page
 
-    /// The FeedModel, and the row being edited.
+    /// FeedModel and row being edited.
     property var model
     property int row: -1
 
-    /// Seeded from the row; these are what the form edits.
+    /// Seeded from row; form edits these.
     property string feedTitle: ""
     property bool crawler: false
     property bool feedDisabled: false
     property bool hideGlobally: false
 
-    /// Set once the form has been seeded, so seeding does not read as editing.
+    /// Set once form seeded: seeding isn't editing.
     property bool ready: false
     property bool saving: false
-    /// The `updateSerial` seen when the save was sent, so the answer to THIS
-    /// save is told apart from one left over from a previous page.
+    /// `updateSerial` at send: answer to THIS save told apart from previous
+    /// page's leftover.
     property int sentSerial: -1
 
     allowedOrientations: Orientation.All
 
     Component.onCompleted: page.ready = true
 
-    /// Send whatever has changed.
+    /// Send whatever changed.
     ///
-    /// `updateFeed` diffs against what the mirror holds and returns false when
-    /// nothing moved, so calling this more often than necessary is free.
+    /// `updateFeed` diffs against mirror, returns false when nothing moved;
+    /// extra calls free.
     function save() {
         if (!page.ready || !page.model) {
             return
@@ -57,25 +57,23 @@ Page {
         }
     }
 
-    // Typing sends on a pause, not per keystroke: a rename is a network round
-    // trip, and one per character would be a request storm on a phone radio.
+    // Typing sends on pause, not per key: rename = network round trip; per
+    // character = request storm on phone radio.
     Timer {
         id: typingSettled
         interval: 900
         onTriggered: page.save()
     }
 
-    // Leaving flushes whatever the pause has not sent yet, so backing out of
-    // the page cannot lose the last edit.
+    // Leaving flushes unsent edit; backing out can't lose last change.
     onStatusChanged: if (status === PageStatus.Deactivating) {
         typingSettled.stop()
         page.save()
     }
 
-    // The worker answers on the model's notice slot, which only a poll picks
-    // up. The app-level timer polls the feed model only when the ENTRY model
-    // reports a change, and a rejected save changes nothing -- so this page
-    // does its own polling for as long as it is waiting.
+    // Worker answers on model's notice slot, only poll sees it. App timer polls
+    // feed model only when ENTRY model changes; rejected save changes nothing.
+    // So page polls itself while waiting.
     Timer {
         interval: 500
         repeat: true
@@ -83,7 +81,7 @@ Page {
         onTriggered: if (page.model) page.model.pollSync()
     }
 
-    /// Mirrors the model's serial so a handler can fire on it.
+    /// Mirrors model serial so handler can fire on it.
     property int updateSerial: page.model ? page.model.updateSerial : 0
 
     onUpdateSerialChanged: {
@@ -92,11 +90,11 @@ Page {
         }
         page.saving = false
         if (page.model.updateOk) {
-            // Nothing to announce: the change is already on screen, and the
-            // page stays open because the user did not ask to leave it.
+            // Nothing to announce: change already on screen; page stays (user
+            // didn't ask to leave).
             return
         } else {
-            // The server's own words. NoticeBanner renders PlainText.
+            // Server's own words. NoticeBanner renders PlainText.
             notice.post(qsTr("Could not save: %1").arg(page.model.updateError), true, "")
         }
     }
@@ -117,18 +115,15 @@ Page {
                 label: qsTr("Name")
                 placeholderText: qsTr("Name")
                 text: page.feedTitle
-                // A feed name is foreign text, but a TextField is an editor,
-                // not a renderer: it has no rich-text mode to be injected
-                // into. Nothing else on this page shows the name.
+                // Feed name foreign, but TextField = editor, not renderer: no
+                // rich-text mode to inject. Nothing else here shows name.
                 inputMethodHints: Qt.ImhNoPredictiveText
-                // Silica's EnterKey is an attached type, which QML cannot
-                // stub, so using it would take this whole file out of
-                // `make qml-load`'s reach. Same call as AddFeedPage.qml:28.
+                // Silica EnterKey = attached type, QML can't stub; would take
+                // file out of `make qml-load`. Same as AddFeedPage.qml:28.
                 Keys.onReturnPressed: titleField.focus = false
-                // An empty name is a rejection, not an instruction: Miniflux
-                // would accept it and leave a nameless row the user then
-                // cannot identify in order to fix it. `updateFeed` drops it
-                // too; this just stops the pointless round trip.
+                // Empty name = rejection, not instruction: Miniflux accepts it,
+                // leaves nameless row user can't identify to fix. `updateFeed`
+                // drops it too; this skips pointless round trip.
                 onTextChanged: if (page.ready && text.trim().length > 0) {
                     typingSettled.restart()
                 }
@@ -145,9 +140,9 @@ Page {
                 }
             }
 
-            // Miniflux's `hide_globally`. Vuo's Unread and All leave the feed
-            // out (see `EntryFilter`), as Miniflux's own unread list does;
-            // Favourites and the feed's own page still show its articles.
+            // Miniflux `hide_globally`. Vuo Unread and All omit feed (see
+            // `EntryFilter`), like Miniflux unread list; Favourites and feed's
+            // own page still show articles.
             TextSwitch {
                 //: The tab names, as this catalog translates them.
                 text: qsTr("Hide from Unread and All")
@@ -167,8 +162,7 @@ Page {
                 }
             }
 
-            // Bottom padding, so the last switch is not flush against the
-            // edge of the flickable.
+            // Bottom padding: last switch not flush with flickable edge.
             Item { width: 1; height: Theme.paddingLarge }
         }
 

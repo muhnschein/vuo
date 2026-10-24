@@ -1,6 +1,6 @@
 import QtQuick 2.6
-// Silica's SearchField is a TextField with a search icon and a clear button.
-// Only the surface Vuo uses is declared.
+// Silica SearchField = TextField + search icon + clear button. Only Vuo's
+// surface declared.
 TextInput {
     property string label
     property string placeholderText

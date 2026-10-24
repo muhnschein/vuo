@@ -1,30 +1,28 @@
-//! Keeping secrets out of error paths.
+//! Secrets out of error paths.
 //!
-//! §9.1 of the scope: *never log the token or a URL containing it, and redact
-//! in error paths too, which is where secrets usually escape.*
+//! Scope §9.1: *never log the token or a URL containing it, and redact in error
+//! paths too, which is where secrets usually escape.*
 //!
-//! Vuo sends its API key in the `X-Auth-Token` header rather than in a URL, so
-//! the obvious leak is closed by construction. Two less obvious ones are not:
+//! API key goes in `X-Auth-Token` header, not URL: obvious leak closed by
+//! construction. Two less obvious:
 //!
-//! 1. A user may paste a base URL carrying userinfo (`https://u:pw@host/`).
-//!    [`Url::to_string`](url::Url) round-trips the password verbatim.
-//! 2. [`reqwest::Error`]'s own `Display` embeds the URL it failed on. Wrapping
-//!    one in a `#[from]` variant would reintroduce the leak through the error
-//!    chain even though we never format the URL ourselves.
+//! 1. Pasted base URL with userinfo (`https://u:pw@host/`);
+//!    [`Url::to_string`](url::Url) round-trips password verbatim.
+//! 2. [`reqwest::Error`] `Display` embeds failing URL; `#[from]` variant would
+//!    leak through chain without us formatting URL.
 //!
-//! Everything user-facing therefore goes through [`SafeUrl`], which keeps only
-//! scheme, host, port and path. Query strings are dropped wholesale: Miniflux
-//! does not put the token in one, but a future endpoint might, and a
-//! deny-by-default rule is the only kind that stays true.
+//! So everything user-facing goes through [`SafeUrl`]: scheme, host, port, path
+//! only. Query dropped wholesale: Miniflux doesn't put token there, future
+//! endpoint might; deny-by-default only rule that stays true.
 
 use std::fmt;
 
 use url::Url;
 
-/// A URL stripped of everything that could carry a credential.
+/// URL stripped of anything that could carry credential.
 ///
-/// Construct with [`SafeUrl::from`]. The inner string is safe to log, to put
-/// in an error message, and to show a user.
+/// Build with [`SafeUrl::from`]. Inner string safe to log, put in error, show
+/// user.
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct SafeUrl(String);
 
@@ -42,9 +40,8 @@ impl From<&Url> for SafeUrl {
         out.push_str(url.scheme());
         out.push_str("://");
 
-        // Userinfo is dropped entirely -- both the username and the password.
-        // A username is not a secret, but it is an identifier we have no
-        // reason to write to a log file.
+        // Userinfo dropped entirely, username and password. Username not
+        // secret, but no reason to log identifier.
         if let Some(host) = url.host_str() {
             out.push_str(host);
         } else {
@@ -52,13 +49,13 @@ impl From<&Url> for SafeUrl {
         }
         if let Some(port) = url.port() {
             out.push(':');
-            // `port` is a u16 from the parser, so this cannot fail.
+            // `port` = u16 from parser; can't fail.
             out.push_str(&port.to_string());
         }
         out.push_str(url.path());
 
-        // The query and fragment are dropped without inspection. See the
-        // module docs: deny-by-default is the only rule that stays true.
+        // Query and fragment dropped uninspected. Deny-by-default (module
+        // docs).
         SafeUrl(out)
     }
 }
@@ -75,24 +72,22 @@ impl fmt::Display for SafeUrl {
     }
 }
 
-/// `Debug` is deliberately identical to `Display`.
+/// `Debug` identical to `Display` on purpose.
 ///
-/// Anything holding a `SafeUrl` will be `#[derive(Debug)]`-printed sooner or
-/// later, and a derived tuple-struct debug (`SafeUrl("https://...")`) is just
-/// noise. More importantly it keeps the redaction guarantee true under both
-/// formatters rather than only the one we remembered.
+/// Holders get `#[derive(Debug)]`-printed eventually; derived
+/// `SafeUrl("https://...")` = noise. Keeps redaction true under both
+/// formatters.
 impl fmt::Debug for SafeUrl {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&self.0)
     }
 }
 
-/// An API token that cannot be printed.
+/// API token that can't be printed.
 ///
-/// The only way to read the secret back out is [`ApiToken::expose`], which is
-/// named to make a review notice it. `Debug` and `Display` both render a fixed
-/// placeholder, so a token cannot escape through a `{:?}` on some enclosing
-/// struct -- which is exactly how this class of bug usually happens.
+/// Only way out: [`ApiToken::expose`], named so review notices. `Debug` and
+/// `Display` render fixed placeholder: no escape via `{:?}` on enclosing struct
+/// (usual bug shape).
 #[derive(Clone, PartialEq, Eq)]
 pub struct ApiToken(String);
 
@@ -103,7 +98,7 @@ impl ApiToken {
         ApiToken(token.into())
     }
 
-    /// Yield the secret. Call sites should be countable on one hand.
+    /// Yield secret. Call sites countable on one hand.
     #[must_use]
     pub fn expose(&self) -> &str {
         &self.0
@@ -158,7 +153,7 @@ mod tests {
 
     #[test]
     fn token_never_renders_itself() {
-        // The struct that holds it must not leak it via a derived Debug either.
+        // Holding struct must not leak via derived Debug either.
         #[derive(Debug)]
         #[allow(dead_code)]
         struct Holder {

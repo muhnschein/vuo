@@ -1,20 +1,19 @@
-//! The settings screen's backing object.
+//! Settings screen's backing object.
 //!
-//! Holds the account and the handful of preferences that change behaviour.
-//! §7: *the API key is stored under the app's data directory with restrictive
-//! permissions, relying on Sailfish's home encryption. No custom keyring, no
-//! `SQLCipher`, unless a concrete threat model justifies it.*
+//! Holds account and few behaviour-changing preferences. §7: *the API key is
+//! stored under the app's data directory with restrictive permissions, relying
+//! on Sailfish's home encryption. No custom keyring, no `SQLCipher`, unless a
+//! concrete threat model justifies it.*
 //!
-//! The token deliberately does not live in the SQLite mirror. The mirror is a
-//! cache that can be deleted, copied for a bug report, or inspected by a
-//! developer; a credential in it would travel with all of that.
+//! Token not in SQLite mirror on purpose: mirror = cache that gets deleted,
+//! copied for bug report, inspected by developer; credential would travel with
+//! it.
 
-// Fires inside code the `QObject` derive generates, not in anything written
-// here, and a struct-level attribute does not reach the expanded impls. §9.5
-// confines unsafe to this crate for exactly this reason: qmetaobject's
-// generated glue does pointer work that clippy reads as suspicious in
-// isolation. Only `Settings` trips it -- the list models use
-// `qt_base_class!(trait QAbstractListModel)`, which expands differently.
+// Fires inside code `QObject` derive generates; struct-level attribute doesn't
+// reach expanded impls. §9.5 confines unsafe to this crate for this:
+// qmetaobject glue does pointer work clippy reads as suspicious alone. Only
+// `Settings` trips it; list models use `qt_base_class!(trait
+// QAbstractListModel)`, expands differently.
 #![allow(clippy::useless_transmute)]
 
 use qmetaobject::{qt_base_class, qt_method, qt_property, qt_signal, QObject, QString};
@@ -22,8 +21,8 @@ use qmetaobject::{qt_base_class, qt_method, qt_property, qt_signal, QObject, QSt
 use crate::context::AppContext;
 use crate::worker::{self, Account, AppPaths, Command};
 
-/// How un-proxied third-party media is treated. Crosses to QML as an integer,
-/// because this `qmetaobject` version has no `qml_register_enum` on Qt 5.6.
+/// How un-proxied third-party media treated. Integer to QML: this `qmetaobject`
+/// has no `qml_register_enum` on Qt 5.6.
 pub const MEDIA_STRICT: i32 = 0;
 /// Un-proxied media waits behind a tap-to-load placeholder. The default.
 pub const MEDIA_ASK: i32 = 1;
@@ -33,53 +32,47 @@ pub const MEDIA_ALLOW: i32 = 2;
 /// Background refresh intervals, in minutes. Index 0 is "manual only".
 pub const SYNC_INTERVALS_MINUTES: [i64; 5] = [0, 15, 30, 60, 360];
 
-/// A new install syncs hourly.
+/// New install syncs hourly.
 ///
-/// "Manual only" was the default by accident rather than by choice: it is
-/// index 0, and index 0 is what `i32::default()` gives. So every new install
-/// was a reader that never refreshed until the user found the pulley menu --
-/// the one behaviour a feed reader must not have out of the box. Hourly is
-/// the compromise this settles on: often enough that the list is worth
-/// opening, rare enough to be invisible on a phone's battery and on a
-/// self-hosted server.
+/// Not index 0: index 0 = "Manual only" = `i32::default()`, a reader that never
+/// refreshes until user finds pulley (behaviour feed reader must not ship
+/// with). Hourly: often enough list is worth opening, rare enough to be
+/// invisible on phone battery and self-hosted server.
 pub const SYNC_INTERVAL_DEFAULT_INDEX: i32 = 3;
 
-/// When an opened article is marked read. Index 0 is "never".
+/// When opened article marked read. Index 0 = "never".
 ///
-/// "Never" sits at index 0 on purpose: `i32::default()` is 0, so any future
-/// wiring mistake degrades to the feature doing nothing, rather than to every
-/// article the user glances at being marked read and pushed to the server.
-/// That is the safe polarity for a destructive default.
+/// "Never" at index 0 on purpose: `i32::default()` is 0, so future wiring
+/// mistake degrades to feature doing nothing, not every glanced article marked
+/// read and pushed to server. Safe polarity for destructive default.
 pub const MARK_READ_NEVER: i32 = 0;
 /// Mark read as soon as the article opens.
 pub const MARK_READ_IMMEDIATELY: i32 = 1;
 /// Seconds for the delayed choices, from index 2 onward.
 pub const MARK_READ_DELAYS_SECONDS: [i32; 3] = [5, 15, 30];
-/// A new install marks read after 5 seconds: long enough to absorb a mis-tap
-/// and a glance at the headline, short enough that a read article does not
-/// stay in the unread list.
+/// New install marks read after 5 seconds: absorbs mis-tap and headline glance;
+/// read article doesn't linger in unread list.
 pub const MARK_READ_DEFAULT_INDEX: i32 = 2;
 
-/// How long a read, unfavourited article is kept in the local mirror, in days.
+/// How long read, unfavourited article kept in local mirror, days.
 ///
-/// Index 0 is "keep everything", and it is index 0 for the reason
-/// [`MARK_READ_NEVER`] is: `i32::default()` is 0, so a wiring mistake, a
-/// hand-edited account file or an account written before this setting existed
-/// degrades to Vuo deleting nothing. The safe polarity for a destructive
-/// default is the one where the default destroys nothing.
+/// Index 0 = "keep everything", same reason as [`MARK_READ_NEVER`]:
+/// `i32::default()` is 0, so wiring mistake, hand-edited account file, or
+/// account predating setting degrades to deleting nothing. Destructive
+/// default's safe polarity destroys nothing.
 pub const RETENTION_DAYS: [i64; 5] = [0, 30, 90, 180, 365];
 
-/// A new install keeps everything, as every version before this one did.
+/// New install keeps everything.
 ///
-/// Not a recommendation -- a month would serve most readers better -- but the
-/// mirror is the reader's, and an update that starts deleting their articles
-/// because the author thought it should is not a setting, it is a surprise.
+/// Not recommendation (a month suits most), but mirror is reader's; update
+/// starting to delete articles because author thought so = surprise, not
+/// setting.
 pub const RETENTION_DEFAULT_INDEX: i32 = 0;
 
-/// The retention window a stored `retention_index` means, in seconds.
+/// Retention window stored `retention_index` means, seconds.
 ///
-/// `None` for "keep everything", and `None` for an index that is not one of
-/// ours -- the same conservative direction as the constant above.
+/// `None` for "keep everything" and for unknown index: same conservative
+/// direction.
 #[must_use]
 pub fn retention_seconds_for(index: i32) -> Option<i64> {
     usize::try_from(index)
@@ -90,11 +83,10 @@ pub fn retention_seconds_for(index: i32) -> Option<i64> {
         .and_then(|days| days.checked_mul(24 * 60 * 60))
 }
 
-/// How long an article must be open before it counts as read.
+/// How long article must be open before counting read.
 ///
-/// `None` never, `Some(0)` immediately, `Some(n)` after n seconds. An index a
-/// hand-edited account file made up falls back to `None` -- the same
-/// conservative direction as the constant above.
+/// `None` never, `Some(0)` immediately, `Some(n)` after n seconds. Index made
+/// up by hand-edited account file → `None`: same conservative direction.
 #[must_use]
 pub fn mark_read_delay_seconds(index: i32) -> Option<i32> {
     match index {
@@ -108,9 +100,9 @@ pub fn mark_read_delay_seconds(index: i32) -> Option<i32> {
     }
 }
 
-/// The settings screen's backing object; see the module docs.
-// The bools are `qt_property!`s, each its own setting or state that QML
-// binds to by name; a bitfield would hide them from QML.
+/// Settings screen's backing object; see module docs.
+// Bools are `qt_property!`s, each own setting/state QML binds by name; bitfield
+// hides them from QML.
 #[allow(clippy::struct_excessive_bools)]
 #[derive(QObject, Default)]
 pub struct Settings {
@@ -126,26 +118,24 @@ pub struct Settings {
     /// How long read articles are kept locally. See [`RETENTION_DAYS`].
     retentionIndex: qt_property!(i32; NOTIFY changed),
     wifiOnly: qt_property!(bool; NOTIFY changed),
-    /// Raise a notification when a sync finds new articles while Vuo is on
-    /// its cover. Read by the root window rather than the worker: the worker
-    /// only writes the mirror, and the notification is the UI's to raise.
+    /// Raise notification when sync finds new articles while Vuo on cover. Read
+    /// by root window, not worker: worker only writes mirror; notification is
+    /// UI's to raise.
     notifyNewArticles: qt_property!(bool; NOTIFY changed),
-    /// How often the root window polls the mirror while the app is NOT
-    /// active, in milliseconds; 0 for "do not poll at all".
+    /// How often root window polls mirror while app NOT active, ms; 0 = don't
+    /// poll.
     ///
-    /// Derived from the sync interval, because the only thing that can change
-    /// what the cover shows while the app is away is an automatic sync
-    /// finishing. See [`cover_poll_ms_for`].
+    /// Derived from sync interval: only thing changing cover while away =
+    /// automatic sync finishing. See [`cover_poll_ms_for`].
     coverPollMs: qt_property!(i32; READ cover_poll_ms NOTIFY changed),
     useCustomCa: qt_property!(bool; NOTIFY changed),
-    /// How many local changes are still waiting to reach the server. Shown so
-    /// the user can tell "nothing happened" from "not sent yet".
+    /// Local changes still waiting to reach server. Lets user tell "nothing
+    /// happened" from "not sent yet".
     pendingActions: qt_property!(i32; READ pendingActionsCount NOTIFY changed),
-    /// Whether an account is stored at all: a server and a key. What the
-    /// root window asks on start-up to choose between the entry list and the
-    /// onboarding page, and what the onboarding page asks again on its way
-    /// back from Settings. Read from the file each time, so the answer is
-    /// right before anything has called `reload`.
+    /// Whether account stored at all (server and key). Root window asks on
+    /// start-up to pick entry list vs onboarding; onboarding asks again
+    /// returning from Settings. Read from file each time: right before anything
+    /// called `reload`.
     configured: qt_property!(bool; READ is_configured NOTIFY changed),
 
     changed: qt_signal!(),
@@ -153,45 +143,35 @@ pub struct Settings {
     connectionTested: qt_signal!(ok: bool, message: QString),
 
     save: qt_method!(fn(&mut self)),
-    /// Read the stored account into this object's properties.
+    /// Read stored account into properties.
     ///
-    /// QML has to call this, and nothing did. `attach` -- the only caller of
-    /// `load` -- has no production callers at all, so the settings screen
-    /// never read the account file: every visit showed a blank server address
-    /// and a blank API key however many times they had been saved, and every
-    /// other control showed a Rust default rather than the stored value. The
-    /// Images setting in particular showed "Never load", because `i32::default`
-    /// is 0 and the `MEDIA_ASK` default only happens inside the load that was
-    /// not running.
+    /// QML calls this on page open. Without it page shows blank server and key
+    /// however often saved, and Rust defaults for other controls (Images "Never
+    /// load": `i32::default()` is 0; `MEDIA_ASK` default only set inside load).
     reload: qt_method!(fn(&mut self)),
     testConnection: qt_method!(fn(&mut self)),
-    /// Drain the worker's pending result and fire [`connectionTested`].
+    /// Drain worker's pending result, fire [`connectionTested`].
     ///
-    /// A poll for the same reason `EntryModel::pollSync` is one: QML owns this
-    /// object, so Rust has no handle to signal into. Before this existed the
-    /// worker's answer reached a log line and nothing else, so "Test
-    /// connection" gave the user no feedback at all -- right or wrong
-    /// credentials, the result Label stayed hidden.
+    /// Poll, same reason as `EntryModel::pollSync`: QML owns object, Rust has
+    /// no handle to signal into. Without it worker's answer reaches only log;
+    /// "Test connection" gives no feedback either way.
     pollNotice: qt_method!(fn(&mut self) -> bool),
 
     ctx: Option<std::rc::Rc<AppContext>>,
 
-    /// A result this page produced itself, with no worker involved: "there is
-    /// nothing to test yet", "the address is not a URL", "the account could
-    /// not be written".
+    /// Result this page produced itself, no worker: "nothing to test yet",
+    /// "address not URL", "account couldn't be written".
     ///
-    /// It waits in a one-shot slot and is drained by the same poll the
-    /// worker's answers arrive through, rather than firing `connectionTested`
-    /// straight from inside the tap. QML starts that poll *after*
-    /// `testConnection()` returns, so a signal emitted during the call would
-    /// be missed and the poll would then run forever waiting for an answer
-    /// that had already been given.
+    /// Waits in one-shot slot, drained by same poll as worker answers, not
+    /// fired from inside tap. QML starts poll *after* `testConnection()`
+    /// returns: signal during call would be missed, poll runs forever for
+    /// answer already given.
     local_notice: Option<(bool, String)>,
 }
 
 impl Settings {
-    /// Give this object a context explicitly and load the stored account into
-    /// it. Only the tests call it; QML calls `reload` instead.
+    /// Give object context explicitly, load stored account. Tests only; QML
+    /// calls `reload`.
     pub fn attach(&mut self, ctx: std::rc::Rc<AppContext>) {
         self.ctx = Some(ctx);
         self.load();
@@ -208,26 +188,18 @@ impl Settings {
 
     /// `Settings::load` against explicit paths.
     ///
-    /// Split out so the settings screen's own read path can be tested. The
-    /// no-arg version resolves `$XDG_DATA_HOME`/`$HOME`, so a test that called
-    /// it was reading the developer's real home directory: on a machine where
-    /// Vuo is actually configured it took the loaded branch and passed with the
-    /// default flipped.
+    /// Split so screen's read path testable. No-arg version resolves
+    /// `$XDG_DATA_HOME`/`$HOME`: test calling it reads developer's real home
+    /// (configured Vuo → loaded branch, passes with default flipped).
     pub fn load_from(&mut self, paths: &AppPaths) {
-        // A first run gets `Account::default()`, which is the one place the
-        // out-of-the-box settings live -- and the same values serde fills in
-        // for a field an older account file does not carry.
-        //
-        // This branch used to write its own list of defaults, and the two
-        // drifted: a first run left the sync interval at `i32::default()`,
-        // which is "Manual only", while an account file merely MISSING the
-        // field was given the real default. A new install therefore never
-        // refreshed on its own.
+        // First run gets `Account::default()`: one home of out-of-box settings,
+        // same values serde fills for fields older account file lacks. No
+        // separate default list here: two lists drift (e.g. first run left at
+        // `i32::default()` "Manual only" while missing field got real default).
         let account = worker::load_account(&paths.account).unwrap_or_default();
         self.serverUrl = QString::from(account.server_url);
-        // The key is loaded so the field is not blank when the user opens
-        // settings to change something else. It is displayed with
-        // echoMode: Password.
+        // Key loaded so field isn't blank when user changes something else.
+        // Displayed with echoMode: Password.
         self.apiKey = QString::from(account.token);
         self.useCustomCa = account.use_custom_ca;
         self.mediaPolicy = account.media_policy;
@@ -238,8 +210,8 @@ impl Settings {
         self.notifyNewArticles = account.notify_new_articles;
     }
 
-    // A method because QML calls it on the object; it reads the account file,
-    // not the object, so that a fresh setup is seen without a reload.
+    // Method: QML calls it on object. Reads account file, not object, so fresh
+    // setup seen without reload.
     #[allow(clippy::unused_self)]
     fn is_configured(&self) -> bool {
         AppPaths::resolve()
@@ -271,34 +243,28 @@ impl Settings {
 
     /// `Settings::save` against explicit paths.
     ///
-    /// The copy from the QML-visible properties into `Account` lives here, so
-    /// a test can drive the real one. The round-trip test used to build an
-    /// `Account` by hand and round-trip THAT, which exercises serde's derive
-    /// rather than the settings screen: dropping three fields from this copy
-    /// left it green.
+    /// Copy from QML-visible properties into `Account` lives here: tests drive
+    /// real one. Hand-built `Account` round trip tests serde derive, not
+    /// settings screen.
     pub fn save_to(&mut self, paths: &AppPaths) {
         self.store(paths);
-        // Last, with nothing after it. See `store`.
+        // Last, nothing after. See `store`.
         self.changed();
     }
 
-    /// Write the account and make the running app match it. Emits nothing.
+    /// Write account, make running app match. Emits nothing.
     ///
-    /// Split from [`Settings::save_to`] so that `changed()` is emitted ONCE,
-    /// by whichever QML-invoked method is outermost, as its final act.
+    /// Split from [`Settings::save_to`] so `changed()` emitted ONCE, by
+    /// outermost QML-invoked method, as final act.
     ///
-    /// That is not tidiness. `qmetaobject` dispatches every QML call by
-    /// building a fresh `&mut Self` from a raw pointer -- deliberately, so
-    /// that re-entrant calls work at all -- so emitting a signal part-way
-    /// through a `&mut self` method hands QML an object Rust still holds
-    /// exclusively. Every binding that reads `settings.pendingActions` (and
-    /// `configured`, which flips on the very first save) re-evaluates inside
-    /// that emit, and each one is a second live `&mut Settings` over the same
-    /// memory while this call's own is outstanding. `save_to` used to emit and
-    /// then RETURN INTO `test_connection_with`, which goes on to read and write
-    /// `self` -- so the aliasing window covered the rest of the tap, under
-    /// `lto = true, opt-level = "z"`, where the compiler is entitled to assume
-    /// it cannot happen.
+    /// Not tidiness. `qmetaobject` dispatches every QML call by building fresh
+    /// `&mut Self` from raw pointer (deliberately, so re-entrant calls work):
+    /// emitting mid-method hands QML object Rust still holds exclusively. Every
+    /// binding reading `settings.pendingActions` (and `configured`, flipping on
+    /// first save) re-evaluates inside emit, each a second live `&mut Settings`
+    /// over same memory. Emitting then returning into `test_connection_with`
+    /// (reads/writes `self`) would stretch aliasing over rest of tap, under
+    /// `lto = true, opt-level = "z"`, where compiler assumes it can't happen.
     fn store(&mut self, paths: &AppPaths) {
         tracing::info!("saving the account");
         let account = Account {
@@ -315,12 +281,11 @@ impl Settings {
         if account.server_url.is_empty() || account.token.is_empty() {
             return;
         }
-        // Written with mode 0600; see worker::save_account.
+        // Mode 0600; see worker::save_account.
         //
-        // The result used to be discarded. It cannot be: everything below
-        // assumes the file on disk now says what this screen says, and if the
-        // write failed the context rebuild would happily come back with the
-        // PREVIOUS account and report a confident answer about it.
+        // Result can't be discarded: everything below assumes file says what
+        // screen says; failed write → context rebuild returns PREVIOUS account,
+        // answers confidently about it.
         if let Err(e) = worker::save_account(&paths.account, &account) {
             tracing::warn!(error = %e, "could not write the account file");
             self.local_notice = Some((false, e.to_string()));
@@ -328,46 +293,38 @@ impl Settings {
         }
         tracing::info!("the account file is written");
 
-        // Make the running app match what was just written.
+        // Make running app match what was written.
         //
-        // This is the hop the first-run failure hid behind. The context — the
-        // mirror and the worker thread — was built exactly once, at start-up,
-        // from an account file that does not exist until this function has run
-        // at least once. So the first time a user filled in a server and a key,
-        // there was still no worker: "Test connection" and the pulley menu's
-        // Refresh reached nothing and did nothing, with no error and no
-        // spinner, until Vuo was restarted.
+        // First-run hop: context (mirror, worker thread) needs account file
+        // that doesn't exist until this runs once. Without refresh here, first
+        // server and key entry leaves no worker: "Test connection" and pulley
+        // Refresh silently do nothing until restart.
         //
-        // It also matters on every later save. The worker captures the server
-        // URL and the API key when it spawns, so without this a test after
-        // editing the address would answer for the address it replaced.
-        // `refresh` is a no-op when neither changed.
+        // Every later save too: worker captures server URL and API key at
+        // spawn; without this, test after editing address answers for replaced
+        // address. `refresh` no-op when neither changed.
         if let Err(e) = crate::context::refresh(paths) {
             tracing::warn!(error = %e, "the saved account did not yield a usable context");
             self.local_notice = Some((false, e.to_string()));
         }
 
-        // And publish the media policy to the live context, or the open article
-        // keeps the policy it was built with. This is the hop that was missing:
-        // the control was rendered, persisted, and read back on the next
-        // launch, but never reached the transform.
+        // Publish media policy to live context, else open article keeps policy
+        // it was built with. Control must reach transform, not just persist.
         if let Some(ctx) = self.ctx.clone().or_else(crate::context::current) {
             ctx.set_media_policy(self.mediaPolicy);
             ctx.set_mark_read_delay_index(self.markReadDelayIndex);
-            // And the interval, to the worker that keeps it. A context
-            // rebuilt just above was told at build time; one that survived
-            // the save -- same server, same key -- hears it here.
+            // Interval, to worker keeping it. Context rebuilt above told at
+            // build; one surviving save (same server, key) hears it here.
             ctx.send(Command::SetSyncInterval {
                 minutes: sync_interval_minutes_for(self.syncIntervalIndex),
             });
-            // And the retention window, which the worker applies at the end of
-            // the next pass. Same hop, same reason: a worker that survived the
-            // save was told its window when it spawned.
+            // Retention window, applied by worker at end of next pass. Same
+            // hop, same reason.
             ctx.send(Command::SetRetention {
                 seconds: retention_seconds_for(self.retentionIndex),
             });
-            // And "Only sync on Wi-Fi", which the worker consults against the
-            // network it reads when its own work falls due.
+            // "Only sync on Wi-Fi", which worker checks against network it
+            // reads when its work falls due.
             ctx.send(Command::SetWifiOnly {
                 enabled: self.wifiOnly,
             });
@@ -388,42 +345,40 @@ impl Settings {
 
     /// `Settings::testConnection` against explicit paths.
     ///
-    /// Split out for the same reason `save_to` is: the no-arg version resolves
-    /// `$XDG_DATA_HOME`/`$HOME`, so a test that drove it would be reading — and
-    /// writing — the developer's real account file.
+    /// Split, same reason as `save_to`: no-arg version resolves
+    /// `$XDG_DATA_HOME`/`$HOME`; test would read and write developer's real
+    /// account.
     ///
-    /// Every branch here leaves the user something to read. The button used to
-    /// have three ways to do nothing at all: no context to send through, a
-    /// worker that had already stopped, and a send whose result was discarded.
-    /// "Nothing happened" is the one answer a Test button must never give.
+    /// Every branch leaves user something to read (no context, stopped worker,
+    /// failed send all answer). "Nothing happened" = one answer Test button
+    /// must never give.
     pub fn test_connection_with(&mut self, paths: &AppPaths) {
-        // Each tap starts fresh. An answer left over from the previous one --
-        // not yet drained, since the page polls every 400ms -- would otherwise
-        // be read as this tap's, and would short-circuit the check below.
+        // Each tap starts fresh. Leftover answer from previous tap (not yet
+        // drained; page polls every 400ms) would read as this tap's,
+        // short-circuiting check below.
         self.local_notice = None;
         tracing::info!("testing the connection");
-        // `store` rather than `save_to`: the emit belongs at the end of this
-        // method, not in the middle of it. See `store`.
+        // `store`, not `save_to`: emit belongs at end of this method. See
+        // `store`.
         self.store(paths);
         self.ask_the_worker();
-        // Last, with nothing after it. The line below reads no `self`.
+        // Last, nothing after. Line below reads no `self`.
         self.changed();
         tracing::info!("the settings screen has finished the test");
     }
 
     /// Send the test, or record why it could not be sent. Emits nothing.
     fn ask_the_worker(&mut self) {
-        // `store` refreshes the context, so by here there is one unless the
-        // account could not be written or does not describe a usable
-        // configuration -- in which case it left the reason here, and that
-        // reason is better than anything this could add.
+        // `store` refreshes context: one exists here unless account couldn't be
+        // written or isn't usable config; then it left reason here, better than
+        // anything added.
         if self.local_notice.is_some() {
             return;
         }
 
         let Some(ctx) = self.ctx.clone().or_else(crate::context::current) else {
-            // `store` returns early, without writing, when either field is
-            // blank -- so this is what an empty form reaches.
+            // `store` returns early without writing when either field blank:
+            // empty form reaches this.
             self.local_notice = Some((
                 false,
                 "fill in the server address and the API key first".to_owned(),
@@ -434,8 +389,8 @@ impl Settings {
         if ctx.send(Command::TestConnection) {
             tracing::info!("the test is queued for the worker");
         } else {
-            // The worker stops itself if the mirror or the HTTP client could
-            // not be built, and a send into its closed channel is silent.
+            // Worker stops itself if mirror or HTTP client couldn't be built;
+            // send into closed channel silent.
             self.local_notice = Some((
                 false,
                 "the sync worker is not running; restart Vuo".to_owned(),
@@ -444,10 +399,9 @@ impl Settings {
     }
 
     fn pollNotice(&mut self) -> bool {
-        // This page's own result comes first, and is checked before the
-        // context is: it exists precisely for the cases where the request
-        // never reached a worker, and in the worst of those there is no
-        // context to poll at all.
+        // Page's own result first, checked before context: exists for cases
+        // where request never reached worker; worst of those has no context to
+        // poll.
         if let Some((ok, message)) = self.local_notice.take() {
             self.on_connection_tested(ok, &message);
             return true;
@@ -459,16 +413,15 @@ impl Settings {
         self.poll_notice_from(&signal)
     }
 
-    /// `Settings::pollNotice` against an explicit signal, so the worker →
-    /// page round trip can be tested without a QML engine or a context.
+    /// `Settings::pollNotice` against explicit signal: worker → page round trip
+    /// testable without QML engine or context.
     pub fn poll_notice_from(&mut self, signal: &crate::context::SyncSignal) -> bool {
         match signal.take_notice() {
             Some(crate::context::Notice::ConnectionTested { ok, message }) => {
                 self.on_connection_tested(ok, &message);
                 true
             }
-            // Not this page's to show; put it back so the page that cares can
-            // take it.
+            // Not this page's; put back for page that cares.
             Some(other) => {
                 signal.post(other);
                 false
@@ -509,23 +462,18 @@ impl Settings {
     }
 }
 
-/// A quarter of the sync interval, in milliseconds, or 0 for "Manual only".
+/// Quarter of sync interval, ms; 0 for "Manual only".
 ///
-/// # What this number is for
+/// # What it's for
 ///
-/// The root window's poll is how the models learn that the worker wrote to the
-/// mirror. It used to run at 1.5 seconds for the life of the process, which on
-/// a minimised app is forty wakeups a minute to notice something that happens
-/// once an hour. Stopping it outright is most of the win -- but it also froze
-/// the cover, which is the one thing a minimised Vuo is still showing anybody:
-/// a sync that finished while the app was away left the unread count as it had
-/// been until the reader opened the app.
+/// Root window's poll = how models learn worker wrote mirror. Fixed 1.5 s poll
+/// on minimised app = forty wakeups a minute for hourly event. Stopping
+/// outright freezes cover (only thing minimised Vuo still shows): sync
+/// finishing while away leaves unread count stale until app opens.
 ///
-/// So the poll does not stop while the app is away, it slows down to the
-/// cadence of the only event it could possibly see. A quarter of the interval
-/// bounds how stale the cover can be at a quarter of the gap between syncs,
-/// which is the same proportion at every setting -- so the number means the
-/// same thing to a reader on fifteen minutes as to one on six hours:
+/// So poll slows to cadence of only event it could see. Quarter of interval
+/// bounds cover staleness at quarter of sync gap, same proportion at every
+/// setting:
 ///
 /// | Sync           | Poll         | Wakeups an hour |
 /// | -------------- | ------------ | --------------- |
@@ -535,20 +483,18 @@ impl Settings {
 /// | Hourly         | 15 min       | 4               |
 /// | Every 6 hours  | 90 min       | 0.67            |
 ///
-/// Against 2,400 an hour before, the worst of those is a 150-fold cut.
+/// Against 2,400/hour at 1.5 s, worst of those = 150-fold cut.
 ///
-/// **Manual only polls not at all.** Nothing syncs on its own, so there is
-/// nothing for a tick to find. A refresh started from the cover's own action
-/// is not covered by this and does not need to be -- the root window keeps its
-/// fast poll running for the length of that one sync; see `harbour-vuo.qml`.
+/// **Manual only polls not at all.** Nothing syncs alone; nothing for tick to
+/// find. Refresh from cover's own action not covered and needn't be: root
+/// window keeps fast poll for that one sync; see `harbour-vuo.qml`.
 #[must_use]
 pub fn cover_poll_ms_for(index: i32) -> i32 {
     let Some(minutes) = sync_interval_minutes_for(index) else {
         return 0;
     };
-    // Saturating throughout: `index` comes off a stored file, and a quarter of
-    // six hours is 5.4 million milliseconds -- comfortably inside an i32, but
-    // this should not depend on the table never growing a larger entry.
+    // Saturating throughout: `index` from stored file; quarter of six hours =
+    // 5.4M ms (fits i32), but mustn't depend on table never growing.
     minutes
         .saturating_mul(60_000)
         .checked_div(4)
@@ -557,9 +503,9 @@ pub fn cover_poll_ms_for(index: i32) -> i32 {
         .unwrap_or(i32::MAX)
 }
 
-/// The sync interval a stored `sync_interval_index` means, in minutes, or
-/// `None` for "Manual only". Shared with the context, which reads the index
-/// from the account file when it builds the worker and has no `Settings`.
+/// Sync interval stored `sync_interval_index` means, minutes, or `None` for
+/// "Manual only". Shared with context, which reads index from account file when
+/// building worker, has no `Settings`.
 #[must_use]
 pub fn sync_interval_minutes_for(index: i32) -> Option<i64> {
     let index = usize::try_from(index).unwrap_or(0);
@@ -575,18 +521,16 @@ mod tests {
 
     /// §what a new install is set to before anyone has chosen anything.
     ///
-    /// Two of these are the difference between a reader that works out of the
-    /// box and one that looks broken: never refreshing on its own, and
-    /// blanking every image. Both are index 0 of their list, and index 0 is
-    /// `i32::default()` -- so a default that is never applied does not look
-    /// like a wrong value, it looks like the first entry, which is exactly how
-    /// "Manual only" came to be what a new install got.
+    /// Two of these separate working-out-of-box from looking broken: never
+    /// refreshing alone, and blanking every image. Both index 0 of their lists,
+    /// index 0 = `i32::default()`: unapplied default doesn't look wrong, looks
+    /// like first entry.
     #[test]
     fn a_first_run_is_set_up_to_work_before_anyone_configures_it() {
         let dir = tempfile::tempdir().expect("tempdir");
         let paths = temp_paths(&dir);
 
-        // The settings screen's read, with no account file to read.
+        // Settings screen's read, no account file.
         let mut s = Settings::default();
         s.load_from(&paths);
         assert_eq!(s.mediaPolicy, MEDIA_ASK, "images: ask each site");
@@ -601,14 +545,13 @@ mod tests {
             "notifications: off until the reader asks for them"
         );
 
-        // And what the setup dialog stores. It shows none of these controls,
-        // so the account it writes carries whatever this object holds -- which
-        // before `reload` is zero for every one of them.
+        // What setup dialog stores. Shows none of these controls: account
+        // written carries whatever object holds (before `reload`, zero for
+        // all).
         //
-        // The discard port, not an unroutable address: saving builds a real
-        // worker, and hourly means it has a sync due. Port 9 refuses at once,
-        // where 10.77.0.1 would hold the thread for the connect timeout and
-        // the test binary cannot exit until it lets go.
+        // Discard port, not unroutable address: saving builds real worker,
+        // hourly means sync due. Port 9 refuses at once; 10.77.0.1 holds thread
+        // for connect timeout, binary can't exit until released.
         s.serverUrl = QString::from("http://127.0.0.1:9/");
         s.apiKey = QString::from("k");
         s.save_to(&paths);
@@ -619,31 +562,26 @@ mod tests {
         assert!(!stored.notify_new_articles);
     }
 
-    /// A QML-invoked method emits its signal LAST, and touches `self` no more.
+    /// QML-invoked method emits signal LAST, touches `self` no more.
     ///
-    /// `qmetaobject` dispatches every QML call by building a fresh `&mut Self`
-    /// from a raw pointer, on purpose -- the generated code carries a FIXME
-    /// saying it skips `RefCell::borrow_mut` so that re-entrant calls work at
-    /// all. So an emitted signal is not a message posted for later: it runs
-    /// QML synchronously, and every binding that reads a property of THIS
-    /// object comes straight back through that dispatch as a second live
-    /// `&mut Settings` over the same memory. That is aliasing the compiler is
-    /// entitled to assume away, and the device package is built with
-    /// `lto = true, opt-level = "z"`, where it will.
+    /// `qmetaobject` dispatches every QML call by building fresh `&mut Self`
+    /// from raw pointer, on purpose (generated code carries FIXME: skips
+    /// `RefCell::borrow_mut` so re-entrant calls work). Emitted signal runs QML
+    /// synchronously; every binding reading THIS object's property returns
+    /// through dispatch as second live `&mut Settings` over same memory.
+    /// Aliasing compiler may assume away; device package built `lto = true,
+    /// opt-level = "z"`, where it will.
     ///
-    /// Emitting is still necessary -- it is how QML hears about anything -- so
-    /// the rule is not "never emit" but "emit once, at the end, and be
-    /// finished with `self`". `save_to` used to emit and then RETURN INTO
-    /// `test_connection_with`, which goes on to read and write `self`: the
-    /// aliasing window covered the rest of the tap.
+    /// Emitting still needed (how QML hears anything): rule = emit once, at
+    /// end, done with `self`.
     ///
-    /// Read from the source because there is nothing at runtime to assert on.
+    /// Read from source: nothing at runtime to assert on.
     #[test]
     fn a_method_that_emits_is_finished_with_itself() {
         const SOURCE: &str = include_str!("settings.rs");
         const EMIT: &str = "self.changed()";
 
-        // The methods QML enters. Each must emit exactly once, last.
+        // Methods QML enters. Each emits exactly once, last.
         for signature in ["fn save_to(", "fn test_connection_with(", "fn reload("] {
             let body = method_body(SOURCE, signature);
             let emit = body
@@ -656,8 +594,7 @@ mod tests {
             );
         }
 
-        // And the helpers they are split into emit nothing at all, or the
-        // split bought nothing.
+        // Helpers they're split into emit nothing, else split bought nothing.
         for signature in ["fn store(", "fn ask_the_worker("] {
             let body = method_body(SOURCE, signature);
             assert!(
@@ -687,16 +624,13 @@ mod tests {
 
     #[test]
     fn every_setting_survives_a_round_trip() {
-        // The Images, Background refresh and Wi-Fi-only controls were rendered
-        // but never persisted or read: changing them did nothing at all, and
-        // nothing in the build said so.
+        // Images, Background refresh, Wi-Fi-only controls persisted and read
+        // back.
         //
-        // The round trip goes through `Settings` itself. It used to build an
-        // `Account` literal and round-trip THAT through save_account /
-        // load_account, which tests serde's derive rather than the settings
-        // screen: dropping `use_custom_ca`, `media_policy` and
-        // `sync_interval_index` from `Settings::save`'s copy -- the exact bug
-        // in the comment above -- left it green.
+        // Round trip through `Settings` itself, not `Account` literal through
+        // save_account / load_account (that tests serde derive): dropping
+        // `use_custom_ca`, `media_policy`, `sync_interval_index` from
+        // `Settings::save`'s copy must fail here.
         let dir = tempfile::tempdir().expect("tempdir");
         let paths = temp_paths(&dir);
 
@@ -726,8 +660,8 @@ mod tests {
 
     #[test]
     fn an_account_file_from_an_older_build_still_loads() {
-        // The new fields must be optional, or upgrading would strand the user
-        // with an unreadable account and no obvious way back.
+        // New fields optional, else upgrade strands user with unreadable
+        // account, no obvious way back.
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join("account.json");
         std::fs::write(&path, r#"{"server_url":"https://h.example/","token":"t"}"#).expect("write");
@@ -742,13 +676,12 @@ mod tests {
 
     #[test]
     fn the_default_media_policy_is_ask_not_strict() {
-        // On a stock Miniflux MEDIA_PROXY_MODE is http-only, so most images
-        // arrive un-proxied. Strict by default would blank most articles.
+        // Stock Miniflux MEDIA_PROXY_MODE http-only: most images un-proxied.
+        // Strict default would blank most articles.
         //
-        // Against an EMPTY directory of its own. Calling the no-arg `load()`,
-        // as this used to, reads $XDG_DATA_HOME/$HOME: on a machine where the
-        // developer actually runs Vuo it took the loaded branch and passed with
-        // the default flipped to Strict.
+        // Against EMPTY directory of own. No-arg `load()` reads
+        // $XDG_DATA_HOME/$HOME: on developer machine running Vuo, loaded branch
+        // passes with default flipped.
         let dir = tempfile::tempdir().expect("tempdir");
         let paths = temp_paths(&dir);
         assert!(!paths.account.exists(), "this must be a first run");
@@ -760,11 +693,9 @@ mod tests {
 
     #[test]
     fn a_worker_result_reaches_the_settings_page() {
-        // The worker answers "test this connection" on its own thread. Before
-        // `pollNotice` existed that answer reached a log line and nothing
-        // else: `on_connection_tested` had ZERO callers, so `connectionTested`
-        // never fired and SettingsPage's result Label stayed hidden whether
-        // the credentials were right or wrong.
+        // Worker answers "test this connection" on own thread; `pollNotice`
+        // carries it to `on_connection_tested`, firing `connectionTested` so
+        // SettingsPage's result Label shows.
         let signal = std::sync::Arc::new(crate::context::SyncSignal::default());
 
         let mut s = Settings::default();
@@ -773,7 +704,7 @@ mod tests {
             "nothing pending: the page must not be told anything"
         );
 
-        // As the worker does, from its own thread.
+        // As worker does, from own thread.
         let writer = std::sync::Arc::clone(&signal);
         std::thread::spawn(move || {
             writer.post(crate::context::Notice::ConnectionTested {
@@ -793,7 +724,7 @@ mod tests {
             "and it is one-shot: a drained notice must not repeat forever"
         );
 
-        // A notice meant for another page is left where it was.
+        // Notice for another page left in place.
         signal.post(crate::context::Notice::SubscriptionChanged {
             ok: false,
             message: "no".to_owned(),
@@ -807,16 +738,13 @@ mod tests {
 
     /// §the first run, end to end: an account is configured and the app works.
     ///
-    /// This is the defect a real device found. The context — the mirror and
-    /// the worker thread — was built exactly once, in `main`, from an account
-    /// file that does not exist before the user has been to Settings. On a
-    /// first run that build failed, nothing retried it, and every
-    /// worker-backed action in the running app silently did nothing: "Test
-    /// connection" gave no answer of any kind, and the pulley menu's Refresh
-    /// did not even spin. Restarting Vuo fixed it, which is why it survived.
+    /// Context (mirror, worker thread) built in `main` from account file absent
+    /// before Settings visited. Must be rebuilt on first save, else every
+    /// worker-backed action silently does nothing ("Test connection" no answer,
+    /// pulley Refresh no spin) until restart.
     ///
-    /// Nothing could catch it. `main` is in `harbour-vuo`, which has no tests
-    /// and which `make check` only lints.
+    /// `main` lives in `harbour-vuo`, no tests, `make check` only lints:
+    /// covered here.
     #[test]
     fn configuring_an_account_makes_the_app_work_without_a_restart() {
         let dir = tempfile::tempdir().expect("tempdir");
@@ -826,8 +754,8 @@ mod tests {
             "a first run starts with no context; that is the whole premise"
         );
 
-        // Exactly what the user types into the two fields, for the setup that
-        // found this: plain http to a WireGuard address, no TLS.
+        // Exactly what user types for that setup: plain http to WireGuard
+        // address, no TLS.
         let mut s = Settings {
             serverUrl: QString::from("http://10.77.0.1:8083/"),
             apiKey: QString::from("k"),
@@ -849,10 +777,9 @@ mod tests {
         );
     }
 
-    /// The worker captures the server URL and the API key when it spawns, so a
-    /// context outlives the credentials it was built from. Editing either and
-    /// testing again used to ask the OLD worker, which answered confidently
-    /// about the account the user had just replaced.
+    /// Worker captures server URL and API key at spawn; context outlives
+    /// credentials. Editing either and testing again must ask NEW worker, not
+    /// old one answering for replaced account.
     #[test]
     fn changing_the_server_replaces_the_worker_that_answers_for_it() {
         use std::rc::Rc;
@@ -868,8 +795,8 @@ mod tests {
         s.save_to(&paths);
         let first = crate::context::current().expect("a context");
 
-        // A save that changed no credential must NOT churn the worker: the
-        // Wi-Fi switch has no business restarting a sync in flight.
+        // Save changing no credential must NOT churn worker: Wi-Fi switch has
+        // no business restarting sync in flight.
         s.wifiOnly = true;
         s.save_to(&paths);
         let after_unrelated_save = crate::context::current().expect("a context");
@@ -878,7 +805,7 @@ mod tests {
             "an unrelated setting must not restart the worker"
         );
 
-        // A changed address must.
+        // Changed address must.
         s.serverUrl = QString::from("http://10.77.0.2:8083/");
         s.save_to(&paths);
         let after_new_server = crate::context::current().expect("a context");
@@ -891,7 +818,7 @@ mod tests {
             "http://10.77.0.2:8083/"
         );
 
-        // So must a changed key, which does not show up in the origin at all.
+        // So must changed key (not visible in origin).
         s.apiKey = QString::from("k2");
         s.save_to(&paths);
         let after_new_key = crate::context::current().expect("a context");
@@ -901,16 +828,15 @@ mod tests {
         );
     }
 
-    /// "Nothing happened" is the one answer a Test button must never give.
+    /// "Nothing happened" = one answer Test button must never give.
     #[test]
     fn a_connection_test_that_reaches_no_worker_still_answers() {
         let dir = tempfile::tempdir().expect("tempdir");
         let paths = temp_paths(&dir);
 
-        // An empty form. `save_to` declines to write it, so nothing downstream
-        // exists to send through -- which used to mean the tap did nothing at
-        // all, right down to leaving the QML poll spinning for an answer that
-        // was never coming.
+        // Empty form. `save_to` declines to write it, nothing downstream to
+        // send through; must still answer, else QML poll spins for answer never
+        // coming.
         let mut s = Settings::default();
         s.test_connection_with(&paths);
         assert!(
@@ -923,9 +849,8 @@ mod tests {
             "one-shot: a drained result must not repeat forever"
         );
 
-        // An address that is not a URL is the other way to get here, and the
-        // likeliest typo: a host and port with no scheme saves fine and then
-        // fails to build anything.
+        // Address that isn't URL: other way here, likeliest typo. Host:port
+        // without scheme saves fine, then fails to build anything.
         let mut s = Settings {
             serverUrl: QString::from("10.77.0.1:8083"),
             apiKey: QString::from("k"),
@@ -942,13 +867,9 @@ mod tests {
 
     /// §the settings screen shows what is actually stored.
     ///
-    /// `load_from` had exactly one caller, `attach`, and `attach` had NO
-    /// production callers -- so the page never read the account file. Every
-    /// visit showed a blank server address and a blank API key however many
-    /// times they had been saved, and every other control showed a Rust
-    /// default: Images in particular showed "Never load", because `i32::
-    /// default()` is 0 and the `MEDIA_ASK` default only happens inside the
-    /// load that was not running. `reload` is what QML now calls.
+    /// QML calls `reload`, which reads account file: page shows saved server
+    /// and key, and stored values for every control, not Rust defaults (Images
+    /// not "Never load" from `i32::default()` 0).
     #[test]
     fn the_page_shows_the_stored_account_rather_than_rust_defaults() {
         let dir = tempfile::tempdir().expect("tempdir");
@@ -964,7 +885,7 @@ mod tests {
         };
         written.save_to(&paths);
 
-        // A second visit to the page, as a fresh QML-constructed object.
+        // Second visit to page, as fresh QML-constructed object.
         let mut reopened = Settings::default();
         assert_eq!(
             reopened.serverUrl.to_string(),
@@ -986,33 +907,32 @@ mod tests {
 
     #[test]
     fn every_mark_read_choice_maps_to_a_delay_and_nonsense_never_marks() {
-        // "Never" is index 0 on purpose: `i32::default()` is 0, so a wiring
-        // mistake has to degrade to the feature doing nothing rather than to
-        // every glanced-at article being marked read and pushed to the server.
+        // "Never" index 0 on purpose: `i32::default()` is 0; wiring mistake
+        // degrades to feature doing nothing, not every glanced article marked
+        // read and pushed.
         assert_eq!(mark_read_delay_seconds(MARK_READ_NEVER), None);
         assert_eq!(mark_read_delay_seconds(MARK_READ_IMMEDIATELY), Some(0));
         assert_eq!(mark_read_delay_seconds(2), Some(5));
         assert_eq!(mark_read_delay_seconds(3), Some(15));
         assert_eq!(mark_read_delay_seconds(4), Some(30));
 
-        // QML can put any integer in an int property, and an account file can
-        // be hand-edited. Every unrecognised value falls the safe way.
+        // QML can put any integer in int property; account file hand-editable.
+        // Every unrecognised value falls safe way.
         for index in [-1, 5, 99, i32::MAX, i32::MIN] {
             assert_eq!(mark_read_delay_seconds(index), None, "index {index}");
         }
 
-        // And the shipped default is one of the delayed choices, not "never"
-        // and not "immediately" -- a mis-tap must be recoverable.
+        // Shipped default is a delayed choice, not "never" or "immediately":
+        // mis-tap recoverable.
         assert_eq!(mark_read_delay_seconds(MARK_READ_DEFAULT_INDEX), Some(5));
     }
 
     /// §retention degrades to keeping everything, never to deleting.
     ///
-    /// The one setting in this file that destroys the user's data, so the
-    /// direction every wrong answer falls in is the property worth asserting.
-    /// Index 0 is "keep everything" precisely because `i32::default()` is 0:
-    /// an account file written before this setting existed, a hand-edited one,
-    /// and a future wiring mistake all land there.
+    /// Only setting here destroying user data: direction wrong answers fall is
+    /// property worth asserting. Index 0 = "keep everything" because
+    /// `i32::default()` is 0: account predating setting, hand-edited one,
+    /// future wiring mistake all land there.
     #[test]
     fn an_unknown_retention_index_keeps_everything() {
         assert_eq!(retention_seconds_for(RETENTION_DEFAULT_INDEX), None);
@@ -1040,7 +960,7 @@ mod tests {
 
     #[test]
     fn an_out_of_range_interval_index_does_not_panic() {
-        // QML can set any integer on an int property.
+        // QML can set any integer on int property.
         let mut s = Settings::default();
         for index in [-1, 99, i32::MAX, i32::MIN] {
             s.syncIntervalIndex = index;
@@ -1050,15 +970,12 @@ mod tests {
 
     /// §the Sync interval setting, from the picker to the worker.
     ///
-    /// `sync_interval_minutes` once had ZERO production callers: the user's
-    /// choice was rendered, persisted to the account file and read back on
-    /// the next launch, and never reached anything. The context now reads
-    /// the stored index through `sync_interval_minutes_for` when it builds
-    /// the worker, so the two must agree on what every index means.
+    /// Context reads stored index through `sync_interval_minutes_for` when
+    /// building worker; `Settings` and context must agree on every index.
     #[test]
     fn every_sync_interval_choice_means_the_same_minutes_to_the_worker() {
-        // The picker's own indices, so a reordering of SYNC_INTERVALS_MINUTES
-        // has to come through here.
+        // Picker's own indices: reordering SYNC_INTERVALS_MINUTES must come
+        // through here.
         for (index, expected) in [
             (0, None),
             (1, Some(15)),
@@ -1102,12 +1019,12 @@ mod tests {
 
     /// §the cover's cadence follows the cadence it exists to notice.
     ///
-    /// The numbers are the point: a poll far slower than the sync is a cover
-    /// showing yesterday's count, and one far faster is the wakeups this was
-    /// all about. A quarter is neither, at every setting.
+    /// Numbers are the point: poll far slower than sync = cover with
+    /// yesterday's count; far faster = the wakeups this removes. Quarter is
+    /// neither, at every setting.
     #[test]
     fn the_idle_poll_is_a_quarter_of_the_sync_interval() {
-        // The picker's own indices, in its own order.
+        // Picker's own indices, own order.
         assert_eq!(
             cover_poll_ms_for(0),
             0,
@@ -1121,10 +1038,9 @@ mod tests {
 
     /// §every choice the picker offers yields a usable Timer interval.
     ///
-    /// A QML `Timer` takes an `int` and a zero interval on a repeating timer
-    /// is a wakeup per event-loop pass -- the opposite of what this is for.
-    /// So the only interval that may be zero is the one whose timer is not
-    /// running at all.
+    /// QML `Timer` takes `int`; zero interval on repeating timer = wakeup per
+    /// event-loop pass. Only interval allowed zero is one whose timer isn't
+    /// running.
     #[test]
     fn no_sync_choice_produces_a_spinning_timer() {
         for index in 0..i32::try_from(SYNC_INTERVALS_MINUTES.len()).unwrap_or(0) {
@@ -1142,8 +1058,7 @@ mod tests {
 
     /// §an index the table does not have is "do not poll", not a panic.
     ///
-    /// It comes off a stored file, which a user can edit and a partial write
-    /// can truncate.
+    /// From stored file: user-editable, partial write can truncate.
     #[test]
     fn an_impossible_stored_index_does_not_poll() {
         assert_eq!(cover_poll_ms_for(-1), 0);

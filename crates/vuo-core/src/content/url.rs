@@ -1,56 +1,50 @@
-//! URL validation and the media-fetch policy.
+//! URL validation and media-fetch policy.
 //!
-//! Two separate rules from the scope meet in this module.
+//! Two scope rules meet here.
 //!
-//! **§9.2 — validate URL schemes after parsing.** Only `http` and `https`
-//! survive into a rendered link or image. `javascript:`, `data:`, `file:` and
-//! everything else are dropped. [`MediaUrl`] is the type that carries that
-//! guarantee: it cannot be constructed with any other scheme, including via
-//! `serde`, so a call site holding one does not need to re-check.
+//! **§9.2: validate URL schemes after parsing.** Only `http`/`https` survive
+//! into rendered link or image; `javascript:`, `data:`, `file:` etc. dropped.
+//! [`MediaUrl`] carries that guarantee: no other scheme constructible, `serde`
+//! included; holder needn't re-check.
 //!
-//! **§9.3 — route remote images through the server's media proxy.** Fetching
-//! third-party image URLs directly from the phone leaks the user's IP address
-//! and reading times to every host that appears in a feed. That is exactly the
-//! tracking Miniflux strips server-side, reintroduced by the client. Proxying
-//! is therefore the default and the direct path is an explicit opt-out, not the
-//! other way around.
+//! **§9.3: route remote images through server's media proxy.** Direct
+//! third-party fetches leak IP and reading times to every host in a feed:
+//! tracking Miniflux strips server-side. Proxy is default; direct is explicit
+//! opt-out.
 
 use std::fmt;
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use url::Url;
 
-/// A URL that is guaranteed to be `http` or `https`.
+/// URL guaranteed `http` or `https`.
 ///
-/// The invariant is enforced in every constructor including the `Deserialize`
-/// impl, so it holds for values loaded from the local database and from test
-/// fixtures as well as for freshly parsed markup.
+/// Enforced in every constructor incl. `Deserialize`: holds for database values
+/// and fixtures, not just parsed markup.
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct MediaUrl(Url);
 
 impl MediaUrl {
-    /// Parse and validate. Returns `None` for anything that is not `http(s)`.
+    /// Parse and validate. `None` for anything not `http(s)`.
     ///
-    /// Note this rejects rather than sanitising: there is no attempt to
-    /// "fix up" a `javascript:` URL into something safe, because there is no
-    /// such thing.
+    /// Rejects, doesn't sanitise: no "safe" `javascript:` URL exists.
     #[must_use]
     pub fn parse(raw: &str) -> Option<Self> {
         let url = Url::parse(raw.trim()).ok()?;
         Self::from_url(url)
     }
 
-    /// Resolve a possibly-relative reference against a base document URL.
+    /// Resolve possibly-relative reference against base document URL.
     ///
-    /// Feed content routinely contains relative `src`/`href` values that only
-    /// make sense against the article's own URL.
+    /// Feed content often has relative `src`/`href` meaningful only against
+    /// article URL.
     #[must_use]
     pub fn parse_relative(raw: &str, base: &Url) -> Option<Self> {
         let url = base.join(raw.trim()).ok()?;
         Self::from_url(url)
     }
 
-    /// Wrap an already-parsed URL, returning `None` unless it is `http(s)`.
+    /// Wrap parsed URL; `None` unless `http(s)`.
     #[must_use]
     pub fn from_url(url: Url) -> Option<Self> {
         match url.scheme() {
@@ -71,7 +65,7 @@ impl MediaUrl {
         &self.0
     }
 
-    /// `true` when this URL points at the given origin (scheme, host, port).
+    /// `true` when URL points at given origin (scheme, host, port).
     #[must_use]
     pub fn is_same_origin_as(&self, other: &Url) -> bool {
         self.0.scheme() == other.scheme()
@@ -101,10 +95,8 @@ impl Serialize for MediaUrl {
 impl<'de> Deserialize<'de> for MediaUrl {
     /// Re-validates on the way in.
     ///
-    /// Deserialisation is a construction path like any other. If it skipped the
-    /// scheme check, the type's guarantee would hold only for URLs that
-    /// happened to arrive by `parse()`, which is the kind of partial invariant
-    /// that eventually fails in the one place nobody looked.
+    /// Deserialisation is a construction path; skipping scheme check would make
+    /// guarantee partial.
     fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
         let raw = String::deserialize(d)?;
         MediaUrl::parse(&raw).ok_or_else(|| {
@@ -116,59 +108,52 @@ impl<'de> Deserialize<'de> for MediaUrl {
     }
 }
 
-/// What to do about remote media referenced by article content.
+/// What to do about remote media in article content.
 ///
-/// # Why this is not simply "proxy everything"
+/// # Why not "proxy everything"
 ///
-/// Vuo *cannot* construct a proxy URL. Miniflux signs them
-/// `HMAC-SHA256(media_url)` with `MEDIA_PROXY_PRIVATE_KEY`, a server-only
-/// secret that is randomly regenerated at every startup when unset, and no API
-/// endpoint will sign one on request. The client can only consume URLs the
-/// server already rewrote.
+/// Vuo *can't* build proxy URLs: Miniflux signs them `HMAC-SHA256(media_url)`
+/// with `MEDIA_PROXY_PRIVATE_KEY` (server-only, random per startup when unset),
+/// no API signs on request. Client consumes URLs server already rewrote.
 ///
-/// The server does rewrite: every read path Vuo uses runs entry content
-/// through the proxy rewriter. But `MEDIA_PROXY_MODE` defaults to `http-only`,
-/// which proxies plain-`http` images only — and essentially every feed image
-/// is `https` now. **On a stock Miniflux, most images arrive as raw
-/// third-party URLs.** Un-proxied media is the common case, not the edge case,
-/// and a policy that silently drops it would blank out most articles.
+/// Server rewrites on every read path Vuo uses, but `MEDIA_PROXY_MODE` defaults
+/// to `http-only` (plain-`http` images only), and nearly every feed image is
+/// `https`. **Stock Miniflux: most images arrive as raw third-party URLs.**
+/// Dropping them would blank most articles.
 ///
-/// Hence three states rather than two, defaulting to [`UnproxiedMedia::Ask`]:
-/// never leak silently, but do not pretend the images do not exist either.
+/// So three states, default [`UnproxiedMedia::Ask`]: never leak silently, never
+/// pretend images don't exist.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MediaPolicy {
-    /// Rewrite third-party media through the Miniflux instance (the default).
+    /// Rewrite third-party media through Miniflux instance (default).
     ProxyThroughInstance {
-        /// The configured Miniflux origin. Media here is server-proxied or
-        /// server-hosted; either way no third party learns anything.
+        /// Configured Miniflux origin. Media here is server-proxied or
+        /// server-hosted: no third party learns anything.
         instance: Url,
-        /// Additional origins to treat as trusted media proxies.
+        /// Extra origins trusted as media proxies.
         ///
-        /// Exists because `MEDIA_PROXY_CUSTOM_URL` lets an admin host the
-        /// proxy on a different origin entirely, where it would otherwise
-        /// classify as third-party. This is a user-supplied setting rather
-        /// than something Vuo tries to detect.
+        /// `MEDIA_PROXY_CUSTOM_URL` lets admin host proxy on another origin,
+        /// else classified third-party. User setting; Vuo doesn't detect it.
         extra_trusted: Vec<Url>,
         /// What to do with media the server did not rewrite.
         fallback: UnproxiedMedia,
     },
-    /// Fetch everything directly. An explicit, informed opt-out (§9.3).
+    /// Fetch everything directly. Explicit, informed opt-out (§9.3).
     Direct,
 }
 
 /// What happens to media the server has not proxied.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum UnproxiedMedia {
-    /// Never fetch it. The UI renders a placeholder naming the host.
+    /// Never fetch. UI shows placeholder naming host.
     Strict,
-    /// Do not fetch it now; let the user decide per origin (the default).
+    /// Don't fetch now; user decides per origin (default).
     ///
-    /// The UI shows a placeholder and an affordance to load. Consent is
-    /// remembered per origin, so agreeing once to `images.example.com` does
-    /// not agree to every host in every feed.
+    /// UI shows placeholder and load affordance. Consent remembered per origin:
+    /// agreeing to `images.example.com` isn't agreeing to every host.
     #[default]
     Ask,
-    /// Fetch it directly, accepting the IP leak. Explicit opt-in only.
+    /// Fetch directly, accepting IP leak. Explicit opt-in only.
     Allow,
 }
 
@@ -177,18 +162,17 @@ pub enum UnproxiedMedia {
 pub enum MediaDecision {
     /// Safe to fetch now.
     ///
-    /// Media is always fetched with a separate, cookie-less client that never
-    /// attaches the API token: the `/proxy/` route is public and unauthenticated,
-    /// so sending credentials to it would be a needless exposure.
+    /// Media always fetched with separate cookie-less client, never API token:
+    /// `/proxy/` route is public, credentials needless exposure.
     Fetch(MediaUrl),
-    /// Do not fetch, and do not offer to.
+    /// Don't fetch, don't offer.
     Drop,
-    /// Do not fetch yet; ask the user about this origin first.
+    /// Don't fetch yet; ask user about origin first.
     NeedsConsent(MediaUrl),
 }
 
 impl MediaPolicy {
-    /// The default policy for a given instance: proxy, and ask about the rest.
+    /// Default policy for instance: proxy, ask about rest.
     #[must_use]
     pub fn default_for(instance: Url) -> Self {
         MediaPolicy::ProxyThroughInstance {
@@ -200,7 +184,7 @@ impl MediaPolicy {
 
     /// Decide what to do with one media URL.
     ///
-    /// `consented` are origins the user has already agreed to load from.
+    /// `consented`: origins user already agreed to load from.
     #[must_use]
     pub fn decide_with_consent(&self, url: &MediaUrl, consented: &[Url]) -> MediaDecision {
         match self {
@@ -210,9 +194,8 @@ impl MediaPolicy {
                 extra_trusted,
                 fallback,
             } => {
-                // Classify by parsed ORIGIN, never by looking for "/proxy/" in
-                // the path: any third-party host can serve a /proxy/ path, and
-                // matching on the string would trust it.
+                // Classify by parsed ORIGIN, never "/proxy/" in path: any host
+                // can serve that path.
                 let trusted = url.is_same_origin_as(instance)
                     || extra_trusted.iter().any(|o| url.is_same_origin_as(o));
                 if trusted {
@@ -263,14 +246,13 @@ mod tests {
     fn accepts_http_and_https() {
         assert!(MediaUrl::parse("http://example.com/a.png").is_some());
         assert!(MediaUrl::parse("https://example.com/a.png").is_some());
-        // Leading/trailing whitespace is common in real feed markup.
+        // Leading/trailing whitespace common in feed markup.
         assert!(MediaUrl::parse("  https://example.com/a.png\n").is_some());
     }
 
     #[test]
     fn deserialize_revalidates_the_scheme() {
-        // The guarantee must survive a round trip through storage, not just
-        // through `parse`.
+        // Guarantee survives storage round trip, not just `parse`.
         let err = serde_json::from_str::<MediaUrl>("\"javascript:alert(1)\"");
         assert!(
             err.is_err(),
@@ -291,8 +273,7 @@ mod tests {
     #[test]
     fn relative_resolution_cannot_escape_into_another_scheme() {
         let base = Url::parse("https://blog.example/p/").unwrap();
-        // An absolute javascript: reference must still be rejected even when
-        // resolved against an https base.
+        // Absolute `javascript:` ref rejected even against https base.
         assert!(MediaUrl::parse_relative("javascript:alert(1)", &base).is_none());
     }
 
@@ -349,9 +330,8 @@ mod tests {
 
     #[test]
     fn a_third_party_proxy_path_is_not_trusted() {
-        // MEDIA_PROXY_CUSTOM_URL means proxy URLs can live on another origin,
-        // so it is tempting to detect them by path. That would trust any host
-        // willing to serve a /proxy/ path.
+        // `MEDIA_PROXY_CUSTOM_URL` tempts path detection; that would trust any
+        // host serving /proxy/.
         let instance = Url::parse("https://miniflux.example/").unwrap();
         let policy = MediaPolicy::default_for(instance);
         let impostor = MediaUrl::parse("https://evil.example/proxy/sig/aHR0cA==").unwrap();
@@ -395,10 +375,10 @@ mod tests {
     #[test]
     fn origin_comparison_respects_port_and_scheme() {
         let instance = Url::parse("https://host.example/").unwrap();
-        // Same host, different scheme: not the same origin.
+        // Same host, other scheme: not same origin.
         let plaintext = MediaUrl::parse("http://host.example/x.png").unwrap();
         assert!(!plaintext.is_same_origin_as(&instance));
-        // Explicit default port is still the same origin.
+        // Explicit default port: same origin.
         let explicit = MediaUrl::parse("https://host.example:443/x.png").unwrap();
         assert!(explicit.is_same_origin_as(&instance));
     }

@@ -13,99 +13,91 @@ import Sailfish.Silica 1.0
 SilicaListView {
     id: listView
 
-    /// The EntryListPage this list belongs to. Never assumed non-null:
-    /// `make qml-load` instantiates this file standalone.
+    /// EntryListPage owning this list. Never assumed non-null: `make qml-load`
+    /// instantiates file standalone.
     property Item hostPage: null
-    /// The shared EntryModel, bound only while this tab is the current one.
+    /// Shared EntryModel, bound only while this tab current.
     property var entryModel
-    /// The scope THIS tab shows, captured so an action armed here cannot be
-    /// resolved against whatever tab the user has swiped to since.
+    /// Scope THIS tab shows, captured: action armed here can't resolve against
+    /// tab user swiped to since.
     property int scopeKind: 0
     property int scopeId: 0
-    /// True for the tab PagedView is settled on.
+    /// True for tab PagedView settled on.
     property bool current: true
     property bool showScopeTabs: false
-    /// Which tab this list is. -1 when there is no strip.
+    /// Which tab this list is. -1 = no strip.
     property int tabIndex: -1
-    /// How much vertical room the page's pinned strip needs. This list is
-    /// full-page -- so that the pulley menu comes down from the top of the
-    /// SCREEN -- and reserves the strip's band in its own header instead, so
-    /// that at rest the band holds this spacer rather than a row.
+    /// Vertical room page's pinned strip needs. List is full-page (pulley comes
+    /// from top of SCREEN) and reserves strip band in own header, so at rest
+    /// band holds spacer, not row.
     property real tabStripHeight: 0
 
-    /// How far this list is scrolled past its own top: positive scrolled down,
-    /// NEGATIVE while the pulley is being pulled out.
+    /// How far list scrolled past own top: positive = down, NEGATIVE while
+    /// pulley pulled.
     ///
-    /// `contentY - originY` is the expression Silica's own TabItem uses
-    /// (private/TabItem.qml:47-49). The page reads it off whichever list is in
-    /// front, exactly as TabView reads `yOffset` off `currentItem`
-    /// (private/TabView.qml:51), and drives the whole strip from it.
+    /// `contentY - originY` = Silica TabItem's expression
+    /// (private/TabItem.qml:47-49). Page reads it off front list, like TabView
+    /// reads `yOffset` off `currentItem` (private/TabView.qml:51), drives whole
+    /// strip from it.
     readonly property real yOffset: listView.contentY - listView.originY
 
     Component.onCompleted: {
-        // Scope this tab's own model, once. A feed or category view is scoped
-        // by the page instead, because its scope is a parameter of the push.
+        // Scope tab's own model once. Feed/category view scoped by page
+        // instead: scope is push parameter.
         if (listView.showScopeTabs && listView.entryModel) {
             listView.entryModel.setScope(listView.scopeKind, listView.scopeId)
         }
-        // A search page opens on an empty field, so it must not open on the
-        // last search's results either: the model outlives the page.
+        // Search page opens on empty field, so not on last search's results
+        // either: model outlives page.
         if (listView.searching && listView.entryModel) {
             listView.entryModel.setSearch("")
         }
-        // No current row on a search page. A ListView gives the focus inside
-        // it to its current row, and picks row 0 as that whenever rows arrive
-        // and it has none -- unless it was told -1 explicitly, which is what
-        // this is. The search field is in this view's header, so without it
-        // every pause in typing, which brings a new set of results, took the
-        // focus off the field and closed the keyboard.
+        // No current row on search page. ListView gives focus to current row,
+        // picks row 0 when rows arrive and it has none, unless told -1
+        // explicitly (this). Search field in this view's header; without it
+        // each typing pause (new results) steals focus, closes keyboard.
         if (listView.searching) {
             listView.currentIndex = -1
         }
     }
 
-    /// True once the user has moved this list themselves.
+    /// True once user moved list themselves.
     property bool _moved: false
     onMovementStarted: listView._moved = true
 
-    // Keep the list at its own top until the user first moves it.
+    // Keep list at own top until user first moves it.
     //
-    // The header reserves the strip's band, and a header's height is not known
-    // at the first layout -- it comes from the strip, whose height comes from
-    // font metrics. A ListView does NOT shift `contentY` when its header grows
-    // afterwards, so the list came up scrolled past its own top by exactly the
-    // band: measured on real Silica, `contentY` 0 against `originY` -110, with
-    // the first article hidden behind the strip and the pulley a scroll away.
+    // Header reserves strip band; header height unknown at first layout (from
+    // strip, from font metrics). ListView does NOT shift `contentY` when header
+    // grows later, so list starts scrolled past top by band (real Silica:
+    // `contentY` 0 vs `originY` -110; first article behind strip, pulley a
+    // scroll away).
     //
-    // Gated on `_moved` rather than on `moving`, so this can only ever fix the
-    // starting position. A later `originY` change -- an orientation flip, say
-    // -- must not throw away where the user had scrolled to.
+    // Gated on `_moved`, not `moving`: only fixes start position. Later
+    // `originY` change (e.g. orientation flip) must keep user's scroll.
     onOriginYChanged: if (!listView._moved) {
         listView.contentY = listView.originY
     }
     property string scopeLabel: ""
     property string title: ""
 
-    /// Selection mode: a tap on a row selects it rather than opening it, the
-    /// header counts the selection, and the pulley offers what to do with
-    /// it. Entered by pushing an EntryListPage with `selecting` set over
-    /// the tab's OWN model, so the rows are the ones the reader was just
-    /// looking at; swiping back is how it is cancelled, as everywhere on
-    /// the platform, so there is no Cancel item.
+    /// Selection mode: tap selects row instead of opening, header counts
+    /// selection, pulley offers actions. Entered by pushing EntryListPage with
+    /// `selecting` over tab's OWN model (same rows reader saw). Swipe back
+    /// cancels, as everywhere on platform; no Cancel item.
     property bool selecting: false
-    /// The selected rows' entry ids, an object used as a set. REPLACED on
-    /// every change rather than mutated, so the bindings that read it in
-    /// the delegates are re-evaluated: a `var` holding the same object
-    /// does not announce what happened inside it.
+    /// Selected rows' entry ids, object used as set. REPLACED on every change,
+    /// not mutated: delegate bindings re-evaluate (`var` holding same object
+    /// announces nothing).
     property var selectedIds: ({})
     property int selectedCount: 0
 
-    /// Search mode: the header carries a search field, and the model -- a
-    /// scope-5 EntryModel no tab shows -- lists what the field matches.
+    /// Search mode: header has search field; model (scope-5 EntryModel no tab
+    /// shows) lists matches.
     property bool searching: false
-    /// What the search field holds. Handed to the model a moment after the
-    /// reader stops typing, by `searchDelay`, rather than on every key: each
-    /// search reads every article body in the mirror.
+    /// Search field contents. Passed to model shortly after typing stops
+    /// (`searchDelay`), not per key: each search reads every article body in
+    /// mirror.
     property string searchText: ""
 
     Timer {
@@ -134,7 +126,7 @@ SilicaListView {
         listView.selectedCount = n
     }
 
-    /// Select every row on the list, or none.
+    /// Select every row, or none.
     function selectAll(on) {
         var next = {}
         var n = 0
@@ -148,7 +140,7 @@ SilicaListView {
         listView.selectedCount = n
     }
 
-    /// Mark the selection read or unread, in one write, and leave.
+    /// Mark selection read/unread, one write, leave.
     function applyRead(read) {
         var ids = []
         for (var k in listView.selectedIds) {
@@ -160,58 +152,47 @@ SilicaListView {
         pageStack.pop()
     }
 
-    // Everything this list draws stays inside its own bounds, which are the
-    // whole page. The pulley menu lives at negative content coordinates,
-    // above `originY`, so being full-page is what lets it be revealed from
-    // the top of the SCREEN rather than from under the tab strip.
+    // Everything drawn stays in own bounds = whole page. Pulley lives at
+    // negative content coords above `originY`; full-page lets it reveal from
+    // top of SCREEN, not under tab strip.
     //
-    // Keeping rows OUT of the strip's band is a separate job, and not this
-    // item's: the page clips them there, only while something is scrolled
-    // past the top. See `viewport` in EntryListPage.
+    // Keeping rows OUT of strip band = page's job: page clips them there only
+    // while something scrolled past top. See `viewport` in EntryListPage.
     clip: true
-    // Always bound, never re-bound on a swipe.
+    // Always bound, never re-bound on swipe.
     //
-    // Each tab has its OWN EntryModel, fixed to one scope for the life of the
-    // page. Sharing one re-scoped model meant a neighbour could not be live
-    // while it was being swiped towards -- so the incoming tab arrived blank
-    // and only filled once the swipe settled. Its rows are already loaded and
-    // laid out before the finger moves now.
+    // Each tab owns EntryModel, fixed to one scope for page life. Shared
+    // re-scoped model can't be live while swiped towards (incoming tab blank
+    // until swipe settles). Rows loaded and laid out before finger moves.
     model: listView.entryModel
 
-    // The list holds a WINDOW onto the mirror, not all of it -- see
-    // models::PAGE_SIZE. Reaching the end of the window asks for the next
-    // page.
+    // List holds WINDOW onto mirror, not all; see models::PAGE_SIZE. Window end
+    // asks next page.
     //
-    // `atYEnd` rather than a delegate counting its own index: a delegate-based
-    // trigger fires while the reader is still scrolling and while the view is
-    // rebuilding after a reload, and it fires once per delegate. This fires on
-    // a transition, and `loadMore` is itself a no-op when there is nothing
-    // more, so a bounce at the bottom of a fully-loaded list costs a property
-    // read.
+    // `atYEnd`, not delegate counting own index: delegate trigger fires
+    // mid-scroll, during rebuild after reload, once per delegate. This fires on
+    // transition; `loadMore` no-op when nothing more, so bottom bounce on fully
+    // loaded list = one property read.
     onAtYEndChanged: if (listView.atYEnd && listView.entryModel
                          && listView.entryModel.hasMore) {
         listView.entryModel.loadMore()
     }
 
-    // An Item with explicit `y` bindings, NOT a Column.
+    // Item with explicit `y` bindings, NOT Column.
     //
-    // A Column here silently mislaid its children: measured on the device's
-    // own Qt 5.6, a header Column reported height 12 while an item inside it
-    // was 110 tall and still sitting at y 0. A child's height can arrive a
-    // beat after the header is built, and a Qt 5.6 positioner inside a
-    // ListView header does not re-position when that happens. The same Column
-    // outside a header lays out correctly, which is what made this worth
-    // writing down. Explicit `y` bindings re-evaluate.
+    // Column here mislaid children silently: device Qt 5.6, header Column
+    // height 12 while child 110 tall at y 0. Child height can arrive after
+    // header built; Qt 5.6 positioner in ListView header doesn't re-position.
+    // Same Column outside header fine. Explicit `y` bindings re-evaluate.
     header: Item {
         id: head
 
         width: listView.width
         height: searchField.y + (searchField.visible ? searchField.height : 0)
 
-        // Room for the tab strip, which is pinned by the PAGE rather than
-        // scrolled with this list -- it must not slide away under a scroll,
-        // and it must not travel sideways with a swipe. This reserves the
-        // band it occupies so the first row starts below it.
+        // Room for tab strip, pinned by PAGE, not scrolled with list: mustn't
+        // slide away on scroll or travel sideways on swipe. Reserves its band;
+        // first row starts below.
         Item {
             id: stripSpace
 
@@ -219,12 +200,10 @@ SilicaListView {
             height: listView.tabStripHeight
         }
 
-        // Only for the scopes the strip does not cover.
+        // Only for scopes strip doesn't cover.
         //
-        // Retiring it there also drops a binding that was about to start
-        // lying: `count` is rows HELD, and reload caps the query at 500, so an
-        // "All" scope on any real mirror would have read "500 articles" for
-        // ever.
+        // Also drops lying binding: `count` = rows HELD, reload caps query at
+        // 500, so "All" on real mirror reads "500 articles" forever.
         PageHeader {
             id: pageTitle
 
@@ -240,12 +219,11 @@ SilicaListView {
                             : "")
         }
 
-        // PageHeader's own title label offers no supported way to force its
-        // textFormat, and `listView.title` can be a FEED NAME -- foreign text
-        // chosen by the feed operator. §9.3: a crafted title in a rich-text
-        // context is markup injection, and can pull a remote image that leaks
-        // the device's IP on a list scroll. So the header above carries a
-        // fixed string and the name is rendered by this Label.
+        // PageHeader title label: no supported way to force textFormat;
+        // `listView.title` can be FEED NAME (foreign, operator-chosen). §9.3:
+        // crafted title in rich text = markup injection, remote image can leak
+        // device IP on scroll. So header carries fixed string; name rendered by
+        // this Label.
         Label {
             id: nameLabel
 
@@ -272,18 +250,17 @@ SilicaListView {
             height: visible ? implicitHeight : 0
             //: Placeholder in the empty search field.
             placeholderText: qsTr("Search articles")
-            // Predictive input holds a word back until it is committed, so a
-            // search would trail one word behind what is on screen.
+            // Predictive input holds word until committed; search would trail
+            // one word behind screen.
             inputMethodHints: Qt.ImhNoPredictiveText
             onTextChanged: listView.searchText = searchField.text
-            // Return is "done typing": search for what is there now, without
-            // waiting out the pause, and put the keyboard away so the results
-            // have the screen. Keys rather than Silica's EnterKey, as in
-            // AddFeedPage.qml: an attached type QML cannot stub.
+            // Return = "done typing": search now without waiting pause, hide
+            // keyboard so results get screen. Keys, not Silica EnterKey (as
+            // AddFeedPage.qml): attached type QML can't stub.
             Keys.onReturnPressed: searchField.submit()
             Keys.onEnterPressed: searchField.submit()
 
-            /// Whether the keyboard has been raised for the reader once.
+            /// Keyboard raised for reader once yet.
             property bool _focused: false
 
             function submit() {
@@ -294,11 +271,10 @@ SilicaListView {
                 searchField.focus = false
             }
 
-            /// Raise the keyboard once the page is in place and the app is in
-            /// front -- not while the page is still sliding in -- and only the
-            /// first time: coming back from an article should land on the
-            /// results, not on the keyboard. Both conditions, because a field
-            /// focused while the app is in the background raises nothing.
+            /// Raise keyboard once page in place and app in front (not mid
+            /// slide-in), first time only: back from article lands on results,
+            /// not keyboard. Both conditions: field focused while app in
+            /// background raises nothing.
             function raiseKeyboard() {
                 if (listView.searching && !searchField._focused && listView.hostPage
                         && listView.hostPage.status === PageStatus.Active
@@ -323,23 +299,20 @@ SilicaListView {
         id: pulley
         objectName: "pulley"
 
-        // Not on the search page: everything here is about a tab's list, so
-        // all that was left there was a menu with nothing in it.
+        // Not on search page: all items are about tab's list; menu would be
+        // empty.
         visible: !listView.searching
 
-        /// Set by Refresh, acted on once this menu is off the screen.
+        /// Set by Refresh, acted on once menu off screen.
         property bool refreshPending: false
 
-        // Refreshing resets the model, and a reset re-lays out the very view
-        // this menu is drawn inside. Done from the tap, that lands while the
-        // menu is still animating shut and interrupts it half way: reported
-        // from a device as the menu springing fully open, refreshing, and only
-        // then letting the list back. So the tap ARMS the refresh and this
-        // runs it once the menu is actually gone.
+        // Refresh resets model; reset re-lays out view this menu draws inside.
+        // From tap, lands mid close animation, interrupts it (menu springs
+        // open, refreshes, then lets list back). So tap ARMS refresh; this runs
+        // it once menu gone.
         //
-        // Refresh is the only item here that needed it. Every other one
-        // pushes a page or opens a remorse popup, and neither of those touches
-        // this view -- which is why it was the only one that looked wrong.
+        // Only Refresh needs it. Others push page or open remorse popup;
+        // neither touches this view.
         onActiveChanged: {
             if (!pulley.active && pulley.refreshPending) {
                 pulley.refreshPending = false
@@ -348,8 +321,8 @@ SilicaListView {
         }
 
         // ------------------------------------------------ selection mode
-        // What to do with the selection. Nothing here is destructive, so
-        // no remorse: a row marked read by mistake is one tap from unread.
+        // Selection actions. Nothing destructive, no remorse: wrong read mark =
+        // one tap to unread.
         MenuItem {
             visible: listView.selecting
             text: listView.selectedCount < listView.count ? qsTr("Select all")
@@ -376,19 +349,17 @@ SilicaListView {
         MenuItem {
             visible: !listView.selecting && !listView.searching
             text: qsTr("Feeds")
-            // `browseModel`, NOT this list's own: opening a feed re-scopes
-            // whatever model it is handed, and handing it a tab's model left
-            // that tab showing the feed for the rest of the session.
+            // `browseModel`, NOT this list's own: opening feed re-scopes model
+            // it gets; tab's model would show feed rest of session.
             onClicked: pageStack.push(Qt.resolvedUrl("../pages/FeedListPage.qml"),
                                       { model: listView.hostPage ? listView.hostPage.feedModel : null,
                                         entryModel: listView.hostPage ? listView.hostPage.browseModel : null,
                                         noticeModel: listView.hostPage ? listView.hostPage.noticeModel : null })
         }
         MenuItem {
-            // The platform's way to act on many rows at once, as the Gallery
-            // and Email apps do it: a page of the same rows where a tap
-            // selects, then the pulley. Over the tab's own model, so the
-            // rows are exactly the ones the reader was looking at.
+            // Platform way to act on many rows (Gallery, Email): page of same
+            // rows, tap selects, then pulley. Over tab's own model: exactly
+            // rows reader saw.
             visible: !listView.selecting && !listView.searching && listView.count > 0
             text: qsTr("Select articles")
             onClicked: pageStack.push(Qt.resolvedUrl("../pages/EntryListPage.qml"), {
@@ -403,22 +374,19 @@ SilicaListView {
         }
         MenuItem {
             text: qsTr("Mark all as read")
-            // Hidden on All. markAllRead's non-feed branch expands the
-            // scope with i64::MAX as the limit over a SELECT that pulls
-            // the full `content` column, then queues one outbox row per
-            // entry with no already-read filter. On Unread that set is
-            // bounded by the unread count; on All it is every article ever
-            // synced. A mitigation, not a fix -- the Rust wants an id-only
-            // projection and an already-read filter before All gets it.
+            // Hidden on All. markAllRead non-feed branch expands scope with
+            // i64::MAX limit over SELECT pulling full `content`, then one
+            // outbox row per entry, no already-read filter. Unread: bounded by
+            // unread count; All: every article ever synced. Mitigation, not
+            // fix: Rust needs id-only projection + already-read filter before
+            // All gets it.
             visible: !listView.selecting && !listView.searching
                      && listView.scopeKind !== 2
             onClicked: {
-                // Capture the scope NOW, not when the countdown fires.
-                // `markAllRead` would read whatever scope the shared model is
-                // in at that later moment, and swiping to another tab
-                // re-scopes it without a page change -- so arming this on
-                // Unread and swiping to All within the countdown would have
-                // marked every article in the mirror.
+                // Capture scope NOW, not when countdown fires. `markAllRead`
+                // reads shared model's scope at that moment; swipe re-scopes
+                // without page change, so arm on Unread + swipe to All = every
+                // article marked.
                 var kind = listView.scopeKind
                 var id = listView.scopeId
                 var model = listView.entryModel
@@ -428,8 +396,8 @@ SilicaListView {
             }
         }
         MenuItem {
-            // Across the whole mirror, from the main lists only. A search
-            // offered inside a feed would read as searching that feed.
+            // Whole mirror, main lists only. Search offered in feed reads as
+            // searching that feed.
             visible: !listView.selecting && !listView.searching
                      && listView.showScopeTabs
             //: Pulley menu item. A verb: it opens the search page.
@@ -450,21 +418,18 @@ SilicaListView {
         MenuItem {
             visible: !listView.selecting && !listView.searching
             text: qsTr("Refresh")
-            // Armed here, run when the menu has closed: see
-            // `pulley.onActiveChanged`. `requestSync` asks the worker for a
-            // network sync -- `refresh()` alone only re-reads the local
-            // mirror, so on its own the pulley menu never actually talked to
-            // the server.
+            // Armed here, run after menu closes: see `pulley.onActiveChanged`.
+            // `requestSync` asks worker for network sync; `refresh()` only
+            // re-reads local mirror.
             onClicked: pulley.refreshPending = true
         }
     }
 
     RemorsePopup { id: remorse }
 
-    // A refresh that reached the network has to look different from one
-    // that did not. `syncing` had exactly one consumer -- the cover -- so
-    // on the page itself a working Refresh and a Refresh that did nothing
-    // were pixel-identical, which is how the latter went unnoticed.
+    // Refresh that reached network must look different from one that didn't.
+    // Without this, page shows working Refresh and no-op Refresh identically
+    // (`syncing` only used by cover).
     BusyIndicator {
         anchors.centerIn: parent
         size: BusyIndicatorSize.Large
@@ -473,55 +438,49 @@ SilicaListView {
 
     ViewPlaceholder {
         objectName: "placeholder"
-        // Not while syncing: "Nothing to read / Pull down to refresh"
-        // under a running spinner reads as a refusal.
+        // Not while syncing: "Nothing to read / Pull down to refresh" under
+        // spinner reads as refusal.
         //
-        // And not before the model is READY -- scoped and loaded. Gated on
-        // the view's count alone this was enabled at construction, when
-        // every model still held nothing, and then faded out over the rows
-        // that arrived a moment later: "Nothing to read" flashing across the
-        // list at every launch. The model's own count and its `ready` flag
-        // change together, in the one reload, so there is no such moment.
+        // Not before model READY (scoped + loaded). Gated on view count alone =
+        // enabled at construction (all models empty), then fades over arriving
+        // rows: "Nothing to read" flash every launch. Model count and `ready`
+        // change together in one reload; no such moment.
         //
-        // A conditional rather than an `&&` chain: with no model -- this file
-        // is instantiated standalone by the load test -- the chain yields
-        // `undefined`, which a bool property refuses.
+        // Conditional, not `&&` chain: no model (load test instantiates
+        // standalone) → chain yields `undefined`, bool property refuses it.
         enabled: listView.entryModel
                  ? (listView.entryModel.ready
                     && listView.entryModel.count === 0
                     && !listView.entryModel.syncing)
                  : false
-        // "Nothing to read / Pull down to refresh" is an Unread string.
-        // Under a Favourites tab it reads as a refusal, and refreshing
-        // does not create favourites.
-        // An empty search says only what is searched -- the hint below --
-        // under the field the reader is about to type into.
+        // "Nothing to read / Pull down to refresh" = Unread string. Under
+        // Favourites reads as refusal; refresh doesn't create favourites. Empty
+        // search says only what is searched (hint below), under field reader
+        // about to type in.
         text: listView.searching
               ? (listView.searchText.trim().length === 0 ? ""
                                                          : qsTr("No articles found"))
               : (listView.scopeKind === 1 ? qsTr("No favourites")
                                           : qsTr("Nothing to read"))
         hintText: listView.searching
-                  // Said either way: the mirror is all that is searched, so an
-                  // article the server holds but this device does not is not
-                  // found, and that should not be a surprise.
+                  // Said either way: only mirror searched; article on server
+                  // but not device not found. No surprise.
                   ? qsTr("Vuo searches the title and text of every article on this device, and the names of your feeds.")
                   : (listView.scopeKind === 1
                      ? qsTr("Articles you add to favourites appear here")
                      : qsTr("Pull down to refresh"))
     }
 
-    // A search lists its results grouped by where they matched, titles first,
-    // as the model orders them. Each group shows a page of its results, with
-    // a "Load more" under it (see the delegate), and its header says how many
-    // of how many there are.
+    // Search results grouped by match place, titles first (model order). Each
+    // group shows page of results, "Load more" under it (see delegate); header
+    // says how many of how many.
     section.property: listView.searching ? "matchKind" : ""
     section.delegate: SectionHeader {
         objectName: "sectionHeader"
         text: listView.sectionTitle(section)
     }
 
-    /// How many results a group has in the whole mirror.
+    /// Group's result count in whole mirror.
     function groupTotal(kind) {
         if (!listView.entryModel) {
             return 0
@@ -533,7 +492,7 @@ SilicaListView {
                                : listView.entryModel.textMatches
     }
 
-    /// How many of them the list shows.
+    /// How many list shows.
     function groupShown(kind) {
         if (!listView.entryModel) {
             return 0
@@ -545,7 +504,7 @@ SilicaListView {
                                : listView.entryModel.textShown
     }
 
-    /// How many the group's next "Load more" adds; 0 when it loads the rest.
+    /// How many group's next "Load more" adds; 0 = loads rest.
     function groupNextLoad(kind) {
         if (!listView.entryModel) {
             return 0
@@ -557,8 +516,7 @@ SilicaListView {
                                : listView.entryModel.textNextLoad
     }
 
-    /// What a group's "Load more" says: how many it adds -- no more than
-    /// are left -- or that it loads the rest.
+    /// "Load more" text: how many it adds (no more than left), or loads rest.
     function loadMoreText(kind) {
         var next = listView.groupNextLoad(kind)
         if (next <= 0) {
@@ -571,7 +529,7 @@ SilicaListView {
         return qsTr("Load %n more", "", Math.min(next, left))
     }
 
-    /// The header over one group of search results.
+    /// Header over one search result group.
     function sectionTitle(kind) {
         var total = listView.groupTotal(kind)
         var shown = listView.groupShown(kind)
@@ -605,8 +563,8 @@ SilicaListView {
         return qsTr("In article text (%1)").arg(total)
     }
 
-    /// Open a feed a search found, as tapping it in the feed list does: its
-    /// articles, over the browse model -- see FeedListPage.qml.
+    /// Open feed search found, like tap in feed list: its articles over browse
+    /// model; see FeedListPage.qml.
     function openFeed(feedId, name) {
         var host = listView.hostPage
         pageStack.push(Qt.resolvedUrl("../pages/EntryListPage.qml"), {
@@ -622,28 +580,27 @@ SilicaListView {
         })
     }
 
-    /// Search-marked StyledText from Rust, with the marks in the theme's
-    /// highlight colour as well as bold: in bold alone they were hard to
-    /// make out on a read row, which is drawn faded. The text was escaped in
-    /// Rust, so every `<b>` in it is a mark Rust made.
+    /// Search-marked StyledText from Rust; marks in theme highlight colour +
+    /// bold (bold alone hard to see on faded read row). Text escaped in Rust:
+    /// every `<b>` = Rust mark.
     function marked(styled) {
         return styled.replace(/<b>/g, "<b><font color=\"" + Theme.highlightColor + "\">")
                      .replace(/<\/b>/g, "</font></b>")
     }
 
-    /// Escape text for a StyledText label. Only for text this file builds
-    /// itself -- an age, a reading time -- that sits next to markup Rust made.
+    /// Escape text for StyledText label. Only text this file builds (age,
+    /// reading time) next to Rust markup.
     function escaped(text) {
         return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
     }
 
-    /// Measures the detail line, so it can be shortened before it overflows.
+    /// Measures detail line; shorten before overflow.
     FontMetrics {
         id: detailMetrics
         font.pixelSize: Theme.fontSizeExtraSmall
     }
 
-    /// The title's line box, which is what the favicon is centred on.
+    /// Title line box; favicon centred on it.
     FontMetrics {
         id: titleMetrics
         font.pixelSize: Theme.fontSizeMedium
@@ -655,12 +612,12 @@ SilicaListView {
         width: listView.width
         height: item.height + moreButton.height
 
-        /// Whether this row is a FEED a search found by its name, rather than
-        /// an article: drawn as the feed list draws one, and opening it.
+        /// Row = FEED search found by name, not article: drawn like feed list,
+        /// opens feed.
         readonly property bool isFeed: listView.searching && matchKind === "feed"
 
-        /// Whether this row is the last of its group of search results,
-        /// which is where the group's "Load more" goes.
+        /// Row = last of its search result group; group's "Load more" goes
+        /// here.
         readonly property bool lastInGroup: listView.searching
                                             && row.ListView.nextSection !== row.ListView.section
 
@@ -669,34 +626,30 @@ SilicaListView {
             objectName: "listItem"
             width: parent.width
             contentHeight: column.height + Theme.paddingMedium * 2
-            // The long-press menu is the other way to act on one row, and in
-            // selection mode the tap already is that. Its actions are an
-            // article's, so a feed has none.
+            // Long-press menu = other way to act on one row; in selection mode
+            // tap already is. Actions are article's; feed has none.
             showMenuOnPressAndHold: !listView.selecting && !row.isFeed
 
-            /// Whether this row is in the selection. Read off `selectedIds`,
-            /// which is replaced on every change so this re-evaluates.
+            /// Row in selection. Read off `selectedIds` (replaced per change,
+            /// so re-evaluates).
             readonly property bool selected: listView.selecting
                                              && listView.selectedIds[entryId] === true
 
-            // Silica's own mark for a selected row: the highlight backing it
-            // paints under a pressed one, kept on. No checkbox column, which
-            // would shift every row's text sideways on entering the mode.
+            // Silica selected-row mark: pressed highlight backing, kept on. No
+            // checkbox column (would shift text sideways on entering mode).
             Rectangle {
                 anchors.fill: parent
                 visible: item.selected
                 color: Theme.rgba(Theme.highlightBackgroundColor, Theme.highlightBackgroundOpacity)
             }
 
-            /// The icon column's width, whether or not there IS an icon.
+            /// Icon column width, icon or not.
             ///
-            /// A fixed gutter, so every row's text starts on the same vertical
-            /// line: sizing it to the icon meant rows with an icon were indented
-            /// and rows without were not, and a list mixing the two looked ragged.
+            /// Fixed gutter: every row's text starts on same vertical line. Sizing
+            /// to icon made mixed lists ragged.
             ///
-            /// `paddingMedium` after the icon, not `paddingSmall`: at 6px against a
-            /// 32px icon the gap read as the icon touching the headline. 12px is
-            /// the next step Silica offers.
+            /// `paddingMedium` after icon, not `paddingSmall`: 6px vs 32px icon
+            /// read as touching. 12px = next Silica step.
             readonly property real gutter: Theme.fontSizeMedium + Theme.paddingMedium
 
             Row {
@@ -706,11 +659,9 @@ SilicaListView {
                 y: Theme.paddingMedium
                 width: parent.width - Theme.horizontalPageMargin * 2
                 spacing: 0
-                // A read row steps back as a whole -- icon, title and detail line
-                // together -- rather than only swapping the title's colour, which
-                // on the device was too little to tell the two apart at a glance.
-                // Now that a read row stays on the list until the reader
-                // refreshes, telling them apart is what the list is for.
+                // Read row steps back whole (icon, title, detail), not just title
+                // colour (too subtle on device). Read rows stay until refresh;
+                // telling them apart is list's job.
                 opacity: unread ? 1.0 : Theme.opacityLow
 
                 Item {
@@ -720,38 +671,31 @@ SilicaListView {
                     height: 1
 
                     Image {
-                        // Centred on the title's FIRST LINE BOX, so a headline
-                        // that wraps to three lines does not strand the icon in
-                        // the middle of the block.
+                        // Centred on title's FIRST LINE BOX: three-line headline
+                        // doesn't strand icon mid block.
                         //
-                        // Measured against `font.pixelSize` this was always y 0 --
-                        // the icon is itself `fontSizeMedium` tall, so the
-                        // expression could only ever yield zero -- and zero is too
-                        // high, which is what the device reported. A line box is
-                        // taller than the pixel size, and the glyphs sit low in it.
+                        // Line box taller than pixel size; glyphs sit low.
+                        // `font.pixelSize`-based centring always gives y 0 (icon
+                        // itself `fontSizeMedium` tall) = too high.
                         //
-                        // From SailSansPro-Light.ttf itself, at fontSizeMedium (32)
-                        // and pixelRatio 1: ascent 31.49, descent 8.74, so the line
-                        // box is 40.22 and the capital ink runs 10.40..31.49 with
-                        // its centre at 20.94. The old y put the icon's centre at
-                        // 16.0 -- 4.9px high, and more on a device whose pixel
-                        // ratio is above 1. Centring on the line box puts it at
-                        // 20.0, within a pixel of the ink.
+                        // SailSansPro-Light.ttf, fontSizeMedium (32), pixelRatio 1:
+                        // ascent 31.49, descent 8.74, line box 40.22, capital ink
+                        // 10.40..31.49, centre 20.94. Line box centring puts icon
+                        // centre at 20.0, within pixel of ink (pixel-size centring:
+                        // 16.0, 4.9px high, worse when pixel ratio > 1).
                         y: Math.round((titleMetrics.height - height) / 2)
                         width: Theme.fontSizeMedium
                         height: Theme.fontSizeMedium
                         sourceSize.width: Theme.fontSizeMedium
                         sourceSize.height: Theme.fontSizeMedium
                         fillMode: Image.PreserveAspectFit
-                        // A `data:` URI built in Rust from bytes already in the
-                        // mirror -- no network fetch happens here, so a list
-                        // scroll cannot leak the device's IP (§9.3).
+                        // `data:` URI built in Rust from mirror bytes; no
+                        // network fetch, scroll can't leak device IP (§9.3).
                         source: feedIcon
                         asynchronous: true
-                        // The mirror stores whatever format the icon arrived in
-                        // and the device ships handlers for only some of them.
-                        // Collapsing on failure keeps a missing handler to a
-                        // missing icon rather than a broken-image glyph.
+                        // Mirror stores icon in arrival format; device has
+                        // handlers for only some. Collapse on failure: missing
+                        // handler = missing icon, not broken-image glyph.
                         visible: feedIcon.length > 0 && status === Image.Ready
                     }
                 }
@@ -766,10 +710,9 @@ SilicaListView {
 
                         width: parent.width
                                - (feedUnread.visible ? feedUnread.width + Theme.paddingMedium : 0)
-                        // §9.3: a feed-supplied title is foreign data. PlainText,
-                        // explicitly -- except for a search result's, which Rust
-                        // escaped and marked the search terms in, and which is
-                        // therefore safe to render as StyledText.
+                        // §9.3: feed title foreign. PlainText explicitly, except
+                        // search result (Rust escaped + marked terms): safe as
+                        // StyledText.
                         textFormat: listView.searching ? Text.StyledText : Text.PlainText
                         text: listView.searching ? listView.marked(titleStyled) : title
                         wrapMode: Text.Wrap
@@ -784,35 +727,29 @@ SilicaListView {
                         objectName: "detailLabel"
 
                         width: parent.width
-                        // A feed's row is its name and its count, as in the
-                        // feed list: an article's date and reading time are
-                        // not a feed's.
+                        // Feed row = name + count, like feed list; date and
+                        // reading time aren't a feed's.
                         visible: !row.isFeed
-                        // Assembled in JavaScript rather than as a Row of Labels
-                        // so the separators collapse cleanly when a part is
-                        // missing, and so the whole line can be shortened as one
-                        // thing when it will not fit. PlainText, explicitly: the
-                        // feed's name is in it and that is foreign text -- unless
-                        // this is a search result, where the name is the one Rust
-                        // escaped and marked (see `styled`).
+                        // Built in JavaScript, not Row of Labels: separators
+                        // collapse when part missing, whole line shortened as
+                        // one. PlainText explicitly: feed name foreign. Except
+                        // search result: name Rust-escaped and marked (see
+                        // `styled`).
                         textFormat: listView.searching ? Text.StyledText : Text.PlainText
                         font.pixelSize: Theme.fontSizeExtraSmall
                         color: item.highlighted ? Theme.secondaryHighlightColor
                                                 : Theme.secondaryColor
                         truncationMode: TruncationMode.Fade
 
-                        /// Build the line, shortening it a step at a time until
-                        /// it fits.
+                        /// Build line, shorten step by step until fits.
                         ///
-                        /// A long feed name or a long elapsed phrase -- both vary
-                        /// by language -- used to run straight off the right edge.
+                        /// Long feed name or elapsed phrase (both vary by
+                        /// language) would run off right edge.
                         ///
-                        /// The order is the one asked for on the device: trim the
-                        /// FEED NAME first, down to a length it is still
-                        /// recognisable at, and only when that is not enough start
-                        /// abbreviating the other fields. The name is what says
-                        /// where an article came from, so losing its tail costs
-                        /// less than losing a whole field.
+                        /// Order asked for on device: trim FEED NAME first, down
+                        /// to still-recognisable length; only then abbreviate
+                        /// other fields. Name says where article came from; losing
+                        /// its tail cheaper than losing whole field.
                         function build() {
                             var date = published > 0 ? new Date(published * 1000) : null
                             var age = date ? Format.formatDate(date, Formatter.DurationElapsed) : ""
@@ -821,9 +758,8 @@ SilicaListView {
                             var readLong = readingTime > 0 ? qsTr("%n min read", "", readingTime) : ""
                             var readShort = readingTime > 0 ? qsTr("%n min", "", readingTime) : ""
 
-                            // Each rung keeps the fields fuller than the one below
-                            // it. Within a rung the name is trimmed as far as it
-                            // will go before dropping to the next.
+                            // Each rung keeps fields fuller than one below. Within
+                            // rung, name trimmed fully before next rung.
                             var rungs = [
                                 [age, readLong],
                                 [age, readShort],
@@ -831,8 +767,8 @@ SilicaListView {
                                 [shortAge, ""]
                             ]
 
-                            // Short enough that a name is still identifiable, long
-                            // enough that most feed names survive whole.
+                            // Short enough name still identifiable, long enough
+                            // most names survive whole.
                             var minimumName = 14
 
                             for (var i = 0; i < rungs.length; ++i) {
@@ -841,14 +777,14 @@ SilicaListView {
                                     return fitted
                                 }
                             }
-                            // Nothing fits even at the bottom rung with the
-                            // shortest name; `truncationMode` fades what is left.
+                            // Nothing fits even at bottom rung with shortest
+                            // name; `truncationMode` fades rest.
                             return detailLabel.join([feedName.substring(0, minimumName),
                                                      shortAge, ""])
                         }
 
-                        /// The widest version of this rung whose name still fits,
-                        /// or null when even the shortest name overflows it.
+                        /// Widest version of rung whose name fits, or null if
+                        /// shortest name overflows.
                         function fitName(name, rung, minimum) {
                             var candidate = detailLabel.join([name, rung[0], rung[1]])
                             if (detailMetrics.advanceWidth(candidate) <= detailLabel.width) {
@@ -879,11 +815,9 @@ SilicaListView {
                             return kept.join("  \u00b7  ")
                         }
 
-                        /// The fitted line as StyledText, for a search result: the
-                        /// feed's name with the search terms in bold, when the
-                        /// name was not shortened -- a shortened one would cut a
-                        /// bold run in half, so it is drawn plain -- and the rest
-                        /// escaped.
+                        /// Fitted line as StyledText for search result: feed name
+                        /// with terms bold if name not shortened (shortening could
+                        /// cut bold run, so plain then); rest escaped.
                         function styled(line) {
                             if (feedName.length > 0 && line.indexOf(feedName) === 0) {
                                 return listView.marked(feedNameStyled)
@@ -898,9 +832,9 @@ SilicaListView {
                     }
 
                     Label {
-                        // A result found in an article's text: the lines around
-                        // the match, so the reader sees why it is here. StyledText
-                        // built and escaped in Rust (§9.3), with the terms in bold.
+                        // Result found in article text: lines around match, shows
+                        // why it's here. StyledText built and escaped in Rust
+                        // (§9.3), terms bold.
                         objectName: "excerptLabel"
                         width: parent.width
                         visible: listView.searching && excerpt.length > 0
@@ -916,8 +850,8 @@ SilicaListView {
                 }
             }
 
-            // A feed's unread count, where the feed list puts it: at the end
-            // of the name's first line.
+            // Feed unread count where feed list puts it: end of name's first
+            // line.
             Label {
                 id: feedUnread
                 objectName: "feedUnread"
@@ -955,18 +889,16 @@ SilicaListView {
                 }
                 MenuItem {
                     text: qsTr("Open in browser")
-                    // Hidden rather than disabled: an entry with no link is rare
-                    // enough that a permanently dead row would read as a bug in
-                    // the app rather than a gap in the feed.
+                    // Hidden, not disabled: entry without link rare; permanently
+                    // dead row reads as app bug, not feed gap.
                     visible: url.length > 0
                     onClicked: Qt.openUrlExternally(url)
                 }
             }
         }
 
-        // Under the last row of a group that has more than it shows: more of
-        // it, inserted under this row -- ten, then twenty, then the rest. See
-        // models::SEARCH_LOAD_STEPS.
+        // Under last row of group with more than shown: inserts more under row
+        // (ten, then twenty, then rest). See models::SEARCH_LOAD_STEPS.
         BackgroundItem {
             id: moreButton
             objectName: "loadMore"

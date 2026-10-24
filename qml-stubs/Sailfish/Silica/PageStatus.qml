@@ -1,12 +1,10 @@
 import QtQuick 2.6
-// Silica exposes this as a C++ enum (DeclarativePageStatus). Same reasoning as
-// Orientation.qml: QML property names may not begin with an upper-case letter,
-// so the stub uses a QML `enum`.
+// Silica C++ enum (DeclarativePageStatus). Same as Orientation.qml: property names
+// can't start upper-case, so QML `enum`.
 //
-// A stub is needed because a `running:` binding on `page.status === PageStatus.Active`
-// IS evaluated when a page is instantiated -- unlike an `onStatusChanged` handler,
-// which is why the existing use in EntryListPage got away without one. Without
-// this the QML load test trips on "PageStatus is not defined".
+// Stub needed: `running:` binding on `page.status === PageStatus.Active` IS evaluated
+// on page instantiation (`onStatusChanged` handler isn't). Without it load test trips
+// on "PageStatus is not defined".
 QtObject {
     enum Value {
         Inactive = 0,

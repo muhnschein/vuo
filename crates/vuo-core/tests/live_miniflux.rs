@@ -1,8 +1,8 @@
-//! Opt-in integration tests against a real Miniflux instance.
+//! Opt-in integration tests against real Miniflux.
 //!
-//! §8: everything in `make check` must run *"from a clean checkout, with no
-//! phone, no server account, and no network"*. These tests need a server, so
-//! they sit behind an explicit gate rather than being skipped silently:
+//! §8: everything in `make check` runs *"from a clean checkout, with no phone,
+//! no server account, and no network"*. These need server: explicit gate, not
+//! silent skip:
 //!
 //! ```sh
 //! VUO_LIVE_BASE_URL=http://127.0.0.1:8080 \
@@ -10,22 +10,21 @@
 //!   cargo test -p vuo-core --features live-integration-tests -- --ignored
 //! ```
 //!
-//! `make live-test` does that, and the ephemeral-Miniflux CI job runs it
-//! weekly against a pinned container.
+//! `make live-test` runs that; ephemeral-Miniflux CI job runs it weekly against
+//! pinned container.
 //!
-//! # Why these exist at all
+//! # Why
 //!
 //! §8.3: *the §11 open questions — cursor semantics and bulk-mutation
-//! idempotency — are contract questions about someone else's server.
-//! Verifying them once by hand and writing the answer into a comment means
-//! finding out by regression when the server updates.*
+//! idempotency — are contract questions about someone else's server. Verifying
+//! them once by hand and writing the answer into a comment means finding out by
+//! regression when the server updates.*
 //!
-//! So these do not re-test Vuo's logic, which the mock-server suite already
-//! covers. They test the **assumptions Vuo makes about Miniflux**, and each one
-//! names the assumption it is protecting.
+//! Not re-testing Vuo logic (mock suite covers it). Testing **assumptions Vuo
+//! makes about Miniflux**; each names assumption it protects.
 
-// Test code: see the note in vuo-core's lib.rs. The unwrap/panic denials
-// guard foreign-input paths in production, not assertions in tests.
+// Test code: see note in vuo-core's lib.rs. unwrap/panic denials guard
+// production foreign-input paths, not test assertions.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -38,13 +37,12 @@ use vuo_core::api::{EntriesQuery, EntryMutation, MinifluxClient, Transport, Tran
 use vuo_core::model::{EntryId, EntryStatus};
 use vuo_core::redact::ApiToken;
 
-/// `None` only when the opt-in has NOT been taken.
+/// `None` only when opt-in NOT taken.
 ///
-/// Once `VUO_LIVE_BASE_URL` is set, a URL that will not parse or a transport
-/// that will not build is a configuration error and panics. It used to be a
-/// chain of `.ok()?`, so a typo'd URL made every live test return early --
-/// which cargo reports as `ok`. `make live-test` then passed having contacted
-/// nothing, which is exactly the silent skip the module doc says it is not.
+/// `VUO_LIVE_BASE_URL` set → unparseable URL or unbuildable transport = config
+/// error, panics. Early return would be reported `ok` by cargo: `make
+/// live-test` passing having contacted nothing = silent skip module doc
+/// forbids.
 fn live_client() -> Option<MinifluxClient> {
     let base = std::env::var("VUO_LIVE_BASE_URL").ok()?;
     let token = std::env::var("VUO_LIVE_TOKEN")
@@ -67,13 +65,11 @@ macro_rules! client_or_skip {
     };
 }
 
-/// Fail rather than return when the instance cannot exercise the contract.
+/// Fail, don't return, when instance can't exercise contract.
 ///
-/// An early `return` is a PASS. Both contract tests used to take one when the
-/// instance held too few entries -- and that is the state the weekly CI job
-/// produces, since it imports an OPML and runs immediately, before Miniflux's
-/// poller has fetched anything. So the job could report green having asserted
-/// nothing about the two API behaviours it exists to watch.
+/// Early `return` = PASS. Weekly CI job imports OPML and runs before Miniflux's
+/// poller fetched anything: too few entries. Returning would report green with
+/// nothing asserted.
 macro_rules! require_entries {
     ($have:expr, $need:expr, $what:literal) => {
         assert!(
@@ -90,17 +86,17 @@ macro_rules! require_entries {
 #[tokio::test]
 #[ignore = "needs a real Miniflux instance"]
 async fn the_server_reports_a_version_we_can_parse() {
-    // Vuo gates request construction on this. An unparseable version falls
-    // back to the oldest supported behaviour, which is safe but wasteful.
+    // Vuo gates request construction on this. Unparseable version → oldest
+    // supported behaviour: safe, wasteful.
     let client = client_or_skip!();
     let version = client.version().await.expect("version");
     eprintln!(
         "server version: {} (parsed {}.{}.{})",
         version.raw, version.major, version.minor, version.patch
     );
-    // The write floor, not just "2.x": below 2.3.2 Vuo refuses entry-state
-    // writes entirely (see `ServerVersion::supports_entry_state_writes`), so
-    // an instance older than that can mirror but never sync user actions.
+    // Write floor, not just "2.x": below 2.3.2 Vuo refuses entry-state writes
+    // (`ServerVersion::supports_entry_state_writes`); older instance mirrors
+    // but never syncs user actions.
     assert!(
         version.supports_entry_state_writes(),
         "Vuo needs Miniflux 2.3.2+; this instance says {}",
@@ -111,10 +107,9 @@ async fn the_server_reports_a_version_we_can_parse() {
 #[tokio::test]
 #[ignore = "needs a real Miniflux instance"]
 async fn keyset_pagination_returns_strictly_increasing_ids() {
-    // THE ASSUMPTION: order=id&direction=asc&after_entry_id=N is a true keyset
-    // cursor with no ties. Vuo's whole gap-free pull rests on it. If a future
-    // Miniflux changed the sort, this fails here rather than by users
-    // reporting missing articles.
+    // ASSUMPTION: order=id&direction=asc&after_entry_id=N = true keyset cursor,
+    // no ties. Gap-free pull rests on it. Future sort change fails here, not
+    // via users reporting missing articles.
     let client = client_or_skip!();
 
     let (first, _) = client
@@ -147,8 +142,8 @@ async fn keyset_pagination_returns_strictly_increasing_ids() {
 #[tokio::test]
 #[ignore = "needs a real Miniflux instance"]
 async fn bulk_status_updates_are_absolute_and_idempotent() {
-    // THE ASSUMPTION that the entire outbox design rests on: PUT /v1/entries
-    // sets an absolute value, so replaying it is a no-op rather than a toggle.
+    // ASSUMPTION whole outbox design rests on: PUT /v1/entries sets absolute
+    // value; replay = no-op, not toggle.
     let client = client_or_skip!();
 
     let (page, _) = client
@@ -166,7 +161,7 @@ async fn bulk_status_updates_are_absolute_and_idempotent() {
         EntryStatus::Unread
     };
 
-    // Apply the same absolute value twice.
+    // Same absolute value twice.
     client
         .update_entries(&[id], EntryMutation::Status(EntryStatus::Read))
         .await
@@ -184,14 +179,11 @@ async fn bulk_status_updates_are_absolute_and_idempotent() {
         "PUT /v1/entries is not idempotent -- the outbox design is invalid"
     );
 
-    // And the same for starred, which is the field the server's other
-    // endpoints implement as a toggle. This half is the one that produced the
-    // first real answer this job ever found (2026-10-05): `starred` is a field
-    // of `PUT /v1/entries` only from Miniflux 2.3.2. Below that the body 400s
-    // ("invalid entry status") and the outbox would have DROPPED the intent as
-    // malformed. The client now refuses entry-state writes below the floor
-    // before sending; `outbox_reconciliation` holds that, and this test holds
-    // the absolute-set semantics the refusal is preserving.
+    // Same for starred (server's other endpoints toggle it). `starred` field of
+    // `PUT /v1/entries` only from 2.3.2; below, body 400s ("invalid entry
+    // status") and outbox would drop intent as malformed. Client refuses below
+    // floor before sending (`outbox_reconciliation` holds that); this holds
+    // absolute-set semantics refusal preserves.
     client
         .update_entries(&[id], EntryMutation::Starred(true))
         .await
@@ -208,7 +200,7 @@ async fn bulk_status_updates_are_absolute_and_idempotent() {
         "the starred field toggled on replay -- absolute-set semantics are gone"
     );
 
-    // Leave the instance as we found it.
+    // Leave instance as found.
     client
         .update_entries(&[id], EntryMutation::Starred(false))
         .await
@@ -222,8 +214,8 @@ async fn bulk_status_updates_are_absolute_and_idempotent() {
 #[tokio::test]
 #[ignore = "needs a real Miniflux instance"]
 async fn an_empty_id_list_is_refused_locally_not_sent() {
-    // The server answers 400. Vuo refuses first, so the outbox's retry
-    // classifier never sees a self-inflicted client error.
+    // Server answers 400. Vuo refuses first: retry classifier never sees
+    // self-inflicted client error.
     let client = client_or_skip!();
     let err = client
         .update_entries(&[], EntryMutation::Status(EntryStatus::Read))
@@ -238,19 +230,13 @@ async fn an_empty_id_list_is_refused_locally_not_sent() {
 #[tokio::test]
 #[ignore = "needs a real Miniflux instance"]
 async fn changed_after_is_bumped_by_our_own_writes() {
-    // THE ASSUMPTION behind the pull's echo handling: a mutation bumps
-    // changed_at, so Vuo sees its own writes come back. The sync applies them
-    // as no-ops; this test documents that the echo is real and expected rather
-    // than a sign something is wrong.
-    // This had NO assertions at all. Both outcomes were accepted -- if
-    // changed_at did not move it printed a note saying "the pull tolerates
-    // both" and returned Ok -- so the only way it could fail was an HTTP error.
-    // A contract test that accepts either answer is a liveness check on the
-    // server, not a check of the contract the sync depends on.
+    // ASSUMPTION behind pull's echo handling: mutation bumps changed_at, Vuo
+    // sees own writes return. Sync applies them as no-ops; this pins echo as
+    // real and expected.
     //
-    // The reason it hedged is real, though: if the entry is ALREADY read, the
-    // write is a no-op and no sane server bumps a timestamp for it. So set up
-    // the precondition first, then assert.
+    // Already-read entry → write is no-op, no sane server bumps timestamp. So
+    // set precondition first, then assert; test accepting either answer =
+    // server liveness check, not contract.
     let client = client_or_skip!();
     let (page, _) = client
         .entries(&EntriesQuery::keyset(1))
@@ -263,7 +249,7 @@ async fn changed_after_is_bumped_by_our_own_writes() {
     );
     let id = EntryId(page.entries[0].id);
 
-    // Force the opposite status, so the mutation below is a real change.
+    // Force opposite status: mutation below is real change.
     client
         .update_entries(&[id], EntryMutation::Status(EntryStatus::Unread))
         .await
@@ -298,20 +284,17 @@ async fn changed_after_is_bumped_by_our_own_writes() {
 #[tokio::test]
 #[ignore = "needs a real Miniflux instance"]
 async fn the_entry_ids_endpoint_matches_its_declared_total() {
-    // The reconcile aborts on a mismatch rather than deleting; this checks the
-    // happy path is actually reachable on a quiet instance.
+    // Reconcile aborts on mismatch, doesn't delete; checks happy path reachable
+    // on quiet instance.
     let client = client_or_skip!();
     let version = client.version().await.expect("version");
     if !version.has_entry_ids_endpoint() {
         eprintln!("skipping: /v1/entries/ids needs Miniflux 2.3.2+");
         return;
     }
-    // `assert!(ids.total >= 0)` was the only assertion, which the server can
-    // only fail by sending a negative count -- and the actual claim, that
-    // `entry_ids.len()` matches `total`, was an eprintln! note. That claim is
-    // the one the reconcile's deletion guard rests on: a server declaring 999
-    // and returning one id is exactly the torn listing that makes the guard
-    // abort, so a test named for the match has to check the match.
+    // Claim reconcile's deletion guard rests on: `entry_ids.len()` matches
+    // `total`. Server declaring 999 and returning one id = torn listing guard
+    // aborts on. Test named for match checks match.
     const LIMIT: u32 = 1000;
     let ids = client
         .entry_ids(&EntriesQuery::default().with_limit(LIMIT), 0)
@@ -326,7 +309,7 @@ async fn the_entry_ids_endpoint_matches_its_declared_total() {
             "one page holds the whole listing, so the ids must match the declared total"
         );
     } else {
-        // Page through and check the union, which is what the reconcile does.
+        // Page through, check union: what reconcile does.
         let mut collected: Vec<i64> = ids.entry_ids.clone();
         let mut offset: u32 = LIMIT;
         while (collected.len() as i64) < ids.total {

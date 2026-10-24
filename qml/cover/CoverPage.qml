@@ -40,60 +40,51 @@ import "../components"
 CoverBackground {
     id: cover
 
-    /// Unread across the whole mirror, not just one scope.
+    /// Unread across whole mirror, not one scope.
     property int unreadCount: 0
     property bool syncing: false
-    /// The last refresh's error text, or empty. FOREIGN TEXT -- never rendered
-    /// here, only used as a flag; the cover has no room to say anything a user
-    /// could act on, and the entry list already shows the words.
+    /// Last refresh error text, or empty. FOREIGN TEXT: never rendered here,
+    /// only flag; cover has no room for actionable words, entry list shows
+    /// them.
     property string syncError: ""
     property bool syncErrorIsAuth: false
 
-    /// The count as the cover gives it. Two digits is what fits at a size that
-    /// reads from across a room; an unread count in the hundreds is an
-    /// ordinary week for a feed reader, and past a hundred the reader is not
-    /// counting them off a cover anyway. A count below zero cannot happen,
-    /// and is shown as none.
+    /// Count as cover shows it. Two digits fit at size readable across room;
+    /// hundreds unread = ordinary week, nobody counts past hundred off cover.
+    /// Below zero impossible, shown as none.
     readonly property string countKey:
         cover.unreadCount > 99 ? "99+" : "" + Math.max(0, cover.unreadCount)
 
-    /// The mask the art is painted from: the count's own, or "none" -- the
-    /// pattern with no number in it -- when there is nothing unread. Zero is
-    /// still the count, as data; it is only never drawn.
+    /// Mask art painted from: count's own, or "none" (pattern without number)
+    /// when nothing unread. Zero still count as data; never drawn.
     readonly property string maskKey: cover.unreadCount > 0 ? cover.countKey : "none"
 
-    /// True for a few seconds after a refresh ends badly.
+    /// True few seconds after bad refresh end.
     ///
-    /// The error itself is sticky -- the entry list keeps showing it until the
-    /// next refresh -- but a cover that sat on a warning triangle for ever
-    /// would be a worse lie than the never-ending spinner it replaces: the
-    /// count is what the cover is for.
+    /// Error itself sticky (entry list shows until next refresh), but warning
+    /// triangle forever = worse lie than endless spinner. Count is cover's
+    /// purpose.
     property bool _showFailure: false
 
-    /// One expression, so the failure trigger below cannot get out of step
-    /// with what counts as a failure.
+    /// One expression: failure trigger below can't drift from what counts as
+    /// failure.
     property string _errorToken: cover.syncErrorIsAuth ? "auth" : cover.syncError
 
-    /// True while sync has a word to say -- a spinner or a warning. The
-    /// status row and the texture's retreat behind it both hang off this,
-    /// so the room cannot open without the thing it is made for, or
-    /// outlast it.
+    /// True while sync has something to say (spinner or warning). Status row
+    /// and texture retreat both hang off this; room never opens without it or
+    /// outlasts it.
     readonly property bool hasStatus: cover.syncing || cover._showFailure
 
-    /// How far above the bottom edge sync speaks: the bottom of the status
-    /// row, and the floor of the room the texture gives up for it.
+    /// Height above bottom edge where sync speaks: status row bottom = floor of
+    /// room texture gives up.
     ///
-    /// The rule this is set to is that the line should sit as far above the
-    /// refresh icon as the icon sits above the bottom edge. The icon is
-    /// Silica's, centred in the cover-action strip, and a cover cannot ask
-    /// how tall that strip is -- so this is measured rather than derived:
-    /// off a device screenshot the icon cleared the bottom edge by about
-    /// 8% of the cover's height and its own top was about 18% up, which
-    /// puts the line's bottom about a quarter of the way up the cover.
-    /// One `paddingSmall`, where this started, left seven pixels.
+    /// Rule: line as far above refresh icon as icon above bottom edge. Icon =
+    /// Silica's, centred in cover-action strip; cover can't query strip height,
+    /// so measured: device screenshot, icon cleared bottom by ~8% of cover
+    /// height, top ~18% up → line bottom ~quarter up. One `paddingSmall`
+    /// (original) left seven pixels.
     ///
-    /// It is one number, deliberately: nudging the line moves the room made
-    /// for it with it.
+    /// One number on purpose: nudging line moves its room too.
     readonly property real statusBaseline:
         Theme.itemSizeSmall + Theme.paddingLarge
 
@@ -107,8 +98,7 @@ CoverBackground {
         }
     }
 
-    // Clear the moment a new refresh starts, so an old failure cannot sit
-    // under a fresh spinner.
+    // Clear when new refresh starts: old failure never under fresh spinner.
     onSyncingChanged: if (cover.syncing) {
         cover._showFailure = false
         failureTimer.stop()
@@ -120,53 +110,43 @@ CoverBackground {
         onTriggered: cover._showFailure = false
     }
 
-    // The texture, which is the whole of the cover: the mask painted around
-    // this count. No fade and no cleared disc -- the room for the number is
-    // already in the mask, and nothing else sits on the texture for long.
+    // Texture = whole cover: mask painted around count. No fade, no cleared
+    // disc: room for number already in mask, nothing else sits on texture long.
     TextArt {
         id: art
         objectName: "textArt"
         anchors.fill: parent
         source: "../art/cover/" + cover.maskKey + ".png"
-        // The count's own outline, drawn over the texture in the ambience's
-        // colour. It is a second mask off the same painter rather than a
-        // digit set here, because the face the masks were cut in is not on
-        // the phone -- see components/TextArt.qml. With no number there is
-        // no outline, and no file for one.
+        // Count outline over texture in ambience colour. Second mask from same
+        // painter, not digit set here: masks' face not on phone; see
+        // components/TextArt.qml. No number = no outline, no file.
         edgeSource: cover.maskKey === "none"
                     ? ""
                     : "../art/cover/" + cover.maskKey + "-edge.png"
         edgeColour: Theme.highlightColor
-        // An ink of 1.5, not the usual 0.55: the cover's masks carry their
-        // own strength -- full where the lines touch the digits, easing
-        // down to 0.55 / 1.5 a few lines out, and 0.55 / 1.5 throughout
-        // "none" -- so the far lines land at 0.55 as everywhere else, and
-        // the lines on the digits are driven past full. The shader's output saturates there, which makes the
-        // thin glyphs bolder and brighter than a mask alone could; the
-        // number is the brightest thing here and the sweeps recede from
-        // it. See tools/textart/render.qml.
+        // Ink 1.5, not usual 0.55: cover masks carry own strength (full where lines touch digits,
+        // easing to 0.55 / 1.5 few lines out, 0.55 / 1.5 throughout "none"). Far lines land at 0.55
+        // like elsewhere; lines on digits driven past full, shader saturates: thin glyphs bolder,
+        // brighter than mask alone. Number brightest, sweeps recede. See tools/textart/render.qml.
         ink: 1.5
 
-        // The room for the status line, made by the texture rather than
-        // over it: the mask runs out towards the bottom edge while sync has
-        // something to say, and is whole again the moment it stops.
+        // Room for status line made by texture, not over it: mask runs out
+        // toward bottom while sync has something to say, whole again when it
+        // stops.
         //
-        // The band is twice the height of everything below the row's top,
-        // so the line lands around the middle of the ramp with the pattern
-        // already well thinned under it and the very foot of the cover
-        // nearly bare -- and a line that WRAPPED to two rows grows the band
-        // with it rather than climbing out of the top of it.
+        // Band = twice height of everything below row top: line mid-ramp,
+        // pattern thinned under it, foot nearly bare; WRAPPED two-row line
+        // grows band, doesn't climb out.
         //
-        // Off means both at zero, not a band of no height at the bottom:
-        // the shader's test is `fadeOutTo > fadeOutFrom`.
+        // Off = both zero, not zero-height band: shader tests `fadeOutTo >
+        // fadeOutFrom`.
         fadeOutFrom: cover.hasStatus
                      ? cover.height - (cover.statusBaseline + status.height) * 2
                      : 0
         fadeOutTo: cover.hasStatus ? cover.height : 0
     }
 
-    // The count as DATA, for anything that reads the cover rather than
-    // looks at it. Never drawn: the art already says it.
+    // Count as DATA for readers of cover. Never drawn: art says it.
     Label {
         objectName: "unreadTotal"
         visible: false
@@ -174,9 +154,8 @@ CoverBackground {
         text: cover.countKey
     }
 
-    // Where sync speaks: just above the action strip, centred. Exactly one
-    // of the two states occupies the slot, so the spinner cannot be drawn
-    // across the warning; the line beside it is a fixed, translated string.
+    // Where sync speaks: just above action strip, centred. Exactly one state in
+    // slot; spinner never over warning. Line beside = fixed translated string.
     Row {
         id: status
         objectName: "syncStatus"
@@ -198,23 +177,16 @@ CoverBackground {
                 anchors.centerIn: parent
                 running: cover.syncing && !cover._showFailure
                 size: BusyIndicatorSize.ExtraSmall
-                // THE COVER IS NOT THE ACTIVE WINDOW, and Silica's
-                // indicator gates its RotationAnimator on
-                // `_forceAnimation || (visible && Qt.application.active)`
-                // (BusyIndicator.qml:80). On a cover the second half is
-                // always false, so the spinner appeared, sat perfectly
-                // still, and read as a frozen app. `_forceAnimation` is
-                // the escape hatch that predicate is written around.
+                // COVER NOT ACTIVE WINDOW. Silica indicator gates
+                // RotationAnimator on `_forceAnimation || (visible &&
+                // Qt.application.active)` (BusyIndicator.qml:80); second half
+                // always false on cover → still spinner = frozen-looking app.
+                // `_forceAnimation` = escape hatch.
                 //
-                // Bound to the cover's own status rather than set to
-                // `true`. A plain `true` overrides the `visible` half of
-                // Silica's predicate as well as the `Qt.application.active`
-                // half -- so a sync running with the screen off, or with
-                // another app in front, drove a rotation animation and the
-                // repaints that go with it for nobody. `Cover.Active` is
-                // exactly "this cover is the one being shown", which is
-                // the case the escape hatch was wanted for and the only
-                // case it is now used in.
+                // Bound to cover status, not `true`: `true` also overrides
+                // `visible` half, so sync with screen off or other app in front
+                // animates and repaints for nobody. `Cover.Active` = "this
+                // cover shown", only case hatch is for.
                 _forceAnimation: cover.status === Cover.Active
             }
 
@@ -230,40 +202,32 @@ CoverBackground {
             objectName: "syncStatusLabel"
             anchors.verticalCenter: parent.verticalCenter
             textFormat: Text.PlainText
-            // Fixed, translated strings only -- never the server's error
-            // text. Empty while there is nothing to say, so the row can
-            // hide without a stale word in it.
+            // Fixed translated strings only, never server error text. Empty
+            // when nothing to say: row hides without stale word.
             text: cover._showFailure
                   ? (cover.syncErrorIsAuth ? qsTr("Sign-in failed") : qsTr("Refresh failed"))
                   : (cover.syncing ? qsTr("Refreshing") : "")
             font.pixelSize: Theme.fontSizeExtraSmall
             color: cover._showFailure ? Theme.errorColor : Theme.secondaryHighlightColor
 
-            // The line WRAPS rather than running off both edges.
+            // Line WRAPS, doesn't run off both edges.
             //
-            // A `Row` centred on the cover gives its children whatever
-            // width they ask for, and a `Label` asks for the whole string
-            // on one line. English fits; "Aktualisierung fehlgeschlagen"
-            // does not, so the row grew wider than the cover, centring put
-            // the overhang on both sides, and the German read as a phrase
-            // with its head and tail cut off. Forty catalogues means this
-            // was never going to be a question of picking shorter English.
+            // Centred `Row` gives children width they ask; `Label` asks whole
+            // string on one line. "Aktualisierung fehlgeschlagen" wider than
+            // cover → overhang both sides, head and tail cut. Forty catalogues:
+            // shorter English not a fix.
             //
-            // Bounded instead of elided: a cover has the room going UP, and
-            // the row hangs off its bottom edge, so a second line pushes the
-            // top of the row up into texture the mask has already given up
-            // and leaves the gap to the refresh icon exactly as it was.
-            // `Math.min` keeps a line that does fit at its natural width,
-            // so short strings still centre as a tight row rather than a
-            // centred block in a full-width box.
+            // Bounded, not elided: cover has room UP, row hangs off bottom,
+            // second line pushes row top into texture mask already gave up, gap
+            // to refresh icon unchanged. `Math.min` keeps fitting line at
+            // natural width: short strings centre as tight row.
             width: Math.min(implicitWidth, cover.width
                             - Theme.paddingMedium * 2
                             - statusSlot.width - status.spacing)
             wrapMode: Text.Wrap
             horizontalAlignment: Text.AlignHCenter
-            // Three lines of extra-small text is most of the room between
-            // the count and the action strip; past that the line is cut,
-            // which is at least cut at one end and on a word.
+            // Three extra-small lines = most room between count and action
+            // strip; past that cut, at one end on word.
             maximumLineCount: 3
             elide: Text.ElideRight
         }

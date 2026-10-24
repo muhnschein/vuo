@@ -1,17 +1,14 @@
 #!/usr/bin/env bash
-# Lockfile constraints the SailfishOS SDK cares about and no host build notices.
+# Lockfile constraints SailfishOS SDK cares about, host builds miss
+# (docs/sdk-build.md):
 #
-# Both were found by the first real mb2 build (docs/sdk-build.md):
-#
-#   1. Lockfile FORMAT. v4 arrived in cargo 1.78; the SDK tooling ships 1.75 and
-#      cannot read it, and any `cargo update` on a modern host rewrites the file
-#      silently. This is a hard failure -- it is cheap to keep right.
-#
-#   2. Dependency EDITIONS. `cargo vendor` -- how the OBS and SDK builds get
-#      their crates -- makes cargo parse EVERY vendored manifest, including
-#      packages the build never compiles. A dependency on edition2024 therefore
-#      breaks the device build while the registry path, which parses only what
-#      it builds, stays green. Reported, not enforced: see the note below.
+# 1. Lockfile FORMAT. v4 since cargo 1.78; SDK tooling ships 1.75, can't read
+#    it; any `cargo update` on modern host rewrites silently. Hard failure;
+#    cheap to keep right.
+# 2. Dependency EDITIONS. `cargo vendor` (OBS and SDK crate source) parses EVERY
+#    vendored manifest, incl. never-compiled ones. edition2024 dependency breaks
+#    device build while registry path (parses only what it builds) stays green.
+#    Reported, not enforced: see note below.
 set -euo pipefail
 root=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$root"
@@ -26,11 +23,10 @@ fi
 echo "  Cargo.lock is v3 (readable by the SDK tooling's cargo 1.75)"
 
 # --- 2. the SDK gap: reported ------------------------------------------------
-# Deliberately NOT a failure. The gap is real, known, and cannot be closed by
-# this script: closing it means either a newer `rust` in the build target or
-# rolling the dependency tree back to 2023 (which would take the TLS stack with
-# it). A gate that can never pass just teaches people to ignore the output, so
-# this prints the number and docs/status.md tracks the decision.
+# NOT failure on purpose. Gap real, known, unclosable here: needs newer `rust`
+# in build target or dependency tree rolled back to 2023 (drags TLS stack).
+# Never- passing gate teaches ignoring output; prints number, docs/status.md
+# tracks decision.
 sdk_cargo=1.75
 declared=$(sed -n 's/^rust-version = "\(.*\)"/\1/p' Cargo.toml | head -1)
 echo "  declared rust-version: $declared   SDK 5.0.0.43 tooling ships: $sdk_cargo"

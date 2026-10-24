@@ -29,43 +29,38 @@ Page {
 
     ArticleModel { id: article }
 
-    /// Cleared when the reader takes charge of the read state themselves.
+    /// Cleared when reader sets read state themselves.
     ///
-    /// Without this, marking an article unread and then re-opening it later
-    /// would silently mark it read again — so "leave this for later" would
-    /// survive exactly until the next tap on the row.
+    /// Without it, marking unread then re-opening silently marks read again:
+    /// "leave for later" lasts until next row tap.
     property bool autoMarkArmed: false
 
     Component.onCompleted: {
         article.load(page.entryId)
-        // Arm only for something that is actually unread. `markRead` is
-        // idempotent anyway, but not arming keeps the intent honest.
+        // Arm only for unread. `markRead` idempotent anyway; not arming keeps
+        // intent honest.
         page.autoMarkArmed = article.markReadDelayMs >= 0 && !article.isRead
     }
     Component.onDestruction: article.clear()
 
-    /// Whether the site page has been attached to the right. Once: the page
-    /// becomes Active again every time the reader swipes back from the site,
-    /// and attaching a second copy then would restart the site's load.
+    /// Site page attached right yet. Once: page Active again on every swipe
+    /// back from site; second copy restarts site load.
     property bool _siteAttached: false
 
-    // The site, to the right, for an entry that has a link. Attached once
-    // the page is Active, which is when a page is on the stack to attach to;
-    // an entry without a link gets no forward indicator and nothing to swipe
-    // to, rather than a page that says it has nothing to show.
+    // Site to right for entry with link. Attached once page Active (on stack to
+    // attach to). No link = no forward indicator, nothing to swipe to (not
+    // "nothing to show" page).
     onStatusChanged: if (status === PageStatus.Active && !page._siteAttached
                          && article.articleUrl.length > 0) {
         page._siteAttached = true
         pageStack.pushAttached(Qt.resolvedUrl("SitePage.qml"), { url: article.articleUrl })
     }
 
-    // Mark the article read once it has been open long enough.
+    // Mark read once open long enough.
     //
-    // `running` is gated on the page being the visible one AND the app being
-    // active, so the countdown measures the article being on screen rather
-    // than the phone being in a pocket. It does not survive the screen
-    // blanking while the app stays foregrounded — Silica gives QML no signal
-    // for that, and the article is still "open" by any definition the app has.
+    // `running` gated on page visible AND app active: counts article on screen,
+    // not phone in pocket. Screen blank with app foreground doesn't stop it:
+    // Silica gives QML no signal; article still "open".
     Timer {
         id: autoMarkRead
         interval: Math.max(1, article.markReadDelayMs)
@@ -82,18 +77,15 @@ Page {
         }
     }
 
-    // The worker writes a scraped body into the mirror and leaves the outcome
-    // on the signal; without this the OPEN article never re-read it, which is
-    // why "Fetch original content" looked like it did nothing.
+    // Worker writes scraped body to mirror, leaves outcome on signal; without
+    // this OPEN article never re-reads it ("Fetch original content" looks
+    // dead).
     //
-    // ONLY WHILE A SCRAPE IS ACTUALLY IN FLIGHT. `running` used to be the page
-    // being showing, and reading an article is the longest-lived state this
-    // app has -- so the common case was a wakeup every second, for minutes, to
-    // ask about a scrape the reader had not asked for. `Article::pollSync`
-    // does nothing at all unless `take_fetch_outcome` has something for the
-    // open entry, and `fetching` is true exactly between the request and that
-    // outcome, so this loses no case and costs nothing when the menu item is
-    // never used.
+    // ONLY WHILE SCRAPE IN FLIGHT. Reading = app's longest state; polling while
+    // page shown = wakeup per second for minutes. `Article::pollSync` does
+    // nothing unless `take_fetch_outcome` has something for open entry;
+    // `fetching` true exactly between request and outcome. No lost case, zero
+    // cost when unused.
     Timer {
         interval: 1000
         repeat: true
@@ -108,31 +100,24 @@ Page {
         anchors.fill: parent
         model: article
 
-        // Keep delegates alive a little beyond the viewport.
+        // Keep delegates alive slightly beyond viewport.
         //
-        // A ListView destroys delegates that scroll out of range and rebuilds
-        // them on the way back, which for this page meant every image was
-        // re-resolved and re-decoded each time it re-entered view -- so
-        // scrolling back up through an article you had already read jumped
-        // around exactly as it had on the way down.
+        // ListView destroys out-of-range delegates, rebuilds on return: images
+        // re-resolved, re-decoded; scrolling back jumped.
         //
-        // This was four screens, which is nine screens of live delegates once
-        // both directions are counted, and a live image delegate holds a
-        // DECODED pixmap -- several megabytes each at this width. An article
-        // that is mostly pictures held tens of them at once. One screen either
-        // side is enough now that a rebuilt delegate no longer jumps: the
-        // `height` binding below reserves the right shape from the tag's own
-        // ratio before any pixel arrives, and `cache: true` means the pixmap
-        // usually comes back from Qt's cache rather than the network.
+        // Live image delegate holds DECODED pixmap (megabytes each at this
+        // width); bigger buffer = tens held at once in picture-heavy article.
+        // One screen each side enough: `height` binding below reserves shape
+        // from tag ratio before pixels; `cache: true` usually brings pixmap
+        // from Qt cache, not network.
         cacheBuffer: Math.round(blocks.height)
 
         header: Column {
             width: blocks.width
 
-            // The article's own title is foreign data, and PageHeader gives no
-            // supported way to force its internal label's textFormat. So the
-            // header carries a fixed string and the title is rendered by a
-            // Label this file controls -- explicitly as PlainText (§9.3).
+            // Article title foreign; PageHeader can't force internal label
+            // textFormat. Header carries fixed string; title in own Label,
+            // PlainText explicitly (§9.3).
             PageHeader { title: qsTr("Article") }
 
             Label {
@@ -145,10 +130,8 @@ Page {
                 color: Theme.highlightColor
             }
 
-            // What the article's own state is. Neither of these could be seen
-            // anywhere in this view before: read/unread and starred lived only
-            // in the entry list's context menu, so a reader who had opened an
-            // article could not tell whether it was starred, let alone star it.
+            // Article's own state: read/unread and starred, visible and
+            // settable from article, not only entry list context menu.
             Row {
                 x: Theme.horizontalPageMargin
                 spacing: Theme.paddingMedium
@@ -194,16 +177,14 @@ Page {
             textFormat: Text.PlainText
             font.pixelSize: Theme.fontSizeExtraSmall
             color: Theme.secondaryHighlightColor
-            // Saying so is the point: a silent truncation reads as "this is
-            // the whole article" when it is not.
+            // Saying so = point: silent truncation reads as whole article.
             text: qsTr("This article was too large to display in full.")
         }
 
         PullDownMenu {
             MenuItem {
                 text: article.isRead ? qsTr("Mark as unread") : qsTr("Mark as read")
-                // Disarm: once the reader has said what they want, a timer
-                // must not overrule them a few seconds later.
+                // Disarm: reader decided; timer mustn't overrule seconds later.
                 onClicked: {
                     page.autoMarkArmed = false
                     article.toggleRead()
@@ -216,9 +197,9 @@ Page {
             }
             MenuItem {
                 text: qsTr("Open in browser")
-                // openInBrowser RETURNS the URL rather than launching it: Rust
-                // has no business knowing how this platform opens a browser.
-                // Discarding the return value made the menu item do nothing.
+                // openInBrowser RETURNS URL, doesn't launch: Rust shouldn't
+                // know how platform opens browser. Discarding return = dead
+                // menu item.
                 onClicked: {
                     var target = article.openInBrowser()
                     if (target.length > 0) {
@@ -230,10 +211,9 @@ Page {
                 text: qsTr("Fetch original content")
                 onClicked: {
                     article.fetchOriginal()
-                    // Say something the moment it is asked for. The scrape is
-                    // a round trip to a server that then fetches a third-party
-                    // page, which can take seconds; with no acknowledgement at
-                    // all the menu item read as broken.
+                    // Acknowledge at once. Scrape = round trip to server that
+                    // fetches third-party page, can take seconds; silence reads
+                    // as broken.
                     if (article.fetching) {
                         notice.post(qsTr("Fetching the original article…"),
                                     false, "")
@@ -242,38 +222,28 @@ Page {
             }
         }
 
-        // NOT a Loader.
+        // NOT Loader.
         //
-        // A Loader's sourceComponent is instantiated in the scope where the
-        // Component was DECLARED, not where the Loader sits, so the delegate's
-        // model roles (blockKind, styledText, ...) are simply not visible
-        // inside it. The article body rendered completely blank. Passing every
-        // role through as a Loader property and reaching for it via `parent`
-        // works but is a trap for the next person.
+        // Loader's sourceComponent instantiated in scope where Component
+        // DECLARED, not where Loader sits: delegate roles (blockKind,
+        // styledText, ...) invisible inside → blank body. Passing roles as
+        // Loader properties via `parent` works but traps next person.
         //
-        // A single delegate with one visible child per block kind keeps the
-        // roles in scope, which is what a Qt 5.6-era Silica app would do
-        // anyway: there are no required properties and no Controls 2 here.
+        // Single delegate, one visible child per block kind, keeps roles in
+        // scope (Qt 5.6-era Silica: no required properties, no Controls 2).
         //
-        // WHICH MEANS EVERY BLOCK BUILDS ALL OF THEM, and `visible: false`
-        // only stops a child being DRAWN. A `Text` still parses and lays out
-        // whatever is assigned to its `text`, because implicit sizing needs
-        // the result whether or not anyone sees it -- so four of these Labels
-        // were each building a full StyledText layout, with glyph runs, over
-        // the same `styledText`, for every block in the article.
+        // SO EVERY BLOCK BUILDS ALL OF THEM; `visible: false` only stops
+        // DRAWING. `Text` still parses and lays out its `text` (implicit
+        // sizing). Four Labels each built full StyledText layout over same
+        // `styledText` per block: Jolla, long text-only article, 30 MB
+        // resident, not freed on leaving page. Every `text` below gated on
+        // block kind, not just hidden.
         //
-        // Measured on a Jolla with a long text-only article: 30 MB of that,
-        // resident, and not released on leaving the page. Every `text` below
-        // is therefore gated on the block kind, not merely hidden.
-        //
-        // AND SO IS EVERY `height`, never on `visible`. Reading `visible`
-        // gives the EFFECTIVE visibility, which is false for every item on a
-        // page the stack has hidden -- and the stack hides this page whenever
-        // another is pushed over it, the image viewer included. Gated on
-        // `visible`, every block collapsed to nothing the moment the viewer
-        // came up, the list had no content left to be scrolled into, and the
-        // reader came back to the top of the article whatever they had been
-        // reading. The kind does not change while the page is out of sight.
+        // EVERY `height` too, never on `visible`. `visible` = EFFECTIVE
+        // visibility, false on page stack hid (any push over it, image viewer
+        // included). Gated on `visible`, blocks collapse when viewer opens,
+        // list loses content, reader returns to top. Kind doesn't change while
+        // page hidden.
         delegate: Item {
             id: block
             width: blocks.width
@@ -289,12 +259,12 @@ Page {
                     x: Theme.horizontalPageMargin + quoteDepth * Theme.paddingLarge
                     width: block.width - x - Theme.horizontalPageMargin
                     wrapMode: Text.Wrap
-                    // Rust produced this markup and escaped every character of
-                    // foreign text into it. StyledText is safe here, and only
-                    // where the text came from that one function.
+                    // Rust produced markup, escaped all foreign text.
+                    // StyledText safe here, only for text from that one
+                    // function.
                     textFormat: Text.StyledText
-                    // Gated on the kind, not on `visible`. See the note
-                    // above the delegate for both reasons.
+                    // Gated on kind, not `visible`. See note above delegate for
+                    // both reasons.
                     text: blockKind === "heading" ? styledText : ""
                     color: Theme.highlightColor
                     font.pixelSize: level <= 2 ? Theme.fontSizeLarge : Theme.fontSizeMedium
@@ -355,8 +325,8 @@ Page {
                         x: Theme.paddingMedium
                         y: Theme.paddingMedium
                         width: parent.width - Theme.paddingMedium * 2
-                        // Verbatim by definition. Rendering code as markup
-                        // would both corrupt it and reintroduce injection.
+                        // Verbatim by definition. As markup: corrupts code,
+                        // reintroduces injection.
                         textFormat: Text.PlainText
                         text: blockKind === "code" || blockKind === "table"
                               ? styledText : ""
@@ -374,10 +344,9 @@ Page {
                     width: block.width - Theme.horizontalPageMargin * 2
                     spacing: Theme.paddingSmall
 
-                    // An un-proxied third-party image is NOT loaded. The
-                    // placeholder names the host it would have contacted, so
-                    // "load images" is an informed choice rather than a
-                    // shrug (§9.3).
+                    // Un-proxied third-party image NOT loaded. Placeholder
+                    // names host it would contact: "load images" informed
+                    // choice (§9.3).
                     BackgroundItem {
                         visible: needsConsent
                         width: parent.width
@@ -394,7 +363,7 @@ Page {
                             width: parent.width - Theme.paddingLarge * 2
                             horizontalAlignment: Text.AlignHCenter
                             wrapMode: Text.Wrap
-                            // The host is foreign text.
+                            // Host is foreign text.
                             textFormat: Text.PlainText
                             font.pixelSize: Theme.fontSizeExtraSmall
                             color: Theme.secondaryHighlightColor
@@ -408,21 +377,16 @@ Page {
                         id: picture
                         visible: !needsConsent && status !== Image.Error
                         width: parent.width
-                        // A definite height at ALL times, which this did not
-                        // have. With only a width set, PreserveAspectFit
-                        // leaves implicitHeight at 0 until the pixels arrive
-                        // -- so every row was flat until its image decoded and
-                        // then sprang to full size, re-flowing everything
-                        // below it under the reader's thumb.
+                        // Definite height ALWAYS. Width only +
+                        // PreserveAspectFit = implicitHeight 0 until pixels;
+                        // row flat until decode then springs, re-flowing below
+                        // under thumb.
                         //
-                        // Once loaded the real ratio is used. Before that the
-                        // <img> tag's own width/height gives the right shape
-                        // outright, and where the feed offered none, a square
-                        // is reserved: wrong by some amount, but wrong by a
-                        // BOUNDED amount and only once. The bound is real --
-                        // `article.rs`'s MAX_IMAGE_RATIO clamps what the tag
-                        // may claim, so a 1 x 20000 px `<img>` can no longer
-                        // reserve a block taller than the article.
+                        // Loaded: real ratio. Before: <img> tag width/height
+                        // gives shape; none offered = square reserved, wrong by
+                        // BOUNDED amount, once. Bound real: `article.rs`
+                        // MAX_IMAGE_RATIO clamps tag claims; 1 x 20000 px
+                        // `<img>` can't reserve block taller than article.
                         height: {
                             if (status === Image.Ready && implicitWidth > 0) {
                                 return width * (implicitHeight / implicitWidth)
@@ -432,30 +396,24 @@ Page {
                         fillMode: Image.PreserveAspectFit
                         asynchronous: true
                         cache: true
-                        // BOTH dimensions, which is what actually bounds the
-                        // decode. Qt only downscales a source that exceeds the
-                        // size asked for, so a width cap alone left the height
-                        // free: a 1000 x 30000 px image -- 30 megapixels, about
-                        // 120 MB decoded -- came through the proxy at full
-                        // resolution, and the comment here used to claim the
-                        // opposite. With both set and PreserveAspectFit, Qt
-                        // scales the source to fit INSIDE the box, so the
-                        // decoded pixmap is bounded whatever shape arrives.
+                        // BOTH dimensions, actually bounds decode. Qt only
+                        // downscales source exceeding requested size; width cap
+                        // alone leaves height free (1000 x 30000 px = 30 MP,
+                        // ~120 MB decoded, at full res). Both +
+                        // PreserveAspectFit: scaled to fit INSIDE box, pixmap
+                        // bounded whatever shape.
                         //
-                        // Four screens tall is past anything meant to be read
-                        // on a phone; beyond it the image is drawn upscaled and
-                        // soft, which is the right way to lose that argument.
-                        // The URL was validated as http(s) in Rust before it
-                        // ever reached QML.
+                        // Four screens tall past anything readable on phone;
+                        // beyond, drawn upscaled and soft (right way to lose).
+                        // URL validated http(s) in Rust before QML.
                         sourceSize.width: block.width
                         sourceSize.height: block.width * 4
                         source: blockKind === "image" && !needsConsent
                                 ? imageSource : ""
 
-                        // A tap zooms -- unless the feed made the image a
-                        // link, in which case the tap goes where the link
-                        // does, exactly as a linked word would. The link was
-                        // validated as http(s) in Rust, like every other.
+                        // Tap zooms, unless feed made image link: then tap
+                        // follows link like linked word. Link validated http(s)
+                        // in Rust.
                         MouseArea {
                             anchors.fill: parent
                             enabled: picture.status === Image.Ready
@@ -463,11 +421,10 @@ Page {
                                 if (imageLink.length > 0) {
                                     Qt.openUrlExternally(imageLink)
                                 } else {
-                                    // A page pushed over this one can take
-                                    // the place of the site attached to its
-                                    // right, so attach it again once the
-                                    // reader is back. pushAttached replaces
-                                    // an attached page; it never adds one.
+                                    // Page pushed over this can replace site
+                                    // attached right; re-attach on return.
+                                    // pushAttached replaces attached page,
+                                    // never adds.
                                     page._siteAttached = false
                                     pageStack.push(Qt.resolvedUrl("ImageViewerPage.qml"),
                                                    { source: imageSource, alt: imageAlt,
@@ -508,12 +465,11 @@ Page {
         anchors.bottom: parent.bottom
     }
 
-    /// The `FETCH_*` constants from crates/vuo-shim/src/article.rs.
+    /// `FETCH_*` constants from crates/vuo-shim/src/article.rs.
     ///
-    /// Repeated here rather than imported: qmetaobject 0.2.10 on Qt 5.6 has no
-    /// `qml_register_enum` (see lib.rs:28), so an integer is the only thing
-    /// that crosses. Naming them here keeps the branch below readable and puts
-    /// the one place they could drift out of step in plain sight.
+    /// Repeated, not imported: qmetaobject 0.2.10 on Qt 5.6 lacks
+    /// `qml_register_enum` (see lib.rs:28); only integer crosses. Named here:
+    /// branch readable, drift point visible.
     readonly property int fetchIdle: 0
     readonly property int fetchOk: 1
     readonly property int fetchEmpty: 2
@@ -521,15 +477,14 @@ Page {
     readonly property int fetchFailed: 4
     readonly property int fetchAuth: 5
 
-    /// Mirrors the model's property, because a Page cannot declare a change
-    /// handler for a property that lives on `article`.
+    /// Mirrors model property: Page can't declare change handler for property
+    /// on `article`.
     property int fetchStatus: article.fetchStatus
 
-    /// Report a finished scrape, then acknowledge it.
+    /// Report finished scrape, then acknowledge.
     ///
-    /// A change handler, not a binding: the scrape's result is an EVENT the
-    /// user started, and clearing it here is what stops the same result being
-    /// reported again the next time the property happens to be re-read.
+    /// Change handler, not binding: result = user-started EVENT; clearing here
+    /// stops re-report on next re-read.
     onFetchStatusChanged: {
         if (page.fetchStatus === page.fetchIdle) {
             return
@@ -537,8 +492,8 @@ Page {
         if (page.fetchStatus === page.fetchOk) {
             notice.post(qsTr("The original article was loaded."), false, "")
         } else if (page.fetchStatus === page.fetchEmpty) {
-            // The stored article is deliberately left alone in this case, so
-            // say why nothing changed rather than letting it read as a no-op.
+            // Stored article left alone here on purpose; say why nothing
+            // changed, not silent no-op.
             notice.post(qsTr("The server could not extract the original article."),
                         true, "")
         } else if (page.fetchStatus === page.fetchUnchanged) {
@@ -546,8 +501,7 @@ Page {
         } else if (page.fetchStatus === page.fetchAuth) {
             notice.post(qsTr("The server rejected the API key."), true, "")
         } else {
-            // The server's own words, so PlainText -- which is what
-            // NoticeBanner guarantees.
+            // Server's own words, so PlainText (NoticeBanner guarantees).
             notice.post(qsTr("Could not fetch the original article: %1")
                             .arg(article.fetchMessage), true, "")
         }

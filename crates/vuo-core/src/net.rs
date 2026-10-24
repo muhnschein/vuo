@@ -1,44 +1,38 @@
-//! What kind of network the phone is on, and whether an automatic sync may use
-//! it.
+//! What network phone is on; whether automatic sync may use it.
 //!
-//! # Why this is read from the kernel rather than from Qt
+//! # Why kernel, not Qt
 //!
-//! The obvious answer is `QNetworkConfigurationManager`: it is Qt, Harbour
-//! allows `libQt5Network`, and it reports a bearer type. It was the wrong
-//! answer here for two reasons.
+//! Obvious answer `QNetworkConfigurationManager` (Qt, Harbour allows
+//! `libQt5Network`, reports bearer type). Wrong here, two reasons.
 //!
-//! **Freshness.** A `QObject` lives on the Qt thread, so its answer would have
-//! to be pushed to the sync worker as a command. The worker syncs on its own
-//! cadence *while the app is minimised*, which is exactly the window in which
-//! nothing is pushing anything: the reader walks out of Wi-Fi range, no tap
-//! happens, and the worker acts on a reading taken an hour ago. Reading the
-//! kernel from the worker means the answer is taken at the moment the decision
-//! is made, which is the only moment it is worth taking.
+//! **Freshness.** `QObject` lives on Qt thread; answer would be pushed to
+//! worker as command. Worker syncs on own cadence *while minimised*, exactly
+//! when nothing pushes: reader leaves Wi-Fi, no tap, worker acts on hour-old
+//! reading. Reading kernel from worker = answer taken when decision made, only
+//! moment worth it.
 //!
-//! **Verifiability.** §8's governing rule is that `make check` runs what CI
-//! runs with no phone. A bearer query cannot be exercised that way; two files
-//! under a directory this module is handed can, and the tests below do.
+//! **Verifiability.** §8: `make check` runs what CI runs, no phone. Bearer
+//! query can't be exercised that way; two files under a handed directory can
+//! (tests below).
 //!
-//! It also needs no C++ glue, no `cpp_build`, no new dependency, and nothing
-//! from Harbour's allowed-libraries list that is not already linked.
+//! Also no C++ glue, no `cpp_build`, no new dependency, nothing from Harbour's
+//! allowed-libraries list not already linked.
 //!
-//! # What is actually read
+//! # What is read
 //!
-//! `/proc/net/route` and `/proc/net/ipv6_route` for a default route, and
-//! `/sys/class/net/<iface>/` for whether the interface carrying it is Wi-Fi.
-//! `phy80211` is the modern marker and `wireless` the old one; between them
-//! they are what `iw` and `NetworkManager` look at.
+//! `/proc/net/route` and `/proc/net/ipv6_route` for default route;
+//! `/sys/class/net/<iface>/` for whether carrying interface is Wi-Fi.
+//! `phy80211` modern marker, `wireless` old one: what `iw` and `NetworkManager`
+//! check.
 //!
-//! # The rule that matters most
+//! # Rule that matters most
 //!
-//! **A reading that could not be taken never blocks a sync.** Every failure
-//! path here -- an unreadable `/proc`, a kernel that lays these files out
-//! differently, a route through something this does not recognise -- lands on
-//! [`Network::Unknown`], and [`Network::allows`] lets `Unknown` through. The
-//! worst case is that Vuo behaves exactly as it did before this module
-//! existed. The alternative failure mode -- a misread that silently stops
-//! syncing on a phone with a perfectly good connection -- is one the user
-//! cannot diagnose and would not report as anything but "it stopped working".
+//! **Reading that couldn't be taken never blocks sync.** Every failure path
+//! (unreadable `/proc`, different kernel layout, unrecognised route) lands on
+//! [`Network::Unknown`]; [`Network::allows`] lets `Unknown` through. Worst
+//! case: Vuo behaves as without this module. Other failure mode (misread
+//! silently stops syncing on good connection) undiagnosable by user; reported
+//! only as "it stopped working".
 
 use std::path::Path;
 
@@ -53,29 +47,27 @@ const RTF_UP: u32 = 0x1;
 pub enum Network {
     /// A default route over an interface the kernel calls wireless.
     Wifi,
-    /// A default route over something else. Cellular, on a phone -- the
-    /// connection the user may be paying for by the byte.
+    /// Default route over something else. Cellular on phone: maybe paid per
+    /// byte.
     Metered,
-    /// The route files were read and hold no default route at all. A sync
-    /// would spend a DNS lookup and a connect timeout to discover this.
+    /// Route files read, no default route. Sync would spend DNS lookup and
+    /// connect timeout discovering this.
     Offline,
     /// Could not be determined. Never blocks anything; see the module docs.
     Unknown,
 }
 
 impl Network {
-    /// Whether an automatic sync may run over this.
+    /// Whether automatic sync may run over this.
     ///
-    /// `wifi_only` is the user's "Only sync on Wi-Fi" setting. It is a promise
-    /// about which network Vuo uses, so it is taken literally: on a metered
-    /// connection nothing automatic goes out, the outbox included. Nothing is
-    /// lost by that -- the outbox is durable and idempotent, and it goes on the
-    /// next Wi-Fi or the next manual refresh, which is never gated.
+    /// `wifi_only` = user's "Only sync on Wi-Fi". Promise about which network
+    /// Vuo uses, taken literally: metered → nothing automatic goes out, outbox
+    /// included. Nothing lost: outbox durable and idempotent, goes on next
+    /// Wi-Fi or manual refresh (never gated).
     #[must_use]
     pub fn allows(self, wifi_only: bool) -> bool {
         match self {
-            // Unknown: the reading failed. Behave as though this module were
-            // not here.
+            // Unknown: reading failed. Behave as if module absent.
             Network::Unknown | Network::Wifi => true,
             Network::Metered => !wifi_only,
             Network::Offline => false,
@@ -95,7 +87,7 @@ pub fn probe_under(root: &Path) -> Network {
     let v4 = std::fs::read_to_string(root.join("proc/net/route"));
     let v6 = std::fs::read_to_string(root.join("proc/net/ipv6_route"));
 
-    // Neither file readable is not "offline"; it is "this does not work here".
+    // Neither file readable ≠ "offline"; = "doesn't work here".
     if v4.is_err() && v6.is_err() {
         return Network::Unknown;
     }
@@ -112,9 +104,8 @@ pub fn probe_under(root: &Path) -> Network {
         return Network::Offline;
     }
 
-    // Wi-Fi wins where there are several. A phone holding both a Wi-Fi and a
-    // cellular default route is using the Wi-Fi one -- and reporting the more
-    // permissive of the two is the direction that cannot strand a reader.
+    // Wi-Fi wins among several. Phone with Wi-Fi and cellular default routes
+    // uses Wi-Fi; reporting more permissive can't strand reader.
     if ifaces.iter().any(|iface| is_wireless(root, iface)) {
         Network::Wifi
     } else {
@@ -122,10 +113,10 @@ pub fn probe_under(root: &Path) -> Network {
     }
 }
 
-/// Interfaces carrying an IPv4 default route.
+/// Interfaces carrying IPv4 default route.
 ///
-/// The columns are `Iface Destination Gateway Flags RefCnt Use Metric Mask`.
-/// A default route is destination and mask both zero, and `RTF_UP` set.
+/// Columns `Iface Destination Gateway Flags RefCnt Use Metric Mask`. Default =
+/// destination and mask zero, `RTF_UP` set.
 fn default_route_ifaces_v4(text: &str) -> Vec<String> {
     text.lines()
         .skip(1)
@@ -148,10 +139,10 @@ fn default_route_ifaces_v4(text: &str) -> Vec<String> {
         .collect()
 }
 
-/// Interfaces carrying an IPv6 default route.
+/// Interfaces carrying IPv6 default route.
 ///
-/// The interface is the LAST column, and the first two are the destination and
-/// its prefix length: `::/0` is thirty-two zeros followed by `00`.
+/// Interface = LAST column; first two = destination and prefix length: `::/0` =
+/// thirty-two zeros then `00`.
 fn default_route_ifaces_v6(text: &str) -> Vec<String> {
     text.lines()
         .filter_map(|line| {
@@ -167,14 +158,13 @@ fn default_route_ifaces_v6(text: &str) -> Vec<String> {
         .collect()
 }
 
-/// Whether the kernel calls this interface wireless.
+/// Whether kernel calls interface wireless.
 ///
-/// `phy80211` is a symlink, so this asks for the link itself rather than
-/// following it: a dangling one still says what the interface is.
+/// `phy80211` is symlink: asks for link itself, doesn't follow; dangling one
+/// still says what interface is.
 fn is_wireless(root: &Path, iface: &str) -> bool {
-    // The interface name reaches this from a kernel file, but it ends up in a
-    // path, so a name carrying separators must not be able to walk out of
-    // /sys/class/net.
+    // Interface name from kernel file but ends up in path: separators must not
+    // walk out of /sys/class/net.
     if iface.is_empty() || iface.contains('/') || iface.contains("..") {
         return false;
     }
@@ -237,9 +227,8 @@ mod tests {
 
     /// §a route that is not a DEFAULT route is not a way out.
     ///
-    /// A phone associated to a Wi-Fi network it cannot route through -- a
-    /// captive portal, an access point with no uplink -- has a subnet route
-    /// and no default. Counting it would report Wi-Fi and sync into nothing.
+    /// Wi-Fi without uplink (captive portal, AP with no uplink): subnet route,
+    /// no default. Counting it reports Wi-Fi, syncs into nothing.
     #[test]
     fn a_subnet_route_without_a_default_is_offline() {
         let dir = fake_root(
@@ -267,8 +256,8 @@ mod tests {
 
     /// §an IPv6-only connection is seen.
     ///
-    /// Cellular is routinely IPv6-only. Reading only /proc/net/route would
-    /// report such a phone offline and stop syncing it altogether.
+    /// Cellular routinely IPv6-only. Reading only /proc/net/route reports
+    /// offline, stops syncing.
     #[test]
     fn an_ipv6_only_default_route_is_found() {
         let dir = fake_root(
@@ -298,9 +287,8 @@ mod tests {
 
     /// §a reading that could not be taken is Unknown, NOT Offline.
     ///
-    /// The single most important case in this module. `Offline` stops
-    /// automatic syncing; a kernel whose files are not where this looks, or a
-    /// sandbox that will not show them, must not be able to stop it.
+    /// Most important case here. `Offline` stops automatic sync; kernel with
+    /// files elsewhere, or sandbox hiding them, must not stop it.
     #[test]
     fn an_unreadable_proc_is_unknown_rather_than_offline() {
         let dir = fake_root(None, None, &[]);
@@ -338,13 +326,13 @@ mod tests {
     /// §what each reading allows, and that Unknown allows everything.
     #[test]
     fn the_policy_never_blocks_on_a_reading_it_could_not_take() {
-        // Wi-Fi only OFF: anything but a connection that does not exist.
+        // Wi-Fi only OFF: anything but nonexistent connection.
         assert!(Network::Wifi.allows(false));
         assert!(Network::Metered.allows(false));
         assert!(Network::Unknown.allows(false));
         assert!(!Network::Offline.allows(false));
 
-        // Wi-Fi only ON: the setting is a promise, so metered is refused.
+        // Wi-Fi only ON: setting is promise, metered refused.
         assert!(Network::Wifi.allows(true));
         assert!(!Network::Metered.allows(true));
         assert!(!Network::Offline.allows(true));

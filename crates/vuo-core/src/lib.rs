@@ -1,48 +1,41 @@
-//! `vuo-core` — the Qt-free heart of Vuo, a `SailfishOS` client for Miniflux.
+//! `vuo-core`: Qt-free heart of Vuo, `SailfishOS` client for Miniflux.
 //!
-//! Everything in this crate builds and tests on a plain host toolchain: no Qt,
-//! no `SailfishOS` SDK, no phone, no server. That is the point. §5 of the scope:
-//! *if a bug can only be reproduced on a phone, the layering is wrong.* The
-//! sync engine is where this project's real invariants live — cursors,
-//! conflict resolution, an outbox that must not lose or double-apply
-//! mutations — and they are all testable on a laptop.
+//! Builds and tests on plain host toolchain: no Qt, no `SailfishOS` SDK, no
+//! phone, no server. That's the point. Scope §5: *if a bug can only be
+//! reproduced on a phone, the layering is wrong.* Real invariants live in sync
+//! engine (cursors, conflict resolution, outbox that must not lose or
+//! double-apply mutations), all testable on laptop.
 //!
 //! # Layout
 //!
-//! - [`api`] — the Miniflux REST client, and the boundary where foreign
-//!   bytes become validated domain values.
-//! - [`db`] — the local SQLite mirror, and the outbox that makes the write
-//!   path offline-tolerant.
-//! - [`sync`] — the incremental pull and the idempotent outbox replay.
-//! - [`model`] — the strict domain types.
-//! - [`content`] — the HTML → render-block transform (§9.2, §9.3).
-//! - [`notify`] — deciding what the new-articles notification says, and
-//!   making feed titles fit for a surface Vuo does not control.
-//! - [`redact`] — keeping the API token and credentials out of error paths.
-//! - [`error`] — the error taxonomy, and the retry classification the outbox
-//!   depends on.
+//! - [`api`]: Miniflux REST client; boundary where foreign bytes become
+//!   validated domain values.
+//! - [`db`]: local SQLite mirror, and outbox making write path offline-tolerant.
+//! - [`sync`]: incremental pull, idempotent outbox replay.
+//! - [`model`]: strict domain types.
+//! - [`content`]: HTML → render-block transform (§9.2, §9.3).
+//! - [`notify`]: what new-articles notification says; feed titles fit for
+//!   surface Vuo doesn't control.
+//! - [`redact`]: API token and credentials out of error paths.
+//! - [`error`]: error taxonomy, retry classification outbox depends on.
 //!
 //! # Safety posture
 //!
-//! Vuo is structurally a program that renders bytes written by strangers.
-//! Entry content, titles, author names, feed and category names, link targets
-//! and image URLs all originate at arbitrary websites and reach this crate
-//! verbatim. A feed operator who wants to attack Vuo does not need to
-//! compromise the user's server — they only need the user to subscribe.
+//! Vuo renders bytes written by strangers. Content, titles, authors, feed and
+//! category names, link targets, image URLs: from arbitrary websites, verbatim.
+//! Attacker needn't compromise user's server, only get subscribed.
 //!
-//! So: `#![forbid(unsafe_code)]` here, `unwrap`/`expect`/`panic`/indexing
-//! denied by lint, every loop bounded, and allowlists rather than blocklists
-//! wherever foreign input is shaped into something the UI will draw.
+//! So: `#![forbid(unsafe_code)]`, `unwrap`/`expect`/`panic`/indexing denied by
+//! lint, every loop bounded, allowlists not blocklists wherever foreign input
+//! becomes something UI draws.
 
 #![forbid(unsafe_code)]
-// More of the same, for what a phone runs and tests do not. The release
-// profile has no overflow checks, so `+` on a length a server chose wraps
-// silently; a string sliced off a char boundary panics; a `let _ =` on a
-// `Result` drops the one diagnosis there was. Here rather than in the
-// workspace lints table because that table cannot leave tests out, and a
-// test indexing into what it just built is fine. Integration tests,
-// examples and build scripts are other crates, or this one under
-// `cfg(test)`.
+// More of same, for what phone runs and tests don't. Release profile: no
+// overflow checks, so `+` on server-chosen length wraps silently; slicing off
+// char boundary panics; `let _ =` on `Result` drops only diagnosis. Here, not
+// workspace lints table: table can't exclude tests, and test indexing what it
+// just built is fine. Integration tests, examples, build scripts = other
+// crates, or this one under `cfg(test)`.
 #![cfg_attr(
     not(test),
     deny(
@@ -54,11 +47,10 @@
         clippy::get_unwrap
     )
 )]
-// The `unwrap`/`expect`/`panic`/indexing denials exist because foreign input
-// reaches production paths and unwinding out of Rust into Qt's C++ frames is
-// undefined behaviour (§9.5). Test code has neither property: a test that
-// cannot unwrap is a test that spends more lines on error handling than on the
-// thing it is checking, and a panicking assertion is the entire point.
+// `unwrap`/`expect`/`panic`/indexing denied because foreign input reaches
+// production and unwinding into Qt's C++ frames = UB (§9.5). Tests have
+// neither: no-unwrap test spends more lines on error handling than check;
+// panicking assert is the point.
 #![cfg_attr(
     test,
     allow(
@@ -85,10 +77,7 @@ pub use error::{Error, Result};
 
 #[cfg(test)]
 mod workspace_guards {
-    //! Guards over the whole workspace's source, not just this crate's.
-    //!
-    //! These exist because the sweep that produced them found the same shape
-    //! four separate times, in four separate places.
+    //! Guards over whole workspace's source, not just this crate.
 
     use std::path::{Path, PathBuf};
 
@@ -107,14 +96,12 @@ mod workspace_guards {
         }
     }
 
-    /// Source with any trailing `#[cfg(test)]` module removed.
+    /// Source with trailing `#[cfg(test)]` module removed.
     ///
-    /// Truncating at the FIRST occurrence is crude, and deliberately so: this
-    /// crate's convention is that test modules come last, so everything after
-    /// the first `#[cfg(test)]` is test code. If a file ever puts production
-    /// code after a test module, this guard reads that code as tests and could
-    /// report a false positive -- which is the safe direction to be wrong in,
-    /// and the assertion message says to move the test module to the end.
+    /// Truncates at FIRST occurrence, crude on purpose: convention = test
+    /// modules last. Production code after test module reads as tests →
+    /// possible false positive (safe direction); assertion message says move
+    /// test module to end.
     fn production_source(path: &Path) -> String {
         let text = std::fs::read_to_string(path).unwrap_or_default();
         text.split("#[cfg(test)]")
@@ -123,14 +110,12 @@ mod workspace_guards {
             .to_owned()
     }
 
-    /// A `pub fn` that nothing outside its own definition ever calls.
+    /// `pub fn` nothing outside own definition calls.
     ///
-    /// # Why this is a test and not a lint
+    /// # Why test, not lint
     ///
-    /// `dead_code` does not fire on a `pub` item: it is public, so the compiler
-    /// assumes an external consumer. Nothing in this workspace is published, so
-    /// that assumption is always wrong here, and it hid the same defect shape
-    /// four times over:
+    /// `dead_code` doesn't fire on `pub` items (assumes external consumer). Nothing here published:
+    /// assumption always wrong. Shape this catches:
     ///
     /// | function | what it hid |
     /// | --- | --- |
@@ -139,20 +124,15 @@ mod workspace_guards {
     /// | `ServerVersion::max_entry_limit` | both branches returned 1000; the cap that reached the wire was elsewhere |
     /// | `Settings::media_policy_for` | the Images setting was rendered, persisted, read back, and reached nothing (§9.3) |
     ///
-    /// In each case a test asserted on the helper as though it were the rule,
-    /// so the test passed while the production path did something else. The
-    /// helper is not the bug; the bug is a test pointed at it. Catching the
-    /// orphan catches the whole shape.
+    /// Test asserts on helper as though it were rule; passes while production does something else.
+    /// Helper not bug; test pointed at it is. Orphan catches whole shape.
     ///
-    /// Fixing a hit means one of two things, and both are fine: make the
-    /// production path call the helper, or delete the helper and point its
-    /// test at whatever the production path actually does.
+    /// Fix: production path calls helper, or delete helper and point test at what production does.
     #[test]
     fn every_pub_fn_has_a_caller_outside_its_own_definition() {
-        // Exempt, each for a stated reason. This list is the guard's only
-        // escape hatch, and it is deliberately a nuisance: adding a name means
-        // writing down who the caller is, which is the question the guard
-        // exists to force. An entry with no reason is a bug in this list.
+        // Exempt, each with stated reason. Only escape hatch, nuisance on
+        // purpose: adding name means writing down caller (question guard
+        // forces). Entry without reason = bug in list.
         const EXEMPT: &[(&str, &str)] = &[
             (
                 "vuo_register_qml_types",
@@ -186,8 +166,8 @@ mod workspace_guards {
             files.len()
         );
 
-        // Every file's production half, concatenated: the haystack a call has
-        // to appear in somewhere.
+        // Every file's production half, concatenated: haystack a call must
+        // appear in.
         let all: String = files.iter().map(|f| production_source(f)).collect();
 
         let mut orphans = Vec::new();
@@ -210,9 +190,8 @@ mod workspace_guards {
                 if name.is_empty() || name == "main" || EXEMPT.iter().any(|(n, _)| *n == name) {
                     continue;
                 }
-                // The definition itself is one occurrence. A second anywhere in
-                // the workspace's production source is a caller (or a re-export,
-                // or a trait impl -- all of them mean it is reachable).
+                // Definition = one occurrence. Second anywhere in production
+                // source = caller (or re-export, or trait impl: all reachable).
                 if all.matches(name.as_str()).count() < 2 {
                     orphans.push(format!("{}: {name}", file.display()));
                 }

@@ -1,18 +1,13 @@
-//! Fuzzing the HTML → render-block transform.
+//! Fuzz HTML → render-block transform.
 //!
-//! §8.3: *fuzzing on the two parsers. `cargo-fuzz` targets over the content
-//! transform and the JSON response deserialiser, seeded from the snapshot
-//! corpus. These are the code paths that eat attacker-influenced bytes (§9),
-//! and they are pure functions, which makes them unusually cheap to fuzz.*
+//! §8.3: fuzz both parsers, seeded from snapshot corpus. They eat
+//! attacker-influenced bytes (§9) and are pure functions: cheap to fuzz.
 //!
-//! The property under test is the one §9.5 states behaviourally: *a malformed
-//! response is a handled error, not a crash.* `transform` is infallible, so
-//! any panic, abort or stack overflow is a bug — there is no "expected
-//! failure" case to filter out.
+//! Property (§9.5): malformed input = handled error, not crash. `transform` is
+//! infallible, so any panic, abort, stack overflow is a bug.
 //!
-//! The assertions after the call are not decoration. Without them the fuzzer
-//! only finds crashes; with them it can also find a cap that silently fails to
-//! hold, which is the quieter and more dangerous bug.
+//! Assertions after call find caps that silently fail to hold, not just
+//! crashes.
 
 #![no_main]
 
@@ -26,14 +21,10 @@ fuzz_target!(|data: &[u8]| {
         Ok(u) => u,
         Err(_) => return,
     };
-    // `..Default::default()` on purpose: an exhaustive literal here means that
-    // adding a cap to `Limits` breaks the fuzz build, and the fuzz crate is a
-    // separate workspace that `make check` does not compile — so the breakage
-    // only surfaces in CI. Spreading the default keeps new caps working
-    // immediately at their production value.
+    // `..Default::default()` on purpose: exhaustive literal breaks fuzz build
+    // on each new `Limits` cap. New caps run at production value.
     let limits = Limits {
-        // Smaller than production so the fuzzer explores the truncation paths
-        // often rather than once in a thousand runs.
+        // Smaller than production: fuzzer hits truncation paths often.
         max_input_bytes: 64 * 1024,
         max_depth: 64,
         max_blocks: 256,
@@ -50,30 +41,25 @@ fuzz_target!(|data: &[u8]| {
 
     let document = transform(html, &ctx);
 
-    // Every cap must actually hold, whatever the input.
+    // Every cap must hold, whatever input.
     assert!(document.blocks.len() <= limits.max_blocks, "block cap breached");
     for block in &document.blocks {
         assert!(block.quote_depth <= limits.max_quote_depth, "quote depth cap breached");
         if let vuo_core::content::BlockKind::ListItem { indent, .. } = &block.kind {
             assert!(*indent <= limits.max_list_indent, "list indent cap breached");
         }
-        // §9.2: only http(s) may survive into a rendered link or image.
+        // §9.2: only http(s) may survive into rendered link or image.
         if let vuo_core::content::BlockKind::Image { src, .. } = &block.kind {
             let scheme = src.as_url().scheme();
             assert!(scheme == "http" || scheme == "https", "a {scheme}: image survived");
         }
     }
 
-    // Rendering must not panic, and every tag it emits must come from the
-    // closed set the renderer is allowed to produce.
+    // Rendering must not panic; every emitted tag from renderer's closed set.
     //
-    // NOTE: do NOT test this by searching for scary substrings like "onerror="
-    // or "javascript:". All foreign text is ESCAPED, so a document whose text
-    // content happens to be the literal string `onerror=` renders it as exactly
-    // that -- correctly and harmlessly. An earlier version of this target
-    // asserted on substrings and the fuzzer duly "found" that input within
-    // seconds. The real invariant is structural: after escaping, every `<` in
-    // the output must begin one of our own tags.
+    // Don't test for scary substrings ("onerror=", "javascript:"): foreign text
+    // is ESCAPED, so literal `onerror=` text renders harmlessly. Invariant is
+    // structural: after escaping, every `<` starts one of our tags.
     for block in &document.blocks {
         if let vuo_core::content::BlockKind::Paragraph { spans }
         | vuo_core::content::BlockKind::Heading { spans, .. }
@@ -86,9 +72,9 @@ fuzz_target!(|data: &[u8]| {
     }
 });
 
-/// Every `<...>` in rendered StyledText must be a tag this renderer emits.
+/// Every `<...>` in rendered `StyledText` must be a tag this renderer emits.
 ///
-/// Anything else means foreign markup survived escaping.
+/// Anything else = foreign markup survived escaping.
 fn assert_no_foreign_tags(styled: &str) {
     const ALLOWED: &[&str] = &[
         "b", "/b", "i", "/i", "s", "/s", "sup", "/sup", "sub", "/sub", "/a",
@@ -108,9 +94,9 @@ fn assert_no_foreign_tags(styled: &str) {
         let tag = rest.get(..end).unwrap_or_default();
 
         let ok = ALLOWED.contains(&tag)
-            // The only tag with an attribute. The href is a MediaUrl, so it is
-            // http(s) by construction; assert that here too since this is the
-            // one place a URL reaches a markup context.
+            // Only tag with attribute. href is `MediaUrl` (http(s) by
+            // construction); assert anyway: only place URL reaches markup
+            // context.
             || (tag.starts_with("a href=\"")
                 && tag.ends_with('"')
                 && {
@@ -118,7 +104,7 @@ fn assert_no_foreign_tags(styled: &str) {
                         .strip_prefix("a href=\"")
                         .and_then(|t| t.strip_suffix('"'))
                         .unwrap_or_default();
-                    // Escaped, so compare against the escaped forms.
+                    // Escaped: compare against escaped forms.
                     (href.starts_with("http://") || href.starts_with("https://"))
                         && !href.contains('<')
                         && !href.contains('>')

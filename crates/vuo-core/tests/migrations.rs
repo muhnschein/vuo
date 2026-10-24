@@ -4,25 +4,19 @@
 //! pending outbox loses user actions. Test each migration against a fixture
 //! database from the previous version.*
 //!
-//! # How to add a test when you add a migration
+//! # Adding a test with a migration
 //!
-//! There is currently one migration, so there is no *older* on-disk format to
-//! restore from yet. The harness is here anyway, with the fixture built in
-//! code, so that adding migration 2 is a matter of:
+//! 1. Commit real database file produced by previous release under
+//!    `tests/fixtures/` (real file, not built by current code: test what
+//!    shipped).
+//! 2. Add case to [`fixtures_upgrade_without_data_loss`].
 //!
-//! 1. Committing a real database file produced by the previous release into
-//!    `tests/fixtures/schema-v1.sqlite` (a real file, not one built by the
-//!    current code — the point is to test against what actually shipped).
-//! 2. Adding a case to [`fixtures_upgrade_without_data_loss`].
-//!
-//! The property that matters most is the last one in this file: a migration
-//! must never drop the outbox. Everything else in the mirror can be re-fetched
-//! from the server. Pending user actions cannot — they exist *only* on the
-//! device, and losing them silently un-does marks and stars the user believes
-//! they made.
+//! Most important property: migration never drops outbox. Rest of mirror
+//! re-fetchable. Pending user actions exist *only* on device; losing them
+//! silently undoes marks and stars user believes made.
 
-// Test code: see the note in vuo-core's lib.rs. The unwrap/panic denials
-// guard foreign-input paths in production, not assertions in tests.
+// Test code: see note in vuo-core's lib.rs. unwrap/panic denials guard
+// production foreign-input paths, not test assertions.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -50,7 +44,7 @@ fn populated(path: &std::path::Path) {
                 [i],
             )?;
         }
-        // Pending user actions: the thing that must survive at all costs.
+        // Pending user actions: must survive at all costs.
         outbox::queue(tx, EntryId(1), DesiredValue::Status(EntryStatus::Read), 100)?;
         outbox::queue(tx, EntryId(2), DesiredValue::Starred(true), 101)?;
         Ok(())
@@ -75,8 +69,8 @@ fn reopening_a_populated_database_preserves_everything() {
     let path = dir.path().join("vuo.sqlite");
     populated(&path);
 
-    // Re-open, which re-runs the migration path against an already-migrated
-    // file. This is what every app launch after the first one does.
+    // Re-open: re-runs migration path on already-migrated file. Every launch
+    // after first.
     let db = Database::open(&path).expect("reopen");
     let entries: i64 = db
         .conn()
@@ -86,18 +80,14 @@ fn reopening_a_populated_database_preserves_everything() {
     assert_eq!(outbox::len(db.conn()).expect("outbox"), 2);
 }
 
-// Note: the "a later migration preserves the outbox" property is exercised in
-// `db::migrations`' own unit tests, which can drive the migration machinery
-// with a synthetic second step. It cannot be tested from out here yet, because
-// only one schema version has ever shipped and re-running CREATE TABLE against
-// an existing schema is not what an upgrade does -- a test that rewound
-// `user_version` would be testing a scenario that cannot occur.
+// "Later migration preserves outbox" exercised in `db::migrations` unit tests
+// (synthetic second step) and `db::tests` over real `MIGRATIONS`. Rewinding
+// `user_version` here would test scenario that can't occur.
 
 #[test]
 fn a_database_from_a_newer_vuo_is_refused_rather_than_corrupted() {
-    // Downgrading is not supported, and writing to a schema this build does
-    // not understand could destroy data the newer build relies on. Refusing
-    // with an actionable message is the only safe answer.
+    // Downgrade unsupported; writing schema this build doesn't understand could
+    // destroy newer build's data. Refuse with actionable message.
     let dir = tempfile::tempdir().expect("tempdir");
     let path = dir.path().join("vuo.sqlite");
     populated(&path);
@@ -132,8 +122,8 @@ fn schema_of(conn: &Connection) -> Vec<String> {
             let kind: String = r.get(0)?;
             let name: String = r.get(1)?;
             let sql: Option<String> = r.get(2)?;
-            // Whitespace differs freely between a CREATE run today and the same
-            // CREATE run by an older release; the shape must not.
+            // Whitespace differs between CREATE today and same CREATE by older
+            // release; shape must not.
             let sql = sql
                 .unwrap_or_default()
                 .split_whitespace()
@@ -151,15 +141,10 @@ fn schema_of(conn: &Connection) -> Vec<String> {
 #[test]
 fn fixtures_upgrade_without_data_loss() {
     // §8.3: "Test each migration against a fixture database from the previous
-    // version." These are REAL on-disk databases, committed and frozen at the
-    // shape a release produced; scripts/make-schema-fixture.py regenerates one
-    // deliberately.
+    // version." REAL on-disk databases, committed, frozen at shape a release
+    // produced; scripts/make-schema-fixture.py regenerates one deliberately.
     //
-    // The previous version of this test could not fail. `tests/fixtures/` held
-    // an unrelated file, so the "nothing to test yet" early-out did not fire;
-    // the loop then skipped every non-.sqlite entry, so its body never ran; and
-    // `let _ = found;` threw away the one value that would have shown it. It
-    // reported a pass having asserted nothing.
+    // Must be able to fail: asserts fixtures were actually found and run.
     let fixtures = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/schema");
     let mut found: Vec<i64> = Vec::new();
 
@@ -172,7 +157,7 @@ fn fixtures_upgrade_without_data_loss() {
             continue;
         }
 
-        // Copy, because migrating mutates and a fixture must stay pristine.
+        // Copy: migrating mutates; fixture stays pristine.
         let dir = tempfile::tempdir().expect("tempdir");
         let working = dir.path().join("fixture.sqlite");
         std::fs::copy(&path, &working).expect("copy fixture");
@@ -226,11 +211,9 @@ fn fixtures_upgrade_without_data_loss() {
             path.display()
         );
 
-        // And the upgraded database must be indistinguishable from a fresh
-        // one. This is the property only a FROZEN on-disk fixture can check:
-        // an upgrade from v1 skips migration 1 entirely, so if migration 1's
-        // text has since been edited in place -- the cardinal migration
-        // mistake -- the two schemas diverge here, and nowhere else.
+        // Upgraded database indistinguishable from fresh. Only FROZEN fixture
+        // can check this: upgrade from v1 skips migration 1, so migration 1
+        // edited in place (cardinal mistake) diverges here, nowhere else.
         let fresh_dir = tempfile::tempdir().expect("tempdir");
         let fresh_path = fresh_dir.path().join("fresh.sqlite");
         let fresh = Database::open(&fresh_path).expect("fresh database");

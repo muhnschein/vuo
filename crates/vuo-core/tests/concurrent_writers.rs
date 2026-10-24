@@ -1,19 +1,15 @@
 //! Two connections, one mirror.
 //!
-//! Vuo runs the UI thread and the worker thread against the same SQLite file,
-//! so a user action racing a background sync is the normal case rather than an exotic
-//! one. §5 makes the mirror the single source of truth for the UI, which means
-//! a lost write here is a lost *user action* — a mark or a star the user made
-//! and watched disappear.
+//! UI thread and worker share SQLite file: user action racing background sync is
+//! normal case. §5: mirror = UI's single source of truth; lost write = lost *user
+//! action* (mark or star user watched vanish).
 //!
-//! Regression test for a real defect: `with_tx` used `BEGIN DEFERRED`, so in
-//! WAL mode the read-then-write path ("mark this feed read" reads the unread
-//! ids, then queues them) took its snapshot at the read and failed with
-//! `SQLITE_BUSY_SNAPSHOT` if the timer committed in between. `busy_timeout`
-//! does not rescue that — the transaction has to be rolled back and retried —
-//! so the user's action was simply lost.
+//! Pins `with_tx` = `BEGIN IMMEDIATE`. Under `BEGIN DEFERRED` in WAL, read-then-write
+//! ("mark feed read" reads unread ids, then queues) snapshots at read, fails
+//! `SQLITE_BUSY_SNAPSHOT` if timer commits between. `busy_timeout` can't rescue
+//! (needs rollback and retry): user's action lost.
 
-// Test code: see the note in vuo-core's lib.rs.
+// Test code: see note in vuo-core's lib.rs.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -41,35 +37,33 @@ fn seed(db: &mut Database, entries: i64) {
 
 #[test]
 fn a_mark_feed_read_is_not_lost_to_a_concurrent_sync() {
-    // The interleaving that matters, and the one a "commit first, then act"
-    // test does NOT reproduce:
+    // Interleaving that matters; "commit first, then act" test does NOT
+    // reproduce it:
     //
     //     UI: BEGIN ... read the unread ids
     //     timer:                              BEGIN ... write ... COMMIT
     //     UI: ... write the outbox rows ... COMMIT
     //
-    // Under BEGIN DEFERRED the UI's snapshot is taken at its read, the timer's
-    // commit invalidates it, and the UI's write fails with "database is
-    // locked" — losing the user's mark. Under BEGIN IMMEDIATE the UI holds the
-    // write lock from the start, so the timer is the one that waits.
+    // BEGIN DEFERRED: UI snapshot at read, timer commit invalidates it, UI
+    // write fails "database is locked", mark lost. BEGIN IMMEDIATE: UI holds
+    // write lock from start, timer waits.
     let dir = tempfile::tempdir().expect("tempdir");
     let path = dir.path().join("mirror.sqlite");
 
     let mut ui = Database::open(&path).expect("ui connection");
     seed(&mut ui, 5);
 
-    // Both connections are opened BEFORE the UI takes its lock: opening one
-    // inside would itself contend for the lock and confuse what is being
-    // measured.
+    // Both connections opened BEFORE UI takes lock: opening inside would
+    // contend for lock itself, muddling measurement.
     let mut timer = Database::open(&path).expect("timer connection");
-    // Short busy_timeout so a regression fails fast rather than hanging.
+    // Short busy_timeout: regression fails fast, no hang.
     timer
         .conn()
         .busy_timeout(Duration::from_millis(100))
         .expect("timeout");
 
     let result = ui.with_tx(|tx| {
-        // The read half of "mark this feed read".
+        // Read half of "mark feed read".
         let unread: i64 = tx.query_row(
             "SELECT COUNT(*) FROM entries WHERE status = 'unread'",
             [],
@@ -77,16 +71,15 @@ fn a_mark_feed_read_is_not_lost_to_a_concurrent_sync() {
         )?;
         assert_eq!(unread, 5);
 
-        // The background sync tries to commit right here. Under IMMEDIATE the
-        // UI already holds the write lock, so this is the side that waits and
-        // gives up -- which is the correct outcome: a background refresh can
-        // be retried, a user's action cannot be invented again.
+        // Background sync tries commit here. IMMEDIATE: UI holds write lock,
+        // this side waits and gives up. Correct: background refresh retryable;
+        // user action can't be re-invented.
         let _ = timer.with_tx(|t| {
             t.execute("UPDATE entries SET title = 'pulled' WHERE id = 1", [])?;
             Ok(())
         });
 
-        // The write half. This is what used to fail.
+        // Write half: fails under DEFERRED.
         outbox::queue_mark_feed_read(tx, 1, 100)
     });
 
@@ -98,8 +91,8 @@ fn a_mark_feed_read_is_not_lost_to_a_concurrent_sync() {
 
 #[test]
 fn writers_interleave_without_losing_either_side() {
-    // Alternating writers, each through the real API, with no coordination
-    // beyond SQLite's own locking.
+    // Alternating writers, each through real API, no coordination beyond SQLite
+    // locking.
     let dir = tempfile::tempdir().expect("tempdir");
     let path = dir.path().join("mirror.sqlite");
 
@@ -138,11 +131,11 @@ fn writers_interleave_without_losing_either_side() {
 
 #[test]
 fn a_second_writer_waits_rather_than_corrupting() {
-    // With BEGIN IMMEDIATE the first writer holds the lock, so the second
-    // blocks on busy_timeout instead of taking a snapshot it cannot upgrade.
+    // BEGIN IMMEDIATE: first writer holds lock; second blocks on busy_timeout,
+    // no un-upgradable snapshot.
 
-    // Short enough that a regression fails fast instead of hanging, long
-    // enough that "it waited" is unambiguous on a loaded machine.
+    // Short: regression fails fast, no hang. Long enough: "it waited"
+    // unambiguous on loaded machine.
     const BUSY: Duration = Duration::from_millis(300);
 
     let dir = tempfile::tempdir().expect("tempdir");
@@ -161,11 +154,9 @@ fn a_second_writer_waits_rather_than_corrupting() {
 
     let started = Instant::now();
     let blocked = timer.with_tx(|tx| {
-        // Read first. Without a read there is no snapshot to fail on, and a
-        // DEFERRED transaction would simply block on the write lock like an
-        // IMMEDIATE one -- so a write-only probe cannot tell the two apart at
-        // all. Read-then-write is also what the real callers do ("mark this
-        // feed read" reads the unread ids, then queues them).
+        // Read first. No read = no snapshot to fail on; DEFERRED would block on
+        // write lock like IMMEDIATE: write-only probe can't tell apart.
+        // Read-then-write = real callers ("mark feed read").
         let _: i64 = tx.query_row("SELECT COUNT(*) FROM entries", [], |r| r.get(0))?;
         tx.execute("UPDATE entries SET title = 'x' WHERE id = 1", [])?;
         Ok(())
@@ -176,13 +167,10 @@ fn a_second_writer_waits_rather_than_corrupting() {
         blocked.is_err(),
         "the second writer must wait, not proceed on a stale snapshot"
     );
-    // `is_err()` alone does not separate the fix from the bug: BOTH produce an
-    // error. Under BEGIN IMMEDIATE the loser blocks on busy_timeout and only
-    // then gives up; under BEGIN DEFERRED it takes a snapshot, fails on the
-    // write with SQLITE_BUSY_SNAPSHOT, and returns essentially instantly --
-    // busy_timeout does not apply to that. The elapsed time is what tells them
-    // apart, and asserting only `is_err()` left this test green under exactly
-    // the defect the module header describes.
+    // `is_err()` alone doesn't separate fix from bug: BOTH error. IMMEDIATE:
+    // loser blocks on busy_timeout, then gives up. DEFERRED: snapshot, fails on
+    // write with SQLITE_BUSY_SNAPSHOT, returns near-instantly (busy_timeout
+    // doesn't apply). Elapsed time tells apart.
     assert!(
         waited >= BUSY.checked_sub(Duration::from_millis(50)).unwrap(),
         "the second writer returned after {waited:?} without waiting out the {BUSY:?} \
@@ -194,7 +182,7 @@ fn a_second_writer_waits_rather_than_corrupting() {
         .expect("the lock holder's write must succeed");
     held.commit().expect("commit");
 
-    // And once the lock is free the other writer succeeds.
+    // Once lock free, other writer succeeds.
     timer
         .with_tx(|tx| {
             tx.execute("UPDATE entries SET title = 'x' WHERE id = 1", [])?;
@@ -205,10 +193,9 @@ fn a_second_writer_waits_rather_than_corrupting() {
 
 #[test]
 fn an_opened_database_carries_a_busy_timeout() {
-    // `Database::configure` calls the 5-second busy_timeout "the difference
-    // between a working app and one that fails to launch when the timer
-    // fires", and nothing tested it: setting it to 0 ms left the entire crate
-    // suite green, because every test that needs a timeout sets its own.
+    // `Database::configure` 5-second busy_timeout: difference between working
+    // app and one failing to launch when timer fires. Every other test sets own
+    // timeout; this pins the default.
     let dir = tempfile::tempdir().expect("tempdir");
     let db = Database::open(&dir.path().join("mirror.sqlite")).expect("open");
     let timeout: i64 = db
@@ -224,17 +211,16 @@ fn an_opened_database_carries_a_busy_timeout() {
 
 #[test]
 fn two_processes_can_open_a_fresh_mirror_at_once() {
-    // Regression: `migrate` read `user_version` BEFORE opening its
-    // transaction, so two connections opening together both saw version 0, both
-    // ran migration 1, and the loser failed on "table already exists" against
-    // a database that was in perfect shape. At start-up the UI thread and
-    // the worker thread really do open it at the same moment.
+    // `migrate` reads `user_version` INSIDE its transaction. Read before: two
+    // connections opening together both see 0, both run migration 1, loser
+    // fails "table already exists" on healthy database. UI thread and worker
+    // really open it at same moment on start-up.
     use std::sync::{Arc, Barrier};
 
     let dir = tempfile::tempdir().expect("tempdir");
     let path = dir.path().join("fresh.sqlite");
 
-    // Several rounds, because the race is timing-dependent.
+    // Several rounds: race timing-dependent.
     for _ in 0..5 {
         let _ = std::fs::remove_file(&path);
         let barrier = Arc::new(Barrier::new(4));

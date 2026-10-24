@@ -1,13 +1,11 @@
-//! Fuzzing the JSON response deserialiser and its validation.
+//! Fuzz JSON response deserialiser and validation.
 //!
-//! Two properties, both from §9.2:
+//! Two properties (§9.2):
 //!
-//! 1. The permissive wire types must accept *any* JSON object — server
-//!    versions skew, fields get added and deprecated, and a field this client
-//!    has never heard of must be uninteresting rather than fatal.
-//! 2. Validation into strict domain types must reject cleanly, per item. A
-//!    panic here would take down a sync over one absurd entry, which is
-//!    exactly the failure §9.2 forbids.
+//! 1. Permissive wire types accept *any* JSON object: server versions skew,
+//!    unknown fields must be uninteresting, not fatal.
+//! 2. Validation into strict domain types rejects cleanly, per item. Panic
+//!    would kill sync over one absurd entry.
 
 #![no_main]
 
@@ -15,15 +13,14 @@ use libfuzzer_sys::fuzz_target;
 use vuo_core::api::{convert, wire};
 
 fuzz_target!(|data: &[u8]| {
-    // Whole-response shape: the envelope plus a page of entries.
+    // Whole response: envelope plus page of entries.
     if let Ok(response) = serde_json::from_slice::<wire::EntriesResponse>(data) {
         let page = convert::entries(response.entries);
-        // A rejection must always be item-local, never something that would
-        // abort the whole sync.
+        // Rejection always item-local, never sync abort.
         for error in &page.rejected {
             assert!(error.is_item_local(), "a bad entry escalated to a sync failure: {error}");
         }
-        // Nothing may appear as both usable and deleted.
+        // Nothing both usable and deleted.
         for id in &page.removed {
             assert!(
                 !page.valid.iter().any(|e| e.id == *id),
@@ -31,8 +28,7 @@ fuzz_target!(|data: &[u8]| {
             );
         }
         for entry in &page.valid {
-            // Anything that reached the domain type must satisfy its
-            // invariants: no non-http(s) URL can have survived.
+            // Domain type invariants hold: no non-http(s) URL survived.
             for url in [entry.url.as_ref(), entry.comments_url.as_ref()].into_iter().flatten() {
                 let scheme = url.as_url().scheme();
                 assert!(scheme == "http" || scheme == "https", "a {scheme}: URL survived");
@@ -41,8 +37,7 @@ fuzz_target!(|data: &[u8]| {
         }
     }
 
-    // Single objects, so the fuzzer is not forced through the envelope to
-    // reach the interesting code.
+    // Single objects: fuzzer needn't go through envelope.
     if let Ok(entry) = serde_json::from_slice::<wire::Entry>(data) {
         let _ = convert::entry(entry);
     }
@@ -50,9 +45,8 @@ fuzz_target!(|data: &[u8]| {
         let _ = convert::feed(feed);
     }
     if let Ok(icon) = serde_json::from_slice::<wire::Icon>(data) {
-        // Icons are the most attacker-controlled bytes in the app: fetched
-        // automatically, never chosen by the user, and handed to an image
-        // decoder on the phone.
+        // Icons = most attacker-controlled bytes: fetched automatically, never
+        // chosen by user, fed to image decoder on phone.
         let _ = vuo_core::api::decode_icon(&icon, vuo_core::api::IconLimits::default());
     }
 });

@@ -1,28 +1,23 @@
-//! The local SQLite mirror.
+//! Local SQLite mirror.
 //!
-//! §5: *the local SQLite mirror is the single source of truth for the UI. The
-//! UI never waits on the network. Sync writes to SQLite; models observe SQLite.
-//! This makes offline reading a consequence of the architecture rather than a
-//! feature bolted on later.*
+//! §5: mirror = UI's single source of truth; UI never waits on network. Sync
+//! writes SQLite; models observe SQLite. Offline reading follows from
+//! architecture.
 //!
 //! # §9.4, in full
 //!
-//! - **No SQL is built by string formatting.** No query anywhere in this crate
-//!   is assembled with `format!` — not even the "obviously safe" ones with an
-//!   integer id — and a test enforces it. There is exactly one statement that
-//!   is not parameterised, and it is worth stating precisely rather than
-//!   glossing: `PRAGMA user_version = N` cannot take a bind parameter at all,
-//!   in any SQLite client. `rusqlite`'s `pragma_update` does *not* bind it
-//!   either — it renders the value into the statement text and calls
-//!   `execute_batch`. What makes that acceptable here is not the API but the
-//!   value: an `i64` read from this crate's own `MIGRATIONS` table, never from
-//!   the server, and never from anything a user or a feed can influence.
-//!   Do not reach for `pragma_update` to set a pragma from configuration or
-//!   from a server response; it is not an escaping layer.
-//! - **No filesystem path is ever derived from server data.** Nothing here
-//!   opens a file named after a feed title or a URL path; icons are stored as
-//!   blobs in the database, keyed by the server's integer icon id.
-//! - **Migrations preserve the outbox.** See [`migrations`].
+//! - **No SQL built by string formatting.** No query here uses `format!`, not
+//!   even "obviously safe" integer ids; a test enforces it. One
+//!   non-parameterised statement: `PRAGMA user_version = N` can't take bind
+//!   param in any SQLite client. `rusqlite`'s `pragma_update` doesn't bind it
+//!   either: renders value into statement text, calls `execute_batch`.
+//!   Acceptable only for the value: an `i64` from this crate's `MIGRATIONS`,
+//!   never server, user or feed. Don't use `pragma_update` for config or server
+//!   values; not an escaping layer.
+//! - **No filesystem path derived from server data.** No file named after feed
+//!   title or URL path; icons stored as blobs keyed by server's integer icon
+//!   id.
+//! - **Migrations preserve outbox.** See [`migrations`].
 
 pub mod migrations;
 pub mod outbox;
@@ -41,17 +36,16 @@ pub struct Database {
 }
 
 impl Database {
-    /// Open (creating if absent) and migrate the mirror at `path`.
+    /// Open (create if absent) and migrate mirror at `path`.
     ///
     /// # Errors
     ///
-    /// - [`Error::Db`](crate::error::Error::Db) if the file cannot be
-    ///   opened, the connection cannot be configured (including when it
-    ///   cannot be put into WAL mode), or the migration transaction fails
-    ///   to begin or commit.
+    /// - [`Error::Db`](crate::error::Error::Db) if file can't open, connection
+    ///   can't be configured (incl. WAL mode), or migration transaction fails
+    ///   to begin/commit.
     /// - [`Error::Migration`](crate::error::Error::Migration) as for
-    ///   [`migrations::migrate`]: the file's schema is newer than this
-    ///   build, or a migration step fails.
+    ///   [`migrations::migrate`]: schema newer than this build, or migration
+    ///   step fails.
     pub fn open(path: &Path) -> Result<Self> {
         let conn = Connection::open(path)?;
         Self::configure(&conn)?;
@@ -60,11 +54,11 @@ impl Database {
         Ok(db)
     }
 
-    /// An in-memory mirror, for tests.
+    /// In-memory mirror, for tests.
     ///
     /// # Errors
     ///
-    /// As for [`Database::open`], less the file errors.
+    /// As [`Database::open`], minus file errors.
     pub fn open_in_memory() -> Result<Self> {
         let conn = Connection::open_in_memory()?;
         Self::configure(&conn)?;
@@ -74,54 +68,42 @@ impl Database {
     }
 
     fn configure(conn: &Connection) -> Result<()> {
-        // busy_timeout FIRST, before any pragma that needs a lock.
+        // `busy_timeout` FIRST, before any pragma needing a lock.
         //
-        // Setting `journal_mode = WAL` takes a brief exclusive lock, so two
-        // processes opening the mirror at the same moment contend on it -- and
-        // with the timeout still unset, the loser failed immediately with
-        // "database is locked" rather than waiting a few milliseconds. On a
-        // device the UI thread and the worker thread really do open the
-        // mirror together at start-up, so this ordering is the difference
-        // between a working app and one that fails to launch.
+        // `journal_mode = WAL` takes brief exclusive lock; UI thread and worker
+        // open mirror together at start-up. Without timeout set, loser fails at
+        // once with "database is locked" instead of waiting.
         conn.busy_timeout(std::time::Duration::from_secs(5))?;
-        // WAL: the background sync unit and the UI process both hold the
-        // database open. WAL lets a reader proceed while a writer commits,
-        // which is the difference between a UI that scrolls during a sync and
-        // one that stutters.
+        // WAL: sync and UI both hold database open. Readers proceed while
+        // writer commits: UI scrolls during sync without stutter.
         Self::ensure_wal(conn)?;
-        // NORMAL is durable against process death (which is what matters for
-        // the outbox) though not against sudden power loss. On a phone with
-        // flash storage the fsync-per-commit cost of FULL is not worth paying
-        // for feed state.
+        // NORMAL: durable against process death (what outbox needs), not sudden
+        // power loss. FULL's fsync per commit not worth it for feed state on
+        // flash.
         conn.pragma_update(None, "synchronous", "NORMAL")?;
-        // Enclosure rows cascade from entries; without this the constraint is
+        // Enclosure rows cascade from entries; without this constraint is
         // decorative.
         conn.pragma_update(None, "foreign_keys", "ON")?;
-        // Per connection, like the pragmas: a SQL function lives on the
-        // connection that registered it, not in the file.
+        // Per connection, like pragmas: SQL function lives on registering
+        // connection, not file.
         crate::search::register(conn)?;
         Ok(())
     }
 
-    /// Put the database into WAL mode, tolerating another process doing the
-    /// same thing at the same moment.
+    /// Put database in WAL mode, tolerating another connection doing same at
+    /// same moment.
     ///
-    /// Changing `journal_mode` needs a brief exclusive lock, and — unlike
-    /// almost every other statement — **`busy_timeout` does not apply to it**:
-    /// SQLite returns `SQLITE_BUSY` immediately rather than waiting. So two
-    /// connections opening a fresh mirror together (the UI thread and the
-    /// worker thread at start-up, which is the normal case) had one of them fail
-    /// outright with "database is locked".
+    /// Changing `journal_mode` needs brief exclusive lock and **`busy_timeout`
+    /// doesn't apply**: SQLite returns `SQLITE_BUSY` at once. Two connections
+    /// opening fresh mirror together (UI thread + worker at start-up, normal
+    /// case) → one fails "database is locked".
     ///
-    /// Journal mode is a persistent property of the file, so the loser does
-    /// not need to win: it only needs the file to end up in WAL. Check first,
-    /// and on a busy error re-read rather than giving up.
+    /// Journal mode persists in file: loser needn't win, only see WAL. Check
+    /// first; on busy, re-read instead of giving up.
     fn ensure_wal(conn: &Connection) -> Result<()> {
-        // A bounded retry, not a single re-read. The loser of the race can
-        // observe the file still in "delete" mode for a moment after its own
-        // attempt fails — the winner has taken the lock but not yet committed
-        // the change — so checking once and giving up is itself racy, and
-        // fails intermittently in exactly the situation this exists to handle.
+        // Bounded retry, not single re-read: loser can see "delete" mode
+        // briefly after own attempt fails (winner holds lock, not yet
+        // committed). Checking once is itself racy.
         const ATTEMPTS: u32 = 20;
         const PAUSE: std::time::Duration = std::time::Duration::from_millis(25);
 
@@ -136,9 +118,8 @@ impl Database {
             if conn.pragma_update(None, "journal_mode", "WAL").is_ok() {
                 return Ok(());
             }
-            // Someone else holds the lock. Journal mode is a persistent
-            // property of the file, so we do not need to be the one who sets
-            // it — only to see it set.
+            // Someone else holds lock. Journal mode persists in file: we only
+            // need to see it set.
             if attempt.saturating_add(1) < ATTEMPTS {
                 std::thread::sleep(PAUSE);
             }
@@ -150,57 +131,46 @@ impl Database {
         )))
     }
 
-    /// The connection, mutably.
+    /// Connection, mutably.
     ///
-    /// Needed for `transaction_with_behavior`, which takes `&mut Connection`.
-    /// Only `tests/concurrent_writers.rs` uses it -- to hold an IMMEDIATE
-    /// transaction open while a second connection tries to write -- and an
-    /// integration test is a separate crate, so this cannot be `#[cfg(test)]`.
-    /// It is listed in `workspace_guards`' EXEMPT list for that reason.
+    /// For `transaction_with_behavior` (`&mut Connection`). Only
+    /// `tests/concurrent_writers.rs` uses it (holds IMMEDIATE transaction while
+    /// second connection writes); integration test is separate crate, so can't
+    /// be `#[cfg(test)]`. Hence in `workspace_guards` EXEMPT list.
     #[must_use]
     pub fn conn_mut(&mut self) -> &mut Connection {
         &mut self.conn
     }
 
-    /// The connection, for reads.
+    /// Connection, for reads.
     ///
-    /// Writes go through [`Database::with_tx`] instead.
+    /// Writes go through [`Database::with_tx`].
     pub fn conn(&self) -> &Connection {
         &self.conn
     }
 
-    /// Run `f` inside a WRITE transaction, committing on `Ok` and rolling back
-    /// on `Err`.
+    /// Run `f` in WRITE transaction: commit on `Ok`, roll back on `Err`.
     ///
-    /// `BEGIN IMMEDIATE`, not the `BEGIN DEFERRED` that `Connection::transaction`
-    /// gives by default. The difference is not academic here.
+    /// `BEGIN IMMEDIATE`, not `Connection::transaction` default `BEGIN DEFERRED`.
     ///
-    /// A deferred transaction in WAL mode takes its read snapshot at the first
-    /// *read*. If another connection commits after that point, the later
-    /// *write* fails with `SQLITE_BUSY_SNAPSHOT` — and `busy_timeout` does not
-    /// rescue it, because the transaction cannot be saved by waiting; it has to
-    /// be rolled back and retried.
+    /// Deferred transaction in WAL takes read snapshot at first *read*. Another connection
+    /// commits after → later *write* fails `SQLITE_BUSY_SNAPSHOT`; `busy_timeout` can't rescue,
+    /// needs rollback and retry.
     ///
-    /// Vuo has exactly the shape that hits this. The UI thread and the worker
-    /// thread both hold the mirror open, and the write path is
-    /// read-then-write: "mark this feed read" reads the unread ids, then queues
-    /// them. Measured before this change, with the worker committing between
-    /// those two halves, the user's mark failed with "database is locked" and
-    /// was lost.
+    /// Vuo has that shape: UI thread and worker share mirror; write path is read-then-write
+    /// ("mark feed read" reads unread ids, then queues). Worker commit between halves → user's
+    /// mark lost.
     ///
-    /// Taking the write lock at `BEGIN` removes the upgrade, so the contention
-    /// lands on the *other* writer, where `busy_timeout` applies normally. That
-    /// is the right way round: a background refresh can be retried on the next
-    /// tick, a user's action cannot be invented again.
+    /// Write lock at `BEGIN` removes upgrade: contention lands on *other* writer, where
+    /// `busy_timeout` works. Right way round: background refresh retries next tick; user action
+    /// can't be re-invented.
     ///
-    /// Readers are unaffected — reads in this crate go through
-    /// [`Database::conn`] and never open a transaction.
+    /// Readers unaffected: reads use [`Database::conn`], no transaction.
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Db`](crate::error::Error::Db) if the transaction cannot be begun (another
-    /// writer holds the lock past the busy timeout) or committed, and passes on
-    /// whatever error `f` returns, after rolling back.
+    /// [`Error::Db`](crate::error::Error::Db) if transaction can't begin (writer holds lock past
+    /// busy timeout) or commit; passes on `f`'s error after rollback.
     pub fn with_tx<T>(
         &mut self,
         f: impl FnOnce(&rusqlite::Transaction<'_>) -> Result<T>,
@@ -230,8 +200,8 @@ mod tests {
     #[test]
     fn foreign_keys_are_enforced() {
         let db = Database::open_in_memory().unwrap();
-        // enclosures.entry_id references entries(id); without FK enforcement
-        // this orphan insert would succeed.
+        // `enclosures.entry_id` references `entries(id)`; without FK
+        // enforcement orphan insert succeeds.
         let orphan = db.conn().execute(
             "INSERT INTO enclosures (id, entry_id, url) VALUES (1, 424242, 'https://x.example/a')",
             [],
@@ -256,10 +226,8 @@ mod tests {
 
     #[test]
     fn a_write_transaction_survives_a_concurrent_committer() {
-        // Regression: with BEGIN DEFERRED this failed with "database is
-        // locked" and the user's queued action was lost. Vuo runs the UI
-        // thread and the worker thread against the same file, so this race is
-        // the normal case, not an exotic one.
+        // Regression: BEGIN DEFERRED → "database is locked", queued user action
+        // lost. UI thread and worker share file: normal case.
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join("mirror.sqlite");
         let mut ui = Database::open(&path).expect("ui");
@@ -275,13 +243,9 @@ mod tests {
         })
         .expect("seed");
 
-        // The read-then-write goes through `with_tx`, which is the code this
-        // test is named for.
-        //
-        // It used to build the UI's transaction by hand with
-        // `TransactionBehavior::Immediate` -- supplying from the fixture the
-        // exact behaviour it claimed to be checking. Reverting `with_tx` to
-        // `Deferred`, the defect the comment above describes, left it green.
+        // Read-then-write goes through `with_tx`, the code under test.
+        // Hand-built Immediate transaction would supply the behaviour being
+        // checked.
         timer
             .conn()
             .busy_timeout(std::time::Duration::from_millis(50))
@@ -295,10 +259,9 @@ mod tests {
             )?;
             assert_eq!(unread, 1);
 
-            // The timer commits between the UI's read and its write. That is
-            // precisely the window BEGIN DEFERRED leaves open: the snapshot is
-            // taken at the read, and the write then fails with
-            // SQLITE_BUSY_SNAPSHOT, which busy_timeout cannot rescue.
+            // Timer commits between UI's read and write: exact window BEGIN
+            // DEFERRED leaves (snapshot at read, write fails
+            // SQLITE_BUSY_SNAPSHOT, `busy_timeout` can't help).
             let concurrent = timer.with_tx(|t| {
                 t.execute("UPDATE entries SET title = 'x' WHERE id = 1", [])?;
                 Ok(())
@@ -326,19 +289,16 @@ mod tests {
 
     #[test]
     fn no_sql_in_this_crate_is_built_by_formatting() {
-        // §9.4 is a structural rule, so it gets a structural test.
+        // §9.4 structural rule, structural test.
         //
-        // Deliberately NOT line-local and NOT a hand-maintained file list: the
-        // first version of this test was both, and would have missed the
-        // ordinary rustfmt-shaped form
+        // NOT line-local, NOT hand-kept file list: must catch rustfmt-shaped
         //
         //     let sql = format!(
         //         "SELECT ... WHERE feed_id = {id}"
         //     );
         //
-        // because the `format!` and the keyword land on different lines. It
-        // now walks every .rs file under src/ and scans with comments stripped
-        // and whitespace collapsed.
+        // where `format!` and keyword sit on different lines. Walks every .rs
+        // under src/, comments stripped, whitespace collapsed.
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
         let mut files = Vec::new();
         collect_rs(&root, &mut files);
@@ -347,11 +307,9 @@ mod tests {
             "found too few sources to be scanning the crate"
         );
 
-        // The guard must be able to fail. `BUILDERS` used to be declared here
-        // and then discarded with `let _ = BUILDERS;` while the loop scanned
-        // only for `format!` -- so the most natural way to write the violation,
-        // `String::from("SELECT ...")` plus `push_str`, was invisible. These
-        // two assertions are what stop that happening again.
+        // Guard must be able to fail: these assertions prove
+        // `String::from("SELECT ...")` + `push_str` is caught, not just
+        // `format!`.
         assert!(
             sql_built_by_string_building(
                 r#"let mut s = String::from("SELECT COUNT(*) FROM outbox WHERE entry_id = ");
@@ -368,11 +326,10 @@ mod tests {
 
         for file in files {
             let source = std::fs::read_to_string(&file).unwrap_or_default();
-            // Only production code. §9.4 is about the queries Vuo runs, and a
-            // test module inevitably contains the words it is scanning for --
-            // including this one.
+            // Production code only: §9.4 is about queries Vuo runs; test
+            // modules contain the scanned words (this one too).
             let source = source.split("#[cfg(test)]").next().unwrap_or("").to_owned();
-            // Strip line comments so prose about SQL is not a finding.
+            // Strip line comments: prose about SQL isn't a finding.
             let code: String = source
                 .lines()
                 .map(|l| l.split("//").next().unwrap_or(""))
@@ -389,11 +346,11 @@ mod tests {
         }
     }
 
-    /// The window around the first string-building construct that sits near an
-    /// SQL keyword, or `None`.
+    /// Window around first string-building construct near SQL keyword, or
+    /// `None`.
     ///
-    /// The window is bidirectional: rustfmt readily puts the keyword BEFORE the
-    /// builder, as it does in the `String::from(...)` then `push_str` shape.
+    /// Bidirectional: rustfmt often puts keyword BEFORE builder
+    /// (`String::from(...)` then `push_str`).
     fn sql_built_by_string_building(code: &str) -> Option<String> {
         const BUILDERS: [&str; 4] = ["format!", "concat!", "push_str", "to_string() +"];
         const KEYWORDS: [&str; 6] = [

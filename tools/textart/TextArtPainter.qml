@@ -75,8 +75,7 @@ Canvas {
 
     // ------------------------------------------------------------ what it is
 
-    /// The filler. Any text would do; this one is the one everybody
-    /// recognises as saying nothing.
+    /// Filler. Any text works; this one everybody recognises as saying nothing.
     readonly property string filler:
         "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do "
         + "eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut "
@@ -86,29 +85,26 @@ Canvas {
         + "nulla pariatur. Excepteur sint occaecat cupidatat non proident, "
         + "sunt in culpa qui officia deserunt mollit anim id est laborum. "
 
-    /// How many glyph heights fit across the width. THE one dial for how fine
-    /// the texture is, and the only thing that made the onboarding page's
-    /// pattern read differently from the cover's: same strokes, same rules,
-    /// two densities.
+    /// Glyph heights across width. THE dial for texture fineness; only
+    /// difference between onboarding and cover patterns: same strokes, same
+    /// rules, two densities.
     property real glyphsAcross: 64
     property real glyph: Math.max(3, Math.round(art.width / art.glyphsAcross))
-    /// From one line of text to the next, centre to centre.
+    /// Line to line, centre to centre.
     property real spacing: art.glyph * 1.6
-    /// How softly the strokes' families of curves merge (see `fieldAt`).
+    /// How softly strokes' curve families merge (see `fieldAt`).
     property real softness: art.spacing * 2.0
-    /// The text's darkness on the ground. Greyscale, by way of the theme's
-    /// own colour at less than full strength.
+    /// Text darkness on ground. Greyscale via theme colour at partial strength.
     property real ink: 0.55
     property color colour: Theme.primaryColor
-    /// The face the filler is set in. The device's own by default, which a
-    /// host that is not a phone resolves to whatever fontconfig has; a
-    /// `FontLoader` with the real file names it exactly (see render.qml).
+    /// Filler face. Device's own by default (non-phone host: whatever
+    /// fontconfig has); `FontLoader` with real file names it exactly (see
+    /// render.qml).
     property string fillerFont: Theme.fontFamily
 
-    /// The strokes the curves grow out of, in fractions of the width and
-    /// height. Each is a stroke rather than a point so the innermost curves
-    /// are capsules and every family has a direction, which is what gives the
-    /// sweeps their lean.
+    /// Strokes curves grow from, in fractions of width/height. Strokes not
+    /// points: innermost curves capsules, every family has direction = sweeps'
+    /// lean.
     property var strokes: [
         { x: 0.12, y: 0.16, x2: 0.28, y2: 0.08 },
         { x: 0.95, y: 0.30, x2: 0.84, y2: 0.20 },
@@ -119,115 +115,90 @@ Canvas {
 
     // ------------------------------------------------- the negative space
 
-    /// Text the lines flow AROUND rather than over: the cover's unread
-    /// count. Empty for none. The digits are never drawn -- they are the
-    /// absence of lines -- so a mask painted with one is right for exactly
-    /// that count and no other.
+    /// Text lines flow AROUND, not over: cover unread count. Empty = none.
+    /// Digits never drawn (absence of lines); mask right for exactly that
+    /// count.
     property string obstacle: ""
-    /// The family the digits are set in, as a `FontLoader` names it. The
-    /// count wants a heavy face: Fira Sans ExtraBold. Black was tried and
-    /// rejected, because the counter of the 4 closes up at that weight and
-    /// the digit reads as a solid shape.
+    /// Digit family as `FontLoader` names it. Count wants heavy face: Fira Sans
+    /// ExtraBold. Not Black: 4's counter closes, digit reads solid.
     property string obstacleFont: ""
-    /// Ink to ink between adjacent digits, in line spacings. At the font's
-    /// own spacing fewer than one line fits between a 4 and a 2, and the two
-    /// merge into one shape.
+    /// Ink to ink between adjacent digits, in line spacings. At font's own
+    /// spacing under one line fits between 4 and 2; they merge.
     property real obstacleGap: 2.6
-    /// The most of the fitted width, and of the usable height, the digits'
-    /// ink may take. Width first: a 99+ is wide, and it is the width that
-    /// binds.
+    /// Max share of fitted width and usable height digit ink may take. Width
+    /// first: 99+ wide, width binds.
     property real obstacleMaxWidth: 0.80
     property real obstacleMaxHeight: 0.62
-    /// How much of the way from the ink box's centre to the ink's WEIGHT the
-    /// number is moved. 0 centres the box, 1 centres the weight.
+    /// Fraction of way from ink box centre to ink WEIGHT number moves. 0
+    /// centres box, 1 centres weight.
     ///
-    /// A 1 is the reason this exists. Its ink box runs from the tip of the
-    /// flag to the edge of the stem, but nearly all of its ink is in the
-    /// stem, so a box centred on the canvas leaves the stem -- the part the
-    /// eye reads AS the digit -- sitting right of centre. Measured on Fira
-    /// Sans ExtraBold at 300px, the weight of each digit lies this far right
-    /// of its box centre:
+    /// For the 1: ink box runs flag tip to stem edge, nearly all ink in stem;
+    /// box centred leaves stem (what eye reads AS digit) right of centre. Fira
+    /// Sans ExtraBold at 300px, weight right of box centre per digit:
     ///
     ///     0 -0.5   1 +21.5   2 +5.3   3 +11.3   4 -1.6
     ///     5 +1.9   6  -4.3   7 +2.2   8  -0.6   9 +1.4
     ///
-    /// The 1 is twice the next worst and about a fifth of its own ink width;
-    /// on a 512-wide master that is some 34 pixels, which is plainly visible
-    /// and was reported from a device. The symmetric digits move by well
-    /// under a pixel, so this costs them nothing.
+    /// 1 = twice next worst, ~fifth of its ink width; ~34 px on 512-wide
+    /// master, plainly visible on device. Symmetric digits move under a pixel.
     ///
-    /// HALF of that, and not all of it. Moving a 1 the whole way puts the
-    /// stem left of centre and the shape then reads as shifted the other
-    /// way: the eye weighs a glyph's extent as well as its mass, and the
-    /// flag is wide even though it is thin. Two things agree on half. It is
-    /// what looks right side by side at 0, 0.5 and 1; and it is what the
-    /// type designer drew -- Fira gives the 1 a left bearing of 2 and a
-    /// right bearing of 22, so its own advance box sits +10.0 off the ink
-    /// box centre, against the +21.5 of the weight.
+    /// HALF, not all. Full move puts stem left of centre, reads shifted other
+    /// way: eye weighs extent as well as mass, flag wide though thin. Half
+    /// agrees twice: looks right side by side at 0, 0.5, 1; and type designer's
+    /// own (Fira 1: left bearing 2, right 22 → advance box +10.0 off ink box
+    /// centre vs weight's +21.5).
     property real obstacleOptical: 0.5
-    /// A further shift across, by eye, as a fraction of the digits' font
-    /// size: negative is left. 0 for none.
+    /// Extra sideways shift by eye, fraction of digit font size: negative =
+    /// left. 0 = none.
     ///
-    /// The weight above is a measurement, and for most counts it is enough.
-    /// For a few it is not, and no one rule agrees with the eye on all of
-    /// them: the weight says a 3 should go LEFT, because its spine is on the
-    /// right, but its open left side already makes it look left of centre,
-    /// and on a device it was reported that way. So the rule stays as it is
-    /// and the counts it gets wrong are corrected one by one, by the job that
-    /// paints them -- see render.qml. A fraction of the size rather than
-    /// pixels, so a correction holds if the master or the fit changes.
+    /// Weight above = measurement, enough for most counts. No single rule
+    /// matches eye on all: weight says 3 goes LEFT (spine on right), but open
+    /// left side already looks left of centre (seen on device). Rule stays;
+    /// wrong counts corrected one by one by painting job (see render.qml). Size
+    /// fraction, not pixels: holds if master or fit changes.
     property real obstacleNudge: 0
-    /// How wide a line to trace around the digits' silhouette, in pixels of
-    /// this master, or 0 for none. It is NOT painted into the pattern: it is
-    /// written beside it by `saveEdge`, as a mask of its own, so the app can
-    /// lay it over the texture in a colour of its own choosing.
+    /// Width of line traced around digit silhouette, master pixels, 0 = none.
+    /// NOT painted into pattern: written beside by `saveEdge` as own mask; app
+    /// lays it over texture in own colour.
     ///
-    /// Beside and not baked in, because the two want different colours. The
-    /// pattern is the theme's text colour at a fraction of an ink; the line
-    /// is the ambience's highlight at full strength. One channel cannot say
-    /// both, and a line baked into the pattern would be tinted with it.
+    /// Beside, not baked: pattern = theme text colour at fraction ink; line =
+    /// ambience highlight full. One channel can't say both; baked line tinted
+    /// with pattern.
     ///
-    /// It straddles the silhouette -- half over the blank the digits are,
-    /// half over the gap the first ring leaves -- which is what an outline
-    /// of a shape looks like. There is room for it: `levelOffset` holds the
-    /// first ring 0.6 spacings off the edge.
+    /// Straddles silhouette (half over digit blank, half over gap first ring
+    /// leaves) = how outline looks. Room: `levelOffset` keeps first ring 0.6
+    /// spacings off edge.
     property real obstacleEdge: 0
-    /// The narrowest aspect (width over height) this master is cropped to
-    /// on a device, or 0 for the master's own. The app's shader keeps the
-    /// mask's full height and trims its sides to the cover's shape, so the
-    /// digits are fitted to the width that SURVIVES that trim, or a wide
-    /// count would be clipped on a narrow cover.
+    /// Narrowest aspect (w/h) master cropped to on device, 0 = master's own.
+    /// App shader keeps full height, trims sides to cover shape; digits fitted
+    /// to width SURVIVING trim, else wide count clipped on narrow cover.
     property real fitAspect: 0
-    /// Height at the bottom that something else occupies -- the cover's
-    /// action area. The digits are centred in what is left above it.
+    /// Bottom height used by something else (cover action area). Digits centred
+    /// in rest above.
     property real reservedBottom: 0
-    /// Where the first ring sits, in spacings from its source. Half a
-    /// spacing is the painter's own; the cover's masters use 0.6, which
-    /// moves the first ring a little off the digit edge.
+    /// First ring position, spacings from source. 0.5 = painter default; cover
+    /// masters 0.6 (first ring slightly off digit edge).
     property real levelOffset: 0.5
-    /// Which way the tops of the glyphs face: their nearest source, or away
-    /// from it. The painter's sweeps have always faced away; the cover's
-    /// masters face in, so the lines beneath the number read upright.
+    /// Glyph tops face: nearest source, or away. Painter sweeps face away;
+    /// cover masters face in so lines under number read upright.
     property bool topsFaceSource: false
-    /// A halo: the lines are painted at full strength where they touch the
-    /// digits and ease down to `farInk` of it over `haloReach` line
-    /// spacings, so the number is the brightest thing on the cover and the
-    /// sweeps recede from it. Off while `haloReach` is 0, or with no
-    /// obstacle. Baked into the mask, since the app's shader knows nothing
-    /// of where the digits are; the app then draws the mask at full ink and
-    /// the far lines come out as they did at `farInk`.
+    /// Halo: lines full strength touching digits, easing to `farInk` over
+    /// `haloReach` spacings; number brightest, sweeps recede. Off while
+    /// `haloReach` 0 or no obstacle. Baked into mask (app shader doesn't know
+    /// digit positions); app draws mask at full ink, far lines come out at
+    /// `farInk`.
     property real farInk: 1.0
     property real haloReach: 0
 
     // --------------------------------------------- room for what sits on top
 
-    /// A band at the top the text fades in beneath: nothing above `fadeFrom`,
-    /// full strength from `fadeTo` down. Off while `fadeTo <= fadeFrom`.
+    /// Top band text fades in under: nothing above `fadeFrom`, full from
+    /// `fadeTo` down. Off while `fadeTo <= fadeFrom`.
     property real fadeFrom: 0
     property real fadeTo: 0
 
-    /// A disc the text fades out of, for something drawn in the middle. Off
-    /// while `clearRadius` is 0.
+    /// Disc text fades out of, for something drawn in middle. Off while
+    /// `clearRadius` 0.
     property real clearX: 0
     property real clearY: 0
     property real clearRadius: 0
@@ -235,16 +206,14 @@ Canvas {
 
     // ------------------------------------------------- how it gets on screen
 
-    /// How long one slice may take. Two frames' worth: long enough that the
-    /// per-slice overhead does not dominate, short enough that a touch is
-    /// never noticeably late.
+    /// Max time per slice. Two frames: per-slice overhead doesn't dominate,
+    /// touch never noticeably late.
     property int budgetMs: 24
-    /// True once the last ring has been drawn.
+    /// True once last ring drawn.
     property bool complete: false
 
-    /// Anything that changes what is drawn, in one string, so a single
-    /// handler starts the pattern over rather than one per property -- and so
-    /// none can be forgotten.
+    /// Everything changing drawing, in one string: single handler restarts
+    /// pattern, no property forgotten.
     readonly property string _key: [
         art.width, art.height, art.colour, art.glyphsAcross, art.spacing,
         art.softness, art.ink, art.fillerFont, art.fadeFrom, art.fadeTo,
@@ -256,9 +225,8 @@ Canvas {
     ].join(",")
     on_KeyChanged: art.restart()
 
-    /// Start the pattern over. The canvas is cleared by the next slice, not
-    /// here, so what is on screen survives until there is something to
-    /// replace it with.
+    /// Restart pattern. Canvas cleared by next slice, not here: screen keeps
+    /// old until replacement exists.
     function restart() {
         art._restart = true
         art.complete = false
@@ -272,15 +240,15 @@ Canvas {
     property var _lobes: []
     property var _obstacle: null
     property string _obstacleKey: ""
-    /// With no obstacle, the coarse grid of the field that `obstacleField`
-    /// would otherwise have sampled: see `sampleField`. Null with one.
+    /// No obstacle: coarse field grid `obstacleField` would have sampled; see
+    /// `sampleField`. Null with obstacle.
     property var _plain: null
     property var _widths: ({})
     property var _inks: []
 
     Component.onCompleted: art.restart()
 
-    // The GUI thread comes back between slices; this asks for the next one.
+    // GUI thread returns between slices; this asks for next.
     Timer {
         interval: 16
         repeat: true
@@ -288,9 +256,9 @@ Canvas {
         onTriggered: art.requestPaint()
     }
 
-    /// Where the digits are rasterised to be measured, one at a time. Never
-    /// shown; `obstacleField` reads its pixels back. It is the painter's
-    /// size so that no digit the fit allows can fall off its edge.
+    /// Where digits rasterised one at a time for measuring. Never shown;
+    /// `obstacleField` reads pixels back. Painter-sized: no digit fit allows
+    /// falls off edge.
     Canvas {
         id: stencil
         width: art.width
@@ -302,7 +270,7 @@ Canvas {
 
     // ----------------------------------------------------------- the field
 
-    /// The strokes in pixels.
+    /// Strokes in pixels.
     function lobes() {
         var out = []
         for (var i = 0; i < art.strokes.length; i++) {
@@ -315,19 +283,15 @@ Canvas {
 
     // ------------------------------------------------- the negative space
 
-    /// One character, drawn alone at `px` and cropped to its ink. Returns
-    /// where the ink is relative to the baseline it was drawn on, and the
-    /// coverage inside that box, or null for a glyph with no ink.
+    /// One character drawn alone at `px`, cropped to ink. Returns ink position
+    /// relative to baseline and coverage inside box; null for inkless glyph.
     ///
-    /// The ink and not the advance box: the advance of a 4 has air on both
-    /// sides that a 2's does not, and centring advances would centre the
-    /// number a few pixels off where it appears to be.
+    /// Ink, not advance box: 4's advance has air both sides, 2's doesn't;
+    /// centring advances puts number few pixels off where it appears.
     ///
-    /// `cx` is where the ink's WEIGHT is across that box, coverage-weighted
-    /// so the antialiased edge counts for what it covers. For most digits it
-    /// falls within a pixel or two of the middle; for a 1 it does not, and
-    /// `obstacleField` uses it to place the number where it looks centred
-    /// rather than where it measures centred.
+    /// `cx` = ink WEIGHT across box, coverage-weighted (antialiased edge counts
+    /// for what it covers). Most digits within pixel or two of middle; 1 not.
+    /// `obstacleField` uses it to centre visually, not by measure.
     function inkOf(ctx, ch, px) {
         var w = stencil.width, h = stencil.height
         var x0 = Math.round(w * 0.1)
@@ -338,8 +302,8 @@ Canvas {
         ctx.textBaseline = "alphabetic"
         ctx.fillStyle = "#ffffff"
         ctx.fillText(ch, x0, y0)
-        // Read back the region the glyph can reach rather than the whole
-        // canvas; the ascent and the side bearings are bounded by the size.
+        // Read back only region glyph can reach, not whole canvas; ascent and
+        // side bearings bounded by size.
         var advance = ctx.measureText(ch).width
         var rx = Math.max(0, Math.floor(x0 - px * 0.5))
         var ry = Math.max(0, Math.floor(y0 - px * 1.2))
@@ -377,9 +341,9 @@ Canvas {
                  bits: bits }
     }
 
-    /// One dimension of the squared distance transform, Felzenszwalb and
-    /// Huttenlocher's: the lower envelope of the parabolas each sample
-    /// raises, in one pass each way. `f` in, `d` out, `v` and `z` scratch.
+    /// One dimension of squared distance transform (Felzenszwalb &
+    /// Huttenlocher): lower envelope of each sample's parabola, one pass each
+    /// way. `f` in, `d` out, `v` and `z` scratch.
     function edt1d(f, n, d, v, z) {
         var k = 0
         v[0] = 0
@@ -404,8 +368,8 @@ Canvas {
         }
     }
 
-    /// The Euclidean distance from every pixel to the nearest set one of
-    /// `inside`, exact, in linear time. Zero on the set pixels.
+    /// Exact Euclidean distance from every pixel to nearest set pixel of
+    /// `inside`, linear time. Zero on set pixels.
     function distanceOutside(inside, w, h) {
         var n = w * h
         var sq = new Float64Array(n)
@@ -434,9 +398,8 @@ Canvas {
         return out
     }
 
-    /// A Gaussian blur of `sigma` pixels, separable, edges clamped. Without
-    /// it the inside corners of a 4 put sharp creases in every ring that
-    /// passes them.
+    /// Separable Gaussian blur, `sigma` px, edges clamped. Without it 4's
+    /// inside corners crease every passing ring.
     function blurred(src, w, h, sigma) {
         var r = Math.ceil(sigma * 3)
         if (r < 1) {
@@ -477,21 +440,17 @@ Canvas {
         return out
     }
 
-    /// A line along the edge of `inside`, `width` pixels wide and centred on
-    /// it, as coverage from 0 to 255.
+    /// Line along edge of `inside`, `width` px wide, centred on edge, coverage
+    /// 0..255.
     ///
-    /// `outside` is the distance to the shape from every pixel beyond it,
-    /// which `obstacleField` has already paid for -- but it is one-sided, and
-    /// a band grown from it alone would sit BESIDE the silhouette rather than
-    /// on it, and read as one more ring of the pattern. Its mirror, the
-    /// distance to the outside from every pixel within, costs one more
-    /// transform and completes the pair: between them every pixel knows how
-    /// far it is from the edge, whichever side of it the pixel is on, which
-    /// is what a line centred on the edge needs.
+    /// `outside` = distance to shape from every pixel beyond (`obstacleField`
+    /// paid for it), one-sided: band from it alone sits BESIDE silhouette,
+    /// reads as extra ring. Mirror (distance to outside from every pixel
+    /// within) costs one transform, completes pair: every pixel knows edge
+    /// distance either side; centred line needs that.
     ///
-    /// A pixel of feather, so the line is drawn rather than stepped. The
-    /// distances are centre to centre, so the edge itself falls about half a
-    /// pixel inside the shape; at these widths the feather covers that.
+    /// Pixel of feather: drawn, not stepped. Distances centre to centre, so
+    /// edge ~half pixel inside shape; feather covers it at these widths.
     function outlineOf(inside, outside, w, h, width) {
         var n = w * h, i
         var flipped = new Uint8Array(n)
@@ -510,22 +469,18 @@ Canvas {
         return out
     }
 
-    /// Write the outline `obstacleEdge` asked for beside the pattern, as a
-    /// mask of the same size and the same crop, so the app can lay one over
-    /// the other with nothing to line up.
+    /// Write outline `obstacleEdge` asked for beside pattern: same size, same
+    /// crop; app overlays without alignment.
     ///
-    /// Painted into the stencil, which has finished its measuring by now and
-    /// is the right size already. White at the line's coverage and nothing
-    /// anywhere else: `scripts/png-mask.py` keeps the alpha and throws the
-    /// rest away, exactly as it does for the pattern.
+    /// Painted into stencil (done measuring, right size). White at line
+    /// coverage, nothing else: `scripts/png-mask.py` keeps alpha, drops rest,
+    /// like pattern.
     ///
-    /// Drawn as RUNS OF FILLRECT, and not as one putImageData, because
-    /// putImageData does not work in the Qt this runs on: the bytes go into
-    /// the ImageData -- they read back from it correctly -- and never reach
-    /// the canvas, so the file comes out empty and `save` still says true.
-    /// Sixteen alpha levels is what png-mask.py quantises the coverage to
-    /// anyway, so nothing is lost by drawing in that many passes, and one
-    /// pass over the digits' own box is enough to find every run.
+    /// Drawn as RUNS OF FILLRECT, not one putImageData: putImageData broken in
+    /// this Qt (bytes reach ImageData, read back fine, never reach canvas; file
+    /// empty, `save` still true). png-mask.py quantises to sixteen alpha levels
+    /// anyway: that many passes lose nothing; one pass over digit box finds
+    /// every run.
     function saveEdge(file) {
         var O = art._obstacle
         if (!O || !O.edge) {
@@ -539,9 +494,8 @@ Canvas {
         ctx.setTransform(1, 0, 0, 1, 0, 0)
         ctx.clearRect(0, 0, w, h)
 
-        // Only where the line can be: the digits' ink, grown by the width of
-        // the line and a pixel of feather. Scanning the whole canvas costs
-        // four hundred thousand steps a master for nothing.
+        // Only where line can be: digit ink grown by line width + feather
+        // pixel. Whole canvas = 400k wasted steps per master.
         var pad = Math.ceil(art.obstacleEdge / 2) + 2
         var x0 = Math.max(0, Math.floor(O.left) - pad)
         var x1 = Math.min(w - 1, Math.ceil(O.right) + pad)
@@ -560,8 +514,7 @@ Canvas {
             var row = y * w
             var cur = 0, start = x0
             for (x = x0; x <= x1 + 1; x++) {
-                // One past the end closes the last run without repeating
-                // the emit inside the loop.
+                // One past end closes last run without repeating emit in loop.
                 var q = x <= x1
                         ? Math.round(e[row + x] * (levels - 1) / 255) : 0
                 if (q !== cur) {
@@ -586,16 +539,14 @@ Canvas {
         return stencil.save(file)
     }
 
-    /// The digits as a source for the field: the distance to them from
-    /// every pixel outside them, and where their ink is. Null when there is
-    /// no obstacle. Built once per `_key` and kept, since tracing asks for
-    /// it thousands of times a ring.
+    /// Digits as field source: distance to them from every outside pixel, plus
+    /// ink position. Null without obstacle. Built once per `_key`, kept
+    /// (tracing asks thousands of times per ring).
     ///
-    /// The digits are set one at a time, each cropped to its ink, all scaled
-    /// by ONE factor, and joined with `obstacleGap` spacings between the ink
-    /// of one and the next. The block's ink bounds are centred across the
-    /// width that survives the narrowest crop, and centred vertically in
-    /// the height above `reservedBottom`.
+    /// Digits set one at a time, each cropped to ink, all scaled by ONE factor,
+    /// joined with `obstacleGap` spacings ink to ink. Block ink bounds centred
+    /// across width surviving narrowest crop, vertically in height above
+    /// `reservedBottom`.
     function obstacleField(L) {
         if (art.obstacle.length === 0) {
             return null
@@ -616,7 +567,7 @@ Canvas {
         var chars = art.obstacle.split("")
         var n = chars.length
 
-        // Measured at a trial size, then set at the one size that fits.
+        // Measured at trial size, set at one size that fits.
         var trial = Math.max(8, Math.round(usableH * art.obstacleMaxHeight))
         var inkW = 0, inkH = 0, i, g
         for (i = 0; i < n; i++) {
@@ -645,14 +596,12 @@ Canvas {
         total += (n - 1) * gap
         ctx.clearRect(0, 0, w, h)
 
-        // Where the number looks centred, rather than where it measures so.
+        // Where number looks centred, not where it measures.
         //
-        // Each glyph contributes its OWN offset, weighted equally with the
-        // others rather than by how much ink it has. The two are different
-        // questions: within a glyph the eye follows the weight, which is why
-        // a 1 needs moving at all; between glyphs it does not, and a heavier
-        // digit beside a lighter one should not drag the pair sideways -- a
-        // block centroid would send an 18 left because the 8 outweighs the 1.
+        // Each glyph contributes OWN offset, weighted equally, not by ink.
+        // Within glyph eye follows weight (why 1 moves); between glyphs not:
+        // heavier digit mustn't drag pair (block centroid sends 18 left, 8
+        // outweighs 1).
         var optical = 0, inked = 0
         for (i = 0; i < n; i++) {
             if (glyphs[i]) {
@@ -661,15 +610,12 @@ Canvas {
             }
         }
         optical = inked > 0 ? art.obstacleOptical * optical / inked : 0
-        // `optical` is how far LEFT the number goes, so a nudge to the
-        // right takes away from it.
+        // `optical` = how far LEFT; rightward nudge subtracts.
         optical -= art.obstacleNudge * px
 
-        // The shift cannot walk the number out of the crop. There is room --
-        // the fit leaves (1 - obstacleMaxWidth) of the fitted width spare,
-        // some 64px against the 34 a 1 asks for -- but a later change to
-        // either number should fail loudly here rather than clip a digit on
-        // a device.
+        // Shift can't walk number out of crop. Room exists (fit leaves (1 -
+        // obstacleMaxWidth) of width spare, ~64px vs 1's 34), but later change
+        // to either must fail loudly here, not clip digit on device.
         var slack = (fitW - total) / 2
         if (Math.abs(optical) > slack) {
             console.log("OPTICAL CLAMPED", art.obstacle, optical.toFixed(1),
@@ -705,7 +651,7 @@ Canvas {
         var dd = art.distanceOutside(inside, w, h)
         var edge = art.obstacleEdge > 0
                    ? art.outlineOf(inside, dd, w, h, art.obstacleEdge) : null
-        // Two pixels at the width the values were settled at (936).
+        // Two pixels at width values were settled at (936).
         dd = art.blurred(dd, w, h, 2 * w / 936)
 
         var O = {
@@ -724,19 +670,16 @@ Canvas {
         return O
     }
 
-    /// The field at a coarse grid over the whole canvas, half a spacing
-    /// apart, written onto `into` as `samples`, `sampleCell`, `sampleCols`
-    /// and `sampleRows`, and returned. It is what lets a ring be seeded
-    /// wherever it runs -- around the digits, inside a counter, or closing
-    /// on the point farthest from every stroke -- and not only around the
-    /// strokes it grows from; and what says how far the field reaches.
+    /// Field on coarse grid over canvas, half spacing apart, written onto
+    /// `into` as `samples`, `sampleCell`, `sampleCols`, `sampleRows`, and
+    /// returned. Lets ring be seeded wherever it runs (around digits, inside
+    /// counter, closing on point farthest from every stroke), not only around
+    /// source strokes; also says field reach.
     ///
-    /// With an obstacle it hangs off the obstacle (`obstacleField`); without
-    /// one, off `_plain`. The strokes alone were once thought to need
-    /// neither, and on the cover's shape they do: its middle is farther
-    /// from every stroke than any corner, no ray from a stroke meets the
-    /// innermost rings there, and a cover with no number in it came out
-    /// with a bare patch in the middle.
+    /// With obstacle hangs off `obstacleField`; without, off `_plain`. Strokes
+    /// alone need it too: cover's middle farther from every stroke than any
+    /// corner, no ray from stroke meets innermost rings, numberless cover gets
+    /// bare middle patch.
     function sampleField(L, O, into) {
         var cell = art.spacing * 0.5
         var cols = Math.floor(art.width / cell) + 1
@@ -757,33 +700,25 @@ Canvas {
         return into
     }
 
-    /// The field and its gradient at one point, written into `out` as
-    /// `[value, dx, dy]`.
+    /// Field and gradient at one point, into `out` as `[value, dx, dy]`.
     ///
-    /// The field is a soft "distance to the nearest stroke": exactly that far
-    /// from all of them, and a smooth blend where two are close, so its level
-    /// sets are the curves -- one every `spacing`, evenly spaced everywhere
-    /// because the field is a distance.
+    /// Field = soft "distance to nearest stroke": exact far from all, smooth
+    /// blend where two close; level sets = curves, one per `spacing`, evenly
+    /// spaced (field is distance).
     ///
-    /// The gradient is EXACT and comes from the same pass, which is the whole
-    /// of the tracing speed-up: it is the weighted average of the unit
-    /// vectors away from each stroke, with the same weights the value uses.
-    /// Taking it by finite differences instead cost four more evaluations
-    /// and was no more accurate.
+    /// Gradient EXACT, same pass (whole tracing speed-up): weighted average of
+    /// unit vectors away from each stroke, same weights as value. Finite
+    /// differences cost four more evaluations, no more accurate.
     ///
-    /// The exponentials are taken relative to the nearest stroke, so nothing
-    /// underflows however far away the point is; `sc` is scratch the caller
-    /// owns, so the walk allocates nothing at all.
+    /// Exponentials relative to nearest stroke: no underflow at any distance;
+    /// `sc` = caller-owned scratch, walk allocates nothing.
     ///
-    /// With an obstacle `O`, the strokes' value is then joined to the
-    /// distance from the digits by a polynomial smooth minimum of width
-    /// `O.k`: exact wherever one of the two is more than `k` nearer, rounded
-    /// only at the seam. The digits' distance is sampled bilinearly and its
-    /// gradient taken from the same four texels. The gradient of the join
-    /// is `mix` of the two gradients by the same weight -- exactly, not
-    /// approximately: the derivative of the `k h (1 - h)` term cancels
-    /// against the weight's own, so the Newton correction converges at the
-    /// seam as well as it does anywhere.
+    /// With obstacle `O`: strokes' value joined to digit distance by polynomial
+    /// smooth minimum of width `O.k`: exact where one is over `k` nearer,
+    /// rounded only at seam. Digit distance sampled bilinearly, gradient from
+    /// same four texels. Join gradient = `mix` of both by same weight, exactly:
+    /// `k h (1 - h)` term's derivative cancels weight's own, so Newton
+    /// correction converges at seam like anywhere.
     function fieldAt(L, O, x, y, soft, sc, out) {
         var n = L.length
         var nearest = 1e300
@@ -840,11 +775,11 @@ Canvas {
         out[2] = sgy + (dgy - sgy) * hh
     }
 
-    /// How many rings the field's own reach asks for.
+    /// Ring count field's reach needs.
     ///
-    /// The farthest point from every stroke can be anywhere -- between the
-    /// strokes and the digits, or in the middle of a cover with neither --
-    /// so the coarse grid (`sampleField`) is asked as well as the corners.
+    /// Farthest point from every stroke can be anywhere (between strokes and
+    /// digits, middle of cover with neither); coarse grid (`sampleField`) asked
+    /// as well as corners.
     function ringCount(L, O) {
         if (art.width <= 0 || art.height <= 0 || L.length === 0) {
             return 0
@@ -868,39 +803,31 @@ Canvas {
 
     // ----------------------------------------------------------- the tracing
 
-    /// Follow the curve at `level` from a seed, one way, until it closes on
-    /// itself, leaves the canvas, or reaches ground an earlier curve of this
-    /// ring has already covered. Returns flat `[x0, y0, x1, y1, ...]`.
+    /// Follow curve at `level` from seed, one way, until it closes, leaves
+    /// canvas, or reaches ground earlier curve of this ring covered. Returns
+    /// flat `[x0, y0, x1, y1, ...]`.
     ///
-    /// One stride along the tangent, then one Newton correction back onto the
-    /// level: two evaluations a step, and the correction is what stops the
-    /// line drifting off its own ring over thousands of pixels.
+    /// One stride along tangent, one Newton correction back to level: two
+    /// evaluations per step; correction stops drift off ring over thousands of
+    /// pixels.
     ///
-    /// `covered` is where the ring's earlier curves have been (see
-    /// `traceRing`), and stopping when this one reaches them is what keeps a
-    /// ring from being TRACED TWICE. A device reported the pattern
-    /// overlapping itself in a couple of places: two seeds on one ring, the
-    /// second of them just beyond the end of the curve the first had drawn
-    /// -- so the grid, which was only ever asked about the SEED, let it
-    /// through, and it retraced seven hundred pixels of the same line two
-    /// pixels to the side. Asking on every stride is the whole fix: a later
-    /// curve fills whatever is left of its ring and stops where the pattern
-    /// is already there.
+    /// `covered` = where ring's earlier curves went (see `traceRing`); stopping
+    /// there keeps ring from being TRACED TWICE (second seed just past first
+    /// curve's end would retrace hundreds of px two px aside). Checked every
+    /// stride, not just at seed: later curve fills rest of ring, stops where
+    /// pattern exists.
     ///
-    /// The question it asks is the same one `overlaps` asks afterwards --
-    /// "is there already ink within `near` of here" -- so the two cannot
-    /// disagree about what counts as drawing twice, and the curves meet
-    /// rather than overlapping by however coarse a grid cell happens to be.
+    /// Same question `overlaps` asks after ("ink within `near` of here?"):
+    /// can't disagree on drawing twice; curves meet, not overlap by grid cell
+    /// size.
     ///
-    /// `own` is the same question asked of THIS curve: a ring inside the
-    /// counter of a 4 follows both sides of the triangle up into its apex,
-    /// where the two sides of one curve come closer than a line of text --
-    /// which `overlaps` does not count, since a curve is allowed near
-    /// itself around a tight cap, and which shipped as text over text in
-    /// every 4. Points go into `own` `skip` strides late, and the first
-    /// `skip` never do, so a curve is never stopped by the stride it just
-    /// took or kept from closing on its own start. The walk back from a
-    /// seed gets the forward walk's points in `own` to begin with.
+    /// `own` = same question of THIS curve: ring inside 4's counter follows
+    /// both triangle sides into apex, where curve's two sides come closer than
+    /// text line (`overlaps` doesn't count it; curve may near itself around
+    /// tight cap) → text over text in every 4. Points enter `own` `skip`
+    /// strides late, first `skip` never: curve not stopped by stride just taken
+    /// nor kept from closing on own start. Backward walk from seed starts with
+    /// forward walk's points in `own`.
     function walk(L, O, sx, sy, level, direction, step, maxSteps, soft, sc, fg,
                   covered, own, cell, near) {
         var points = []
@@ -909,16 +836,14 @@ Canvas {
         var margin = art.spacing
         var closeEnough = step * step
         var skip = Math.ceil(near / step) + 2
-        // How far off its level a point may be and still be kept: a
-        // twentieth of a spacing, so two rings a spacing apart can never
-        // draw closer than nine tenths of one, whatever their walks did.
-        // The seeds are held to a pixel; this is the same idea for a point
-        // with a stride behind it.
+        // Max off-level distance kept: twentieth of spacing, so rings a spacing
+        // apart never closer than nine tenths. Seeds held to pixel; same idea
+        // for point with stride behind it.
         var tolerance = art.spacing * 0.05
         var reach, correction, g2
         art.fieldAt(L, O, x, y, soft, sc, fg)
         for (var i = 0; i < maxSteps; i++) {
-            // `fg` is the field at (x, y), which is on the level.
+            // `fg` = field at (x, y), on level.
             var gx = fg[1], gy = fg[2]
             var gn = Math.sqrt(gx * gx + gy * gy)
             if (gn < 1e-9) {
@@ -927,15 +852,12 @@ Canvas {
             var px = x, py = y
             x += direction * step * (-gy / gn)
             y += direction * step * (gx / gn)
-            // Back onto the level: one Newton correction, then a look at
-            // where it landed, and up to three more if it is not there yet.
-            // Nearly always it is, and the look is the one extra evaluation
-            // a stride costs now. Where it is not -- a tight bend inside
-            // the pocket of a 2, or the seam where the digits' rings meet
-            // the strokes' -- a point kept a few pixels off its ring was
-            // kept in the NEXT ring's room, and that shipped as text over
-            // text. If three more corrections will not do it, the walk has
-            // lost its ring and ends here rather than drawing off it.
+            // Back to level: one Newton correction, check landing, up to three
+            // more if off. Nearly always on; check = one extra evaluation per
+            // stride. Off-level point (tight bend in 2's pocket, seam where
+            // digit rings meet stroke rings) lands in NEXT ring's room = text
+            // over text. Three more fail → walk lost ring, ends here, not
+            // drawing off it.
             var lost = false
             for (var settle = 0; ; settle++) {
                 art.fieldAt(L, O, x, y, soft, sc, fg)
@@ -948,14 +870,11 @@ Canvas {
                     break
                 }
                 correction = (fg[0] - level) / g2
-                // Never further than the stride itself. The strokes' field
-                // is nearly a distance, whose gradient is a unit vector, so
-                // this never bound the correction before; the digits' field
-                // has RIDGES -- the middle of the counter of a 4, the pocket
-                // inside a 2 -- where the blurred distance flattens, the
-                // gradient goes to nothing and one correction threw the
-                // walk clean across the pocket, where it piled a few dozen
-                // points on one spot of somebody else's ring.
+                // Never further than stride. Strokes' field ~distance (unit
+                // gradient), never bound correction; digit field has RIDGES
+                // (4's counter middle, 2's pocket) where blurred distance
+                // flattens, gradient → 0, one correction throws walk across
+                // pocket onto another ring.
                 reach = Math.abs(correction) * Math.sqrt(g2)
                 if (reach > step) {
                     correction *= step / reach
@@ -966,19 +885,16 @@ Canvas {
             if (lost) {
                 return { points: points, closed: false }
             }
-            // A walk that no longer gets anywhere is at such a ridge, where
-            // the level set pinches to a point: its curve ends here.
+            // Walk not progressing = at ridge where level set pinches to point:
+            // curve ends.
             var mx = x - px, my = y - py
             if (mx * mx + my * my < step * step * 0.04) {
                 return { points: points, closed: false }
             }
-            // BEFORE the point is kept, not after: a stride is as long as
-            // the ring's own curvature allows, so a curve can go from a
-            // comfortable distance to touching in one of them. Keeping the
-            // point that stopped the walk is what left a few overlaps behind
-            // when this stopped on grid cells instead. No `i > 6` guard is
-            // needed -- `covered` holds only the curves traced BEFORE this
-            // one, so there is nothing of its own to trip on.
+            // BEFORE point kept, not after: stride as long as curvature allows,
+            // curve can go comfortable → touching in one. Keeping stopping
+            // point leaves overlaps. No `i > 6` guard: `covered` holds only
+            // curves traced BEFORE this one, nothing of own to trip on.
             if (art.inked(covered, cell, x, y, near)) {
                 return { points: points, closed: false }
             }
@@ -1004,9 +920,8 @@ Canvas {
         return { points: points, closed: false }
     }
 
-    /// Whether any point already recorded in `grid` is within `near` of
-    /// (x, y). The grid buckets points by `cell`, and `near` is never more
-    /// than a cell, so the nine around it are all that can hold one.
+    /// Any recorded `grid` point within `near` of (x, y). Grid buckets by
+    /// `cell`; `near` <= cell, so nine surrounding cells suffice.
     function inked(grid, cell, x, y, near) {
         var gx = Math.floor(x / cell), gy = Math.floor(y / cell)
         var limit = near * near
@@ -1027,11 +942,10 @@ Canvas {
         return false
     }
 
-    /// Record a point as drawn, for `inked` to find.
+    /// Record point as drawn, for `inked`.
     ///
-    /// Not `ink`: that is the property saying how dark the text is, and a
-    /// function of the same name is simply not reachable -- the call comes
-    /// back "TypeError", because it is asking a number to be a function.
+    /// Not `ink`: that's darkness property; same-named function unreachable
+    /// ("TypeError", number asked to be function).
     function markInk(grid, cell, x, y) {
         var key = Math.floor(y / cell) * 65536 + Math.floor(x / cell)
         if (!grid[key]) {
@@ -1040,13 +954,11 @@ Canvas {
         grid[key].push(x, y)
     }
 
-    /// Every curve of one ring, as `{points, closed}` with `points` flat.
+    /// Every curve of one ring, as `{points, closed}`, `points` flat.
     ///
-    /// Seeded from several directions around each stroke, because a ring is
-    /// several separate curves until the strokes' families merge; a seed that
-    /// lands on a curve already traced is dropped, which is what makes the
-    /// merged ones one curve. The grid is what makes that check cheap -- it
-    /// used to be a scan of every point traced so far, on every seed.
+    /// Seeded from several directions per stroke: ring = separate curves until
+    /// stroke families merge; seed landing on traced curve dropped (merged ones
+    /// = one curve). Grid makes check cheap.
     function traceRing(L, O, k) {
         var out = []
         var w = art.width, h = art.height
@@ -1058,51 +970,39 @@ Canvas {
         var spacing = art.spacing
         var level = spacing * (k + art.levelOffset)
 
-        // A chord of this length sits within `tol` of a circle of radius
-        // `level`, so the innermost rings, which actually curve, are walked
-        // in short strides.
+        // Chord of this length within `tol` of circle radius `level`: innermost
+        // (curving) rings walked in short strides.
         //
-        // The CAP is what matters on the outer ones, and it is half a
-        // spacing rather than three: the checks that stop two curves being
-        // drawn over one another compare sampled POINTS, so a stride long
-        // enough to cross another curve between two of its own samples hides
-        // the crossing from them -- which is exactly what shipped, text over
-        // text at a shallow angle with every sample comfortably far from
-        // every other. Two segments that cross have endpoints within a
-        // stride of the crossing, so a stride under half the spacing cannot
-        // hide one from a check that refuses 0.8 of it. This was a stride of
-        // twenty pixels when the pattern was painted on the phone and the
-        // arithmetic had to be cheap; it is painted here now, where it can
-        // afford to be careful.
+        // CAP matters on outer ones; half spacing, not three. Overlap checks
+        // compare sampled POINTS; stride long enough to cross another curve
+        // between own samples hides crossing (text over text at shallow angle,
+        // samples all far apart). Crossing segments have endpoints within
+        // stride of crossing; stride under half spacing can't hide one from
+        // check refusing 0.8 of it. Painted on host now, can afford care.
         var tol = 0.4
         var step = Math.sqrt(8 * level * tol)
         if (step < 1.5) { step = 1.5 } else if (step > spacing * 0.5) { step = spacing * 0.5 }
 
-        // How close two bits of line may come before the later one gives
-        // up: just under the spacing the rings are drawn at, because that
-        // spacing IS the room a line of text needs. Half of it was tried and
-        // is visibly wrong -- the glyphs are nearly as tall as the spacing,
-        // so lines that pass within half of it collide even though no curve
-        // is drawn twice. The seed check and the walk both mean this by
-        // "already drawn", and no point that comes within it is ever kept,
-        // so `overlaps` passes by construction rather than by luck.
+        // How close two line bits may come before later gives up: just under
+        // ring spacing (spacing IS room text line needs). Half spacing visibly
+        // wrong: glyphs nearly as tall as spacing, lines within half collide
+        // though no curve drawn twice. Seed check and walk both mean this by
+        // "already drawn"; no point within kept, so `overlaps` passes by
+        // construction, not luck.
         var near = spacing * 0.95
-        // Big enough that the nine cells around a point hold everything
-        // within `near` of it, and that a stride cannot skip over a cell.
+        // Big enough: nine cells around point hold all within `near`, stride
+        // can't skip cell.
         var cell = Math.max(spacing, step)
         var grid = {}
         var sc = new Array(3 * n)
         var fg = [0, 0, 0]
         var maxSteps = Math.ceil((2 * Math.PI * level + 2 * (w + h)) / step) + 64
 
-        // Where to start looking for this ring's curves. Eight directions
-        // around each stroke, as always; and every point of the coarse grid
-        // the field was sampled on that lies within half a spacing of this
-        // level -- which is how a ring that wraps only the digits, or sits
-        // inside the counter of a 4 or a 9, or closes on the middle of a
-        // cover with no digits at all, gets found at all. Seeds that land
-        // on a curve already traced are dropped, so the extra ones cost
-        // nothing where the stroke seeds were enough.
+        // Where to look for ring's curves. Eight directions around each stroke;
+        // plus every coarse-grid point within half spacing of level (finds
+        // rings wrapping only digits, inside 4/9 counter, closing on middle of
+        // digitless cover). Seeds on traced curve dropped; extras free where
+        // stroke seeds sufficed.
         var seeds = []
         var si, i
         for (si = 0; si < n * 8; si++) {
@@ -1128,7 +1028,7 @@ Canvas {
         for (si = 0; si < seeds.length; si += 2) {
             var sx = seeds[si], sy = seeds[si + 1]
 
-            // Pull the seed onto the ring.
+            // Pull seed onto ring.
             for (var it = 0; it < 6; it++) {
                 art.fieldAt(L, O, sx, sy, soft, sc, fg)
                 var g2 = fg[1] * fg[1] + fg[2] * fg[2]
@@ -1155,9 +1055,8 @@ Canvas {
                                    grid, {}, cell, near)
             var points = forward.points
             if (!forward.closed) {
-                // The way back must not run into the way out, except for
-                // the first few strides beside the seed, which are its own
-                // neighbours rather than another arm of the curve.
+                // Way back mustn't run into way out, except first few strides
+                // beside seed (own neighbours, not another arm).
                 var own = {}
                 var skip = Math.ceil(near / step) + 2
                 for (var o = 2 * skip; o < points.length; o += 2) {
@@ -1178,10 +1077,9 @@ Canvas {
             if (points.length < 8) {
                 continue
             }
-            // Crumbs: a closed loop at a stroke's core, or the sliver of a
-            // ring left between two earlier curves, would carry one stray
-            // word. Six glyph heights is the shortest run that reads as a
-            // line of text rather than as litter.
+            // Crumbs: closed loop at stroke core or ring sliver between earlier
+            // curves carries one stray word. Six glyph heights = shortest run
+            // reading as text line, not litter.
             var length = 0
             for (var q = 2; q < points.length; q += 2) {
                 var ex = points[q] - points[q - 2], ey = points[q + 1] - points[q - 1]
@@ -1205,15 +1103,12 @@ Canvas {
         return out
     }
 
-    /// Whether the glyphs set along `points`, as `paintCurve` sets them,
-    /// would have their tops facing the HIGHER field -- away from the curve's
-    /// nearest source. Sampled at up to sixteen places along the curve and
-    /// decided by the majority, since a curve can cross the seam between two
-    /// families and briefly disagree with itself.
+    /// Whether glyphs set along `points` (as `paintCurve` sets) face tops
+    /// toward HIGHER field (away from nearest source). Sampled up to sixteen
+    /// places, majority wins (curve may cross family seam, briefly disagree).
     ///
-    /// `paintCurve` stands a glyph up on the left of its direction of
-    /// travel, so along a direction (dx, dy) the tops point to (dy, -dx);
-    /// against a gradient (gx, gy) that is the sign of dx * gy - dy * gx.
+    /// `paintCurve` stands glyph left of travel direction: along (dx, dy) tops
+    /// point (dy, -dx); vs gradient (gx, gy) = sign of dx * gy - dy * gx.
     function facesAway(L, O, points, soft, sc, fg) {
         var count = points.length >> 1
         var stride = Math.max(1, Math.floor(count / 16))
@@ -1227,15 +1122,13 @@ Canvas {
         return vote > 0
     }
 
-    /// Where two DIFFERENT curves are drawn over one another, which is the
-    /// one defect of this pattern a person notices: text on top of text.
+    /// Where two DIFFERENT curves overlap: only defect people notice (text on
+    /// text).
     ///
-    /// Returns how many pairs of points sit closer than half the line
-    /// spacing. `make textart` refuses to ship a master that reports any,
-    /// because that is exactly what shipped once -- a ring traced twice by
-    /// two seeds. Pairs from the SAME curve are not counted: a curve comes
-    /// legitimately near itself around a tight end cap, where a ring is a
-    /// capsule barely wider than the stride that walks it.
+    /// Returns pairs of points closer than half line spacing. `make textart`
+    /// refuses master reporting any (ring traced twice by two seeds).
+    /// SAME-curve pairs not counted: curve legitimately nears itself around
+    /// tight end cap (capsule barely wider than stride).
     function overlaps() {
         var curves = art.layout()
         var xs = [], ys = [], owner = []
@@ -1256,9 +1149,8 @@ Canvas {
             }
             grid[key].push(n)
         }
-        // Below the walk's own 0.95, so this has teeth: it fails on a
-        // regression that lets two curves run closer than a line of text
-        // needs, rather than only on one that draws the same line twice.
+        // Below walk's 0.95, so has teeth: fails when curves run closer than
+        // text line needs, not only on same line drawn twice.
         var tooClose = cell * 0.8
         var found = 0
         for (var a = 0; a < xs.length; a++) {
@@ -1285,8 +1177,8 @@ Canvas {
         return found
     }
 
-    /// Every curve on the canvas. Pure, and what the cover's test reads: the
-    /// painting below only sets text along what this returns.
+    /// Every curve on canvas. Pure; cover test reads it; painting only sets
+    /// text along it.
     function layout() {
         var L = art.lobes()
         var O = art.obstacleField(L)
@@ -1303,16 +1195,15 @@ Canvas {
 
     // ---------------------------------------------------------- the painting
 
-    /// How strongly to draw at a point: 1 in the open, fading to 0 in the
-    /// band at the top and inside the disc.
+    /// Draw strength at point: 1 in open, fading to 0 in top band and inside
+    /// disc.
     function weightAt(x, y) {
         var w = 1
         var O = art._obstacle
         if (O && art.haloReach > 0) {
-            // The nearest texel of the digits' distance is enough for the
-            // strength of one run of glyphs; smoothstep, so the ring that
-            // touches the digits is plainly the brightest and the fall-off
-            // has no edge of its own.
+            // Nearest digit-distance texel enough for one glyph run's strength;
+            // smoothstep: ring touching digits plainly brightest, fall-off has
+            // no edge.
             var ix = Math.round(x), iy = Math.round(y)
             if (ix < 0) { ix = 0 } else if (ix >= O.w) { ix = O.w - 1 }
             if (iy < 0) { iy = 0 } else if (iy >= O.h) { iy = O.h - 1 }
@@ -1334,20 +1225,15 @@ Canvas {
         return w < 0 ? 0 : (w > 1 ? 1 : w)
     }
 
-    /// How long a run of glyphs may be at a point before it stops following
-    /// the curve, or the fade under it, closely enough to pass for one drawn
-    /// glyph at a time.
+    /// Max glyph run length at point before it stops following curve, or fade
+    /// under it, closely enough to pass for per-glyph drawing.
     ///
-    /// Straightness first: over an arc of length l a curve of radius `level`
-    /// turns l / level, so this keeps a run inside a sixteenth of a radian.
-    /// Then the fade: where the ink is CHANGING, a run carries one alpha for
-    /// its whole length and would band, so runs shrink to a glyph or two
-    /// there and nowhere else.
+    /// Straightness: arc length l on radius `level` turns l / level; run kept
+    /// within 1/16 radian. Fade: where ink CHANGES, run's single alpha bands;
+    /// runs shrink to glyph or two there only.
     ///
-    /// Six glyphs, not more: measured on the host, longer runs bought
-    /// nothing at all, so the cost is in rasterising the glyphs rather than
-    /// in the calls that ask for them. Where a run buys nothing, a shorter
-    /// one is the safer of the two -- it hugs the curve more closely.
+    /// Six glyphs max: host measurement, longer runs bought nothing (cost =
+    /// glyph rasterising, not calls). Shorter safer: hugs curve.
     function runLimit(x, y, level) {
         var limit = art.glyph * 6
         var straight = 0.06 * level
@@ -1380,8 +1266,8 @@ Canvas {
         return limit
     }
 
-    /// The advance of every character the filler uses, measured once.
-    /// `measureText` per glyph was a good part of the painting cost.
+    /// Advance of every filler character, measured once. Per-glyph
+    /// `measureText` was big share of paint cost.
     function advances(ctx) {
         var widths = {}
         for (var i = 0; i < art.filler.length; i++) {
@@ -1393,8 +1279,8 @@ Canvas {
         return widths
     }
 
-    /// Set text along one curve, in runs. Returns where in the filler to
-    /// carry on, so no two curves open with the same word.
+    /// Set text along one curve in runs. Returns filler position to continue
+    /// from: no two curves open with same word.
     function paintCurve(ctx, points, level, offset) {
         var count = points.length >> 1
         if (count < 2) {
@@ -1415,9 +1301,8 @@ Canvas {
         var inks = art._inks
         var fallback = art.glyph * 0.5
 
-        // One cursor for both lookups below: the run's start is never past
-        // its own middle, and the next run starts past this one's middle, so
-        // it only ever moves forward.
+        // One cursor for both lookups: run start never past own middle, next
+        // run starts past this middle; only moves forward.
         var seg = 1
         var s = 0
         var t = offset
@@ -1457,8 +1342,8 @@ Canvas {
                     var angle = Math.atan2(by - ay, bx - ax)
                     var cos = Math.cos(angle), sin = Math.sin(angle)
                     ctx.fillStyle = inks[Math.round(weight * 32)]
-                    // Set rather than stacked: a save and a restore per glyph
-                    // cost more than the glyph did.
+                    // Set, not stacked: save + restore per glyph cost more than
+                    // glyph.
                     ctx.setTransform(cos, sin, -sin, cos, mx, my)
                     ctx.fillText(run, -runWidth / 2, 0)
                 }
@@ -1474,16 +1359,15 @@ Canvas {
             return
         }
         if (art._restart) {
-            // The digits are measured on the stencil, which comes up a
-            // moment after this does; the timer asks again.
+            // Digits measured on stencil, available slightly later; timer asks
+            // again.
             if (art.obstacle.length > 0 && !stencil.available) {
                 return
             }
             ctx.setTransform(1, 0, 0, 1, 0, 0)
             ctx.clearRect(0, 0, art.width, art.height)
-            // Quoted: a family with spaces in it is otherwise read as
-            // several, and the text falls back to the default sans with a
-            // warning nobody sees.
+            // Quoted: family with spaces read as several otherwise; falls back
+            // to default sans with unseen warning.
             ctx.font = art.glyph + "px \"" + art.fillerFont + "\""
             ctx.textBaseline = "middle"
             art._lobes = art.lobes()
@@ -1491,8 +1375,8 @@ Canvas {
             art._plain = art._obstacle ? null : art.sampleField(art._lobes, null, {})
             art._rings = art.ringCount(art._lobes, art._obstacle)
             art._widths = art.advances(ctx)
-            // The ink, in thirty-two steps, so a run does not build a colour
-            // from a string every time it is drawn.
+            // Ink in thirty-two steps: run doesn't build colour from string
+            // each draw.
             var inks = []
             for (var i = 0; i <= 32; i++) {
                 inks.push(Qt.rgba(art.colour.r, art.colour.g, art.colour.b,

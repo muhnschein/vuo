@@ -1,13 +1,12 @@
 #!/usr/bin/env bash
-# Render the four Harbour icon sizes from icons/harbour-vuo.svg.
+# Render four Harbour icon sizes from icons/harbour-vuo.svg.
 #
-# The SVG is the source; the PNGs are build output that happens to be
-# committed, because the RPM installs them and nothing in the packaging path
-# has an SVG renderer. Regenerate rather than editing a PNG, or the two drift
-# and the one everybody looks at is the one the phone does not show.
+# SVG = source; PNGs = committed build output (RPM installs them, packaging path
+# has no SVG renderer). Regenerate, never edit PNG, or they drift and phone
+# shows one nobody looks at.
 #
-# Harbour requires EXACTLY these four sizes, and `scripts/check-harbour.sh`
-# reads the dimensions back out of each file's IHDR.
+# Harbour requires EXACTLY these four sizes; `scripts/check-harbour.sh` reads
+# dimensions back from each IHDR.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

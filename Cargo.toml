@@ -1,103 +1,71 @@
 [workspace]
-# Resolver 2, and it has to stay 2: the SailfishOS SDK's cargo 1.75 rejects the
-# whole workspace manifest on `resolver = "3"` ("valid options are 1 or 2").
+# Resolver 2, must stay: SDK cargo 1.75 rejects whole manifest on `resolver =
+# "3"` ("valid options are 1 or 2").
 #
-# That is a real loss, because resolver 3 is the mechanism that would keep the
-# lockfile inside `rust-version` automatically. Without it the lock drifts past
-# what the SDK can build -- eleven dependencies had reached edition2024, which
-# cargo 1.75 cannot even PARSE, and the device build was impossible. So the
-# floor is held by a check instead of by the resolver:
-# `scripts/check-lockfile.sh`, run by `make check`.
+# Loss: resolver 3 would keep lockfile inside `rust-version`. Without it lock
+# drifts past what SDK builds (edition2024 deps cargo 1.75 can't parse). Floor
+# held by `scripts/check-lockfile.sh` (`make check`) instead.
 #
-# And by .cargo/config.toml, which gives resolver 2 the one behaviour of 3 that
-# matters here: `cargo update` prefers the newest release that still builds on
-# `rust-version`. Cargo 1.84 and later read it; the SDK's 1.75 ignores it.
+# Plus .cargo/config.toml: gives resolver 2 the one resolver 3 behaviour that
+# matters, `cargo update` prefers newest release building on `rust-version`.
+# Cargo ≥ 1.84 reads it; SDK's 1.75 ignores it.
 resolver = "2"
 members = ["crates/vuo-core", "crates/vuo-shim", "crates/harbour-vuo"]
 
-# vuo-shim and harbour-vuo link against Qt and only build where Qt development
-# headers are present. `cargo build` at the workspace root would therefore fail
-# on a bare CI runner, so the default members are the Qt-free set. Build them
-# explicitly with `-p vuo-shim` / `-p harbour-vuo` (see `make shim`).
+# vuo-shim and harbour-vuo link Qt, build only with Qt dev headers. Default
+# members = Qt-free set, so root `cargo build` works on bare runner. Build
+# others with `-p vuo-shim` / `-p harbour-vuo` (see `make shim`).
 default-members = ["crates/vuo-core"]
 
 [workspace.package]
 version = "1.1.1"
 edition = "2021"
-# The SailfishOS SDK ships an older Rust than current stable. Every crate in
-# the workspace pins the same floor, and `make msrv` re-checks against it so a
-# dependency bump cannot silently break the device build. See docs/toolchain.md.
-# The floor the dependency graph ACTUALLY needs, measured rather than asserted.
+# Floor the dependency graph actually needs, measured: `url` → `idna` → `icu_*`
+# declare 1.88. Every crate pins it; `make msrv` and CI msrv job check it.
 #
-# This said 1.75 -- the Rust the SailfishOS 5.0.0.43 SDK tooling ships -- and
-# that was fiction: `url` pulls `idna` pulls the `icu_*` crates, which declare
-# 1.88, and eleven other dependencies had reached edition2024, which cargo 1.75
-# cannot even parse. A real `mb2` build fails on the first of them.
-#
-# The check meant to prevent this could not: see the note on `resolver` above
-# and .github/workflows/ci.yml. It installed the MSRV toolchain and then ran a
-# bare `cargo`, which `rust-toolchain.toml` redirected to stable, every time.
-#
-# Consequence, tracked in docs/status.md: the device build needs a Rust newer
-# than the SDK tooling's. That is an M2 blocker to resolve deliberately -- with
-# a newer `rust` package in the build target, or by rolling the dependency tree
-# back -- and NOT by quietly restoring a number that was never true.
+# SDK tooling ships 1.75 (5.0.0.43): too old, and edition2024 deps don't parse
+# there. So device build uses a newer Rust (docs/packaging.md, docs/status.md).
+# Don't lower this number to match SDK; it was never true.
 rust-version = "1.88"
 license = "GPL-3.0-or-later"
-# Not destined for crates.io. This also lets cargo-deny's `allow-wildcard-paths`
-# apply: the option deliberately does not cover publishable crates, because
-# crates.io rejects path dependencies -- but Vuo's crates depend on each other
-# by path on purpose and are not the supply-chain hazard `wildcards` catches.
+# Not for crates.io. Also lets cargo-deny `allow-wildcard-paths` apply (it skips
+# publishable crates): Vuo's crates depend on each other by path on purpose.
 publish = false
 repository = "https://github.com/muhnschein/vuo"
 authors = ["Vuo contributors"]
 
 [workspace.lints.rust]
-# Denied HERE rather than through `RUSTFLAGS: -D warnings` in CI, which is
-# where it used to live.
+# Denied here, not via `RUSTFLAGS: -D warnings`: RUSTFLAGS reaches path deps,
+# which cargo doesn't cap, so `third_party/qmetaobject` warnings became errors.
+# Lints table applies only to crates that opt in.
 #
-# RUSTFLAGS reaches the whole dependency graph. Cargo caps lints for the crates
-# it fetches, so that was harmless -- until `third_party/qmetaobject`, which is
-# a PATH dependency and therefore not capped: its own forty-six warnings became
-# forty-six errors and nothing built. A lints table applies to the crates that
-# opt into it, which is what the rule was always about.
-#
-# The crates that do not inherit this table (vuo-shim, harbour-vuo, which need
-# `unsafe_code` allowed) carry `warnings = "deny"` in their own.
+# Crates not inheriting this table (vuo-shim, harbour-vuo: need `unsafe_code`
+# allowed) set `warnings = "deny"` themselves.
 warnings = "deny"
 unsafe_code = "deny"
 missing_debug_implementations = "warn"
 rust_2018_idioms = { level = "warn", priority = -1 }
 unreachable_pub = "warn"
-# A path spelled out where a `use` already brought the name in, and casts to
-# the type the value already has: noise that hides the casts that matter. Not
-# `trivial_numeric_casts`: whether `x as c_char` is trivial depends on the
-# target (i8 on the x86_64 CI, u8 on the phone), so it could pass CI and fail
-# the device build.
+# Redundant paths and same-type casts: noise hiding casts that matter. Not
+# `trivial_numeric_casts`: `x as c_char` trivial depends on target (i8 on x86_64
+# CI, u8 on phone); could pass CI, fail device build.
 unused_qualifications = "deny"
 trivial_casts = "deny"
-# Every public item says what it is for, as in piirit. Most of the tree
-# already explains itself in prose; this makes the API surface do the same,
-# and `clippy::missing_errors_doc` (pedantic) asks the same of every
-# function that can fail.
+# Every public item says what it is for, as in piirit.
+# `clippy::missing_errors_doc` (pedantic) asks same of every fallible fn.
 missing_docs = "deny"
 
 [workspace.lints.clippy]
-# The pedantic group as a whole, as piirit has it: most of it is how a
-# reviewer would ask for the code to be written anyway, and taking the group
-# means a lint it gains in a later release arrives through the
-# next-stable-clippy job rather than being missed. Exceptions are allowed
-# where they occur, with the reason beside them.
+# Whole pedantic group, as piirit: mostly what reviewer would ask anyway, and
+# new lints arrive via next-stable-clippy job. Exceptions allowed where they
+# occur, reason beside them.
 pedantic = { level = "deny", priority = -1 }
-# Two of the group, allowed. Both are about how long a function reads, and
-# everything they found was a test scenario or the sync worker's event loop,
-# each read top to bottom and clearer for it: a fixture constant declared
-# where it is first needed, a scenario that does not fit in a hundred lines.
+# Two allowed, both about function length: hits were test scenarios and sync
+# worker's event loop, clearer read top to bottom.
 too_many_lines = "allow"
 items_after_statements = "allow"
-# Foreign input reaches this program from arbitrary websites by way of a
-# Miniflux instance. Panicking on it is not a safe failure mode: unwinding out
-# of Rust into Qt's C++ frames is undefined behaviour. See docs/scope.md §9.5.
+# Foreign input comes from arbitrary websites via Miniflux. Panic not safe:
+# unwinding into Qt's C++ frames is UB. See docs/scope.md §9.5.
 unwrap_used = "deny"
 expect_used = "deny"
 panic = "deny"
@@ -105,64 +73,49 @@ indexing_slicing = "deny"
 integer_division = "warn"
 todo = "deny"
 unimplemented = "deny"
-# Picked from nursery and restriction rather than taken as groups: those move
-# between releases and many of their lints are taste. Each of these is a bug
-# class or a lost diagnosis.
+# Picked from nursery and restriction, not whole groups: those move between
+# releases, much is taste. Each here = bug class or lost diagnosis.
 #
-# A lock guard living through an `if let`/`match` body: how a Qt callback and
-# the sync worker deadlock each other.
+# Lock guard living through `if let`/`match` body: Qt callback and sync worker
+# deadlock.
 significant_drop_in_scrutinee = "deny"
 redundant_clone = "deny"
 needless_collect = "deny"
 derive_partial_eq_without_eq = "deny"
-# `assert!(r.is_ok())` fails without saying what the error was.
+# `assert!(r.is_ok())` fails without the error.
 assertions_on_result_states = "deny"
-# `.map_err(|_| ...)` throws the cause away, which on a phone is often all
-# there was to go on. Where the cause could quote a secret, say what kind of
-# fault it was instead (see `load_account`).
+# `.map_err(|_| ...)` drops cause; on phone often all there is. Where cause
+# could quote a secret, name fault kind instead (see `load_account`).
 map_err_ignore = "deny"
 mem_forget = "deny"
 # Debugging leftovers.
 dbg_macro = "deny"
 print_stdout = "deny"
-# The rest of the panic-freedom set -- `arithmetic_side_effects`,
-# `string_slice`, `let_underscore_must_use` and the others -- applies to
-# shipped code only, which this table cannot say. Each crate root denies them
-# under `cfg_attr(not(test), ...)` instead.
+# Rest of panic-freedom set (`arithmetic_side_effects`, `string_slice`,
+# `let_underscore_must_use`, ...) is shipped-code only, which this table can't
+# say. Each crate root denies them under `cfg_attr(not(test), ...)`.
 
-# qmetaobject builds its QML engine on `QApplication`, which comes from
-# QtWidgets -- a library Harbour does not allow, since a Silica app is expected
-# to use QtGui's `QGuiApplication`. Upstream carries that unconditionally, on
-# the released crate and on master, with no feature to turn it off, so the only
-# way past it is to carry the crate.
+# qmetaobject builds QML engine on `QApplication` (QtWidgets). Harbour disallows
+# QtWidgets; Silica apps use `QGuiApplication`. Upstream has no feature to turn it
+# off, so we carry the crate.
 #
-# `third_party/qmetaobject` is upstream 0.2.10 plus `third_party/qmetaobject.patch`
-# -- three lines swapping the include, the member type and the constructor --
-# and `make vendor-check` proves it is exactly that and nothing more. The
-# approach, the patch and the vendor check are all taken from postivene, which
-# hit this first.
+# `third_party/qmetaobject` = upstream 0.2.10 + `third_party/qmetaobject.patch`
+# (three lines: include, member type, constructor). `make vendor-check` proves
+# exactly that. Approach from postivene.
 [patch.crates-io]
 qmetaobject = { path = "third_party/qmetaobject" }
 
 [profile.release]
-# The device build is size-sensitive; a phone does not need 16 codegen units'
-# worth of parallel compilation more than it needs a smaller binary.
+# Device build size-sensitive.
 #
-# `s` rather than `z`, and the difference is a battery one. `z` additionally
-# turns off loop vectorisation, which is not free here: the hot paths are all
-# bursts of exactly the work vectorisation helps -- html5ever tokenising a
-# corpus of article bodies, serde_json over a 250-entry page, base64 over a
-# feed's icons, SQLite's own C. A phone finishing that work sooner and
-# returning to idle uses less energy than one grinding through it longer at
-# the same clock, so the size `z` saves is paid for in CPU-seconds on every
-# sync. `s` keeps the size discipline -- no inlining explosion, still far
-# below the default -- without that particular cut.
+# `s` not `z`, for battery: `z` also disables loop vectorisation, and hot paths
+# are bursts vectorisation helps (html5ever over article bodies, serde_json over
+# 250-entry page, base64 over icons, SQLite C). Finishing sooner and idling uses
+# less energy. `s` keeps size discipline without that cut.
 #
-# Measured on a host x86_64 release build of harbour-vuo, which is the closest
-# proxy available without the SDK: 4,675,696 bytes at `z` against 4,803,632 at
-# `s`. 125 KB, or 2.7%. If the device build ever needs that back, this is the
-# line to reconsider -- but reconsider it against a measurement of the sync
-# path's CPU time, not on the size alone.
+# Host x86_64 release harbour-vuo: 4,675,696 bytes at `z`, 4,803,632 at `s` (125
+# KB, 2.7%). Reconsider only against measured sync-path CPU time, not size
+# alone.
 opt-level = "s"
 lto = true
 codegen-units = 1

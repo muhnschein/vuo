@@ -1,13 +1,12 @@
 import QtQuick 2.6
 
-// Silica's swipeable pager (a C++ type: "Sailfish.Silica/PagedView 1.0" in
+// Silica swipeable pager (C++ type: "Sailfish.Silica/PagedView 1.0" in
 // plugins.qmltypes).
 //
-// The Repeater is the point of this stub. A bare Item would resolve the type
-// but never instantiate the delegate, so every binding inside the entry list
-// -- the whole of components/EntryListView.qml -- would stop being checked by
-// `make qml-load`. Instantiating all of them at once is wrong geometry and
-// exactly right for a load test.
+// Repeater = point of stub. Bare Item resolves type but never instantiates
+// delegate, so every binding in entry list (all of
+// components/EntryListView.qml) goes unchecked by `make qml-load`. All
+// instantiated at once: wrong geometry, right for load test.
 Item {
     id: root
 

@@ -18,9 +18,8 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
 # --- HTTP --------------------------------------------------------------------
-# default-features = false deliberately: it drops native-tls (and with it
-# OpenSSL) and the default redirect policy. §9.1 requires rustls and a
-# restrictive, hand-written redirect policy, so neither default is wanted.
+# default-features = false: drops native-tls (OpenSSL) and default redirect
+# policy. §9.1 wants rustls and restrictive hand-written redirect policy.
 reqwest = { version = "0.12", default-features = false, features = [
     "json",
     "rustls-tls-native-roots",
@@ -36,19 +35,15 @@ futures-util = { version = "0.3", default-features = false, features = ["std"] }
 tokio = { version = "1", features = ["rt", "macros", "sync", "time"] }
 
 # --- storage -----------------------------------------------------------------
-# "bundled" compiles SQLite from vendored C rather than linking whatever the
-# device happens to ship. That keeps the mirror's behaviour identical between
-# the host test suite and the phone, which matters because the mirror is the
-# UI's source of truth.
-# "functions" for the one SQL function Vuo registers, the search matcher --
-# see src/search.rs for why searching happens inside the query.
+# "bundled": SQLite from vendored C, not device's. Mirror (UI's source of truth)
+# behaves same in host tests and on phone. "functions": for Vuo's one SQL
+# function, search matcher (src/search.rs says why search runs inside query).
 rusqlite = { version = "0.32", features = ["bundled", "backup", "functions"] }
 
 # --- content transform -------------------------------------------------------
-# Only html5ever's TOKENIZER is used, never its tree builder or RcDom: an
-# RcDom is dropped recursively, so deeply nested markup would overflow the
-# stack on drop -- precisely the input §9.2 warns about. Blocks are assembled
-# from the token stream with an explicit, depth-capped stack instead.
+# Only html5ever TOKENIZER, never tree builder or RcDom: RcDom drops
+# recursively, deep nesting overflows stack on drop (§9.2). Blocks built from
+# token stream with explicit depth-capped stack.
 html5ever = "0.27"
 tendril = "0.4"
 
@@ -71,6 +66,6 @@ serde_json = "1.0"
 
 [features]
 default = []
-# Enables the opt-in live integration test against a real Miniflux instance.
-# See docs/testing.md; the test is additionally gated on VUO_LIVE_BASE_URL.
+# Opt-in live integration test against real Miniflux. See docs/testing.md; also
+# gated on VUO_LIVE_BASE_URL.
 live-integration-tests = []

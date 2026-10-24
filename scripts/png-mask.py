@@ -24,9 +24,8 @@ import pathlib, struct, sys, tempfile, zlib
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
 
-# Where a SOURCE may legitimately live. scripts/render-textart.sh paints its
-# frames into a `mktemp -d` and hands them here, so the tree is not the only
-# honest answer -- but "anywhere at all" is not one either.
+# Where SOURCE may live. scripts/render-textart.sh paints frames into `mktemp
+# -d`, hands them here; tree not only honest answer, "anywhere" not one either.
 READABLE_ROOTS = (REPO, pathlib.Path(tempfile.gettempdir()).resolve())
 
 
@@ -120,8 +119,8 @@ def write_gray(path, width, height, gray):
     prev = bytearray(width)
     for y in range(height):
         line = gray[y * width:(y + 1) * width]
-        # The usual heuristic: try each filter, keep the one whose bytes sum
-        # smallest, which is what deflate compresses best.
+        # Usual heuristic: try each filter, keep smallest byte sum (deflates
+        # best).
         best, best_score, best_f = None, None, 0
         for f in range(5):
             cand = bytearray(width)

@@ -1,24 +1,20 @@
-//! The error taxonomy for `vuo-core`.
+//! Error taxonomy for `vuo-core`.
 //!
-//! Two constraints from the scope shape this module more than ergonomics does.
+//! Scope constraints shape this more than ergonomics.
 //!
-//! **§9.5 — panics are not a safe failure mode.** Unwinding out of Rust into
-//! Qt's C++ frames is undefined behaviour, so every foreign-input path returns
-//! a `Result` rather than unwrapping. `clippy::unwrap_used`, `expect_used`,
-//! `panic` and `indexing_slicing` are denied workspace-wide to keep it that
-//! way.
+//! **§9.5: panics not safe failure mode.** Unwinding from Rust into Qt's C++
+//! frames = undefined behaviour; every foreign-input path returns `Result`.
+//! `clippy::unwrap_used`, `expect_used`, `panic`, `indexing_slicing` denied
+//! workspace-wide.
 //!
-//! **§9.1 — redact in error paths.** There is deliberately no
-//! `#[from] reqwest::Error` variant. `reqwest::Error`'s own `Display` embeds
-//! the URL it failed on, so storing one as an error source would leak any
-//! userinfo in the configured base URL through the error chain even though we
-//! never format a `Url` ourselves. Transport failures are classified into
-//! [`TransportKind`] at the boundary and the URL is reduced to a
-//! [`SafeUrl`] first.
+//! **§9.1: redact in error paths.** No `#[from] reqwest::Error` variant on
+//! purpose: its `Display` embeds failing URL; as error source, leaks base-URL
+//! userinfo through chain. Transport failures classified into [`TransportKind`]
+//! at boundary, URL reduced to [`SafeUrl`] first.
 //!
-//! **§9.2 — one bad entry must not stall the sync.** [`Error::is_item_local`]
-//! distinguishes "this one item was malformed" from "the whole operation
-//! failed", so a pull can drop a single unparseable entry and carry on.
+//! **§9.2: one bad entry must not stall sync.** [`Error::is_item_local`]
+//! separates "this item malformed" from "whole operation failed": pull drops
+//! one unparseable entry, carries on.
 
 use std::fmt;
 
@@ -30,26 +26,24 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// Why a request never produced an HTTP response.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TransportKind {
-    /// DNS failure, connection refused, unreachable network, or a connection
-    /// that was never established before the deadline.
+    /// DNS failure, connection refused, unreachable network, or connection
+    /// never established before deadline.
     ///
-    /// Distinct from [`TransportKind::Timeout`], which means the server *did*
-    /// answer and then stalled. The two point at different things to check --
-    /// the network or the VPN, versus the server itself -- so `classify` tests
-    /// for this one first, because reqwest reports a connect timeout as both.
+    /// Distinct from [`TransportKind::Timeout`] (server answered, then
+    /// stalled). Different things to check: network/VPN vs server. reqwest
+    /// reports connect timeout as both, so `classify` tests this first.
     Connect,
-    /// The TLS handshake failed, including certificate verification.
+    /// TLS handshake failed, incl. certificate verification.
     ///
-    /// §9.1: verification is not optional and gets no toggle, so this is
-    /// always a hard error. A user with a private CA supplies that CA
-    /// explicitly rather than being offered a "trust anything" switch.
+    /// §9.1: verification not optional, no toggle: always hard error. Private
+    /// CA: user supplies that CA, no "trust anything" switch.
     Tls,
     /// A connect, read or overall-request deadline elapsed.
     Timeout,
-    /// The body exceeded the configured cap and the read was abandoned.
+    /// Body exceeded configured cap; read abandoned.
     ///
-    /// This is a phone: an unbounded `Vec<u8>` sized by an untrusted
-    /// `Content-Length` is an out-of-memory waiting to happen (§9.1).
+    /// Phone: unbounded `Vec<u8>` sized by untrusted `Content-Length` = OOM
+    /// (§9.1).
     BodyTooLarge,
     /// A redirect was refused by policy: too many hops, a cross-origin jump,
     /// or a downgrade to plaintext (§9.1).
@@ -77,9 +71,8 @@ impl fmt::Display for TransportKind {
 
 /// Everything that can go wrong in `vuo-core`.
 ///
-/// See the [module documentation](crate::error) for the rules that shape it, and the
-/// `is_*` classifiers on this type for how callers decide to retry, drop or
-/// surface a failure.
+/// Rules: [module documentation](crate::error). Retry/drop/surface decisions: `is_*`
+/// classifiers on this type.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum Error {
@@ -94,15 +87,15 @@ pub enum Error {
         endpoint: SafeUrl,
         /// Why no response arrived.
         kind: TransportKind,
-        /// A short, already-redacted detail string. Never the raw
-        /// `reqwest::Error` display, which would carry the URL.
+        /// Short, already-redacted detail. Never raw `reqwest::Error` display
+        /// (carries URL).
         detail: String,
     },
 
-    /// The server answered, but not with success.
+    /// Server answered, not with success.
     ///
-    /// `message` is the server's own `error_message` field when it sent one.
-    /// It is foreign text: render it as plain text, never as markup (§9.3).
+    /// `message` = server's `error_message` field when sent. Foreign text:
+    /// plain text only, never markup (§9.3).
     #[error("server returned HTTP {status} for {endpoint}{}", .message.as_deref().map(|m| format!(": {m}")).unwrap_or_default())]
     Http {
         /// The HTTP status code.
@@ -113,15 +106,15 @@ pub enum Error {
         message: Option<String>,
     },
 
-    /// The response was structurally valid HTTP but not what the API promises:
-    /// wrong JSON shape, an absurd field, a value that fails domain validation.
+    /// Valid HTTP, not what API promises: wrong JSON shape, absurd field, value
+    /// failing domain validation.
     #[error("malformed response from server: {0}")]
     Protocol(String),
 
-    /// A single item inside an otherwise good response was unusable.
+    /// One item inside otherwise good response unusable.
     ///
-    /// Callers are expected to drop the item, count it, and continue. §9.2:
-    /// *reject the entry rather than the sync when one item is malformed.*
+    /// Caller drops item, counts it, continues. §9.2: *reject the entry rather
+    /// than the sync when one item is malformed.*
     #[error("unusable {kind} (id {id:?}): {reason}")]
     Item {
         /// What sort of item it was, such as `"entry"` or `"icon"`.
@@ -136,20 +129,20 @@ pub enum Error {
     #[error("database error: {0}")]
     Db(String),
 
-    /// A schema migration failed. Distinguished from [`Error::Db`] because the
-    /// recovery is different and because a failed migration must never be
-    /// allowed to silently drop a pending outbox (§9.4).
+    /// Schema migration failed. Separate from [`Error::Db`]: different
+    /// recovery, and failed migration must never silently drop pending outbox
+    /// (§9.4).
     #[error("database migration {version} failed: {reason}")]
     Migration {
-        /// The migration that failed, or the database's own version when it is
-        /// newer than this build understands.
+        /// Migration that failed, or database's own version when newer than
+        /// this build understands.
         version: i64,
         /// What went wrong.
         reason: String,
     },
 
-    /// The content transform refused its input: too deep, too large, or
-    /// malformed past the point of usefulness (§9.2).
+    /// Content transform refused input: too deep, too large, or malformed past
+    /// usefulness (§9.2).
     #[error("could not transform article content: {0}")]
     Content(String),
 
@@ -159,33 +152,29 @@ pub enum Error {
 }
 
 impl Error {
-    /// `true` when the failure concerns one item rather than the operation.
+    /// `true` when failure concerns one item, not operation.
     ///
-    /// A pull loop uses this to decide whether to drop a row and continue or
-    /// to abort the sync.
+    /// Pull loop: drop row and continue vs abort sync.
     #[must_use]
     pub fn is_item_local(&self) -> bool {
         matches!(self, Error::Item { .. })
     }
 
-    /// `true` when this failure means the server will reject this payload
-    /// forever, so the queued intent should be dropped rather than retried.
+    /// `true` when server rejects this payload forever: drop queued intent,
+    /// don't retry.
     ///
-    /// Deliberately narrow: **only** a non-429 client error from the server.
+    /// Narrow on purpose: **only** non-429 client error from server.
     ///
-    /// This is not the inverse of [`Error::is_transient`], and conflating the
-    /// two loses user data. A refused redirect or an oversized body is not
-    /// "transient" — retrying replays the same refusal — but it is also not
-    /// the *payload's* fault: it means the server is misconfigured or hostile.
-    /// Treating those as permanent made the outbox discard marks and stars the
-    /// user had made, because a misdirected server URL looked exactly like a
-    /// malformed request. Anything that is neither transient nor a 4xx stays
-    /// queued and waits for a human to fix the configuration.
+    /// Not inverse of [`Error::is_transient`]; conflating loses user data.
+    /// Refused redirect or oversized body not transient (retry replays
+    /// refusal), but not payload's fault either: server misconfigured or
+    /// hostile. Misdirected server URL must not look like malformed request,
+    /// else outbox discards user's marks and stars. Neither transient nor 4xx →
+    /// stays queued until human fixes config.
     #[must_use]
     pub fn is_permanently_rejected(&self) -> bool {
-        // An explicit list, not "any 4xx except 429". Several 4xx codes say
-        // nothing about the payload and are routinely produced by things
-        // between Vuo and Miniflux:
+        // Explicit list, not "any 4xx except 429". Several 4xx say nothing
+        // about payload, routinely produced between Vuo and Miniflux:
         //
         //   404 — a reverse proxy that does not forward /v1/, or a path typo
         //   405 — an nginx `limit_except GET` block refusing PUT
@@ -193,10 +182,8 @@ impl Error {
         //   409 — a transient conflict
         //   429 — throttling, already excluded
         //
-        // Treating those as "the payload is invalid" deleted the user's queued
-        // marks and stars because of someone's web-server config. Only codes
-        // that genuinely mean "this request body will never be accepted"
-        // discard work.
+        // Web-server config must not delete queued marks and stars. Only codes
+        // meaning "this body never accepted" discard work.
         matches!(
             self,
             Error::Http { status, .. }
@@ -204,38 +191,35 @@ impl Error {
         )
     }
 
-    /// `true` when retrying the identical request could plausibly succeed.
+    /// `true` when retrying identical request could plausibly succeed.
     ///
-    /// This is the outbox's retry classifier. Because every outbox write is an
-    /// absolute set (see [`crate::db::outbox`]), retrying after an ambiguous
-    /// timeout is safe -- there is no partial-application hazard to reason
-    /// about, which is the whole payoff of the desired-state design.
+    /// Outbox retry classifier. Every outbox write is absolute set (see
+    /// [`crate::db::outbox`]): retry after ambiguous timeout safe, no
+    /// partial-application hazard. Payoff of desired-state design.
     ///
-    /// 4xx is permanent *except* 429: a 400 means the payload is malformed and
-    /// resending it will fail identically until the code changes.
+    /// 4xx permanent *except* 429: 400 = payload malformed, resend fails
+    /// identically until code changes.
     #[must_use]
     pub fn is_transient(&self) -> bool {
         match self {
             Error::Transport { kind, .. } => !matches!(
                 kind,
-                // A refused redirect and an oversized body are properties of
-                // what the server sent, not of the moment. Retrying replays
-                // the same refusal.
+                // Refused redirect, oversized body: properties of what server
+                // sent, not of the moment. Retry replays refusal.
                 TransportKind::RedirectRefused
                     | TransportKind::BodyTooLarge
                     | TransportKind::Cancelled
             ),
             Error::Http { status, .. } => *status == 429 || (500..600).contains(status),
-            // A locked database is the common SQLite failure and it clears.
+            // Locked database: common SQLite failure, clears.
             Error::Db(_) => true,
             _ => false,
         }
     }
 
-    /// `true` when the server rejected our credentials.
+    /// `true` when server rejected credentials.
     ///
-    /// Worth surfacing distinctly: the fix is "your API key was revoked",
-    /// which no amount of retrying addresses.
+    /// Surface distinctly: fix = "API key revoked"; retrying never helps.
     #[must_use]
     pub fn is_auth_failure(&self) -> bool {
         matches!(
@@ -259,13 +243,11 @@ impl Error {
 
 impl From<rusqlite::Error> for Error {
     fn from(e: rusqlite::Error) -> Self {
-        // `rusqlite::Error`'s Display carries SQL text and, in some variants,
-        // bound parameter values. No token is ever bound into SQL -- the API
-        // key lives in a separate 0600 file, deliberately outside the mirror
-        // (§7) -- but article content and feed titles are foreign text and do
-        // get bound, so the message is still not something to hand to a
-        // renderer unexamined. Stringified rather than chained so the shape of
-        // what escapes is fixed here rather than by rusqlite's version.
+        // `rusqlite::Error` Display carries SQL text, some variants bound
+        // values. No token ever bound (API key in separate 0600 file outside
+        // mirror, §7), but article content and feed titles are foreign and
+        // bound: not for renderer unexamined. Stringified, not chained: shape
+        // of what escapes fixed here, not by rusqlite version.
         Error::Db(e.to_string())
     }
 }
@@ -345,17 +327,12 @@ mod tests {
 
     #[test]
     fn an_errors_endpoint_can_only_be_a_safe_url() {
-        // A TYPE-level guarantee, and that is all this test is: every variant
-        // that names an endpoint holds a `SafeUrl`, so a full URL cannot be
-        // stored in one even by mistake. `ep()` is redacted before the `Error`
-        // is built, which means these assertions would hold no matter what the
-        // rendering code did -- naming it "rendered errors never carry
-        // credentials", as this test used to, claimed a behaviour it could not
-        // see.
+        // TYPE-level guarantee only: every endpoint-naming variant holds `SafeUrl`, so full
+        // URL can't be stored even by mistake. `ep()` redacted before `Error` built:
+        // assertions hold whatever rendering code does.
         //
-        // The behavioural half -- that `api::transport::classify` does not
-        // interpolate the `reqwest::Error`, whose Display carries the URL and
-        // its query -- needs a real failed request, and lives in
+        // Behavioural half (`api::transport::classify` doesn't interpolate `reqwest::Error`,
+        // whose Display carries URL and query) needs real failed request:
         // tests/transport_hardening.rs::a_failed_request_renders_without_the_url_or_its_query.
         let cases = [
             Error::Transport {

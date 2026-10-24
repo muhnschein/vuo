@@ -1,8 +1,7 @@
 import QtQuick 2.6
-// The enum companion to the Format singleton. A QML `enum` for the same reason
-// as PageStatus.qml: property names may not begin with an upper-case letter.
-// The values are placeholders -- nothing in Vuo depends on them numerically,
-// only on the names resolving.
+// Enum companion of Format singleton. QML `enum`, same reason as
+// PageStatus.qml: property names can't start upper-case. Values placeholders:
+// Vuo only needs names to resolve.
 QtObject {
     enum Value {
         Timepoint = 0,

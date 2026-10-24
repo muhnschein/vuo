@@ -1,7 +1,7 @@
 //! The incremental pull: pagination, the cursor, and deletion detection.
 
-// Test code: see the note in vuo-core's lib.rs. The unwrap/panic denials
-// guard foreign-input paths in production, not assertions in tests.
+// Test code: see note in vuo-core's lib.rs. unwrap/panic denials guard
+// production foreign-input paths, not test assertions.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -19,8 +19,8 @@ use wiremock::{Mock, MockServer, Request, ResponseTemplate};
 
 #[tokio::test]
 async fn pagination_uses_a_keyset_and_never_an_offset() {
-    // The server's ORDER BY has no id tiebreaker, so offset paging silently
-    // skips and duplicates rows. This asserts the shape of what we send.
+    // Server's ORDER BY lacks id tiebreaker: offset paging silently skips and
+    // duplicates. Asserts shape of what we send.
     let server = MockServer::start().await;
 
     // Page 1: a full page of ids 1..=250.
@@ -40,7 +40,7 @@ async fn pagination_uses_a_keyset_and_never_an_offset() {
         .mount(&server)
         .await;
 
-    // Page 2 must arrive with after_entry_id=250; a short page ends the pass.
+    // Page 2 must carry after_entry_id=250; short page ends pass.
     Mock::given(method("GET"))
         .and(path("/v1/entries"))
         .and(query_param("after_entry_id", "250"))
@@ -73,8 +73,8 @@ async fn pagination_uses_a_keyset_and_never_an_offset() {
 
 #[tokio::test]
 async fn a_page_of_unusable_entries_does_not_end_the_pass() {
-    // Paging must continue on the raw returned count, not on how many entries
-    // survived validation -- otherwise one poisoned page truncates the sync.
+    // Paging continues on raw returned count, not validated survivors: else one
+    // poisoned page truncates sync.
     let server = MockServer::start().await;
 
     let mut poisoned: Vec<_> = (1..=250)
@@ -111,7 +111,7 @@ async fn a_page_of_unusable_entries_does_not_end_the_pass() {
 
 #[tokio::test]
 async fn the_cursor_comes_from_the_servers_clock_minus_a_skew() {
-    // A phone's clock can be hours out; the comparison happens server-side.
+    // Phone clock can be hours out; comparison server-side.
     let server = MockServer::start().await;
     // Fri, 02 Jan 2026 03:04:05 GMT == 1767323045
     Mock::given(method("GET"))
@@ -137,14 +137,12 @@ async fn the_cursor_comes_from_the_servers_clock_minus_a_skew() {
 
 #[tokio::test]
 async fn the_cursor_anchors_to_the_first_pages_clock_not_the_last() {
-    // A multi-page pull takes minutes. Anchoring to the LAST page's Date marks
-    // as "seen" a window that ends after mutations this pass could not have
-    // read: every entry changed during the pass with an id at or below the
-    // last one read is skipped permanently.
+    // Multi-page pull takes minutes. Anchoring to LAST page's Date marks "seen"
+    // a window ending after mutations pass couldn't read: every entry changed
+    // during pass with id ≤ last read skipped permanently.
     //
-    // One page cannot show this -- first and last are the same response -- so
-    // the single-page test above passes with the rule inverted. This serves
-    // two pages with clocks five minutes apart.
+    // One page can't show this (first = last), so single-page test above passes
+    // with rule inverted. Two pages, clocks five minutes apart.
     let server = MockServer::start().await;
     // Fri, 02 Jan 2026 03:04:05 GMT == 1767323045
     Mock::given(method("GET"))
@@ -219,7 +217,7 @@ async fn unsubscribing_a_feed_removes_its_entries() {
         .respond_with(ResponseTemplate::new(200).set_body_json(vec![category_json(1, "News")]))
         .mount(&server)
         .await;
-    // The server now lists only feed 1; feed 2 was unsubscribed elsewhere.
+    // Server lists only feed 1; feed 2 unsubscribed elsewhere.
     Mock::given(method("GET"))
         .and(path("/v1/feeds"))
         .respond_with(ResponseTemplate::new(200).set_body_json(vec![feed_json(1, "Kept", 1)]))
@@ -249,14 +247,14 @@ async fn unsubscribing_a_feed_removes_its_entries() {
 
 #[tokio::test]
 async fn a_torn_id_listing_aborts_the_reconcile_instead_of_deleting() {
-    // /v1/entries/ids pages by offset over an id DESC ordering, which is not
-    // stable under concurrent writes. Acting on a torn listing would delete
-    // live entries, so the total is checked and a mismatch aborts.
+    // /v1/entries/ids pages by offset over id DESC, unstable under concurrent
+    // writes. Torn listing would delete live entries: total checked, mismatch
+    // aborts.
     let server = MockServer::start().await;
     Mock::given(method("GET"))
         .and(path("/v1/entries/ids"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-            // Claims 5 ids exist but returns 3: the window shifted mid-listing.
+            // Claims 5 ids, returns 3: window shifted mid-listing.
             "total": 5,
             "entry_ids": [3, 2, 1]
         })))
@@ -311,9 +309,8 @@ async fn a_consistent_id_listing_deletes_what_the_server_dropped() {
                 [i],
             )?;
         }
-        // Entry 2 has a pending intent; deleting the entry must take it too,
-        // since Miniflux silently ignores unknown ids and the row would
-        // otherwise never clear.
+        // Entry 2 has pending intent; deleting entry takes it too: Miniflux
+        // silently ignores unknown ids, row would never clear.
         tx.execute(
             "INSERT INTO outbox (entry_id, field, value, queued_at) VALUES (2,'status','read',1)",
             [],
@@ -345,8 +342,8 @@ async fn the_counters_check_finds_diverging_feeds() {
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
             "reads":   { "1": 2 },
             "unreads": { "1": 1, "2": 4 }
-            // Feed 3 has entries locally and is absent here entirely, which
-            // the server means as zero. Feed 4 agrees at zero on both sides.
+            // Feed 3 has local entries, absent here = zero on server. Feed 4
+            // agrees at zero both sides.
         })))
         .mount(&server)
         .await;
@@ -390,11 +387,10 @@ async fn the_counters_check_finds_diverging_feeds() {
 
 #[tokio::test]
 async fn a_negative_total_aborts_rather_than_disabling_the_guard() {
-    // Regression, and the worst bug found in review: the guard was written
-    // `total >= 0 && collected != total`, so a NEGATIVE total skipped the
-    // check entirely. A server -- hostile, buggy, or a proxy serving a cached
-    // body -- answering {"total": -1, "entry_ids": []} would have deleted the
-    // user's whole mirror and every pending outbox row with it.
+    // Missing or negative total must abort. Guard written `total >= 0 &&
+    // collected != total` lets NEGATIVE total skip check: server (hostile,
+    // buggy, cached proxy body) answering {"total": -1, "entry_ids": []}
+    // deletes whole mirror and every pending outbox row.
     let server = MockServer::start().await;
     Mock::given(method("GET"))
         .and(path("/v1/entries/ids"))
@@ -440,19 +436,16 @@ async fn a_negative_total_aborts_rather_than_disabling_the_guard() {
 
 #[tokio::test]
 async fn the_reconcile_pages_beyond_the_servers_limit_cap() {
-    // Regression: PAGE was 10_000 but EntriesQuery clamps limit to the
-    // server's 1000 cap, so "a short page means done" fired on the first page
-    // and the reconcile never paged. Any corpus over 1000 entries therefore
-    // failed the total check on every single run.
+    // PAGE must equal server's 1000 cap (EntriesQuery clamps). Larger PAGE
+    // makes "short page = done" fire on first page: reconcile never pages,
+    // corpus over 1000 fails total check every run.
     let server = MockServer::start().await;
     let first: Vec<i64> = (1..=1000).rev().collect();
     let second: Vec<i64> = (1001..=1500).rev().collect();
 
-    // `limit` is asserted, not just `offset`. Without it the stub answers 1000
-    // ids whatever was requested, so a request for a limit SMALLER than the
-    // PAGE the loop compares against -- "a short page means done", firing on
-    // page one again -- was invisible. §8.3: the mock is the contract, and the
-    // request is half of it.
+    // `limit` asserted, not just `offset`. Else stub answers 1000 ids whatever
+    // asked, hiding a limit SMALLER than loop's PAGE ("short page = done" on
+    // page one). §8.3: mock is contract, request is half.
     Mock::given(method("GET"))
         .and(path("/v1/entries/ids"))
         .and(query_param("offset", "0"))
@@ -476,7 +469,7 @@ async fn the_reconcile_pages_beyond_the_servers_limit_cap() {
     let mut db = memory_db();
     db.with_tx(|tx| {
         tx.execute("INSERT INTO feeds (id, title) VALUES (1, 'f')", [])?;
-        // 1500 the server still has, plus one it does not.
+        // 1500 server still has, plus one it doesn't.
         for i in 1..=1501i64 {
             tx.execute(
                 "INSERT INTO entries (id, feed_id, status) VALUES (?1, 1, 'unread')",
@@ -498,17 +491,12 @@ async fn the_reconcile_pages_beyond_the_servers_limit_cap() {
 
 #[tokio::test]
 async fn stopping_at_the_page_cap_does_not_advance_the_cursor() {
-    // The PAGE CAP branch, reached for real.
+    // PAGE CAP branch, reached for real.
     //
-    // This test used to be served by a mock whose pages always ended on id
-    // 250, so the pass exited through the *other* early-exit -- the
-    // after_entry_id stall check -- after two pages. The cap's own branch was
-    // dead under test: replacing its body with a panic left all 14 tests here
-    // green, so the cap could bail WITHOUT holding the cursor back and nothing
-    // would notice. The stall case is covered separately below.
+    // Pages never stall, so pass exits through cap, not after_entry_id stall
+    // check (covered separately below). Pins cap holding cursor back.
     let server = MockServer::start().await;
-    // Every page is full and its last id keeps advancing, so only the cap can
-    // stop this pass.
+    // Every page full, last id keeps advancing: only cap stops pass.
     Mock::given(method("GET"))
         .and(path("/v1/entries"))
         .respond_with(|req: &Request| {
@@ -556,12 +544,11 @@ async fn stopping_at_the_page_cap_does_not_advance_the_cursor() {
 
 #[tokio::test]
 async fn a_server_whose_keyset_never_advances_does_not_advance_the_cursor() {
-    // Regression: the pass returned an advanced cursor even when it bailed
-    // early, marking as "seen" a window it never finished reading. Every entry
-    // beyond the stopping point would be skipped forever.
+    // Pass bailing early returns no cursor; advanced cursor marks unfinished
+    // window "seen", skipping everything beyond stop point forever.
     let server = MockServer::start().await;
-    // A server whose after_entry_id never advances the window: every page is
-    // full and ends on the same id.
+    // Server whose after_entry_id never advances: every page full, ends on same
+    // id.
     Mock::given(method("GET"))
         .and(path("/v1/entries"))
         .respond_with(
@@ -590,10 +577,9 @@ async fn a_server_whose_keyset_never_advances_does_not_advance_the_cursor() {
 
 #[tokio::test]
 async fn hostile_feed_counters_do_not_panic() {
-    // §9.2: server-assigned numbers are chosen by someone else. Two i64::MAX
-    // counts for the same feed overflowed the divergence check's accumulator
-    // and panicked -- a reachable panic on foreign input, which §9.5 forbids
-    // outright because unwinding into Qt's C++ frames is undefined behaviour.
+    // §9.2: server numbers chosen by someone else. Two i64::MAX counts for one
+    // feed must not overflow divergence accumulator: reachable panic on foreign
+    // input, §9.5 forbids (unwinding into Qt C++ = UB).
     let server = MockServer::start().await;
     Mock::given(method("GET"))
         .and(path("/v1/feeds/counters"))
@@ -607,10 +593,9 @@ async fn hostile_feed_counters_do_not_panic() {
     let client = client_for(&server);
     let mut db = memory_db();
     db.with_tx(|tx| {
-        // Feed 1 takes the overflowing counts. Feed 2 is absent from the
-        // response -- zero there, one entry here -- so the call still has to
-        // produce a real answer after surviving the accumulator, rather than
-        // passing by returning nothing at all.
+        // Feed 1 takes overflowing counts. Feed 2 absent from response (zero
+        // there, one here): call must still produce real answer after surviving
+        // accumulator, not pass by returning nothing.
         tx.execute(
             "INSERT INTO feeds (id, title) VALUES (1, 'f'), (2, 'g')",
             [],
@@ -634,9 +619,8 @@ async fn hostile_feed_counters_do_not_panic() {
 
 #[tokio::test]
 async fn an_empty_feed_listing_is_not_treated_as_a_mass_unsubscribe() {
-    // A reverse proxy serving a stale cached `[]` would otherwise delete the
-    // entire mirror. Unsubscribing from every feed at once is not a real
-    // workflow; a cached empty body is a real failure mode.
+    // Proxy serving stale cached `[]` would delete whole mirror. Unsubscribing
+    // everything at once not real workflow; cached empty body is real failure.
     let server = MockServer::start().await;
     Mock::given(method("GET"))
         .and(path("/v1/categories"))
@@ -676,10 +660,9 @@ async fn an_empty_feed_listing_is_not_treated_as_a_mass_unsubscribe() {
 
 #[tokio::test]
 async fn unsubscribing_a_feed_takes_its_queued_intents_with_it() {
-    // An intent for an entry the server no longer has can never be confirmed:
-    // Miniflux silently ignores unknown ids, so the flush gets its 204 and
-    // `confirm` matches nothing. The row would sit in the queue forever,
-    // counted in "changes waiting to be sent" that never will be.
+    // Intent for entry server lacks never confirms: Miniflux ignores unknown
+    // ids, flush gets 204, `confirm` matches nothing. Row sits forever in
+    // "changes waiting to be sent".
     let server = MockServer::start().await;
     Mock::given(method("GET"))
         .and(path("/v1/categories"))
@@ -720,8 +703,7 @@ async fn unsubscribing_a_feed_takes_its_queued_intents_with_it() {
 /// When `entry_json` says the server created every entry: 2026-01-02T03:04:05Z.
 const FIXTURE_CREATED_AT: i64 = 1_767_323_045;
 
-/// Serve exactly one page of entries for the next pull, replacing whatever the
-/// mock served before.
+/// Serve exactly one page for next pull, replacing earlier mocks.
 async fn serve_entries(server: &MockServer, entries: Vec<serde_json::Value>) {
     server.reset().await;
     let total = i64::try_from(entries.len()).unwrap();
@@ -744,21 +726,20 @@ fn arrived(db: &vuo_core::db::Database) -> Vec<i64> {
 
 /// §what the new-articles notification counts, decided where the rows land.
 ///
-/// Four ways a pulled entry can fail to be news, and one way it is:
+/// Four ways pulled entry isn't news, one way it is:
 ///
-/// - the mirror's FIRST pass, which brings the whole account;
-/// - an entry the mirror already holds, which the cursor's overlap re-reads
-///   on every pass;
-/// - an entry that arrives already read;
-/// - an OLD entry re-entering the mirror -- pruned by retention, then marked
-///   unread on the web -- which is an insert, but not an arrival.
+/// - mirror's FIRST pass (whole account);
+/// - entry mirror already holds (cursor overlap re-reads every pass);
+/// - entry arriving already read;
+/// - OLD entry re-entering (pruned by retention, then marked unread on web):
+///   insert, not arrival.
 #[tokio::test]
 async fn only_an_unread_entry_new_to_the_mirror_and_to_the_window_is_an_arrival() {
     let server = MockServer::start().await;
     let client = client_for(&server);
     let mut db = memory_db();
 
-    // The first pass: everything is an insert, and none of it is news.
+    // First pass: all inserts, none news.
     serve_entries(
         &server,
         vec![
@@ -774,8 +755,7 @@ async fn only_an_unread_entry_new_to_the_mirror_and_to_the_window_is_an_arrival(
         "a first sync announces the whole account as new"
     );
 
-    // A later pass whose window opened an hour before the fixture's entries
-    // were created.
+    // Later pass whose window opened hour before fixture entries created.
     let mut returning = entry_json(5, 1, "unread", false);
     returning["created_at"] = serde_json::Value::from("2025-06-01T00:00:00Z");
     serve_entries(
@@ -802,9 +782,8 @@ async fn only_an_unread_entry_new_to_the_mirror_and_to_the_window_is_an_arrival(
 
 /// §a re-read row keeps its flag, in both directions.
 ///
-/// The cursor re-reads a minute of overlap on every pass. An arrival the
-/// reader has not been told about yet must survive being seen again -- and one
-/// they HAVE been told about must not come back as news the next time the
+/// Cursor re-reads minute of overlap every pass. Arrival not yet told must
+/// survive being seen again; one already told mustn't return as news when
 /// overlap brings it round.
 #[tokio::test]
 async fn re_reading_an_entry_neither_raises_nor_clears_its_arrival() {
@@ -824,11 +803,11 @@ async fn re_reading_an_entry_neither_raises_nor_clears_its_arrival() {
     pull::entries(&mut db, &client, window, 1).await.unwrap();
     assert_eq!(arrived(&db), vec![7, 8]);
 
-    // The reader dismisses the notification that covered 8.
+    // Reader dismisses notification covering 8.
     db.with_tx(|tx| store::acknowledge_arrivals(tx, &[EntryId(8)]))
         .unwrap();
 
-    // The same two, again, in the next pass's overlap.
+    // Same two again, in next pass's overlap.
     pull::entries(&mut db, &client, window, 2).await.unwrap();
     assert_eq!(
         arrived(&db),
@@ -839,10 +818,9 @@ async fn re_reading_an_entry_neither_raises_nor_clears_its_arrival() {
 
 /// §an arrival is recorded with its row, not with the pass's report.
 ///
-/// A pass commits page by page, and can fail after it has written: a count
-/// carried back in the pass's result would be lost with the result, and the
-/// rows it counted would be held, and so not new, by the time the next pass
-/// looked. That is the reason the flag is a column.
+/// Pass commits page by page, can fail after writing: count in pass result lost
+/// with result, counted rows already held (not new) by next pass. Hence flag =
+/// column.
 #[tokio::test]
 async fn a_pass_that_fails_after_its_first_page_keeps_that_pages_arrivals() {
     let server = MockServer::start().await;

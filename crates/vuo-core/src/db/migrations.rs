@@ -1,33 +1,30 @@
 //! Schema migrations.
 //!
-//! §9.4: *migrations must preserve the outbox. Untrusted input can crash a
-//! sync; the pending user actions it was carrying must still be there on
-//! restart.* And §8.3 asks for migration tests against a fixture database from
-//! the previous version, which live in `tests/migrations.rs`.
+//! §9.4: migrations must preserve outbox; pending user actions survive a
+//! crashed sync. §8.3: migration tests against previous-version fixture
+//! database, in `tests/migrations.rs`.
 //!
-//! # Rules for adding a migration
+//! # Adding a migration
 //!
-//! 1. **Append only.** Never edit an existing entry in `MIGRATIONS`; a
-//!    database in the wild has already run it. Add a new one.
-//! 2. **Never drop or recreate `outbox`.** Losing it loses user actions that
-//!    were never sent to the server -- marks and stars the user believes they
-//!    made. Everything else in the mirror can be re-fetched; the outbox cannot.
-//! 3. **The whole set runs in one transaction.** A migration that fails leaves
-//!    the database exactly as it was, rather than half-upgraded with no way
-//!    back.
+//! 1. **Append only.** Never edit an entry in `MIGRATIONS`; databases in the
+//!    wild ran it.
+//! 2. **Never drop or recreate `outbox`.** It holds unsent user marks and
+//!    stars. Rest of mirror re-fetchable; outbox isn't.
+//! 3. **Whole set runs in one transaction.** Failure leaves database as it was,
+//!    never half-upgraded.
 
 use rusqlite::Connection;
 
 use crate::error::{Error, Result};
 
-/// One schema step. `version` is the value `user_version` takes afterwards.
+/// One schema step. `version` = `user_version` afterwards.
 struct Migration {
     version: i64,
     name: &'static str,
     sql: &'static str,
 }
 
-/// The ordered schema history. Append; never edit.
+/// Ordered schema history. Append; never edit.
 const MIGRATIONS: &[Migration] = &[
     Migration {
         version: 1,
@@ -219,62 +216,55 @@ CREATE INDEX entries_arrived_idx ON entries(published_at DESC) WHERE arrived = 1
     },
 ];
 
-/// The schema version this build expects.
+/// Schema version this build expects.
 #[must_use]
 pub fn target_version() -> i64 {
     MIGRATIONS.last().map_or(0, |m| m.version)
 }
 
-/// Read the database's current schema version.
+/// Read database's current schema version.
 ///
 /// # Errors
 ///
-/// Returns [`Error::Db`] if `PRAGMA user_version` cannot be read.
+/// [`Error::Db`] if `PRAGMA user_version` can't be read.
 pub fn current_version(conn: &Connection) -> Result<i64> {
     Ok(conn.query_row("PRAGMA user_version", [], |row| row.get(0))?)
 }
 
-/// Bring a database up to [`target_version`].
+/// Bring database up to [`target_version`].
 ///
-/// Runs every pending migration inside one transaction, so a failure leaves
-/// the file exactly as it was rather than half-upgraded.
+/// Every pending migration in one transaction: failure leaves file as it was.
 ///
 /// # Errors
 ///
-/// - [`Error::Migration`] if the database is already at a version newer than
-///   [`target_version`] (it is left untouched), or if a migration's SQL fails.
-/// - [`Error::Db`] if the write transaction cannot be begun or committed, or
-///   the version cannot be read or recorded.
+/// - [`Error::Migration`] if database already newer than [`target_version`]
+///   (left untouched), or a migration's SQL fails.
+/// - [`Error::Db`] if write transaction can't begin/commit, or version can't be
+///   read/recorded.
 pub fn migrate(conn: &mut Connection) -> Result<()> {
     apply(conn, MIGRATIONS)
 }
 
-/// The migration machinery, parameterised over the step list.
+/// Migration machinery, parameterised over step list.
 ///
-/// Split out so tests can drive it with a synthetic set and prove the
-/// properties that matter -- ordering, atomicity, and above all that data
-/// survives -- without waiting for a second real migration to exist.
+/// Separate so tests drive it with synthetic set: ordering, atomicity, data
+/// survival, without a second real migration.
 fn apply(conn: &mut Connection, migrations: &[Migration]) -> Result<()> {
     let target = migrations.last().map_or(0, |m| m.version);
 
-    // The version is read INSIDE the write transaction, not before it.
+    // Version read INSIDE write transaction, not before.
     //
-    // Vuo opens the mirror twice -- once on the UI thread and once on the
-    // worker thread -- and at start-up they open it at the same moment. Reading the
-    // version first and then opening a transaction is a check-then-act race:
-    // both processes see version 0, both try to run migration 1, and the loser
-    // fails on `CREATE TABLE ... already exists` with the database in a
-    // perfectly good state. `BEGIN IMMEDIATE` serialises them, and re-reading
-    // inside means the loser sees the winner's committed version and exits
-    // cleanly.
+    // Mirror opened twice at start-up (UI thread, worker thread), same moment.
+    // Read-then-transact races: both see 0, both run migration 1, loser fails on
+    // `CREATE TABLE ... already exists`. `BEGIN IMMEDIATE` serialises; re-read
+    // inside lets loser see winner's version and exit cleanly.
     let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
     let from = current_version(&tx)?;
 
     if from > target {
         drop(tx);
-        // A newer Vuo has already upgraded this database. Refusing is the only
-        // safe answer: this build does not know what the newer schema means,
-        // and writing to it could destroy data the newer build understands.
+        // Newer Vuo already upgraded this database. Refuse: this build doesn't
+        // know newer schema; writing could destroy data.
         return Err(Error::Migration {
             version: from,
             reason: format!(
@@ -294,12 +284,10 @@ fn apply(conn: &mut Connection, migrations: &[Migration]) -> Result<()> {
                 reason: format!("{} failed: {e}", migration.name),
             })?;
     }
-    // `PRAGMA user_version = ?` is not bindable in ANY SQLite client, and
-    // rusqlite's `pragma_update` does not bind it either: it renders the value
-    // into the statement text and calls `execute_batch`. That is fine here
-    // for a reason that is about the value, not the API — `target` is an i64
-    // from this file's own MIGRATIONS table, never from the server. It is not
-    // an escaping helper and must not be used as one.
+    // `PRAGMA user_version = ?` not bindable in any SQLite client; rusqlite's
+    // `pragma_update` renders value into statement text (`execute_batch`). Fine
+    // only because `target` is i64 from this file's MIGRATIONS, never server.
+    // Not an escaping helper.
     tx.pragma_update(None, "user_version", target)?;
     tx.commit()?;
     Ok(())
@@ -339,7 +327,7 @@ mod tests {
 
     #[test]
     fn versions_are_unique_and_ascending() {
-        // Guards against an append that reuses or reorders a version number.
+        // Guards against append reusing or reordering a version number.
         let mut previous = 0;
         for m in MIGRATIONS {
             assert!(
@@ -351,7 +339,7 @@ mod tests {
         }
     }
 
-    /// Queue two rows and read them back, whatever the schema version.
+    /// Queue two rows and read back, any schema version.
     fn seed_outbox(conn: &Connection) {
         conn.execute(
             "INSERT INTO outbox (entry_id, field, value, queued_at) VALUES (?1, ?2, ?3, ?4)",
@@ -377,26 +365,24 @@ mod tests {
 
     #[test]
     fn the_real_migrations_run_forward_over_a_populated_outbox() {
-        // §9.4: "Migrations must preserve the outbox." The mirror can be
-        // re-fetched; queued marks and stars cannot.
+        // §9.4: migrations preserve outbox. Mirror re-fetchable; queued marks
+        // and stars aren't.
         //
-        // This runs the REAL `MIGRATIONS` -- not the synthetic list the
-        // machinery tests use -- forward from every shipped version over a
-        // populated queue. `no_migration_drops_the_outbox` below is only a
-        // text scan, and a text scan cannot see `DELETE FROM main.outbox`:
-        // adding exactly that to migration 2 left the whole suite green.
+        // Runs REAL `MIGRATIONS` (not synthetic list) forward from every
+        // shipped version over populated queue. `no_migration_drops_the_outbox`
+        // is text scan only; can't see `DELETE FROM main.outbox`.
         for k in 1..MIGRATIONS.len() {
             let stopped_at = MIGRATIONS[k - 1].version;
             let mut conn = Connection::open_in_memory().unwrap();
 
-            // Build the database as the release that shipped `stopped_at` left it.
+            // Database as release that shipped `stopped_at` left it.
             apply(&mut conn, &MIGRATIONS[..k]).unwrap();
             assert_eq!(current_version(&conn).unwrap(), stopped_at);
             seed_outbox(&conn);
             let before = read_outbox(&conn);
             assert_eq!(before.len(), 2, "the fixture must actually queue something");
 
-            // Then upgrade it the way a user's phone would.
+            // Then upgrade like user's phone.
             migrate(&mut conn).unwrap();
 
             assert_eq!(
@@ -415,13 +401,11 @@ mod tests {
 
     #[test]
     fn no_migration_drops_the_outbox() {
-        // A cheap text scan on top of the behavioural test above. It catches
-        // the unqualified forms at review time, before anyone runs anything;
-        // it is NOT the guarantee, because a schema-qualified name walks
-        // straight past it.
+        // Cheap text scan on top of behavioural test above: catches unqualified
+        // forms at review. NOT the guarantee: schema-qualified names pass it.
         for m in MIGRATIONS {
-            // Normalise whitespace so a statement split across lines, or
-            // written with a quoted identifier, cannot slip past.
+            // Normalise whitespace: multi-line statements or quoted identifiers
+            // can't slip past.
             let sql = m
                 .sql
                 .to_ascii_lowercase()
@@ -434,10 +418,9 @@ mod tests {
                 "drop table if exists outbox",
                 "delete from outbox",
                 "truncate outbox",
-                // The standard SQLite recipe for changing a table's shape is
-                // rename-create-copy-drop. Forgetting the copy silently loses
-                // the queue, so the rename itself has to be deliberate: if a
-                // migration genuinely needs it, it must also be reviewed here.
+                // SQLite shape change = rename-create-copy-drop; forgetting
+                // copy loses queue. So rename must be deliberate and reviewed
+                // here.
                 "alter table outbox rename",
             ] {
                 assert!(
@@ -471,8 +454,7 @@ mod tests {
         .unwrap();
     }
 
-    /// A synthetic second migration, so the machinery can be tested before a
-    /// real one exists.
+    /// Synthetic second migration: test machinery before a real one exists.
     const SYNTHETIC: &[Migration] = &[
         Migration {
             version: 1,
@@ -488,8 +470,7 @@ mod tests {
 
     #[test]
     fn a_later_migration_preserves_existing_data_and_the_outbox() {
-        // §9.4's rule, exercised against the real machinery rather than
-        // asserted about it.
+        // §9.4 rule exercised against real machinery, not asserted.
         let mut conn = Connection::open_in_memory().unwrap();
         apply(&mut conn, &SYNTHETIC[..1]).unwrap();
         conn.execute("INSERT INTO feeds (id, title) VALUES (1, 'f')", [])
@@ -523,8 +504,8 @@ mod tests {
 
     #[test]
     fn a_failing_migration_leaves_the_database_untouched() {
-        // The whole set runs in one transaction, so a half-upgraded database
-        // with no way back is not a state that can occur.
+        // Whole set in one transaction: half-upgraded, no-way-back state can't
+        // occur.
         const BROKEN: &[Migration] = &[
             Migration {
                 version: 1,
@@ -567,8 +548,8 @@ mod tests {
     #[test]
     fn the_outbox_key_collapses_repeated_intents() {
         let conn = fresh();
-        // Two intents for the same (entry, field) must leave exactly one row:
-        // this is what makes star/unstar/star while offline converge.
+        // Two intents for same (entry, field) leave one row: offline
+        // star/unstar/star converges.
         conn.execute(
             "INSERT INTO outbox (entry_id, field, value, queued_at) VALUES (1,'starred','true',0)",
             [],

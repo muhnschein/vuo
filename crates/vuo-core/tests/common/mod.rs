@@ -1,22 +1,21 @@
-//! (Some fixtures are used by only one of the integration test binaries.)
-// Test code: see the note in vuo-core's lib.rs. The unwrap/panic denials
-// guard foreign-input paths in production, not assertions in tests.
+//! (Some fixtures used by only one integration test binary.)
+// Test code: see note in vuo-core's lib.rs. unwrap/panic denials guard
+// production foreign-input paths, not test assertions.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
     clippy::panic,
     clippy::indexing_slicing
 )]
-// This module is compiled separately into each integration-test binary, so
-// items only one of them uses look unreachable from the others' point of view.
+// Compiled separately into each integration-test binary: items one uses look
+// unreachable from others.
 #![allow(unreachable_pub)]
 #![allow(dead_code)]
 
-//! A mock Miniflux, and the fixtures the sync tests are written against.
+//! Mock Miniflux, and fixtures sync tests are written against.
 //!
-//! §8.3: the mock HTTP server *is* the main new infrastructure this project
-//! needs, and it is what makes milestone 1 possible without a phone or a
-//! server. Everything here runs on a plain host toolchain with no network.
+//! §8.3: mock HTTP server *is* main new infrastructure; makes milestone 1
+//! possible without phone or server. Plain host toolchain, no network.
 
 use vuo_core::api::{MinifluxClient, Transport, TransportConfig};
 use vuo_core::db::Database;
@@ -36,10 +35,9 @@ pub fn client_for(server: &MockServer) -> MinifluxClient {
     MinifluxClient::new(transport)
 }
 
-/// Answer `GET /v1/version`, which the client asks before any entry-state
-/// write: Vuo refuses those below 2.3.2 (see
-/// `ServerVersion::supports_entry_state_writes`), so every test that mounts a
-/// write endpoint must also say what the server is.
+/// Answer `GET /v1/version`, asked before any entry-state write: Vuo refuses
+/// those below 2.3.2 (`ServerVersion::supports_entry_state_writes`), so every
+/// test mounting write endpoint says what server is.
 pub async fn mount_version(server: &MockServer, version: &str) {
     Mock::given(method("GET"))
         .and(path("/v1/version"))
@@ -78,7 +76,7 @@ pub fn entry_json(id: i64, feed_id: i64, status: &str, starred: bool) -> serde_j
     })
 }
 
-// By value so a call can build the page inline with `vec![...]`.
+// By value: call builds page inline with `vec![...]`.
 #[allow(clippy::needless_pass_by_value)]
 pub fn entries_response(entries: Vec<serde_json::Value>, total: i64) -> serde_json::Value {
     serde_json::json!({ "total": total, "entries": entries })

@@ -1,14 +1,12 @@
-//! Icon fetching, and the starvation §11's "thundering herd" note hints at.
+//! Icon fetching, and starvation hinted by §11's "thundering herd".
 //!
-//! Icons are fetched a few per sync rather than all at once, which is the
-//! answer to §11's question about avoiding a herd on first sync. That batching
-//! introduces a failure mode of its own: the batch is ordered, so a handful of
-//! permanently-undecodable icons at the front are re-fetched on every sync
-//! forever and every feed behind them never gets one. Measured before the fix:
-//! 40 requests across five passes, zero icons stored, and two perfectly good
-//! icons never reached.
+//! Few icons per sync, not all: §11's answer to first-sync herd. Batching
+//! brings own failure: batch ordered, so permanently undecodable icons at front
+//! re-fetched every sync, feeds behind never get one. Without failure tracking:
+//! 40 requests over five passes, zero icons stored, two good icons never
+//! reached.
 
-// Test code: see the note in vuo-core's lib.rs.
+// Test code: see note in vuo-core's lib.rs.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -55,9 +53,8 @@ async fn undecodable_icons_do_not_starve_the_feeds_behind_them() {
         .mount(&server)
         .await;
 
-    // Ten feeds. The first eight serve garbage that can never decode; the last
-    // two serve real PNGs. With a batch of eight per pass and no failure
-    // tracking, the good ones are never reached.
+    // Ten feeds. First eight serve undecodable garbage; last two real PNGs.
+    // Batch of eight per pass without failure tracking never reaches good ones.
     let feeds: Vec<serde_json::Value> = (1..=10)
         .map(|i| {
             let mut f = feed_json(i, &format!("Feed {i}"), 1);
@@ -124,7 +121,7 @@ async fn undecodable_icons_do_not_starve_the_feeds_behind_them() {
          monopolise the batch forever"
     );
 
-    // And the broken ones stopped being asked for.
+    // Broken ones no longer asked for.
     let attempts: i64 = db
         .conn()
         .query_row("SELECT MAX(icon_failures) FROM feeds", [], |r| r.get(0))
@@ -138,12 +135,10 @@ async fn undecodable_icons_do_not_starve_the_feeds_behind_them() {
         "and should stop, rather than counting up forever: {attempts}"
     );
 
-    // And now the REQUESTS, not just the rows. §8.3: the mock is the contract,
-    // and what was sent is half of it. Every assertion above is about database
-    // state, and several very different request patterns satisfy all of them --
-    // deleting the "skip icons we already have" clause from
-    // `store::feeds_missing_icons`, so every icon is re-fetched on every sync
-    // forever, changed nothing any of them could see.
+    // Now REQUESTS, not just rows. §8.3: mock is contract; what was sent is
+    // half. Assertions above are database state; many request patterns satisfy
+    // them (e.g. dropping "skip icons we already have" from
+    // `store::feeds_missing_icons`, re-fetching every icon every sync).
     let requests = server.received_requests().await.expect("recorded requests");
     let icon_requests: Vec<&str> = requests
         .iter()
@@ -151,7 +146,7 @@ async fn undecodable_icons_do_not_starve_the_feeds_behind_them() {
         .filter(|p| p.starts_with("/v1/feeds/") && p.ends_with("/icon"))
         .collect();
 
-    // The two good icons are stored on first success and never asked for again.
+    // Two good icons stored on first success, never asked again.
     for feed in [9i64, 10] {
         let asked = icon_requests
             .iter()
@@ -164,8 +159,7 @@ async fn undecodable_icons_do_not_starve_the_feeds_behind_them() {
         );
     }
 
-    // The broken ones stop too, so the total is bounded rather than growing
-    // with the number of passes.
+    // Broken ones stop too: total bounded, doesn't grow with passes.
     assert!(
         icon_requests.len() <= 8 * 4 + 2,
         "icon fetching is unbounded: {} requests across five syncs",

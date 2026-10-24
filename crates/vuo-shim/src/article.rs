@@ -1,21 +1,19 @@
-//! The article view's model: one render block per row.
+//! Article view model: one render block per row.
 //!
 //! §5: *article HTML is transformed into a block list in Rust [...] which gives
 //! control over rendering, lazy image loading, and font scaling — and keeps the
-//! QML dumb.* This is where "keeps the QML dumb" is cashed in: the QML delegate
-//! switches on `blockKind` and draws, and does no parsing, no sanitising and no
-//! string manipulation of foreign data.
+//! QML dumb.* Cashed in here: QML delegate switches on `blockKind` and draws;
+//! no parsing, sanitising, or string work on foreign data.
 //!
-//! # The one place markup crosses into QML
+//! # One place markup crosses into QML
 //!
-//! `ROLE_TEXT` carries Qt `StyledText` produced by
-//! [`vuo_core::content::Span::render_styled_text`], which escapes every
-//! character of foreign text and emits a closed tag set. That function is the
-//! whole of §9.3's guarantee for body text, and it is fuzzed.
+//! `ROLE_TEXT` carries Qt `StyledText` from
+//! [`vuo_core::content::Span::render_styled_text`]: escapes every char of foreign
+//! text, emits closed tag set. Whole of §9.3's guarantee for body text; fuzzed.
 //!
-//! Everything else — `ROLE_IMAGE_ALT`, code block contents, table cells — is
-//! plain text, and the QML **must** set `textFormat` explicitly on each. §9.3:
-//! *set `textFormat` explicitly everywhere; never leave it to the default.*
+//! Everything else (`ROLE_IMAGE_ALT`, code block contents, table cells) plain
+//! text; QML **must** set `textFormat` explicitly on each. §9.3: *set
+//! `textFormat` explicitly everywhere; never leave it to the default.*
 
 use std::collections::HashMap;
 
@@ -33,7 +31,7 @@ use crate::context::AppContext;
 use crate::worker::Command;
 
 /// Model roles, one per [`BlockRow`] field; [`ArticleModel`]'s `role_names`
-/// gives each its QML name.
+/// gives QML names.
 ///
 /// `blockKind`: [`BlockRow::kind`].
 pub const ROLE_KIND: i32 = USER_ROLE;
@@ -76,16 +74,16 @@ pub const FETCH_EMPTY: i32 = 2;
 pub const FETCH_UNCHANGED: i32 = 3;
 /// The scrape failed. `fetchMessage` carries the server's text (plain text).
 pub const FETCH_FAILED: i32 = 4;
-/// The server rejected the API key. `fetchMessage` is empty by design; the
-/// page supplies its own translated line (see `Notice::SyncFailed`).
+/// Server rejected API key. `fetchMessage` empty by design; page supplies own
+/// translated line (see `Notice::SyncFailed`).
 pub const FETCH_AUTH: i32 = 5;
 
 /// A flattened block, ready for a delegate.
 #[derive(Debug, Clone, Default)]
 pub struct BlockRow {
     /// One of: `heading`, `paragraph`, `list_item`, `code`, `image`, `table`,
-    /// `rule`. A string rather than an enum because this `qmetaobject` version
-    /// has no `qml_register_enum` on Qt 5.6.
+    /// `rule`. String, not enum: this `qmetaobject` has no `qml_register_enum`
+    /// on Qt 5.6.
     pub kind: String,
     /// Qt `StyledText` for text blocks; empty otherwise.
     pub text: String,
@@ -105,51 +103,42 @@ pub struct BlockRow {
     pub image_src: String,
     /// The image's alt text (foreign text, plain).
     pub image_alt: String,
-    /// The host the image would be fetched from. Shown in the consent
-    /// placeholder so "load images" is an informed choice rather than a shrug.
+    /// Host image would be fetched from. Shown in consent placeholder: "load
+    /// images" = informed choice.
     pub image_host: String,
-    /// True when the image is third-party and un-proxied: the delegate shows a
-    /// tap-to-load placeholder naming the host and fetches nothing (§9.3).
+    /// True when image third-party and un-proxied: delegate shows tap-to-load
+    /// placeholder naming host, fetches nothing (§9.3).
     pub needs_consent: bool,
-    /// height / width from the `<img>` tag's own attributes, clamped to
-    /// [`MAX_IMAGE_RATIO`]; 0 when the tag gave none usable.
+    /// height / width from `<img>` tag's own attributes, clamped to
+    /// [`MAX_IMAGE_RATIO`]; 0 when tag gave none usable.
     ///
-    /// A ratio rather than the pair, because reserving space is all the
-    /// delegate does with it and the width it renders at is its own. 0 means
-    /// "no hint": the delegate falls back to a fixed placeholder rather than
-    /// collapsing the row to nothing, which is what made an article re-flow
-    /// under the reader every time an image landed.
+    /// Ratio, not pair: delegate only reserves space, renders at own width. 0 =
+    /// "no hint": delegate falls back to fixed placeholder, never collapses row
+    /// (else article re-flows under reader when image lands).
     pub image_ratio: f64,
-    /// Where a tap on the image goes, when the feed wrapped it in a link;
-    /// empty otherwise. An image with no link opens in the zoomable viewer
-    /// instead -- a tap on a linked one has to keep meaning "go there".
-    /// Validated as `http`/`https` in the core, like every other link.
+    /// Where tap on image goes when feed wrapped it in link; else empty.
+    /// Unlinked image opens zoomable viewer; tap on linked one keeps meaning
+    /// "go there". Validated `http`/`https` in core like every link.
     pub image_link: String,
     /// A code block's declared language; empty when it gave none.
     pub code_language: String,
 }
 
-/// The tallest shape a single image is allowed to reserve, as a multiple of
-/// its own width.
+/// Tallest shape one image may reserve, as multiple of own width.
 ///
-/// The delegate turns this straight into a height: `width * ratio`. The core
-/// caps each `<img>` dimension at 20 000 px but says nothing about their
-/// RATIO, so `width="1" height="20000"` asked for a block 21 million pixels
-/// tall on a 1080 px screen -- and because the reservation stands for as long
-/// as the image is not `Ready`, an image that never arrives left the article
-/// unscrollable for the rest of the session.
+/// Delegate turns this into height: `width * ratio`. Core caps each `<img>`
+/// dimension at 20 000 px, not RATIO: `width="1" height="20000"` would ask for
+/// 21 million px on 1080 px screen; reservation stands until image `Ready`, so
+/// image never arriving leaves article unscrollable all session.
 ///
-/// Four is past any real photograph and past the tall infographics feeds
-/// actually publish. Past that the reservation is wrong either way, and being
-/// wrong by a screen beats being wrong by four hundred.
+/// Four: past any real photo and tall infographics feeds publish. Beyond, wrong
+/// either way; wrong by a screen beats wrong by four hundred.
 pub const MAX_IMAGE_RATIO: f64 = 4.0;
 
-/// `height / width` from an `<img>`'s own attributes, made safe to multiply a
-/// screen width by.
+/// `height / width` from `<img>` attributes, safe to multiply screen width by.
 ///
-/// Rejects the two shapes that are not a ratio at all: a zero width, which
-/// divides to infinity, and a NaN. Both reached the delegate before this
-/// existed, and `width * NaN` is a block with no height that never reflows.
+/// Rejects non-ratios: zero width (divides to infinity) and NaN; `width * NaN`
+/// = block with no height that never reflows.
 fn image_ratio((w, h): (u32, u32)) -> f64 {
     let ratio = f64::from(h) / f64::from(w);
     if !ratio.is_finite() || ratio <= 0.0 {
@@ -191,8 +180,8 @@ fn row_for(block: &RenderBlock) -> BlockRow {
             "list_item"
         }
         BlockKind::Code { language, text } => {
-            // Code is plain text by definition; the delegate uses a monospace
-            // font and Text.PlainText.
+            // Code plain text by definition; delegate uses monospace,
+            // Text.PlainText.
             row.text.clone_from(text);
             row.code_language = language.clone().unwrap_or_default();
             "code"
@@ -220,10 +209,9 @@ fn row_for(block: &RenderBlock) -> BlockRow {
             "image"
         }
         BlockKind::Table { rows } => {
-            // Tables render as pre-formatted plain text. Qt 5.6's Text has no
-            // usable table support, and a QML-side grid built from foreign
-            // data is a lot of machinery for something that appears in a small
-            // fraction of articles.
+            // Tables render as pre-formatted plain text. Qt 5.6 Text has no
+            // usable table support; QML grid from foreign data = much machinery
+            // for small fraction of articles.
             let mut out = String::new();
             for cells in rows {
                 for (i, cell) in cells.iter().enumerate() {
@@ -238,20 +226,19 @@ fn row_for(block: &RenderBlock) -> BlockRow {
             "table"
         }
         BlockKind::Rule => "rule",
-        // BlockKind is #[non_exhaustive]: a future core release can add a block
-        // type this shim predates. Rendering nothing is the right default --
-        // the alternative is a shim that fails to build against a newer core
-        // for a block it could simply have skipped.
+        // BlockKind #[non_exhaustive]: future core can add block type shim
+        // predates. Render nothing; else shim fails to build against newer core
+        // over skippable block.
         _ => "unsupported",
     };
     kind.clone_into(&mut row.kind);
     row
 }
 
-/// The article view's list model: the open entry's [`BlockRow`]s, plus its
-/// read, starred and fetch-original state. See the module docs.
-// The bools are `qt_property!`s, each its own setting or state that QML
-// binds to by name; a bitfield would hide them from QML.
+/// Article view list model: open entry's [`BlockRow`]s, plus read, starred,
+/// fetch-original state. See module docs.
+// Bools are `qt_property!`s, each own setting/state QML binds by name; bitfield
+// hides them from QML.
 #[allow(clippy::struct_excessive_bools)]
 #[derive(QObject, Default)]
 pub struct ArticleModel {
@@ -260,82 +247,74 @@ pub struct ArticleModel {
     count: qt_property!(i32; READ row_count NOTIFY countChanged),
     countChanged: qt_signal!(),
 
-    /// True when the transform had to cut the article short. The UI says so
-    /// rather than presenting a fragment as the whole thing.
+    /// True when transform cut article short. UI says so; fragment not passed
+    /// off as whole.
     pub truncated: qt_property!(bool; NOTIFY truncatedChanged),
     truncatedChanged: qt_signal!(),
 
-    /// How many images are held back awaiting consent, so the UI can offer a
-    /// single "load images from example.com" affordance rather than N.
+    /// Images held back awaiting consent: UI offers one "load images from
+    /// example.com", not N.
     pub blockedImages: qt_property!(i32; NOTIFY blockedImagesChanged),
     blockedImagesChanged: qt_signal!(),
 
-    /// Whether the open article is read, and whether it is starred.
+    /// Whether open article is read.
     ///
-    /// The article view could show neither and change neither: the only place
-    /// either could be seen or set was the entry list's context menu, so a
-    /// reader who opened an article had no way to star it, and no way to tell
-    /// whether the one they were looking at was already starred.
+    /// Article view shows and changes read and starred state itself, not only
+    /// via entry list's context menu.
     pub isRead: qt_property!(bool; NOTIFY entryStateChanged),
     /// Whether the open article is starred (see `isRead`).
     pub isStarred: qt_property!(bool; NOTIFY entryStateChanged),
-    /// The article's own link, or empty when the entry has none.
+    /// Article's own link; empty when none.
     ///
-    /// A property rather than only `openInBrowser`'s return value, because the
-    /// page BINDS to it: the site page attached to the right of the article
-    /// exists exactly when this is non-empty. Validated as http(s) by the
-    /// core before it was stored, so handing it to a `WebView` or the system
-    /// browser cannot launch anything else.
+    /// Property, not only `openInBrowser` return: page BINDS to it (site page
+    /// attached right of article exists exactly when non-empty). Validated
+    /// http(s) by core before storing: handing to `WebView` or system browser
+    /// can't launch anything else.
     pub articleUrl: qt_property!(QString; NOTIFY entryStateChanged),
     entryStateChanged: qt_signal!(),
 
     clear: qt_method!(fn(&mut self)),
-    /// Load an entry from the mirror and transform its stored HTML.
+    /// Load entry from mirror, transform stored HTML.
     ///
-    /// Reads locally, so opening an article works with no network at all.
+    /// Local read: opening article works without network.
     load: qt_method!(fn(&mut self, entry_id: i64)),
     /// Hand the article's own URL to the system browser.
     openInBrowser: qt_method!(fn(&self) -> QString),
     /// Ask the *server* to scrape the original page (§3: no local Readability).
     fetchOriginal: qt_method!(fn(&mut self)),
-    /// Consent to loading images from the origin of the block at `row`, for
-    /// this article. Re-transforms so the placeholders become images.
+    /// Consent to images from origin of block at `row`, for this article.
+    /// Re-transforms: placeholders become images.
     allowImagesFrom: qt_method!(fn(&mut self, row: i32)),
-    /// Re-read the open article when the worker has changed the mirror.
+    /// Re-read open article when worker changed mirror.
     ///
-    /// This model had no poll at all, which is why "Fetch original content"
-    /// looked like a menu item wired to nothing: the scrape really did run and
-    /// the scraped body really was written to SQLite, but nothing told the
-    /// OPEN page to read it again, so it appeared only if you left the article
-    /// and came back. See `EntryModel::pollSync`, the same pattern.
+    /// Without poll, "Fetch original content" scrape lands in SQLite but OPEN
+    /// page never re-reads it. Same pattern: `EntryModel::pollSync`.
     pollSync: qt_method!(fn(&mut self) -> bool),
     /// True while a scrape is in flight, so the page can say something.
     pub fetching: qt_property!(bool; NOTIFY fetchingChanged),
     fetchingChanged: qt_signal!(),
     /// How the last scrape ended: one of the `FETCH_*` constants.
     pub fetchStatus: qt_property!(i32; NOTIFY fetchStatusChanged),
-    /// Foreign text explaining a failure; empty otherwise. Render as
-    /// `Text.PlainText` (§9.3).
+    /// Foreign text explaining failure; else empty. Render as `Text.PlainText`
+    /// (§9.3).
     pub fetchMessage: qt_property!(QString; NOTIFY fetchStatusChanged),
     fetchStatusChanged: qt_signal!(),
     /// Acknowledge the last scrape result, so its banner can be dismissed.
     clearFetchStatus: qt_method!(fn(&mut self)),
-    /// How long the open article must stay on screen before it counts as
-    /// read: -1 never, 0 immediately, otherwise milliseconds.
+    /// How long open article stays on screen before counting read: -1 never, 0
+    /// at once, else ms.
     ///
-    /// Milliseconds because the page drives a QML `Timer` with it directly.
+    /// Milliseconds: page drives QML `Timer` with it directly.
     pub markReadDelayMs: qt_property!(i32; READ mark_read_delay_ms NOTIFY entryStateChanged),
-    /// Mark the open article read. Idempotent, and never a toggle.
+    /// Mark open article read. Idempotent, never toggle.
     ///
-    /// Deliberately not `toggleRead`: this fires against whatever happens to
-    /// be open, and a toggle would mark an already-read article UNREAD --
-    /// re-opening something you had read would quietly resurrect it.
+    /// Not `toggleRead`: fires against whatever is open; toggle would mark read
+    /// article UNREAD (re-opening resurrects it).
     markRead: qt_method!(fn(&mut self)),
-    /// Flip read/unread, and flip starred, for the open article.
+    /// Flip read/unread, flip starred, for open article.
     ///
-    /// Local first and enqueued, exactly as the entry list's own toggles are:
-    /// the mirror is the source of truth and the outbox carries the intent to
-    /// the server whenever there is a network.
+    /// Local first, enqueued, like entry list toggles: mirror = source of
+    /// truth, outbox carries intent to server when network exists.
     toggleRead: qt_method!(fn(&mut self)),
     toggleStarred: qt_method!(fn(&mut self)),
 
@@ -348,13 +327,13 @@ pub struct ArticleModel {
 }
 
 impl ArticleModel {
-    /// Give the model a context explicitly. Only the tests call it; a model
-    /// QML builds uses the installed context.
+    /// Give model context explicitly. Tests only; QML-built model uses
+    /// installed context.
     pub fn attach(&mut self, ctx: std::rc::Rc<AppContext>) {
         self.ctx = Some(ctx);
     }
 
-    /// The app context: the one attached explicitly (tests), else the global.
+    /// App context: explicitly attached (tests), else global.
     fn context(&self) -> Option<std::rc::Rc<AppContext>> {
         self.ctx.clone().or_else(crate::context::current)
     }
@@ -394,12 +373,11 @@ impl ArticleModel {
             base_url: url::Url::parse(&self.article_url).ok(),
             media: MediaPolicy::ProxyThroughInstance {
                 instance: ctx.instance().clone(),
-                // Origins the user consented to are folded in as trusted, so
-                // the transform yields Fetch rather than NeedsConsent for them.
+                // Consented origins folded in as trusted: transform yields
+                // Fetch, not NeedsConsent.
                 extra_trusted: self.consented.clone(),
-                // The user's Images setting, not a hardcoded default. This was
-                // `UnproxiedMedia::Ask` unconditionally, so choosing Strict or
-                // Allow in Settings did nothing at all (§9.3).
+                // User's Images setting, not hardcoded default: Strict and
+                // Allow must reach transform (§9.3).
                 fallback: match ctx.media_policy() {
                     crate::settings::MEDIA_STRICT => UnproxiedMedia::Strict,
                     crate::settings::MEDIA_ALLOW => UnproxiedMedia::Allow,
@@ -411,9 +389,8 @@ impl ArticleModel {
     }
 
     fn openInBrowser(&self) -> QString {
-        // Returns the URL rather than launching anything: QML owns
-        // Qt.openUrlExternally, and handing a URL back keeps this crate free
-        // of platform launching concerns. Empty means "no link".
+        // Returns URL, launches nothing: QML owns Qt.openUrlExternally; crate
+        // free of platform launching. Empty = no link.
         QString::from(self.article_url.clone())
     }
 
@@ -442,11 +419,9 @@ impl ArticleModel {
             return false;
         }
         let Some(outcome) = ctx.signal().take_fetch_outcome(open) else {
-            // A scrape can only be resolved by its own outcome. Reacting to
-            // the generation counter instead is what made this menu item look
-            // dead: mark-read-after-N-seconds bumps too, and whichever bump
-            // arrived first cleared `fetching` and re-read a mirror the scrape
-            // had not written to yet.
+            // Scrape resolved only by own outcome. Reacting to generation
+            // counter would let mark-read-after-N-seconds bump clear `fetching`
+            // and re-read mirror before scrape wrote.
             return false;
         };
 
@@ -458,10 +433,8 @@ impl ArticleModel {
         self.fetchMessage = QString::from(outcome.message);
         self.fetchStatusChanged();
 
-        // Only a stored body changes what is on screen. Re-loading for an
-        // empty or unchanged scrape would reset the block list -- and so the
-        // scroll position -- to show the reader exactly what they were already
-        // reading.
+        // Only stored body changes screen. Re-load for empty or unchanged
+        // scrape resets block list (and scroll position) to show same thing.
         if outcome.status == FETCH_OK {
             self.load(open);
         }
@@ -476,11 +449,10 @@ impl ArticleModel {
         }
     }
 
-    /// Grant consent for the ORIGIN of the image at `row`.
+    /// Grant consent for ORIGIN of image at `row`.
     ///
-    /// Scoped to that one origin, not to third-party media in general: §9.3's
-    /// whole point is that agreeing to load from one host is not agreeing to
-    /// load from every host a feed happens to reference.
+    /// That origin only, not third-party media generally: §9.3's point =
+    /// agreeing to one host ≠ agreeing to every host feed references.
     fn allowImagesFrom(&mut self, row: i32) {
         let Some(ctx) = self.context() else { return };
         let Some(origin) = usize::try_from(row)
@@ -495,14 +467,14 @@ impl ArticleModel {
         if !self.consented.contains(&origin) {
             self.consented.push(origin.clone());
         }
-        // Remember across articles too: agreeing to a host once should not have
-        // to be repeated on every entry from the same site.
+        // Remember across articles: agreeing to host once shouldn't repeat per
+        // entry from same site.
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(0, |d| i64::try_from(d.as_secs()).unwrap_or(i64::MAX));
         ctx.write(|db| db.with_tx(|tx| store::grant_media_consent(tx, origin.as_str(), now)));
 
-        // Re-transform so the placeholders become images.
+        // Re-transform: placeholders become images.
         let entry_id = self.entry_id;
         self.load(entry_id);
     }
@@ -567,11 +539,10 @@ impl ArticleModel {
         }
     }
 
-    /// Queue a local mutation for the open entry and nudge the outbox.
+    /// Queue local mutation for open entry, nudge outbox.
     ///
-    /// `false` when there is no context, no entry open, or the write was
-    /// refused -- in which case the caller leaves the displayed state alone
-    /// rather than showing a change that did not happen.
+    /// `false` when no context, no entry open, or write refused: caller leaves
+    /// displayed state alone, doesn't show change that didn't happen.
     fn apply_local(
         &self,
         write: impl FnOnce(&mut vuo_core::db::Database, EntryId) -> vuo_core::Result<()>,
@@ -589,17 +560,15 @@ impl ArticleModel {
             .flatten()
             .is_some();
         if applied {
-            // The mirror changed, so say so: the entry list's row and the
-            // cover's unread badge both read from it. Without this, marking an
-            // article read from here left the list showing it as unread and
-            // the cover's count stale until something else reloaded them.
+            // Mirror changed, say so: entry list row and cover's unread badge
+            // read from it. Else list shows read article unread, cover count
+            // stale until something reloads.
             //
-            // Safe against the scroll-reset above: this model re-reads only
-            // for a scrape it asked for, so its own bump does not move the
-            // reader.
+            // Safe against scroll reset above: model re-reads only for scrape
+            // it asked for; own bump doesn't move reader.
             ctx.signal().bump();
-            // Opportunistic: with no network the intent waits in the outbox
-            // and the next sync carries it.
+            // Opportunistic: offline, intent waits in outbox; next sync carries
+            // it.
             ctx.send(Command::FlushOutbox);
         }
         applied
@@ -610,8 +579,8 @@ impl ArticleModel {
         self.rows.clear();
         QAbstractListModel::end_reset_model(self);
         self.countChanged();
-        // Forget which entry this was, or the next `clear`-then-toggle would
-        // mutate the article that is no longer open.
+        // Forget entry, else next `clear`-then-toggle mutates article no longer
+        // open.
         self.entry_id = 0;
         self.article_url = String::new();
         self.articleUrl = QString::from(String::new());
@@ -691,14 +660,11 @@ mod tests {
 
     /// §an `<img>` cannot reserve more of the page than it could fill.
     ///
-    /// The delegate multiplies a screen width by this, so it is the one number
-    /// in this file a feed can hand straight into a layout. The core caps each
-    /// dimension at 20 000 px and nothing capped their ratio, so
-    /// `width="1" height="20000"` reserved a block 21 million pixels tall on a
-    /// 1080 px screen -- and the reservation stands until the image is
-    /// `Ready`, so one that never arrives left the article unscrollable for
-    /// the rest of the session. The comment at the call site claimed the
-    /// dimension caps already prevented "a silly rectangle". They did not.
+    /// Delegate multiplies screen width by this: one number here a feed hands
+    /// straight into layout. Core caps each dimension at 20 000 px, not ratio:
+    /// `width="1" height="20000"` = 21 million px on 1080 px screen;
+    /// reservation stands until `Ready`, so never-arriving image leaves article
+    /// unscrollable all session.
     #[test]
     fn an_images_reserved_shape_is_bounded_whatever_the_tag_claims() {
         assert_eq!(
@@ -712,17 +678,15 @@ mod tests {
             MAX_IMAGE_RATIO,
             "the tallest thing the core will accept is clamped, not honoured"
         );
-        // A zero width divides to infinity, and `width * inf` is a block with
-        // no finite height at all. Both of these reached the delegate.
+        // Zero width divides to infinity; `width * inf` = no finite height.
         assert_eq!(image_ratio((0, 100)), 0.0, "no width is no hint");
         assert_eq!(image_ratio((100, 0)), 0.0, "and neither is no height");
     }
 
     /// §a tap on an image zooms it, unless the image is a link.
     ///
-    /// The delegate decides on `imageLink` alone: non-empty opens the link,
-    /// empty opens the viewer. So the row must carry the link the core found,
-    /// and nothing when there was none.
+    /// Delegate decides on `imageLink` alone: non-empty opens link, empty opens
+    /// viewer. Row carries link core found, nothing when none.
     #[test]
     fn an_image_row_carries_the_link_it_sits_in() {
         let instance = url::Url::parse("https://miniflux.example/").expect("url");
@@ -750,15 +714,10 @@ mod tests {
         assert_eq!(images[1].image_link, "", "an unlinked image zooms instead");
     }
 
-    /// §9.3's media policy, from the user's setting to the transform context.
+    /// §9.3 media policy, from user's setting to transform context.
     ///
-    /// `transform_context` used to hardcode `UnproxiedMedia::Ask`, and
-    /// `Settings::media_policy_for` -- the function that maps the setting --
-    /// had ZERO production callers. So the Images control in Settings was
-    /// rendered, persisted and read back, and did nothing: a user who chose
-    /// Strict still got Ask, and one who chose Allow still got a tap-to-load
-    /// placeholder. Nothing in the build noticed, because nothing tested the
-    /// one place the policy is actually built.
+    /// Only place policy is built: Images control in Settings must reach it
+    /// (Strict → Strict, Allow → Allow), not hardcoded `UnproxiedMedia::Ask`.
     #[test]
     fn the_images_setting_reaches_the_transform_context() {
         use vuo_core::content::UnproxiedMedia;
@@ -785,8 +744,8 @@ mod tests {
             );
         }
 
-        // An unrecognised value from a hand-edited account file falls back to
-        // Ask rather than to Allow.
+        // Unrecognised value from hand-edited account file falls back to Ask,
+        // not Allow.
         ctx.set_media_policy(99);
         let context = model.transform_context(&ctx);
         let MediaPolicy::ProxyThroughInstance { fallback, .. } = context.media else {
@@ -797,11 +756,8 @@ mod tests {
 
     /// §the article view can see and change read/starred.
     ///
-    /// Reported from a device: with an article open there was no way to tell
-    /// whether it was read or starred, and no way to set either. Both states
-    /// existed in the mirror and both mutations existed on `EntryModel`, but
-    /// `ArticleModel` exposed neither -- so the only place a reader could star
-    /// an article was the entry list's context menu, before opening it.
+    /// With article open, reader can tell read/starred and set both, not only
+    /// from entry list's context menu before opening.
     #[test]
     fn the_open_article_reports_and_changes_its_own_read_and_starred_state() {
         use vuo_core::db::outbox;
@@ -865,21 +821,20 @@ mod tests {
         assert!(model.isRead, "the view must reflect what it just did");
         assert!(model.isStarred);
 
-        // And both intents actually reached the outbox, rather than only
-        // flipping a label the server will never hear about.
+        // Both intents reached outbox, not just flipped label server never
+        // hears about.
         let queued = ctx
             .read(|db| outbox::len(db.conn()).unwrap_or(0))
             .expect("read the mirror");
         assert_eq!(queued, 2, "a read and a star must both be enqueued");
 
-        // Toggling back is symmetric.
+        // Toggling back symmetric.
         model.toggleRead();
         model.toggleStarred();
         assert!(!model.isRead);
         assert!(!model.isStarred);
 
-        // With nothing open, a toggle is a no-op rather than a mutation of
-        // whichever entry happened to be loaded last.
+        // Nothing open: toggle = no-op, not mutation of last loaded entry.
         model.clear();
         model.toggleStarred();
         assert!(!model.isStarred);
