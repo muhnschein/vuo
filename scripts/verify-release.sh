@@ -132,7 +132,10 @@ built=$(find "$src/dist" -name 'harbour-vuo-*.aarch64.rpm' | head -1)
 [ -n "$built" ] || fail "the build made no device RPM"
 cp "$built" "$work/cmp/rebuilt.rpm"
 
-sum() { sha256sum < "$work/cmp/$1.rpm" | cut -d' ' -f1; }
+sum() {
+    f=$1
+    sha256sum < "$work/cmp/$f.rpm" | cut -d' ' -f1
+}
 ours=$(sum rebuilt)
 echo
 for c in github local; do

@@ -53,13 +53,15 @@ ctr_run() {
 }
 
 # Flags that run container as calling user, so files it writes in mounts are
-# ours. Rootless: container root already is us. Rootless Podman keeps own
-# uid via keep-id.
+# ours. Rootless Docker: container root is us. Rootless Podman keeps own uid
+# via keep-id.
 ctr_as_me() {
     if [ "$rootless" = 0 ]; then
         echo "--user $(id -u):$(id -g)"
     elif [ "$engine" = podman ]; then
         echo "--userns=keep-id --user $(id -u):$(id -g)"
+    else
+        echo "--user 0"
     fi
     return 0
 }
