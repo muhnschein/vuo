@@ -1,49 +1,39 @@
-# Vuo's build and check entry points.
+# Vuo build and check entry points.
 #
-# The governing rule, from docs/scope.md §8:
+# Rule, docs/scope.md §8:
 #
 #     `make check` runs exactly what CI runs, from a clean checkout, with no
 #     phone, no server account, and no network.
 #
-# Anything that cannot be verified under those conditions is either badly
-# layered or belongs behind an explicit opt-in gate. The opt-in gates are
-# `make live-test` (needs a real Miniflux), `make rpm` (needs the Sailfish SDK)
-# and `make vendor-check` (needs crates.io); none is part of `check`. CI runs
-# the last of those as a step of its own.
+# Anything unverifiable that way is badly layered or behind explicit opt-in
+# gate: `make live-test` (real Miniflux), `make rpm` (Sailfish SDK), `make
+# vendor-check` (crates.io). None in `check`; CI runs vendor-check as own step.
 
 CARGO ?= cargo
-# The Rust floor: the workspace's `rust-version`, read from Cargo.toml as the
-# CI msrv job reads it, so the two cannot disagree. `make msrv` re-checks
-# against it so a dependency bump cannot silently break the device build (§7).
+# Rust floor = workspace `rust-version`, read from Cargo.toml like CI msrv job;
+# can't disagree. `make msrv` re-checks: dependency bump can't silently break
+# device build (§7).
 MSRV ?= $(shell sed -n 's/^rust-version = "\(.*\)"/\1/p' Cargo.toml | head -1)
 QMLLINT ?= $(shell command -v qmllint 2>/dev/null || echo /usr/lib/qt5/bin/qmllint)
 QMAKE ?= $(shell command -v qmake 2>/dev/null || echo /usr/lib/qt5/bin/qmake)
 ARCH ?= aarch64
 
-# The shim links against Qt, so it is checked only where Qt is present.
+# Shim links Qt, so checked only where Qt is present.
 #
-# Missing Qt is a HARD FAILURE by default. It used to be a silent skip, so on a
-# runner without qmake three of `check`'s eight subjects -- clippy on vuo-shim,
-# the offscreen shim tests, and the QML load test -- printed SKIPPED and the
-# target still printed "make check passed" and exited 0. A green line that means
-# "I did not check the QML, the shim, or §9.3's textFormat defence" is worse
-# than a red one.
+# Missing Qt = HARD FAILURE by default. Silent skip would print "make check
+# passed" without shim clippy, shim tests, QML load test (§9.3 textFormat
+# defence): green that checked nothing is worse than red.
 #
-# `make check SKIP_QT=1` is the explicit opt-out for a machine that genuinely
-# has no Qt, and it says so in the summary.
+# `make check SKIP_QT=1`: explicit opt-out for machine without Qt; summary says
+# so.
 #
-# The refusal fires only for the goals that bear on Qt. It used to fire for
-# EVERY goal, so `make live-test` on a Qt-less runner died at parse time with a
-# qmake complaint -- before its own `test -n` guards, before cargo ran. That is
-# how the Miniflux integration job failed every week for five weeks: its step
-# "Run the opt-in live tests" aborted in under a second, having asserted
-# nothing, and no live test has ever actually run in CI. The Qt-free opt-in
-# gates -- live-test, vendor-check, msrv, fuzz-quick and the rest listed below
-# -- need no Qt and must run anywhere.
+# Refusal fires only for Qt goals. Qt-free opt-in gates (live-test,
+# vendor-check, msrv, fuzz-quick, rest below) must run anywhere, e.g. Miniflux
+# integration job without Qt.
 SKIP_QT ?=
 HAVE_QT := $(shell test -x "$(QMAKE)" && echo yes)
-# Goals whose result bears on Qt: the shim and its clippy, the QML tests, and
-# every aggregate that pulls them in. Everything else is Qt-free on the host.
+# Goals bearing on Qt: shim and its clippy, QML tests, aggregates pulling them
+# in. Rest Qt-free on host.
 QT_FREE_GOALS := fmt fmt-check fuzz-check lockfile deny workflow-lint vendor-check \
                  msrv fuzz-quick live-test icons rpm vendor clean help
 QT_GOALS := $(filter-out $(QT_FREE_GOALS),$(if $(MAKECMDGOALS),$(MAKECMDGOALS),all))
@@ -87,13 +77,9 @@ ifeq ($(HAVE_QT),yes)
 	@echo "== clippy (shim) =="
 	$(CARGO) clippy -p vuo-shim --all-targets -- -D warnings
 	@echo "== clippy (app binary) =="
-	# `harbour-vuo` is not in default-members and was excluded from every
-	# target here, so NOTHING in `make check` compiled the application entry
-	# point: main.rs could fail to type-check, or contain an `unimplemented!`
-	# that §9.5 denies, and the full gate stayed green. The only thing that
-	# built it was a 40-minute SDK build -- the exact failure mode the
-	# packaging checks exist to pre-empt. Default features build without the
-	# SDK; that is what the `sailfishapp` gate is for.
+	# `harbour-vuo` not in default-members; without this nothing in `make check`
+	# compiles app entry point (type errors, §9.5-denied `unimplemented!`). Default
+	# features build without SDK; `sailfishapp` gate is for SDK.
 	$(CARGO) clippy -p harbour-vuo --all-targets -- -D warnings
 else
 	@echo "== clippy (shim) SKIPPED: no qmake found at $(QMAKE) =="
@@ -117,8 +103,8 @@ qmllint:
 	fi
 	@find qml qml-stubs -name '*.qml' -print0 | xargs -0 -n1 $(QMLLINT)
 
-## qml-load: compile every QML file in a real engine against the Silica stubs.
-## Much stronger than qmllint, which only checks syntax.
+## qml-load: compile every QML file in real engine against Silica stubs. Much
+## stronger than qmllint (syntax only).
 qml-load:
 ifeq ($(HAVE_QT),yes)
 	@echo "== QML load test =="
@@ -133,10 +119,9 @@ shim:
 
 ## fuzz-check: type-check the fuzz targets.
 ##
-## The fuzz crate is a SEPARATE workspace (cargo-fuzz needs its own flags), so
-## nothing else in `make check` compiles it -- which meant adding a field to a
-## struct a fuzz target constructs broke only in CI. This is a plain
-## `cargo check`, no nightly and no sanitizer, so it runs anywhere.
+## Fuzz crate is SEPARATE workspace (cargo-fuzz flags); nothing else in `make
+## check` compiles it. Plain `cargo check`, no nightly or sanitizer: runs
+## anywhere.
 fuzz-check:
 	@echo "== fuzz targets type-check =="
 	cd crates/vuo-core/fuzz && $(CARGO) check --all-targets
@@ -155,13 +140,10 @@ harbour:
 	scripts/check-harbour.sh
 ifeq ($(HAVE_QT),yes)
 	@echo "== linked libraries (host build) =="
-	# The allowed-libraries rule is decided by the link, so the only way to
-	# hold it here is to link. The host's Qt is not the device's, but the
-	# thing that goes wrong is the same on both: qttypes passes
-	# `-lQt5Widgets` unconditionally, and it stays unless nothing refers to
-	# QtWidgets. The host build is the STRICTER of the two -- it is the one
-	# that actually constructs qmetaobject's application object, where the
-	# device entry point uses SailfishApp's instead.
+	# Allowed-libraries rule decided by link, so link here. Host Qt isn't device's,
+	# but failure same: qttypes passes `-lQt5Widgets` unconditionally; stays unless
+	# nothing refers to QtWidgets. Host build STRICTER: constructs qmetaobject's
+	# app object; device entry point uses SailfishApp's.
 	$(CARGO) build -p harbour-vuo --bin harbour-vuo
 	scripts/check-linked-libs.sh target/debug/harbour-vuo
 else
@@ -180,9 +162,9 @@ deny:
 		exit 1; \
 	fi
 
-## workflow-lint: the workflows in .github/, through zizmor -- a `${{ }}`
-## pasted into a script, a token left in .git/config, a cache a release build
-## trusts. Offline, so no network; scheduled.yml asks GitHub the rest weekly.
+## workflow-lint: .github/ workflows through zizmor (`${{ }}` pasted into
+## script, token left in .git/config, cache a release build trusts). Offline;
+## scheduled.yml asks GitHub the rest weekly.
 workflow-lint:
 	@echo "== zizmor =="
 	@if command -v zizmor >/dev/null 2>&1; then \
@@ -194,15 +176,15 @@ workflow-lint:
 		exit 1; \
 	fi
 
-## leak-check: every test under AddressSanitizer and LeakSanitizer, on a
-## pinned nightly. Slow, and not part of `check`; scheduled.yml runs it weekly.
-## See scripts/leak-check.sh.
+## leak-check: every test under AddressSanitizer + LeakSanitizer, pinned
+## nightly. Slow, not in `check`; scheduled.yml runs weekly. See
+## scripts/leak-check.sh.
 leak-check:
 	scripts/leak-check.sh
 
-## sonar-reports: the two files SonarQube Cloud imports -- clippy diagnostics
-## and coverage -- written to target/sonar/. Needs cargo-llvm-cov, so it is an
-## opt-in target rather than part of `check`. See sonar-project.properties.
+## sonar-reports: the two files SonarQube Cloud imports (clippy diagnostics,
+## coverage) into target/sonar/. Needs cargo-llvm-cov: opt-in, not in `check`.
+## See sonar-project.properties.
 sonar-reports:
 	@echo "== reports for SonarQube Cloud =="
 	@command -v cargo-llvm-cov >/dev/null 2>&1 || { \
@@ -212,16 +194,14 @@ sonar-reports:
 		exit 1; \
 	}
 	@mkdir -p target/sonar
-	# cargo prints each diagnostic ONCE and caches it afterwards, so on a warm
-	# target/ this writes an EMPTY report -- which SonarQube imports without
-	# complaint as "clippy found nothing". Dropping the three workspace crates
-	# costs a recompile of Vuo's own code and keeps the dependency build.
+	# cargo prints each diagnostic ONCE, then caches: warm target/ = EMPTY report,
+	# imported as "clippy found nothing". Clean three workspace crates; deps stay
+	# built.
 	$(CARGO) clean -p vuo-core -p vuo-shim -p harbour-vuo
 	@: > target/sonar/clippy.json
 	@echo "-- clippy (core) --"
-	# Deliberately without `-- -D warnings`, unlike the `clippy` target: this
-	# one reports, and `make check` is the one that refuses. The report is
-	# newline-delimited JSON, so the three runs simply append.
+	# No `-- -D warnings` (unlike `clippy`): this reports, `make check` refuses.
+	# Newline-delimited JSON, so three runs append.
 	$(CARGO) clippy --workspace --exclude vuo-shim --exclude harbour-vuo \
 		--all-targets --message-format=json >> target/sonar/clippy.json
 ifeq ($(HAVE_QT),yes)
@@ -232,10 +212,8 @@ ifeq ($(HAVE_QT),yes)
 	$(CARGO) clippy -p harbour-vuo --all-targets --message-format=json \
 		>> target/sonar/clippy.json
 	@echo "-- coverage (core and shim) --"
-	# harbour-vuo is excluded: it is an entry point with no tests of its own,
-	# and instrumenting it only adds an uncovered main() to the report.
-	# third_party/qmetaobject is excluded for the reason given in
-	# sonar-project.properties -- it is upstream's code, not ours to cover.
+	# harbour-vuo excluded: entry point, no tests, only adds uncovered main().
+	# third_party/qmetaobject excluded: upstream's code (sonar-project.properties).
 	QT_QPA_PLATFORM=offscreen $(CARGO) llvm-cov --workspace \
 		--exclude harbour-vuo \
 		--ignore-filename-regex '(^|/)third_party/' \
@@ -249,8 +227,8 @@ else
 endif
 	@echo "== wrote target/sonar/clippy.json and target/sonar/lcov.info =="
 
-## vendor-check: prove third_party/qmetaobject is upstream plus its one patch.
-## Needs crates.io, so it is an opt-in gate rather than part of `check`.
+## vendor-check: prove third_party/qmetaobject = upstream + its one patch. Needs
+## crates.io: opt-in gate, not in `check`.
 vendor-check:
 	scripts/check-vendored.sh
 
@@ -270,25 +248,24 @@ fuzz-quick:
 				-- -max_total_time=60 -dict=$$target.dict || exit 1; \
 		done
 
-## live-test: opt-in integration test against a real Miniflux instance.
-## Requires VUO_LIVE_BASE_URL and VUO_LIVE_TOKEN.
+## live-test: opt-in integration test against real Miniflux. Needs
+## VUO_LIVE_BASE_URL and VUO_LIVE_TOKEN.
 live-test:
 	@test -n "$$VUO_LIVE_BASE_URL" || { echo "set VUO_LIVE_BASE_URL" >&2; exit 1; }
 	@test -n "$$VUO_LIVE_TOKEN"    || { echo "set VUO_LIVE_TOKEN" >&2; exit 1; }
 	$(CARGO) test -p vuo-core --features live-integration-tests -- --ignored --nocapture
 
-## textart: regenerate the texture masks in qml/art/ from tools/textart/.
-## Needs a QML runtime and a display (or xvfb); the results are committed.
+## textart: regenerate texture masks in qml/art/ from tools/textart/. Needs QML
+## runtime and display (or xvfb); results committed.
 textart:
 	scripts/render-textart.sh
 
-## icons: re-render the four Harbour icon sizes from icons/harbour-vuo.svg.
-## Needs rsvg-convert; the results are committed, because the packaging path
-## has no SVG renderer.
+## icons: re-render four Harbour icon sizes from icons/harbour-vuo.svg. Needs
+## rsvg-convert; results committed (packaging path has no SVG renderer).
 icons:
 	scripts/render-icons.sh
 
-## rpm: build a device RPM. Needs the SailfishOS SDK (Docker build engine).
+## rpm: build device RPM. Needs SailfishOS SDK (Docker build engine).
 rpm:
 	scripts/build-rpm.sh $(ARCH)
 

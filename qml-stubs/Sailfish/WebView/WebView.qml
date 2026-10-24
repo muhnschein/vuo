@@ -1,7 +1,6 @@
 import QtQuick 2.6
-// The properties of qtmozembed's QuickMozView that Vuo reads, and the slots
-// it calls. `url` is a QUrl on the device, and assigning a string to it is how
-// the real one is driven too.
+// qtmozembed QuickMozView properties Vuo reads, slots it calls. `url` is QUrl
+// on device; assigning string drives real one too.
 Item {
     property url url
     property string title

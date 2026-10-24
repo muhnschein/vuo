@@ -1,16 +1,14 @@
-# Pinned so every contributor and every CI runner compiles Vuo the same way.
+# Pinned: every contributor and CI runner compiles Vuo same way.
 #
-# NOTE this is NOT the MSRV. The SailfishOS SDK ships an older Rust (see
-# `rust-version` in the workspace Cargo.toml, and `make msrv`), and the device
-# build uses the SDK's toolchain, not this one. This pin exists so that
-# rustfmt and clippy behave identically everywhere -- a clippy version drift
-# turns `-D warnings` into a lottery.
+# NOT MSRV. SailfishOS SDK ships older Rust (see `rust-version` in workspace
+# Cargo.toml, `make msrv`); device build uses SDK toolchain. Pin keeps rustfmt
+# and clippy identical everywhere: clippy drift turns `-D warnings` into
+# lottery.
 #
-# An exact release, not `stable`, which moves under every runner the day a
-# new Rust ships and fails pull requests that changed nothing. What the next
-# stable would say is .github/workflows/scheduled.yml's `next-stable-clippy`
-# job's to report, weekly, so moving this pin is a known amount of work.
-# Bump it deliberately, with the fixes that job lists.
+# Exact release, not `stable` (moves under runners when new Rust ships, fails
+# unchanged PRs). .github/workflows/scheduled.yml `next-stable-clippy` job
+# reports next stable weekly: bump is known work. Bump deliberately with fixes
+# it lists.
 [toolchain]
 channel = "1.99.0"
 components = ["rustfmt", "clippy"]

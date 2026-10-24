@@ -1,12 +1,11 @@
-//! What the QML-facing models share.
+//! What QML-facing models share.
 //!
-//! Every model needs the same two things: the mirror, to read from and to write
-//! local mutations into, and a way to ask the worker for the few operations
-//! that genuinely require the network.
+//! Every model needs: mirror (read, write local mutations), and way to ask
+//! worker for few network-only operations.
 //!
-//! `Rc`, not `Arc`: this is handed only to `QObject`s, which all live on the Qt
-//! thread. Using an atomic refcount would imply a sharing that must not happen
-//! and would quietly make a thread-affinity bug compile.
+//! `Rc`, not `Arc`: handed only to `QObject`s, all on Qt thread. Atomic
+//! refcount implies sharing that mustn't happen; makes thread-affinity bug
+//! compile quietly.
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -15,81 +14,74 @@ use vuo_core::db::Database;
 
 use crate::worker::{Account, AppPaths, Command, Event, Worker};
 
-/// The mirror and the worker's command channel, shared by every QML-facing
-/// object; see the module docs.
+/// Mirror and worker command channel, shared by every QML-facing object; see
+/// module docs.
 pub struct AppContext {
     db: Rc<RefCell<Database>>,
     commands: std::sync::mpsc::Sender<Command>,
     /// The configured Miniflux origin, for the content transform's media policy.
     instance: url::Url,
-    /// The user's Images setting (`settings::MEDIA_*`).
+    /// User's Images setting (`settings::MEDIA_*`).
     ///
-    /// Lives here because the two objects that care are both constructed by
-    /// QML and cannot reach each other: `Settings` writes it on save, and
-    /// `ArticleModel` reads it when it builds a transform context. Before this
-    /// existed, `ArticleModel` hardcoded `UnproxiedMedia::Ask` and
-    /// `Settings::media_policy_for` had no production caller at all -- so the
-    /// Images control was wired to nothing and a user who chose Strict still
-    /// got Ask (§9.3).
+    /// Here because both interested objects are QML-constructed and can't reach
+    /// each other: `Settings` writes on save, `ArticleModel` reads when
+    /// building transform context (§9.3).
+    ///
+    /// `ArticleModel` maps it to the core's type itself.
+    /// `Settings::media_policy_for` is a parallel mapping only its own test
+    /// calls; the pub-fn guard counts this mention as its caller.
     media_policy: std::cell::Cell<i32>,
-    /// The user's "mark read when opened" setting (`settings::MARK_READ_*`).
+    /// User's "mark read when opened" setting (`settings::MARK_READ_*`).
     ///
-    /// Here for the same reason `media_policy` is: `Settings` and
-    /// `ArticleModel` are both constructed by QML and cannot reach each other.
+    /// Here for same reason as `media_policy`: `Settings` and `ArticleModel`
+    /// both QML-constructed, can't reach each other.
     mark_read_delay_index: std::cell::Cell<i32>,
     /// Bumped by the worker when the mirror changes; polled by the models.
     signal: std::sync::Arc<SyncSignal>,
-    /// Which stored account this context was built for; see [`fingerprint`].
+    /// Which stored account context was built for; see [`fingerprint`].
     ///
-    /// The worker captures the server URL and the API key when it spawns, so
-    /// a context outlives the credentials it was built from. This is how a
-    /// save decides whether the running worker is still the right one.
+    /// Worker captures server URL and API key at spawn; context outlives
+    /// credentials. How save decides whether running worker still right.
     fingerprint: u64,
-    /// Feed names and icons, shared by every list that draws them.
+    /// Feed names and icons, shared by every list drawing them.
     ///
-    /// Here rather than on each model for the reason `media_policy` is here:
-    /// QML constructs the models and they cannot reach each other. There are
-    /// four `EntryModel`s alive at once, they all reload on the same
-    /// generation bump, and each used to re-read every icon blob out of SQLite
-    /// and base64 it afresh -- fifty-six encodes per model per bump, for a set
-    /// that changes only when a sync brings a new feed or icon. One cache, one
+    /// Here, not per model, same reason as `media_policy`. Four `EntryModel`s
+    /// alive, all reload on same generation bump; per-model cache re-reads
+    /// every icon blob and re-encodes base64 (~56 encodes per model per bump)
+    /// for set changing only when sync brings new feed or icon. One cache, one
     /// encode.
     chrome: RefCell<Option<CachedChrome>>,
 }
 
-/// The feed chrome cache, and the generation it was built at.
+/// Feed chrome cache, and generation built at.
 struct CachedChrome {
     generation: u64,
     feeds: Rc<std::collections::HashMap<i64, FeedChrome>>,
 }
 
-/// A feed's name and icon, as an entry list row needs them.
+/// Feed's name and icon as entry list row needs.
 ///
-/// `PartialEq` so a rebuild that finds the same feeds can hand back the map it
-/// already had -- see [`AppContext::feed_chrome`].
+/// `PartialEq`: rebuild finding same feeds hands back held map (see
+/// [`AppContext::feed_chrome`]).
 ///
-/// `QString`, not `String`, and that is the whole point of this struct's
-/// shape. A `QString` is implicitly shared in Qt, so cloning one is a
-/// refcount bump rather than a copy -- and `data()` is called for every
-/// visible row on every repaint. Held as Rust `String`s, each of those calls
-/// converted the icon afresh: up to 683 KB of base64 per call per row, since
-/// an icon may be 512 KiB before encoding. Held as `QString`s, every row in
-/// every list and every delegate Qt builds from them point at ONE buffer per
-/// feed.
+/// `QString`, not `String`: whole point of shape. `QString` implicitly shared,
+/// clone = refcount bump; `data()` runs per visible row per repaint. As
+/// `String` each call re-converts icon (up to 683 KB base64 per call per row;
+/// icon ≤ 512 KiB raw). As `QString` every row, list, delegate points at ONE
+/// buffer per feed.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct FeedChrome {
-    /// FOREIGN TEXT: the feed's own name, or the one the user gave it.
+    /// FOREIGN TEXT: feed's own name, or user's.
     pub name: qmetaobject::QString,
-    /// The icon as a `data:` URI, or empty when the mirror has none.
+    /// Icon as `data:` URI; empty when mirror has none.
     pub icon_uri: qmetaobject::QString,
 }
 
-/// The one worker thread, and the signal it publishes through.
+/// The one worker thread, and signal it publishes through.
 ///
-/// Both are process-wide and outlive any single account. The signal in
-/// particular: models compare the generation they last saw against the one
-/// they read, so a signal that were replaced along with the account could hand
-/// a model a generation lower than the one it has already spent.
+/// Both process-wide, outlive any account. Signal especially: models compare
+/// last seen generation to read one; signal replaced with account could hand
+/// model lower generation than already spent.
 struct SharedWorker {
     worker: Worker,
     signal: std::sync::Arc<SyncSignal>,
@@ -103,14 +95,13 @@ impl std::fmt::Debug for AppContext {
 
 impl AppContext {
     #[must_use]
-    /// A context for one account, talking to the one worker thread.
+    /// Context for one account, talking to the one worker thread.
     ///
-    /// The worker is NOT owned here, which is the change that matters: it is a
-    /// single thread, created at start-up by [`start_worker`] and handed each
-    /// account in turn. A context that owned one had to retire it when the
-    /// account changed, which detached a thread mid-request and started
-    /// another — and starting another is exactly what a device will not
-    /// tolerate once the UI is up. See [`Worker::spawn`].
+    /// Worker NOT owned here: single thread created at start-up by
+    /// [`start_worker`], handed each account in turn. Owning one would mean
+    /// retiring it on account change (detaching thread mid-request) and
+    /// starting another: device won't tolerate that once UI up. See
+    /// [`Worker::spawn`].
     fn new(db: Database, instance: url::Url, worker: &SharedWorker, fingerprint: u64) -> Rc<Self> {
         Rc::new(AppContext {
             db: Rc::new(RefCell::new(db)),
@@ -154,7 +145,7 @@ impl AppContext {
         self.media_policy.get()
     }
 
-    /// Record the Images setting. Called on start-up and whenever it is saved.
+    /// Record Images setting. On start-up and each save.
     pub fn set_media_policy(&self, policy: i32) {
         self.media_policy.set(policy);
     }
@@ -165,54 +156,45 @@ impl AppContext {
         self.mark_read_delay_index.get()
     }
 
-    /// Record it. Called on start-up and whenever Settings is saved.
+    /// Record it. On start-up and each Settings save.
     pub fn set_mark_read_delay_index(&self, index: i32) {
         self.mark_read_delay_index.set(index);
     }
 
-    /// Borrow the mirror for a read.
+    /// Borrow mirror for read.
     ///
-    /// Returns `None` rather than panicking if a borrow is already outstanding.
-    /// A `RefCell` double-borrow is a panic, and §9.5 makes a panic here
-    /// undefined behaviour once it unwinds into Qt's C++ frames — so every
-    /// borrow in this crate is fallible and every caller degrades instead.
+    /// `None`, not panic, if borrow outstanding. `RefCell` double-borrow
+    /// panics; §9.5: panic unwinding into Qt C++ = UB. Every borrow here
+    /// fallible; callers degrade.
     pub fn read<T>(&self, f: impl FnOnce(&Database) -> T) -> Option<T> {
         self.db.try_borrow().ok().map(|db| f(&db))
     }
 
-    /// Borrow the mirror for a write. Same fallibility rule as [`read`](Self::read).
+    /// Borrow mirror for write. Same fallibility rule as [`read`](Self::read).
     pub fn write<T>(&self, f: impl FnOnce(&mut Database) -> T) -> Option<T> {
         self.db.try_borrow_mut().ok().map(|mut db| f(&mut db))
     }
 
-    /// Ask the worker to do something. `false` if the worker has stopped.
+    /// Ask worker to do something. `false` if worker stopped.
     pub fn send(&self, command: Command) -> bool {
         self.commands.send(command).is_ok()
     }
 
-    /// Feed names and icons, built once per generation and shared.
+    /// Feed names and icons, built once per generation, shared.
     ///
-    /// Keyed on the SYNC GENERATION, which is bumped by anything that changes
-    /// the mirror -- including marking an article read, which cannot change a
-    /// feed's name or its icon. So this rebuilds a little more eagerly than it
-    /// strictly must. That is the deliberate trade: the generation is the one
-    /// counter every model already agrees on, and a cache keyed on something
-    /// narrower would need its own invalidation path through the worker, which
-    /// is exactly the kind of thing that cannot be exercised without a device.
-    /// Rebuilding once per bump instead of once per model per bump is where
-    /// the cost was.
+    /// Keyed on SYNC GENERATION, bumped by any mirror change (incl. mark-read,
+    /// which can't change name or icon): rebuilds slightly too eagerly.
+    /// Deliberate: generation = counter every model agrees on; narrower key
+    /// needs own invalidation path through worker, untestable without device.
+    /// Cost was per model per bump; now once per bump.
     ///
-    /// The `Rc` is the point of the return type as much as the cache is:
-    /// callers hold the map rather than copying strings out of it, and
-    /// `Rc::ptr_eq` tells a list whether the chrome it drew with is still the
-    /// chrome the mirror has.
+    /// `Rc` matters as much as cache: callers hold map, don't copy strings;
+    /// `Rc::ptr_eq` tells list whether its chrome is still mirror's.
     ///
-    /// Which is why a rebuild that finds the SAME feeds hands back the map it
-    /// already had rather than an equal copy. A list redraws every row when
-    /// this map moves under it -- it has to, since a renamed feed changes no
-    /// row -- and the delegate rebuilds its detail line from font metrics on
-    /// every redraw. Marking one article read bumps the generation, so without
-    /// this the cheapest thing the reader can do would repaint the whole list.
+    /// Hence rebuild finding SAME feeds returns held map, not equal copy. List
+    /// redraws every row when map moves (renamed feed changes no row), delegate
+    /// rebuilds detail line from font metrics per redraw. Mark-read bumps
+    /// generation: without this, cheapest reader action repaints whole list.
     pub fn feed_chrome(&self) -> Rc<std::collections::HashMap<i64, FeedChrome>> {
         let generation = self.signal.generation();
         if let Ok(held) = self.chrome.try_borrow() {
@@ -241,14 +223,14 @@ impl AppContext {
                 )
             })
             .collect();
-        // A failed borrow costs a rebuild next time and nothing else, which is
-        // the same rule `read` and `write` follow.
+        // Failed borrow costs rebuild next time, nothing else: same rule as
+        // `read` and `write`.
         let Ok(mut slot) = self.chrome.try_borrow_mut() else {
             return Rc::new(built);
         };
         let feeds = match slot.take() {
-            // Same feeds as last time: keep the map every list is already
-            // holding, so none of them sees it move.
+            // Same feeds as last time: keep map every list holds; none sees it
+            // move.
             Some(held) if *held.feeds == built => held.feeds,
             _ => Rc::new(built),
         };
@@ -260,25 +242,22 @@ impl AppContext {
     }
 }
 
-/// Wrap image bytes as a `data:` URI QML's `Image.source` can take.
+/// Wrap image bytes as `data:` URI for QML `Image.source`.
 ///
-/// The MIME type comes from the mirror, which stores the format DETERMINED
-/// FROM THE BYTES rather than the one the server claimed -- so a server that
-/// labels a script `image/png` cannot get that label back out of here.
+/// MIME from mirror = format DETERMINED FROM BYTES, not server's claim: server
+/// labelling script `image/png` can't get label back out.
 fn data_uri(mime: &str, bytes: &[u8]) -> qmetaobject::QString {
     use base64::Engine as _;
-    // SVG is excluded on purpose: it is a document, not a bitmap, and Qt's
-    // renderer will follow external references in one -- which would leak the
-    // device's IP to whatever host a feed operator names, on a list scroll.
-    // The raster formats are passed through even where the device may lack a
-    // handler (it ships only libqjpeg.so as a plugin, so ICO and GIF are a
-    // gamble); the delegate hides an Image that fails to load, so the cost of
-    // guessing wrong is a missing favicon rather than a broken-image glyph.
+    // SVG excluded: document, not bitmap; Qt renderer follows external
+    // references, leaking device IP to feed operator's host on list scroll.
+    // Raster formats pass even where device may lack handler (ships only
+    // libqjpeg.so plugin; ICO, GIF gamble); delegate hides failed Image: wrong
+    // guess = missing favicon, not broken glyph.
     if mime == "image/svg+xml" {
         return qmetaobject::QString::default();
     }
-    // Converted to a `QString` once, here, and shared by refcount from then
-    // on. See [`FeedChrome`].
+    // Converted to `QString` once here, refcount-shared after. See
+    // [`FeedChrome`].
     qmetaobject::QString::from(format!(
         "data:{};base64,{}",
         mime,
@@ -287,23 +266,18 @@ fn data_uri(mime: &str, bytes: &[u8]) -> qmetaobject::QString {
 }
 
 thread_local! {
-    /// The single application context.
+    /// Single application context.
     ///
-    /// Installed at start-up when there is already an account to build it
-    /// from, and again by the settings screen when one is saved or changed.
-    /// It was *only* the first of those for a while, which meant a first run
-    /// left this empty for the whole session — see [`refresh`].
+    /// Installed at start-up when an account exists, and again by settings
+    /// screen on save or change (first run: see [`refresh`]).
     ///
-    /// A thread-local rather than a `static`: everything that reads this is a
-    /// `QObject` living on the Qt thread, and a thread-local makes that
-    /// requirement structural instead of a comment. A background thread that
-    /// tried to reach the mirror this way would find nothing rather than
-    /// racing.
+    /// Thread-local, not `static`: every reader is `QObject` on Qt thread;
+    /// thread-local makes that structural. Background thread reaching for
+    /// mirror finds nothing, no race.
     ///
-    /// This exists because QML instantiates the models — `EntryModel {}` in a
-    /// .qml file — so Rust has no handle to hand them a context through. The
-    /// alternative would be a singleton QObject that every model reaches
-    /// through QML, which is more machinery for the same one global.
+    /// Exists because QML instantiates models (`EntryModel {}` in .qml): Rust
+    /// has no handle to pass context through. Alternative singleton QObject
+    /// reached via QML = more machinery, same one global.
     static CURRENT: RefCell<Option<Rc<AppContext>>> = const { RefCell::new(None) };
 }
 
@@ -312,24 +286,22 @@ thread_local! {
     static WORKER: RefCell<Option<Rc<SharedWorker>>> = const { RefCell::new(None) };
 }
 
-/// Start the worker thread. Called from `main`, before the UI.
+/// Start worker thread. Called from `main`, before UI.
 ///
-/// Timing is the whole point, so this is a separate call rather than something
-/// the first context does on its way past. Creating the thread from the Qt
-/// thread, once Wayland and the GPU stack have been dlopened, kills the
-/// process on a Jolla Phone 2026 — no panic, no Rust diagnostic, just a signal
-/// — and a first run reaches that path from a QML tap, because there is no
-/// account to build a context from until the user has typed one. Created here
-/// the thread costs nothing while it waits, and the account reaches it later
-/// as a channel send. See [`Worker::spawn`] and docs/testing.md.
+/// Timing is the point, hence separate call. Creating thread from Qt thread
+/// after Wayland and GPU stack dlopened kills process on Jolla Phone 2026 (no
+/// panic, no Rust diagnostic, just signal); first run reaches that from QML tap
+/// (no account until user types one). Created here: costs nothing waiting;
+/// account arrives later as channel send. See [`Worker::spawn`] and
+/// docs/testing.md.
 pub fn start_worker() {
     let _ = shared_worker();
 }
 
-/// The worker, starting it if this is the first ask.
+/// Worker, starting it on first ask.
 ///
-/// The lazy path exists for tests, which have no `main` to have called
-/// [`start_worker`]. On a device it is always already there.
+/// Lazy path for tests (no `main` calling [`start_worker`]). On device always
+/// present.
 fn shared_worker() -> Option<Rc<SharedWorker>> {
     let existing = WORKER.with(|w| w.try_borrow().ok().and_then(|slot| slot.clone()));
     if existing.is_some() {
@@ -347,11 +319,10 @@ fn shared_worker() -> Option<Rc<SharedWorker>> {
     Some(shared)
 }
 
-/// Install the application context, replacing any already installed.
+/// Install application context, replacing any installed.
 ///
-/// From the Qt thread only. Prefer [`refresh`], which decides whether a
-/// replacement is warranted and retires the outgoing worker; this is the raw
-/// store behind it.
+/// Qt thread only. Prefer [`refresh`] (decides whether replacement warranted);
+/// this is raw store behind it.
 pub fn install(ctx: Rc<AppContext>) {
     CURRENT.with(|c| {
         if let Ok(mut slot) = c.try_borrow_mut() {
@@ -360,23 +331,21 @@ pub fn install(ctx: Rc<AppContext>) {
     });
 }
 
-/// The installed context, if there is one.
+/// Installed context, if any.
 ///
-/// Returns `None` before start-up finishes and in tests, so every caller has
-/// to handle its absence — which is why a QML-constructed model that is never
-/// attached degrades to an empty list rather than crashing.
+/// `None` before start-up finishes and in tests: every caller handles absence;
+/// unattached QML-constructed model degrades to empty list, no crash.
 #[must_use]
 pub fn current() -> Option<Rc<AppContext>> {
     CURRENT.with(|c| c.try_borrow().ok().and_then(|slot| slot.clone()))
 }
 
-/// Identify an account without keeping a second copy of its credentials.
+/// Identify account without second copy of credentials.
 ///
-/// A save that changed nothing must not restart the worker; a save that changed
-/// the server or the key must, because the worker captures both when it spawns.
-/// Hashing rather than storing the strings keeps the token out of one more live
-/// object: this is change detection, not authentication, so a non-cryptographic
-/// hash is the right tool for it.
+/// Save changing nothing must not restart worker; changed server or key must
+/// (worker captures both at spawn). Hashing keeps token out of one more live
+/// object: change detection, not authentication; non-cryptographic hash right
+/// tool.
 fn fingerprint(account: &Account) -> u64 {
     use std::hash::{Hash as _, Hasher as _};
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
@@ -386,54 +355,48 @@ fn fingerprint(account: &Account) -> u64 {
     hasher.finish()
 }
 
-/// Where the worker's events go.
+/// Where worker's events go.
 ///
-/// Logging only, and deliberately *not* wrapped in `queued_callback`. It
-/// touches no `QObject`, and `tracing` is built to be called from any thread,
-/// so marshalling it back to the Qt thread would buy nothing and cost
-/// something real: it would tie every rebuild of the context to a live Qt
-/// event loop, which start-up has and the settings screen cannot promise. The
-/// results the UI has to *show* travel by [`SyncSignal`] instead; see that
-/// type for why it is a poll.
+/// Logging only, NOT wrapped in `queued_callback`: touches no `QObject`;
+/// `tracing` callable from any thread. Marshalling to Qt thread buys nothing,
+/// ties every context rebuild to live Qt event loop (start-up has one, settings
+/// screen can't promise). Results UI must *show* travel via [`SyncSignal`]; see
+/// why poll there.
 fn log_event(event: &Event) {
     match event {
         Event::SyncFinished { unread, .. } => tracing::info!(unread, "sync finished"),
         Event::AuthFailed => tracing::warn!("the server rejected the API key"),
-        // `error =`, not a bare `%message`: the literal below is recorded by
-        // `tracing` as the event's own `message` field, so a second field of
-        // that name collides with it and a subscriber shows one or the other.
-        // What gets dropped is the half that says what actually went wrong.
+        // `error =`, not bare `%message`: literal below is `tracing`'s own
+        // `message` field; second field of that name collides, subscriber shows
+        // one, dropping the half saying what went wrong.
         Event::SyncFailed { message } => tracing::warn!(error = %message, "sync failed"),
         other => tracing::debug!(?other, "sync event"),
     }
 }
 
-/// What the settings screen shows when the stored address will not parse.
+/// Settings screen text when stored address won't parse.
 ///
-/// Deliberately does not echo the address back: it is the user's own, this text
-/// reaches the log as well as the screen, and a URL may carry userinfo. Naming
-/// the missing part is more use anyway — `10.77.0.1:8083` is the natural thing
-/// to type into that field, and it is not a URL.
+/// Doesn't echo address: user's own, text reaches log too, URL may carry
+/// userinfo. Naming missing part more useful: `10.77.0.1:8083` natural to type,
+/// not URL.
 const NOT_A_URL: &str =
     "the server address is not a URL. It needs a scheme, as in https://miniflux.example.com/";
 
-/// Build a context for `account`, without installing it; [`refresh`] does that.
+/// Build context for `account` without installing; [`refresh`] installs.
 ///
-/// It used to live in the application binary, which has no tests at all and is
-/// not even built by most of `make check`, and that is precisely why the
-/// first-run defect it now carries the fix for survived to a device.
+/// Here, not in untested app binary (mostly unbuilt by `make check`), so
+/// first-run path is tested.
 fn build_from(paths: &AppPaths, account: Account) -> vuo_core::Result<Rc<AppContext>> {
     let server = url::Url::parse(&account.server_url).map_err(|e| {
-        // Why it did not parse, for the log; the address stays out of it.
+        // Why parse failed, for log; address stays out.
         tracing::warn!(error = %e, "the stored server address does not parse");
         vuo_core::Error::Config(NOT_A_URL.to_owned())
     })?;
     let config = crate::worker::transport_config_for(paths, &account)?;
-    // The steps below are logged one by one on purpose. Building the context
-    // is the only part of Vuo that runs BOTH at start-up and again from inside
-    // a QML tap, and the second of those has been seen to end a device process
-    // with a signal rather than an error -- which leaves no Rust diagnostic at
-    // all, only a last line reached. See docs/testing.md.
+    // Steps logged one by one on purpose. Only Vuo part running BOTH at
+    // start-up and inside QML tap; latter has ended device process with signal,
+    // not error: no Rust diagnostic, only last line reached. See
+    // docs/testing.md.
     tracing::info!("opening the mirror");
     let db = Database::open(&paths.database)?;
     let fingerprint = fingerprint(&account);
@@ -444,8 +407,8 @@ fn build_from(paths: &AppPaths, account: Account) -> vuo_core::Result<Rc<AppCont
         vuo_core::Error::Config("the sync worker thread is not running".to_owned())
     })?;
     tracing::info!("handing the account to the sync worker");
-    // A worker that stopped between the lookup above and here would take the
-    // account nowhere, and every sync after it would silently do nothing.
+    // Worker stopping between lookup above and here takes account nowhere;
+    // every later sync silently does nothing.
     let configured =
         worker
             .worker
@@ -462,18 +425,18 @@ fn build_from(paths: &AppPaths, account: Account) -> vuo_core::Result<Rc<AppCont
     }
 
     let ctx = AppContext::new(db, server, &worker, fingerprint);
-    // Seed the Images setting from the stored account, so the first article
-    // opened after this honours it rather than falling back to Ask.
+    // Seed Images setting from stored account: first article opened honours it,
+    // not Ask fallback.
     ctx.set_media_policy(account.media_policy);
     ctx.set_mark_read_delay_index(account.mark_read_delay_index);
-    // And the worker its cadence: it syncs on its own from here on, on the
-    // interval the account stores, scheduled from the last sync it knows of.
+    // And worker's cadence: syncs on own from here, at account's interval,
+    // scheduled from last known sync.
     ctx.send(Command::SetSyncInterval {
         minutes: sync_interval,
     });
-    // And its retention window, applied at the end of each pass.
+    // And retention window, applied at end of each pass.
     ctx.send(Command::SetRetention { seconds: retention });
-    // And whether it may use a metered connection on its own.
+    // And whether it may use metered connection on own.
     ctx.send(Command::SetWifiOnly {
         enabled: account.wifi_only,
     });
@@ -481,29 +444,26 @@ fn build_from(paths: &AppPaths, account: Account) -> vuo_core::Result<Rc<AppCont
     Ok(ctx)
 }
 
-/// Make the installed context match the account stored at `paths`.
+/// Make installed context match account stored at `paths`.
 ///
-/// Installs one when there is none. That is the case this exists for: the
-/// context used to be built exactly once, at start-up, from an account file
-/// that **does not exist until the user has saved one**. So on a first run the
-/// build failed, nothing ever retried it, and every worker-backed action —
-/// "Test connection", the pulley menu's Refresh — reached no worker at all and
-/// did nothing, with no error and no spinner, until Vuo was restarted.
+/// Installs one when none: the case this exists for. Account file **doesn't
+/// exist until user saves one**; building only once at start-up leaves first
+/// run with no worker: "Test connection" and pulley Refresh silently do nothing
+/// until restart.
 ///
-/// Rebuilds when the stored server or key changed, because the worker captures
-/// both when it spawns. Without that, testing a connection after editing the
-/// server address would report a confident answer about the *previous* account.
+/// Rebuilds when stored server or key changed (worker captures both at spawn);
+/// else testing connection after editing address reports on *previous* account.
 ///
-/// Idempotent and cheap when nothing changed: one file read and a hash.
+/// Idempotent, cheap when unchanged: one file read and hash.
 ///
 /// # Errors
 ///
-/// - [`vuo_core::Error::Config`] if the account file cannot be read or
-///   parsed (the ordinary state before the first save), the stored server
-///   address is not a URL, a configured custom CA cannot be read, or the
-///   worker thread is not running or stopped before it took the account.
-/// - [`vuo_core::Error::Db`] or [`vuo_core::Error::Migration`] if the mirror
-///   cannot be opened, as for [`Database::open`].
+/// - [`vuo_core::Error::Config`] if account file can't be read or parsed
+///   (ordinary before first save), stored server address not URL, configured
+///   custom CA unreadable, or worker thread not running / stopped before taking
+///   account.
+/// - [`vuo_core::Error::Db`] or [`vuo_core::Error::Migration`] if mirror can't
+///   open, as for [`Database::open`].
 pub fn refresh(paths: &AppPaths) -> vuo_core::Result<Rc<AppContext>> {
     let account = crate::worker::load_account(&paths.account)?;
     let wanted = fingerprint(&account);
@@ -521,22 +481,20 @@ pub fn refresh(paths: &AppPaths) -> vuo_core::Result<Rc<AppContext>> {
     Ok(ctx)
 }
 
-/// A context over `db` and `instance`, against the shared worker.
+/// Context over `db` and `instance`, against shared worker.
 ///
-/// For tests in this crate. Each of them used to build a worker by hand,
-/// naming its constructor and every argument, so a change to how the worker
-/// starts was a change to four unrelated test modules -- and none of them
-/// cares which account it is serving, since nothing in them reaches a network.
+/// For crate tests: one place knows how worker starts; none reaches network or
+/// cares which account.
 #[cfg(test)]
 pub(crate) fn context_for_test(db: Database, instance: url::Url) -> Rc<AppContext> {
     let worker = shared_worker().expect("the worker thread starts");
     AppContext::new(db, instance, &worker, 0)
 }
 
-/// [`refresh`] against the standard locations.
+/// [`refresh`] against standard locations.
 ///
-/// `None` when there is no data directory or no usable account yet — both of
-/// which are ordinary states before the user has been to Settings, not faults.
+/// `None` when no data directory or no usable account yet: ordinary before
+/// Settings visited, not faults.
 #[must_use]
 pub fn refresh_current() -> Option<Rc<AppContext>> {
     let paths = AppPaths::resolve()?;
@@ -549,48 +507,38 @@ pub fn refresh_current() -> Option<Rc<AppContext>> {
     }
 }
 
-/// A counter the worker bumps whenever it changes the mirror.
+/// Counter worker bumps whenever it changes mirror.
 ///
-/// Deliberately not a callback registry. QML owns the models, so Rust has no
-/// list of live ones to call into, and building one out of `QPointer`s means
-/// cross-thread lifetime rules that cannot be exercised without a device. An
-/// atomic the UI polls has neither problem: the worker thread only ever
-/// increments an integer, and every `QObject` touch stays on the Qt thread
-/// where the poll runs.
+/// Not callback registry. QML owns models: Rust has no live list; `QPointer`
+/// list means cross-thread lifetime rules untestable without device. Polled
+/// atomic avoids both: worker only increments integer, every `QObject` touch
+/// stays on Qt thread where poll runs.
 #[derive(Debug, Default)]
 pub struct SyncSignal {
     generation: std::sync::atomic::AtomicU64,
     running: std::sync::atomic::AtomicBool,
-    /// Bumped when the USER asks for a fresh list -- the pulley's Refresh, or
-    /// the cover's action -- as opposed to the mirror merely changing.
+    /// Bumped when USER asks for fresh list (pulley Refresh, cover action), vs
+    /// mirror merely changing.
     ///
-    /// The distinction is what the entry lists are built on: a row that stops
-    /// matching its list (read, on Unread) stays on screen through any number
-    /// of mirror changes and leaves only when this moves. One counter for
-    /// every model rather than a flag on the one that was pulled, because a
-    /// refresh is asked of the app, not of a tab: pulling on Unread and
-    /// swiping to Favourites should not find an unstarred row still there.
+    /// Entry lists built on this: row no longer matching list (read, on Unread)
+    /// stays through mirror changes, leaves only when this moves. One counter
+    /// for all models, not flag on pulled one: refresh asked of app, not tab;
+    /// pull on Unread then swipe to Favourites mustn't find unstarred row still
+    /// there.
     refresh_epoch: std::sync::atomic::AtomicU64,
-    /// A one-shot result the UI has to SHOW rather than merely reload for.
+    /// One-shot result UI must SHOW, not merely reload for.
     ///
-    /// The generation counter says "the mirror changed"; it cannot carry the
-    /// server's answer to "test this connection" or the error text from a
-    /// rejected feed URL. Those reached a log line and nothing else, so "Test
-    /// connection" appeared to do nothing whether the credentials were right
-    /// or wrong.
+    /// Generation counter says "mirror changed"; can't carry server's answer to
+    /// "test connection" or error text from rejected feed URL. Without this
+    /// slot "Test connection" looks dead either way.
     notice: std::sync::Mutex<Option<Notice>>,
-    /// The result of the most recent "fetch original content", addressed to
-    /// the entry it was asked for.
+    /// Result of latest "fetch original content", addressed to entry asked for.
     ///
-    /// Deliberately NOT carried on `generation`. The article model used to
-    /// treat "the generation moved while I am fetching" as "my scrape
-    /// landed", which is only true when nothing else bumps in between --
-    /// and with mark-read-after-N-seconds enabled, something else almost
-    /// always does. The mark-read bump would clear `fetching` and re-read the
-    /// mirror before the scrape had written to it, so the reader saw the old
-    /// body and the menu item looked dead. An addressed slot cannot be stolen
-    /// by an unrelated bump, and cannot be consumed by an article that did not
-    /// ask for it.
+    /// NOT on `generation`: "generation moved while fetching" ≠ "my scrape
+    /// landed"; mark-read-after-N-seconds bumps in between, would clear
+    /// `fetching` and re-read mirror before scrape wrote (old body,
+    /// dead-looking menu item). Addressed slot can't be stolen by unrelated
+    /// bump or consumed by article that didn't ask.
     fetch_outcome: std::sync::Mutex<Option<FetchOutcome>>,
 }
 
@@ -601,8 +549,8 @@ pub struct FetchOutcome {
     pub entry_id: i64,
     /// One of the `FETCH_*` constants in `crate::article`.
     pub status: i32,
-    /// Foreign text when the server explained a failure; empty otherwise.
-    /// Renders as plain text (§9.3).
+    /// Foreign text when server explained failure; else empty. Plain text
+    /// (§9.3).
     pub message: String,
 }
 
@@ -616,33 +564,30 @@ pub enum Notice {
         /// The username, or the error text.
         message: String,
     },
-    /// A subscribe or unsubscribe finished. `message` is the server's error
-    /// text when it failed -- foreign text, so it renders as plain text.
+    /// Subscribe or unsubscribe finished. `message` = server's error text on
+    /// failure: foreign, plain text.
     SubscriptionChanged {
         /// Whether the server accepted the change.
         ok: bool,
         /// The server's error text on failure; empty on success.
         message: String,
     },
-    /// A feed's settings were saved, or were not. `message` is the server's
-    /// error text -- foreign, so plain text.
+    /// Feed settings saved, or not. `message` = server's error text: foreign,
+    /// plain text.
     FeedUpdated {
         /// Whether the server accepted the change.
         ok: bool,
         /// The server's error text on failure; empty on success.
         message: String,
     },
-    /// A refresh failed. `message` is foreign text; render it as plain text.
+    /// Refresh failed. `message` foreign; plain text.
     ///
-    /// `auth` distinguishes "the server rejected the key" from everything
-    /// else, because the two ask different things of the user -- go and fix
-    /// the key, versus try again later. A bool rather than a second variant:
-    /// a variant would duplicate the take-and-re-post plumbing on every page
-    /// that drains this slot, for one bit.
+    /// `auth` separates "server rejected key" from rest: different asks of user
+    /// (fix key vs retry later). Bool, not variant: variant duplicates
+    /// take-and-re-post plumbing on every page draining slot, for one bit.
     ///
-    /// On `auth` the message is deliberately EMPTY. The server's own text for
-    /// a rejected key says nothing a user can act on, and the page supplies a
-    /// fixed translated line instead.
+    /// On `auth` message EMPTY: server's text for rejected key not actionable;
+    /// page supplies fixed translated line.
     SyncFailed {
         /// Whether the server rejected the API key.
         auth: bool,
@@ -658,11 +603,10 @@ impl SyncSignal {
             .fetch_add(1, std::sync::atomic::Ordering::Release);
     }
 
-    /// Leave a result for the UI to pick up. Called from the worker thread.
+    /// Leave result for UI. Called from worker thread.
     ///
-    /// A poisoned lock is ignored rather than unwrapped: §9.5 forbids a panic
-    /// that could unwind into Qt's frames, and a dropped notice costs the user
-    /// a status line, not data.
+    /// Poisoned lock ignored, not unwrapped: §9.5 forbids panic unwinding into
+    /// Qt frames; dropped notice costs status line, not data.
     pub fn post(&self, notice: Notice) {
         if let Ok(mut slot) = self.notice.lock() {
             *slot = Some(notice);
@@ -676,11 +620,10 @@ impl SyncSignal {
         }
     }
 
-    /// Take the scrape result IF it is addressed to `entry_id`.
+    /// Take scrape result IF addressed to `entry_id`.
     ///
-    /// A result for a different entry is left in place rather than dropped:
-    /// the user may have opened a second article while the first was
-    /// scraping, and going back should still show what happened.
+    /// Result for other entry left in place: user may open second article while
+    /// first scraping; going back still shows what happened.
     #[must_use]
     pub fn take_fetch_outcome(&self, entry_id: i64) -> Option<FetchOutcome> {
         let mut slot = self.fetch_outcome.lock().ok()?;
@@ -697,8 +640,8 @@ impl SyncSignal {
         self.notice.lock().ok().and_then(|mut slot| slot.take())
     }
 
-    /// Raise or lower the sync spinner. Raised on the Qt thread for a
-    /// user-initiated sync; lowered by the worker when that command ends.
+    /// Raise or lower sync spinner. Raised on Qt thread for user-initiated
+    /// sync; lowered by worker when command ends.
     pub fn set_running(&self, running: bool) {
         self.running
             .store(running, std::sync::atomic::Ordering::Release);
@@ -736,12 +679,12 @@ mod tests {
 
     #[test]
     fn there_is_no_context_before_startup() {
-        // Models constructed by QML before install() must degrade, not panic.
-        // (Each test thread has its own slot, so this is not order-dependent.)
+        // QML-constructed models before install() degrade, no panic.
+        // (Per-thread slot: not order-dependent.)
         assert!(current().is_none());
     }
 
-    /// A context over a temp mirror, pointed at an origin nothing answers on.
+    /// Context over temp mirror, pointed at origin nothing answers on.
     fn test_context(dir: &tempfile::TempDir) -> Rc<AppContext> {
         let db = Database::open(&dir.path().join("mirror.sqlite")).expect("mirror");
         context_for_test(
@@ -752,23 +695,18 @@ mod tests {
 
     #[test]
     fn a_reentrant_borrow_returns_none_rather_than_panicking() {
-        // §9.5: a panic here unwinds into Qt's C++ frames, which is undefined
-        // behaviour -- so every borrow of the mirror is fallible.
-        //
-        // Nothing exercised that. No test built an `AppContext` at all, so
-        // `read` and `write` were never called, let alone reentrantly:
-        // replacing `try_borrow` with `borrow` left the whole shim suite green
-        // while turning a recoverable `None` into UB.
+        // §9.5: panic here unwinds into Qt C++ = UB; every mirror borrow
+        // fallible. `try_borrow` → `borrow` must fail here (recoverable `None`
+        // turned UB).
         let dir = tempfile::tempdir().expect("tempdir");
         let ctx = test_context(&dir);
 
-        // A plain borrow succeeds.
+        // Plain borrow succeeds.
         assert!(ctx.read(|_| ()).is_some());
         assert!(ctx.write(|_| ()).is_some());
 
-        // A write inside a read, and a read inside a write, are the two ways
-        // this happens for real: a model reading the mirror to build a row and
-        // calling something that writes.
+        // Write inside read, read inside write: how it happens for real (model
+        // reading mirror for row, calling something that writes).
         let nested_write = ctx.read(|_| ctx.write(|_| ()));
         assert_eq!(
             nested_write,
@@ -782,7 +720,7 @@ mod tests {
             "a read inside a write must be refused, not panic"
         );
 
-        // And the refusal is temporary: the borrow is released afterwards.
+        // Refusal temporary: borrow released afterwards.
         assert!(ctx.write(|_| ()).is_some());
     }
 
@@ -793,11 +731,10 @@ mod tests {
             &Account {
                 server_url: server.to_owned(),
                 token: "k".to_owned(),
-                // "Manual only", against the real default of hourly. These
-                // tests build REAL workers against an address nothing answers
-                // on, and an automatic sync would have each of them dial it
-                // and sit out the connect timeout before the test binary could
-                // exit. §8.1: the checks touch no network.
+                // "Manual only", not real default hourly. Tests build REAL
+                // workers against dead address; automatic sync would dial it,
+                // sit out connect timeout before binary exits. §8.1: checks
+                // touch no network.
                 sync_interval_index: 0,
                 ..Account::default()
             },
@@ -808,11 +745,11 @@ mod tests {
 
     #[test]
     fn refresh_installs_a_context_for_a_stored_account() {
-        // The first-run path: `main` builds the context once, before any
-        // account exists, so this is the call that has to work afterwards.
+        // First-run path: `main` builds context once before any account; this
+        // call must work afterwards.
         let dir = tempfile::tempdir().expect("tempdir");
-        // Plain http, as a WireGuard-only deployment uses. The transport
-        // accepts it; nothing in this path may quietly require TLS.
+        // Plain http, as WireGuard-only deployment uses. Transport accepts it;
+        // nothing here may quietly require TLS.
         let paths = account_at(&dir, "http://10.77.0.1:8083/");
         assert!(current().is_none());
 
@@ -826,18 +763,16 @@ mod tests {
         let installed = current().expect("and it must be installed, not just returned");
         assert!(Rc::ptr_eq(&ctx, &installed));
 
-        // Idempotent: calling it again for the same account returns the same
-        // context rather than restarting a worker on every save.
+        // Idempotent: same account returns same context, no worker restart per
+        // save.
         let again = refresh(&paths).expect("a context");
         assert!(Rc::ptr_eq(&ctx, &again));
     }
 
     #[test]
     fn refresh_reports_an_address_that_is_not_a_url_rather_than_swallowing_it() {
-        // `10.77.0.1:8083` is the natural thing to type and is not a URL. It
-        // saves fine, so the failure lands here -- and used to land in a log
-        // line at a level the default filter drops, leaving the app with no
-        // worker and the user with no explanation.
+        // `10.77.0.1:8083` natural to type, not URL. Saves fine, so failure
+        // lands here; must surface to user, not vanish into filtered log line.
         let dir = tempfile::tempdir().expect("tempdir");
         let paths = account_at(&dir, "10.77.0.1:8083");
 
@@ -851,14 +786,9 @@ mod tests {
 
     #[test]
     fn changing_the_account_does_not_start_a_second_worker() {
-        // The thread is created once, at start-up, and given each account in
-        // turn. Creating one later kills the process on a device -- see
-        // `Worker::spawn` -- and "the user edited the server address" must
-        // therefore not be a route back to `thread::Builder::spawn`.
-        //
-        // It used to be exactly that: replacing a context retired one thread
-        // and started another. The test that stood here checked the retiring
-        // half of it, which is the behaviour this replaces.
+        // Thread created once at start-up, given each account in turn. Creating
+        // later kills process on device (`Worker::spawn`): "user edited server
+        // address" must not route back to `thread::Builder::spawn`.
         let dir = tempfile::tempdir().expect("tempdir");
         let first = refresh(&account_at(&dir, "http://10.77.0.1:8083/")).expect("a context");
         let worker = shared_worker().expect("a worker");
@@ -878,17 +808,12 @@ mod tests {
         );
     }
 
-    /// The rule `take_fetch_outcome` documents, which nothing enforced.
+    /// Rule `take_fetch_outcome` documents.
     ///
-    /// A scrape result addressed to one article must not be consumed by
-    /// another: the user may have opened a second article while the first was
-    /// still fetching, and going back has to still show what happened. The
-    /// slot is also one-shot -- a second take finds nothing -- or a stale
-    /// result would re-appear on every poll.
-    ///
-    /// These two methods came in with the addressed slot and were never
-    /// covered; the module move that put them in a `SonarQube` diff is what
-    /// surfaced it.
+    /// Scrape result for one article not consumed by another: user may open
+    /// second article while first fetching; going back still shows result. Slot
+    /// one-shot too (second take finds nothing), else stale result reappears
+    /// every poll.
     #[test]
     fn a_scrape_result_is_only_taken_by_the_article_that_asked_for_it() {
         let signal = SyncSignal::default();
@@ -916,10 +841,10 @@ mod tests {
 
     #[test]
     fn the_sync_signal_counts_generations() {
-        // The models poll this to decide whether to reload. If `bump` stops
-        // incrementing, the UI never refreshes after a sync and silently shows
-        // stale articles; if the poll stops comparing, every model reloads from
-        // SQLite twice a second forever. Neither direction was tested.
+        // Models poll this to decide reload. `bump` not incrementing → UI never
+        // refreshes after sync, shows stale articles; poll not comparing →
+        // every model reloads from SQLite twice a second forever. Both
+        // directions tested.
         let signal = SyncSignal::default();
         assert_eq!(signal.generation(), 0);
         signal.bump();
@@ -927,8 +852,8 @@ mod tests {
         signal.bump();
         assert_eq!(signal.generation(), 2, "two bumps must advance by two");
 
-        // And it is observable from another thread, which is the only way it
-        // is ever used: the worker bumps, the Qt thread polls.
+        // Observable from other thread, only real use: worker bumps, Qt thread
+        // polls.
         let shared = std::sync::Arc::new(SyncSignal::default());
         let writer = std::sync::Arc::clone(&shared);
         std::thread::spawn(move || {

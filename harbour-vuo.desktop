@@ -8,17 +8,16 @@ Exec=harbour-vuo
 Terminal=false
 Categories=Qt;Network;News;
 
-# Sailfish-specific: run under the QML booster so start-up is not a cold Qt
-# initialisation every time, and keep a single instance so that opening a
-# shared link reuses the running app rather than starting a second copy.
+# Sailfish: QML booster = no cold Qt init each start. Single instance: shared
+# link reuses running app, no second copy.
 X-Nemo-Application-Type=silica-qt5
 X-Nemo-Single-Instance=yes
 
-# Sandboxed, with exactly what it uses. Everything the app writes lives under
-# the directory these two names give it (~/.local/share/harbour-vuo/harbour-vuo
-# -- see AppPaths::resolve in crates/vuo-shim/src/worker.rs). Internet for the
-# Miniflux server; WebView for the Gecko view on the site page. Nothing else:
-# Vuo is one process, as Harbour requires, and syncs on its own while it runs.
+# Sandboxed, only what it uses. App writes only under dir these names give
+# (~/.local/share/harbour-vuo/harbour-vuo; see AppPaths::resolve in
+# crates/vuo-shim/src/worker.rs). Internet = Miniflux server; WebView = Gecko
+# view on site page. Nothing else: one process (Harbour rule), syncs itself
+# while running.
 [X-Sailjail]
 Permissions=Internet;WebView
 OrganizationName=harbour-vuo

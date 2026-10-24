@@ -1,41 +1,33 @@
-//! Loading every QML file in a real QML engine, headlessly.
+//! Load every QML file in real QML engine, headless.
 //!
-//! §8.1 asks for Silica stubs so QML can be linted on a CI runner without the
-//! `SailfishOS` SDK. Qt 5's `qmllint` only checks *syntax*, so on its own it
-//! would pass a file that references a type that does not exist or sets a
-//! property that was never declared — which is most of the mistakes actually
-//! made in QML.
+//! §8.1 asks for Silica stubs so QML lints on CI without `SailfishOS` SDK. Qt 5
+//! `qmllint` checks *syntax* only: passes nonexistent types and undeclared
+//! properties (most real QML mistakes).
 //!
-//! This test goes further: it builds a real `QQmlEngine`, points it at
-//! `qml-stubs/` for `Sailfish.Silica`, registers Vuo's own types, compiles
-//! every page AND INSTANTIATES IT.
+//! This builds real `QQmlEngine`, points at `qml-stubs/` for `Sailfish.Silica`,
+//! registers Vuo types, compiles every page AND INSTANTIATES IT.
 //!
-//! Instantiating is the half that was missing. QML resolves type names and
-//! property *names* at compile time, but binding *values* only when an object
-//! is actually created — so compiling alone passed
+//! Instantiating matters: QML resolves type and property *names* at compile
+//! time, binding *values* only on creation. Compiling alone passes
 //!
 //!     textFormat: Text.Plaintext        // PlainText, note the capital T
 //!
-//! which is a §9.3 defence silently turning itself off: the binding evaluates
-//! to `undefined`, Qt falls back to `Text.AutoText`, and a feed title chosen by
-//! a remote operator is then interpreted as rich text.
+//! = §9.3 defence silently off: binding → `undefined`, Qt falls back to
+//! `Text.AutoText`, remote operator's feed title interpreted as rich text.
 //!
-//! Qt reports that as a runtime warning rather than an error, and the
-//! `qmetaobject` binding exposes no message handler, so each file is loaded in
-//! a CHILD PROCESS (this same test binary, re-executed) whose stderr the parent
-//! reads. That also sidesteps `QmlEngine::new()` building a `QApplication`,
-//! which may exist only once per process.
+//! Qt reports that as runtime warning, not error; `qmetaobject` exposes no
+//! message handler. So each file loads in CHILD PROCESS (this test binary
+//! re-executed), parent reads its stderr. Also sidesteps
+//! one-`QApplication`-per-process.
 //!
-//! What this still cannot see: a delegate's bindings. A delegate is
-//! instantiated per row, and these pages are created with empty models, so a
-//! nonexistent role inside one is never evaluated here. That case belongs to
-//! `qml_api_contract.rs`, which reads the QML statically and checks every role
-//! against the Rust models.
+//! Still blind to delegate bindings: delegates instantiate per row, pages
+//! created with empty models, so bad role inside one never evaluated here.
+//! `qml_api_contract.rs` covers that statically against Rust models.
 //!
 //! Run under `QT_QPA_PLATFORM=offscreen`; `make check` sets it.
 
-// Test code: see the note in vuo-core's lib.rs. The unwrap/panic denials
-// guard foreign-input paths in production, not assertions in tests.
+// Test code: see note in vuo-core's lib.rs. unwrap/panic denials guard
+// production foreign-input paths, not test assertions.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -44,30 +36,25 @@
 )]
 use qmetaobject::{CompilationMode, ComponentStatus, QString, QUrl, QmlComponent, QmlEngine};
 
-/// Set on the re-executed child to name the one file it should load.
+/// Set on re-executed child, naming the one file to load.
 const CHILD_VAR: &str = "VUO_QML_LOAD_ONE";
 
-/// What the child says once it has instantiated the file, and what the parent
-/// reads INSTEAD OF the exit code.
+/// What child prints once file instantiated; parent reads this INSTEAD OF exit
+/// code.
 ///
-/// The two are not the same claim. Qt reads images on a thread of its own, and
-/// a process that calls `exit` while one is mid-read runs Qt's static
-/// destructors out from under it: "`QMutex`: destroying locked mutex", and then
-/// a crash, in a process whose actual work was already finished. That crash
-/// says nothing at all about the QML -- but as an exit code it was
-/// indistinguishable from a file that would not load.
-///
-/// A second `Image` in TextArt.qml was enough to start provoking it on CI's
-/// runners, while sixty consecutive runs here never reproduced it once. So the
-/// child announces success at the moment it has it, and what happens on the
-/// way out is not the test's business. A crash BEFORE this line still fails,
-/// which is the case worth catching.
+/// Different claims. Qt reads images on own thread; `exit` mid-read runs Qt
+/// static destructors under it: "`QMutex`: destroying locked mutex", then
+/// crash, after real work finished. That crash says nothing about QML, but as
+/// exit code looks like failed load (seen on CI runners with second `Image` in
+/// TextArt.qml, never locally). Child announces success when it has it;
+/// teardown not test's business. Crash BEFORE this line still fails (case worth
+/// catching).
 const INSTANTIATED: &str = "VUO-QML-INSTANTIATED";
 
-/// Qt diagnostics that mean a binding did not do what the source says.
+/// Qt diagnostics meaning binding didn't do what source says.
 ///
-/// Qt logs these at warning level and carries on, so nothing fails without
-/// this list. They are matched as substrings of stderr.
+/// Qt logs at warning level and continues; nothing fails without this list.
+/// Matched as stderr substrings.
 const RUNTIME_FAILURES: &[&str] = &[
     "Unable to assign",
     "Cannot assign",
@@ -87,7 +74,7 @@ fn repo_root() -> std::path::PathBuf {
         .to_path_buf()
 }
 
-/// Load and INSTANTIATE one file, then exit. Runs only in the child.
+/// Load and INSTANTIATE one file, exit. Child only.
 fn load_one_and_exit(path: &str) -> ! {
     let root = repo_root();
     vuo_shim::register_qml_types();
@@ -96,8 +83,8 @@ fn load_one_and_exit(path: &str) -> ! {
     engine.add_import_path(QString::from(
         root.join("qml-stubs").to_string_lossy().to_string(),
     ));
-    // So that `import "pages"`-style relative resolution behaves as it does on
-    // a device, where everything lives under one datadir.
+    // So `import "pages"`-style relative resolution behaves as on device
+    // (everything under one datadir).
     engine.add_import_path(QString::from(
         root.join("qml").to_string_lossy().to_string(),
     ));
@@ -108,17 +95,17 @@ fn load_one_and_exit(path: &str) -> ! {
         CompilationMode::PreferSynchronous,
     );
     if component.status() == ComponentStatus::Error {
-        // Re-load through the engine purely so Qt prints its diagnostics; the
-        // binding does not expose `QQmlComponent::errors()`.
+        // Re-load through engine only so Qt prints diagnostics; binding doesn't
+        // expose `QQmlComponent::errors()`.
         eprintln!("COMPILE-ERROR");
         engine.load_file(QString::from(path));
         std::process::exit(2);
     }
-    // The point of the child: evaluate every binding.
+    // Child's point: evaluate every binding.
     let _ = component.create();
-    // Flushed by the newline -- Rust's stdout is line buffered -- so it has
-    // reached the pipe before anything teardown may do. Stdout on purpose:
-    // the parent reads the child's stdout for it, and Qt writes to stderr.
+    // Newline flushes (Rust stdout line-buffered): reaches pipe before
+    // teardown. Stdout on purpose: parent reads child's stdout for it; Qt
+    // writes stderr.
     #[allow(clippy::print_stdout)]
     {
         println!("{INSTANTIATED}");
@@ -186,12 +173,11 @@ fn every_qml_file_compiles_and_instantiates_against_the_silica_stubs() {
     );
 }
 
-/// Every `Qt.resolvedUrl("literal.qml")` must name a file that exists.
+/// Every `Qt.resolvedUrl("literal.qml")` names existing file.
 ///
-/// These sit inside `onClicked` handlers, so they are arbitrary JS: not
-/// resolved at compile time, and not reached by instantiating a page either.
-/// A typo here is a dead button on the device. There are only a handful of
-/// them in the whole app, so a literal check costs nothing.
+/// Inside `onClicked` handlers: arbitrary JS, not resolved at compile time nor
+/// by instantiating page. Typo = dead button on device. Handful in app: literal
+/// check costs nothing.
 #[test]
 fn every_page_reference_resolves_to_a_file() {
     let root = repo_root();
@@ -212,7 +198,7 @@ fn every_page_reference_resolves_to_a_file() {
                 let Some(end) = after.find('"') else { break };
                 let target = &after[..end];
                 rest = &after[end..];
-                // Exact case: QML resolves an import on a case-sensitive file system.
+                // Exact case: QML resolves imports on case-sensitive filesystem.
                 if std::path::Path::new(target)
                     .extension()
                     .is_none_or(|e| e != "qml")
@@ -239,14 +225,12 @@ fn every_page_reference_resolves_to_a_file() {
     );
 }
 
-/// No size or text in the article body may be gated on `visible`.
+/// No size or text in article body gated on `visible`.
 ///
-/// `visible` reads as the EFFECTIVE visibility, which is false for every item
-/// on a page the stack has hidden -- and the article is hidden whenever the
-/// image viewer is pushed over it. A block whose `height` read it collapsed to
-/// nothing then, the list lost everything below its header, and the reader
-/// came back from the viewer to the top of the article. The block kind says
-/// the same thing and does not change while the page is out of sight.
+/// `visible` = EFFECTIVE visibility, false for every item on page stack hid;
+/// article hidden whenever image viewer pushed over it. Block `height` reading
+/// it collapses, list loses everything below header, reader returns to article
+/// top. Block kind says same and doesn't change while page hidden.
 #[test]
 fn the_article_body_keeps_its_shape_while_the_page_is_hidden() {
     let path = repo_root().join("qml/pages/ArticlePage.qml");
@@ -268,20 +252,19 @@ fn the_article_body_keeps_its_shape_while_the_page_is_hidden() {
     );
 }
 
-/// Every texture the QML names must be there, and must be a coverage mask.
+/// Every texture QML names exists and is coverage mask.
 ///
-/// Two separate ways for the texture to come out wrong on a device, neither
-/// of which anything else here would catch:
+/// Two ways texture goes wrong on device, invisible elsewhere:
 ///
-///   - A `source:` that names no file. Qt reports a missing image as a
-///     warning on a channel this test's parent does not read, and the page
-///     simply comes up bare.
-///   - A mask that is not GRAYSCALE. `components/TextArt.qml` samples the
-///     RED channel for coverage, because that is where `scripts/png-mask.py`
-///     puts it. Re-export one of these as RGBA -- which any image editor
-///     will do by default, and which looks identical in a viewer, since the
-///     art is white with an alpha channel -- and every pixel's red is 1.0:
-///     the shader would tint the whole surface solid.
+///   - A `source:` that names no file. Qt reports a missing image as a warning
+///     on a channel this test's parent does not read, and the page simply comes
+///     up bare.
+///   - A mask that is not GRAYSCALE. `components/TextArt.qml` samples the RED
+///     channel for coverage, because that is where `scripts/png-mask.py` puts
+///     it. Re-export one of these as RGBA -- which any image editor will do by
+///     default, and which looks identical in a viewer, since the art is white
+///     with an alpha channel -- and every pixel's red is 1.0: the shader would
+///     tint the whole surface solid.
 #[test]
 fn every_texture_the_qml_names_is_a_mask_that_exists() {
     let root = repo_root();
@@ -303,7 +286,7 @@ fn every_texture_the_qml_names_is_a_mask_that_exists() {
             let after = &code[idx + "source: \"".len()..];
             let Some(end) = after.find('"') else { continue };
             let target = &after[..end];
-            // `image://theme/...` is Silica's own provider, not a file.
+            // `image://theme/...` = Silica's provider, not file.
             if std::path::Path::new(target)
                 .extension()
                 .is_none_or(|e| e != "png")
@@ -325,8 +308,8 @@ fn every_texture_the_qml_names_is_a_mask_that_exists() {
                 problems.push(format!("{where_} — `{target}` is not a PNG"));
                 continue;
             }
-            // IHDR is always first: 8 bytes of signature, 8 of chunk header,
-            // then width, height, bit depth, colour type.
+            // IHDR always first: 8 bytes signature, 8 chunk header, then width,
+            // height, bit depth, colour type.
             let depth = bytes.get(24).copied().unwrap_or(0);
             let colour = bytes.get(25).copied().unwrap_or(255);
             if (depth, colour) != (8, 0) {

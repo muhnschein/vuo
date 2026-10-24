@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Package the output of scripts/cross-build.sh as an aarch64 RPM.
+# Package scripts/cross-build.sh output as aarch64 RPM.
 #
-# rpm/harbour-vuo.spec stays the source of truth; this drives its %install and
-# %files half over an already-cross-built binary, because the SDK's own build
-# cannot run (docs/sdk-build.md). The output is a test package, not a release.
+# rpm/harbour-vuo.spec stays source of truth; this drives its %install/%files
+# half over cross-built binary (SDK build can't run, docs/sdk-build.md). Test
+# package, not release.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -12,15 +12,11 @@ ROOTFS="${1:-/home/user/sdk/rootfs}"
 TRIPLE=aarch64-unknown-linux-gnu
 BIN="target/$TRIPLE/release/harbour-vuo"
 
-# Build, every time, rather than packaging whatever happens to be on disk.
+# Build every time; never package whatever's on disk.
 #
-# This used to be a bare `[ -f "$BIN" ]` guard with "run scripts/cross-build.sh
-# first" in the message. That only catches a MISSING binary, never a stale one
-# -- so an RPM was once shipped to a device with thirteen hours of Rust changes
-# absent and only the QML fresh. Every new model role read as empty and every
-# new method was undefined, which on the device looked like five unrelated
-# feature bugs. Cargo makes the no-op case cheap; the guard did not make the
-# wrong case detectable.
+# Existence guard catches MISSING binary, never stale one: stale Rust + fresh
+# QML = new model roles empty, new methods undefined, looks like unrelated
+# feature bugs on device. Cargo no-op build cheap.
 "$ROOT/scripts/cross-build.sh" "$@"
 [[ -f "$BIN" ]] || { echo "cross-build.sh produced no $BIN" >&2; exit 1; }
 
@@ -30,11 +26,10 @@ TOP="$(mktemp -d)"
 trap 'rm -rf "$TOP"' EXIT
 mkdir -p "$TOP"/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
 
-# Compile the translations with the SDK's OWN lrelease, under qemu.
+# Compile translations with SDK's OWN lrelease, under qemu.
 #
-# The host's /usr/bin/lrelease is a qtchooser symlink resolving to a Qt that is
-# not installed here, and a .qm built by a newer Qt is not guaranteed readable
-# by the device's Qt 5.6 anyway. The SDK ships the matching one.
+# Host /usr/bin/lrelease = qtchooser symlink to uninstalled Qt; newer-Qt .qm not
+# guaranteed readable by device Qt 5.6. SDK ships matching one.
 SR_TR="$ROOTFS/srv/mer/targets/SailfishOS-${SDK_VERSION:-5.0.0.43}-aarch64"
 if [[ -x "$SR_TR/usr/lib64/qt5/bin/lrelease" ]] && ls translations/*.ts >/dev/null 2>&1; then
     echo "== compiling translations =="
@@ -53,8 +48,8 @@ if ls translations/*.qm >/dev/null 2>&1; then
 fi
 cp rpm/harbour-vuo-cross.spec "$TOP/SPECS/"
 
-# This box is x86_64 and the package is aarch64; without the compat entry
-# rpmbuild refuses with "No compatible architectures found for build".
+# Box x86_64, package aarch64; without compat entry rpmbuild refuses "No
+# compatible architectures found for build".
 cat > "$TOP/rpmrc" <<'RC'
 include: /usr/lib/rpm/rpmrc
 buildarch_compat: x86_64: aarch64

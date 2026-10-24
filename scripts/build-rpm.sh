@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Build a SailfishOS RPM with the Sailfish SDK.
+# Build SailfishOS RPM with Sailfish SDK.
 #
-# Rust needs the SDK's **Docker** build engine; the VirtualBox engine cannot
-# build it (§7). Expect the first build to be slow.
+# Rust needs SDK **Docker** build engine; VirtualBox engine can't (§7). First
+# build slow.
 #
 # Usage: scripts/build-rpm.sh [aarch64|armv7hl|i486] [extra sfdk args...]
 set -euo pipefail
@@ -33,8 +33,8 @@ cd "$ROOT"
 TARGET="SailfishOS-latest-${ARCH}"
 echo "== building harbour-vuo for ${ARCH} (target ${TARGET}) =="
 
-# --with vendor is not passed here: a local SDK build has network access, so
-# vendoring only slows it down. OBS forces it via the spec instead.
+# No --with vendor: local SDK build has network, vendoring only slows it. OBS
+# forces it via spec.
 sfdk -c target="$TARGET" build "$@"
 
 echo

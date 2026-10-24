@@ -1,13 +1,13 @@
 import QtQuick 2.6
-// Silica's edge-docked overlay panel. `show`/`hide` animate it in and out;
-// `open` is the settled state.
+// Silica edge-docked overlay panel. `show`/`hide` animate in/out; `open` =
+// settled state.
 Item {
     property bool open: false
     readonly property bool expanded: open
     property int dock: 0
     property bool modal: false
-    // The panel's own backdrop. Silica defaults it to a PanelBackground; an
-    // app may replace it with something opaque.
+    // Panel backdrop. Silica default PanelBackground; app may swap in opaque
+    // one.
     property Component background: null
     property int animationDuration: 500
     readonly property real visibleSize: 0

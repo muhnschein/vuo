@@ -26,12 +26,12 @@ import Sailfish.WebView 1.0
 WebViewPage {
     id: page
 
-    /// The article's link. http(s) only: validated by the core before it was
-    /// stored, and the same value "Open in browser" hands to the system.
+    /// Article link. http(s) only: core validated before storing; same value
+    /// "Open in browser" gives system.
     property string url: ""
 
-    /// True once the reader has been here. Set on Active, not Activating,
-    /// so a sideways flick that is started and abandoned fetches nothing.
+    /// True once reader visited. Set on Active, not Activating: abandoned
+    /// sideways flick fetches nothing.
     property bool _visited: false
 
     allowedOrientations: Orientation.All
@@ -40,8 +40,8 @@ WebViewPage {
         page._visited = true
     }
 
-    // Until the engine is up, the same header the loaded page carries, so
-    // the page has a name during the swipe rather than arriving blank.
+    // Until engine up, same header as loaded page: named during swipe, not
+    // blank.
     PageHeader {
         visible: !site.active
         title: qsTr("Website")
@@ -57,14 +57,14 @@ WebViewPage {
 
             header: PageHeader { title: qsTr("Website") }
 
-            // Set once rather than bound: the link is fixed for the life of
-            // the page, and this is the first moment the WebView exists.
+            // Set once, not bound: link fixed for page life; first moment
+            // WebView exists.
             Component.onCompleted: flickable.webView.url = page.url
 
             PullDownMenu {
                 MenuItem {
-                    // Reached by following links inside the site; the page
-                    // swipe is the platform's back and must stay that.
+                    // For links followed inside site; page swipe = platform
+                    // back, stays so.
                     text: qsTr("Back")
                     visible: flickable.webView.canGoBack
                     onClicked: flickable.webView.goBack()
@@ -75,9 +75,8 @@ WebViewPage {
                 }
             }
 
-            // A thin line under the header that grows with the load, so a
-            // slow site is seen to be slow rather than broken. The WebView
-            // draws its own spinner in the middle as well.
+            // Thin line under header growing with load: slow site looks slow,
+            // not broken. WebView draws own centre spinner too.
             Rectangle {
                 anchors.top: flickable.headerItem ? flickable.headerItem.bottom : flickable.top
                 anchors.left: flickable.left

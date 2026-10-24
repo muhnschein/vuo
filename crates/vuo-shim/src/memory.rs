@@ -1,42 +1,32 @@
-//! Handing the sync's peak back to the operating system.
+//! Handing sync's peak back to OS.
 //!
-//! A sync pass is the largest thing Vuo ever allocates. A page of entries
-//! arrives as compressed bytes, is inflated, is parsed into owned `String`s,
-//! and is written to the mirror; a scrape does the same for one article's
-//! whole body. Every byte of that is freed as soon as the pass ends -- and on
-//! glibc, freed is not the same as returned.
+//! Sync pass = largest thing Vuo allocates: page arrives compressed, inflated,
+//! parsed into owned `String`s, written to mirror; scrape same for one body.
+//! All freed when pass ends; on glibc freed ≠ returned.
 //!
-//! glibc gives a freed block back to the OS only when it happens to sit at the
-//! top of the heap, and even then only past `M_TRIM_THRESHOLD`. Anything
-//! freed below a still-live allocation stays mapped: the process keeps the
-//! address space, the kernel keeps the pages, and `ps` keeps reporting them.
-//! Worse, the mmap threshold is DYNAMIC -- glibc raises it, up to 32 MB, each
-//! time it sees a large mmapped block freed -- so the big allocations that
-//! would have been returned automatically stop being mmapped at all after the
-//! first few passes and start coming from the heap like everything else.
+//! glibc returns freed block only at top of heap, and past `M_TRIM_THRESHOLD`.
+//! Freed below a live allocation stays mapped: address space, pages, `ps` all
+//! keep it. mmap threshold DYNAMIC (raised up to 32 MB each time large mmapped
+//! block freed): after first passes big allocations stop being mmapped, come
+//! from heap like rest.
 //!
-//! The result is a process whose resident size is its worst pass rather than
-//! its working set, on a phone where that number is what gets it killed.
-//! [`release_free_memory`] is the one call that fixes it.
+//! Result: resident size = worst pass, not working set; on phone that number
+//! gets it killed. [`release_free_memory`] fixes it.
 
-/// Return every free page glibc is sitting on to the kernel.
+/// Return every free page glibc holds to kernel.
 ///
-/// Call this after work that peaked -- a sync pass, a scrape -- and not on the
-/// Qt thread: it takes each arena's lock in turn, so it is brief but it is not
-/// free, and the sync worker is the thread that can afford it.
+/// After work that peaked (sync pass, scrape), not on Qt thread: takes each
+/// arena's lock in turn; brief, not free; sync worker can afford it.
 ///
-/// A no-op where there is no glibc to ask. `malloc_trim` is a glibc extension:
-/// musl has no equivalent and neither does any other libc Vuo could be built
-/// against, so this compiles to nothing there rather than failing to link.
+/// No-op without glibc. `malloc_trim` = glibc extension; musl and others lack
+/// it: compiles to nothing there, no link failure.
 #[cfg(target_env = "gnu")]
 pub fn release_free_memory() {
-    // The only `unsafe` this crate writes by hand rather than generating; see
-    // the crate docs. `malloc_trim` takes a byte count to leave untrimmed at
-    // the top of the heap and returns whether it freed anything. It reads and
-    // writes only the allocator's own bookkeeping, touches no memory this
-    // program owns, takes each arena's lock while it works, and has no failure
-    // mode other than doing nothing -- so there is no precondition to get
-    // wrong and no state a caller could observe it through.
+    // Only hand-written (not generated) `unsafe` in crate; see crate docs.
+    // `malloc_trim` takes bytes to leave untrimmed at heap top, returns whether
+    // it freed anything. Touches only allocator bookkeeping, no program-owned
+    // memory, takes each arena lock, only failure mode = doing nothing: no
+    // precondition to get wrong, no caller-observable state.
     unsafe {
         malloc_trim(0);
     }
@@ -64,16 +54,13 @@ mod tests {
 
     /// §the freed peak actually goes back, rather than staying resident.
     ///
-    /// The shape is the one that matters, not an easier one: a large number of
-    /// heap-sized blocks freed while something ALLOCATED LATER is still alive
-    /// above them. `free` trims only the top of the heap, so that live block
-    /// pins everything below it however much of it is free -- which is exactly
-    /// what a sync pass leaves behind, and exactly what the allocator will not
-    /// undo on its own.
+    /// Shape that matters: many heap-sized blocks freed while something
+    /// ALLOCATED LATER lives above. `free` trims only heap top; live block pins
+    /// everything below, however free: exactly what sync pass leaves, what
+    /// allocator won't undo alone.
     ///
-    /// glibc only, because the call is glibc's. Skipped rather than failed
-    /// anywhere else, and skipped rather than failed where procfs is not
-    /// mounted.
+    /// glibc only (call is glibc's). Skipped, not failed, elsewhere and where
+    /// procfs absent.
     #[test]
     #[cfg(target_env = "gnu")]
     fn a_freed_peak_is_returned_to_the_operating_system() {
@@ -84,8 +71,8 @@ mod tests {
             return;
         };
 
-        // Touched, not merely reserved: an untouched page is not resident and
-        // would make this test pass without measuring anything.
+        // Touched, not just reserved: untouched page not resident; test would
+        // pass measuring nothing.
         let mut blocks: Vec<Vec<u8>> = (0..BLOCKS).map(|_| vec![1u8; BLOCK]).collect();
         let peak = resident_bytes().unwrap_or(baseline);
         assert!(
@@ -93,9 +80,8 @@ mod tests {
             "the fixture did not actually become resident: {baseline} -> {peak}"
         );
 
-        // The last block stays alive and everything under it goes. This is the
-        // pin: without it `free` walks the top of the heap down by itself and
-        // there is nothing left for the call under test to do.
+        // Last block stays alive, everything under goes. The pin: without it
+        // `free` walks heap top down itself, nothing left for call under test.
         let pin = blocks.pop();
         blocks.clear();
         blocks.shrink_to_fit();

@@ -7,106 +7,92 @@ Page {
 
     property var model
     property var feedModel
-    /// A fixed, translated label. Safe for PageHeader.
+    /// Fixed translated label. Safe for PageHeader.
     property string scopeLabel: qsTr("Unread")
-    /// A feed or category name when browsing one. FOREIGN TEXT: rendered only
-    /// through an explicit Text.PlainText Label, never through PageHeader.
+    /// Feed/category name when browsing one. FOREIGN TEXT: only via explicit
+    /// Text.PlainText Label, never PageHeader.
     property string title: ""
     /// 0 unread, 1 starred, 2 all, 3 feed, 4 category. See models::Scope.
     property int scopeKind: 0
     property int scopeId: 0
 
-    /// The scopes the tab strip offers, in strip order. The index-to-kind
-    /// mapping lives HERE and nowhere else: the strip's `currentIndex` is
-    /// DERIVED from `scopeKind` rather than stored beside it, so the
-    /// highlighted tab cannot drift out of step with what the model shows.
+    /// Strip scopes, strip order. Index-to-kind mapping lives HERE only: strip
+    /// `currentIndex` DERIVED from `scopeKind`, not stored; highlighted tab
+    /// can't drift from model.
     property var scopeTabKinds: [0, 1, 2]
-    /// Selection mode: this page was pushed over a tab, on that tab's own
-    /// model, for the reader to pick rows and act on them. See
-    /// EntryListView. No strip -- there is one list here, and swiping
-    /// sideways would be a swipe away from the selection -- and no
-    /// re-scoping, since the model is the tab's and already scoped.
+    /// Selection mode: pushed over tab, on tab's own model, reader picks rows
+    /// and acts. See EntryListView. No strip (one list; sideways swipe =
+    /// leaving selection), no re-scoping (tab model already scoped).
     property bool selecting: false
 
-    /// Feed and category pages are pushed with a name to show, so they keep
-    /// the PageHeader and get no strip. `indexOf` returning -1 is exactly that
-    /// case, so one expression drives both the strip and its visibility.
+    /// Feed/category pages pushed with name: keep PageHeader, no strip.
+    /// `indexOf` -1 = that case; one expression drives strip and visibility.
     property bool showScopeTabs: !page.selecting
                                  && page.scopeTabKinds.indexOf(page.scopeKind) >= 0
 
-    /// One EntryModel per tab, in `scopeTabKinds` order. Empty for a feed or
-    /// category view, which uses `model` instead.
+    /// One EntryModel per tab, `scopeTabKinds` order. Empty for feed/category
+    /// view (uses `model`).
     property var scopeModels: []
 
-    /// The model a pushed feed or category view scopes to itself.
+    /// Model pushed feed/category view scopes to itself.
     ///
-    /// Handed on rather than used here: this page passes it to FeedListPage,
-    /// which passes it back as the `model` of the page a feed opens into. It
-    /// is deliberately NOT any of `scopeModels`. `setScope` overwrites, and
-    /// nothing restores what it overwrote, so a feed view over a tab's model
-    /// left that tab showing the feed for the rest of the session.
+    /// Passed on, not used here: to FeedListPage, which passes it back as
+    /// `model` of feed page. NOT any of `scopeModels`: `setScope` overwrites,
+    /// nothing restores; tab model would show feed rest of session.
     property var browseModel: null
 
-    /// The model a search opens into. Like `browseModel`, one no tab shows:
-    /// the search page re-scopes whatever it is handed.
+    /// Model search opens into. Like `browseModel`, no tab shows it: search
+    /// page re-scopes what it gets.
     property var searchModel: null
 
-    /// Search mode: a search field heads the list, and the list shows what it
-    /// matches across the whole mirror. Entered by pushing an EntryListPage
-    /// with `searching` set, scope 5, over `searchModel`.
+    /// Search mode: search field heads list, list shows matches across whole
+    /// mirror. Entered by pushing EntryListPage with `searching`, scope 5, over
+    /// `searchModel`.
     property bool searching: false
 
-    /// The model whose refresh failures the banner speaks for.
+    /// Model whose refresh failures banner reports.
     ///
-    /// NOT `currentModel`. The worker leaves a failure in a slot that holds
-    /// exactly one, and the app-wide poll drains it into the first model it
-    /// polls -- so only that one model ever carries `syncError`, whatever the
-    /// page is showing. Naming it here is what lets a feed view, and the
-    /// Favourites and All tabs, report a failed refresh at all.
+    /// NOT `currentModel`. Worker leaves failure in one-item slot; app poll
+    /// drains it into first model polled, so only that model carries
+    /// `syncError`, whatever page shows. Naming it lets feed view, Favourites,
+    /// All report failed refresh.
     property var noticeModel: page.currentModel
 
     Component.onCompleted: page.applyScope()
 
-    // Re-assert this page's scope whenever it becomes the visible one.
+    // Re-assert scope whenever page becomes visible.
     //
-    // Every BROWSE page shares one model -- `browseModel`, handed down through
-    // FeedListPage -- so a second feed opened from the first one's pulley
-    // re-scopes the object the first is showing. Setting the scope only in
-    // Component.onCompleted would leave that scope stuck when the reader came
-    // back. Both hooks fire when a page is first shown, so the scope is
-    // applied twice there. That is deliberate: `onCompleted` alone cannot
-    // survive the back-navigation above, and relying on `Activating` alone
-    // would leave a page that somehow never got a status change showing
-    // nothing at all. The cost is one extra query against an already-open
-    // SQLite connection.
+    // All BROWSE pages share `browseModel` (via FeedListPage); second feed
+    // opened from first's pulley re-scopes object first shows. Scope only in
+    // Component.onCompleted = stuck after back. Both hooks fire on first show
+    // (scope applied twice) on purpose: `onCompleted` alone fails
+    // back-navigation; `Activating` alone fails page never getting status
+    // change. Cost: one extra query on open SQLite connection.
     //
-    // The reload it causes is wanted for its own sake, too: marking an article
-    // read from the article view changes the mirror but not this page's rows,
-    // so without a reload on the way back the entry would still be listed as
-    // unread until the next sync.
+    // Reload wanted anyway: marking read in article view changes mirror, not
+    // these rows; without reload entry listed unread until next sync.
     onStatusChanged: if (status === PageStatus.Activating) page.applyScope()
 
-    /// Scope the browse model this feed or category view was given.
+    /// Scope browse model this feed/category view got.
     ///
-    /// The tab scopes are NOT set here: each tab's model is scoped once, by
-    /// the list that owns it, and never re-scoped. Re-scoping a shared model
-    /// was what made a neighbouring tab impossible to keep populated.
+    /// Tab scopes NOT set here: each tab model scoped once by owning list,
+    /// never re-scoped (shared re-scoping can't keep neighbour tab populated).
     function applyScope() {
-        // Not in selection mode either: the model is a tab's, scoped once
-        // for the life of the app, and `setScope` starts a fresh list --
-        // which would drop the read rows the reader may be selecting.
+        // Not in selection mode either: tab model scoped once for app life;
+        // `setScope` starts fresh list, drops read rows reader may be
+        // selecting.
         if (page.model && !page.showScopeTabs && !page.selecting) {
             page.model.setScope(page.scopeKind, page.scopeId)
         }
     }
 
-    /// Move to the tab at `index`, from a tap on the strip.
+    /// Go to tab `index`, from strip tap.
     ///
-    /// The strip is a sibling of the pager, not a child of any one list, so
-    /// this is how a tap on it reaches the pager that owns them all.
+    /// Strip = pager's sibling, not child of any list; tap reaches pager this
+    /// way.
     function selectTab(index) {
         if (index === pager.currentIndex) {
-            // Tapping the tab you are already on goes back to the top.
+            // Tap current tab = back to top.
             if (pager.currentItem) {
                 pager.currentItem.scrollToTop()
             }
@@ -115,24 +101,23 @@ Page {
         pager.moveTo(index)
     }
 
-    /// How far the CURRENT tab is scrolled past its own top: positive when
-    /// scrolled down, NEGATIVE while the pulley is being pulled out.
+    /// How far CURRENT tab scrolled past own top: positive = down, NEGATIVE
+    /// while pulley pulled.
     ///
-    /// `contentY - originY` read off `currentItem` is exactly what Silica's
-    /// TabView does (private/TabView.qml:51, private/TabItem.qml:47-49), and
-    /// all three of the strip's behaviours below are its three uses of it.
+    /// `contentY - originY` off `currentItem` = Silica TabView
+    /// (private/TabView.qml:51, private/TabItem.qml:47-49); strip's three
+    /// behaviours below = its three uses.
     property real yOffset: pager.currentItem ? pager.currentItem.yOffset : 0
 
-    /// The model this page is showing -- the visible tab's, or the one model a
-    /// feed view has. The fallback for `noticeModel`, which is what the banner
-    /// actually reads.
+    /// Model page shows: visible tab's, or feed view's one model. Fallback for
+    /// `noticeModel` (what banner reads).
     property var currentModel: page.showScopeTabs
                                ? (page.scopeModels[pager.currentIndex] || null)
                                : page.model
 
     allowedOrientations: Orientation.All
 
-    /// The band across the top of the page that the strip occupies.
+    /// Top band strip occupies.
     readonly property real stripBand: page.showScopeTabs ? scopeTabs.height : 0
 
     /*
@@ -241,20 +226,19 @@ Page {
         PagedView {
             id: pager
 
-            // Shifted back up by the band, so the viewport starts at the top
-            // of the screen even though `viewport` starts below the strip.
+            // Shifted up by band: viewport starts at screen top though
+            // `viewport` starts below strip.
             x: 0
             y: -page.stripBand
             width: viewport.width
             height: page.height
 
-        // One page per tab -- or exactly one, with no swiping, for a feed or
-        // category view, which is reached by pushing a page and left by going
-        // back rather than by swiping sideways.
+        // One page per tab, or exactly one without swiping for feed/category
+        // view (pushed, left by back, not sideways swipe).
         model: page.showScopeTabs ? page.scopeTabKinds.length : 1
         interactive: page.showScopeTabs
-        // Every tab stays alive and populated, so swiping towards one shows
-        // its rows rather than an empty page that fills a moment later.
+        // Every tab alive and populated: swipe shows rows, not empty page
+        // filling late.
         cacheSize: page.showScopeTabs ? page.scopeTabKinds.length : 1
 
         Component.onCompleted: {
@@ -264,12 +248,10 @@ Page {
             }
         }
 
-        // `currentIndex` is driven imperatively, NOT bound.
+        // `currentIndex` driven imperatively, NOT bound.
         //
-        // A swipe writes this property from C++, and a QML binding that is
-        // written to is gone for good -- so binding it to the scope would work
-        // exactly until the first swipe, after which tapping a tab would stop
-        // moving the pager.
+        // Swipe writes it from C++; written binding gone for good. Bound to
+        // scope = works until first swipe, then tab taps stop moving pager.
         onCurrentIndexChanged: {
             if (page.showScopeTabs) {
                 page.scopeKind = page.scopeTabKinds[pager.currentIndex]
@@ -281,7 +263,7 @@ Page {
             height: pager.height
 
             hostPage: page
-            // Each tab has its own model, scoped once and never re-scoped.
+            // Each tab own model, scoped once, never re-scoped.
             entryModel: page.showScopeTabs ? page.scopeModels[index] : page.model
             current: pager.currentIndex === index
             scopeKind: page.showScopeTabs ? page.scopeTabKinds[index] : page.scopeKind
@@ -297,9 +279,8 @@ Page {
         }
     }
 
-    // Docked, not in a list's header: a notice must not move the rows the
-    // user is reading, and it has to be visible wherever they have scrolled
-    // to. See components/NoticeBanner.qml.
+    // Docked, not in list header: notice mustn't move rows being read, visible
+    // wherever scrolled. See components/NoticeBanner.qml.
     NoticeBanner {
         id: notice
 
@@ -307,14 +288,12 @@ Page {
         onActionTriggered: pageStack.push(Qt.resolvedUrl("SettingsPage.qml"))
     }
 
-    /// One string that changes exactly once per distinct failure.
+    /// String changing exactly once per distinct failure.
     ///
-    /// The banner is posted from a change handler rather than bound to
-    /// `syncError`, because a notice is an event: a binding would re-post the
-    /// same failure on every re-evaluation, and re-arm its dismiss timer with
-    /// it. `requestSync` clears both fields, so a retry produces an empty
-    /// token first and the next failure is a genuine change even when the
-    /// server says the same thing twice.
+    /// Posted from change handler, not bound to `syncError`: notice = event;
+    /// binding re-posts on every re-evaluation, re-arms dismiss timer.
+    /// `requestSync` clears both fields: retry gives empty token first, next
+    /// failure real change even with same server text.
     property string _failureToken: page.noticeModel
                                   ? (page.noticeModel.syncErrorIsAuth
                                      ? "auth" : page.noticeModel.syncError)

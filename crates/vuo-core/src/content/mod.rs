@@ -1,8 +1,7 @@
-//! Turning article HTML into something Silica can draw.
+//! Article HTML → something Silica can draw.
 //!
-//! The entry point is [`transform()`](transform::transform). See [`transform`](mod@transform)
-//! for why this is a tokenizer rather than a DOM walk, and [`block`] for why
-//! the output list is flat.
+//! Entry point: [`transform()`](transform::transform). [`transform`](mod@transform) says why
+//! tokenizer not DOM walk; [`block`] why output list is flat.
 
 pub mod block;
 pub mod transform;

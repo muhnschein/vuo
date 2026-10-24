@@ -1,54 +1,44 @@
-//! The sync engine.
+//! Sync engine.
 //!
-//! One pass, in this order:
+//! One pass, in order:
 //!
-//! 1. **Flush the outbox.** Before pulling, not after. The user's actions
-//!    reach the server first, so the pull that follows already reflects them
-//!    and the echo (every mutation bumps `changed_at`) lands as a no-op rather
-//!    than as a value racing the local one.
-//! 2. **Pull the taxonomy** — categories and feeds — so an entry's feed exists
-//!    before the entry does, and so an unsubscribed feed's entries are dropped.
+//! 1. **Flush outbox.** Before pulling: user's actions reach server first, pull
+//!    already reflects them, echo (every mutation bumps `changed_at`) lands as
+//!    no-op, not value racing local one.
+//! 2. **Pull taxonomy** (categories, feeds): entry's feed exists before entry;
+//!    unsubscribed feed's entries dropped.
 //! 3. **Pull entries incrementally**, keyset-paginated (see [`pull`]).
-//! 4. **Check for divergence** with one cheap counters request, and reconcile
-//!    deletions only if something actually disagrees or enough time has passed.
-//! 5. **Fetch a bounded batch of missing icons**, never all of them at once.
-//! 6. **Persist the cursor**, last, only if everything above succeeded.
+//! 4. **Check divergence** with one cheap counters request; reconcile deletions
+//!    only if something disagrees or enough time passed.
+//! 5. **Fetch bounded batch of missing icons**, never all at once.
+//! 6. **Persist cursor**, last, only if all above succeeded.
 //!
-//! No database transaction is ever held across an await. Each step does its
-//! network I/O, then opens a short transaction. A transaction held open for the
-//! duration of a request would block the UI's readers for however long the
-//! phone's signal takes, which is the opposite of §5's promise that the UI
-//! never waits on the network.
+//! No transaction held across await. Each step: network I/O, then short
+//! transaction. Transaction open during request blocks UI readers as long as
+//! signal takes: opposite of §5 (UI never waits on network).
 //!
-//! # Why the pass is as short as it can be made
+//! # Why pass is as short as possible
 //!
-//! Every step above is a request, and on a phone the cost of a request is not
-//! its bytes: it is the radio. A cellular modem that has gone idle must
-//! re-establish a connected state to send anything, and stays there for a tail
-//! timer afterwards -- so what a sync pass costs the battery tracks HOW LONG
-//! THE PASS IS, near enough, and not how much it transfers.
+//! Every step = request; on phone cost is radio, not bytes. Idle modem must
+//! reconnect to send, stays up for tail timer after: battery cost tracks PASS
+//! DURATION, not transfer size.
 //!
-//! Two things follow, and both are done above rather than described:
+//! Two consequences, both done above:
 //!
-//! - **Ask only for what changes.** The server's version gates two request
-//!   rules and one endpoint's existence, but it changes when someone upgrades
-//!   their Miniflux. It is cached in the mirror and re-asked once a day.
-//! - **Ask only when the answer is read.** The counters request is the only
-//!   evidence a server-side deletion leaves, so it survives on the quiet
-//!   passes -- that is the case it exists for. It is skipped where nothing
-//!   could act on it: a reconcile already due, or a server with no id
+//! - **Ask only for what changes.** Server version gates two request rules and
+//!   one endpoint's existence, changes only on Miniflux upgrade. Cached in
+//!   mirror, re-asked once a day.
+//! - **Ask only when answer is read.** Counters request = only evidence a
+//!   server-side deletion leaves: kept on quiet passes (its purpose). Skipped
+//!   where nothing could act on it: reconcile already due, or server without id
 //!   listing.
 //!
-//! And one that is deliberately NOT done, because it does not pay yet.
-//! Categories and feeds are independent, and so are icons of each other, so
-//! awaiting them in sequence holds the radio up for the sum of their latencies
-//! rather than the longest. But `reqwest` is built without the `http2`
-//! feature, so concurrent requests cannot share a connection: each one in
-//! flight is another TCP connection and another TLS handshake, and passes are
-//! far enough apart that the pool is always cold. Saving tens of milliseconds
-//! from a radio event with a multi-second tail, at the price of a second
-//! handshake, is a loss. Turn on HTTP/2 first; the concurrency is worth having
-//! after that and not before.
+//! One NOT done, doesn't pay yet. Categories and feeds independent, icons too;
+//! sequential awaits hold radio for sum of latencies, not max. But `reqwest`
+//! built without `http2`: concurrent requests can't share connection; each =
+//! extra TCP connection and TLS handshake, pool always cold between passes.
+//! Saving tens of ms from radio event with multi-second tail, at cost of extra
+//! handshake = loss. HTTP/2 first; concurrency after.
 
 pub mod pull;
 pub mod replay;
@@ -61,35 +51,27 @@ use crate::model::ServerVersion;
 /// Tuning for a [`sync`] pass.
 #[derive(Debug, Clone, Copy)]
 pub struct SyncOptions {
-    /// How often to run a full deletion reconcile even when nothing looks
-    /// wrong. Deletions are invisible to the cursor, so a periodic sweep is
-    /// the only backstop.
+    /// How often to run full deletion reconcile even when nothing looks wrong.
+    /// Deletions invisible to cursor; periodic sweep only backstop.
     pub reconcile_interval_secs: i64,
     /// Icons fetched per pass.
     ///
-    /// §11 asks how to avoid a thundering herd on first sync. This is the
-    /// answer: a first sync of 200 feeds fetches icons over several passes
-    /// instead of opening 200 connections behind the first screen the user
-    /// sees.
+    /// §11 thundering herd on first sync: 200 feeds fetch icons over several
+    /// passes, not 200 connections behind first screen.
     pub icons_per_pass: i64,
     /// Skip the outbox flush (used by a read-only refresh).
     pub skip_replay: bool,
-    /// How long a read, unfavourited article is kept locally, in seconds.
+    /// How long read, unfavourited article kept locally, seconds.
     ///
-    /// `None` -- the default -- keeps everything, which is what every version
-    /// before this one did and what an existing install must keep doing unless
-    /// its owner asks otherwise. See [`store::prune_entries`] for what is
-    /// never pruned whatever this says.
+    /// `None` (default) keeps everything; existing install keeps that unless
+    /// owner asks. Never pruned whatever this says: [`store::prune_entries`].
     pub retention_secs: Option<i64>,
-    /// How long a recorded server version is trusted before it is asked for
-    /// again, in seconds.
+    /// How long recorded server version trusted before re-asking, seconds.
     ///
-    /// A version changes when the instance's owner upgrades it. Asking every
-    /// pass cost one request per pass to learn the same answer; asking once a
-    /// day costs one in twenty-four at an hourly interval, and the worst case
-    /// of a stale answer is one pass that uses the previous era's request
-    /// rules against a server that has just been upgraded -- which the next
-    /// pass corrects, and which the cursor is already designed to survive.
+    /// Version changes when owner upgrades. Asking every pass = one request per
+    /// pass for same answer; daily = one in twenty-four at hourly interval.
+    /// Stale worst case: one pass uses previous era's rules against
+    /// just-upgraded server; next pass corrects, cursor designed to survive.
     pub server_version_ttl_secs: i64,
 }
 
@@ -120,28 +102,26 @@ pub struct SyncReport {
     pub entries_pruned: usize,
     /// `true` when a deletion reconcile ran to completion.
     pub reconciled: bool,
-    /// The server version the pass used: the cached one, a fresh answer, or
-    /// `"unknown"` when the server would not say. `None` only when the pass
-    /// stopped after the flush on a credential failure.
+    /// Server version pass used: cached, fresh, or `"unknown"` when server
+    /// won't say. `None` only when pass stopped after flush on credential
+    /// failure.
     pub server_version: Option<String>,
 }
 
 /// Run one full sync pass.
 ///
-/// A credential failure during the outbox flush is not an error: the pass
-/// stops there and returns `Ok` with [`ReplayOutcome::auth_failed`] set.
-/// Failures to fetch the server version, the counters or an icon are
-/// absorbed rather than failing the pass.
+/// Credential failure during flush not error: pass stops, returns `Ok` with
+/// [`ReplayOutcome::auth_failed`] set. Failures fetching server version,
+/// counters, icon absorbed.
 ///
 /// # Errors
 ///
-/// - [`Error::Transport`], [`Error::Http`] or [`Error::Protocol`] when
-///   pulling categories, feeds or entries fails, or a deletion reconcile's
-///   id listing fails.
-/// - [`Error::Db`] when reading or writing the mirror fails at any step.
+/// - [`Error::Transport`], [`Error::Http`] or [`Error::Protocol`] when pulling
+///   categories, feeds, entries fails, or reconcile's id listing fails.
+/// - [`Error::Db`] when mirror read/write fails at any step.
 ///
-/// The sync cursor is saved only at the end, so the next pass re-reads
-/// whatever entry window a failed one did not finish.
+/// Cursor saved only at end: next pass re-reads window failed one didn't
+/// finish.
 ///
 /// [`Error::Transport`]: crate::error::Error::Transport
 /// [`Error::Http`]: crate::error::Error::Http
@@ -158,21 +138,20 @@ pub async fn sync(
     let generation = state.sync_generation.saturating_add(1);
     let now = chrono::Utc::now().timestamp();
 
-    // 1. The user's own actions go first.
+    // 1. User's own actions first.
     if !options.skip_replay {
         report.replay = replay::flush(db, client).await?;
         if report.replay.auth_failed {
-            // Pulling would fail the same way. Surface the credential problem
-            // rather than burying it under a network error.
+            // Pull would fail same way. Surface credential problem, don't bury
+            // under network error.
             return Ok(report);
         }
     }
 
-    // Version gating: several request rules and one endpoint's existence
-    // depend on it, and guessing high means calling endpoints that 404.
+    // Version gating: request rules and one endpoint's existence depend on it;
+    // guessing high calls endpoints that 404.
     //
-    // Cached in the mirror, because the answer changes when the instance's
-    // owner upgrades their Miniflux and not otherwise. See
+    // Cached in mirror: changes only on Miniflux upgrade. See
     // `SyncOptions::server_version_ttl_secs`.
     let cached_version = state
         .server_version_checked_at
@@ -183,11 +162,10 @@ pub async fn sync(
         Some(version) => (version, state.server_version_checked_at),
         None => match client.version().await {
             Ok(version) => (version, Some(now)),
-            // A failed check is not an answer. The version recorded last time
-            // is still the best guess: falling back to the oldest supported
-            // one would skip a due reconcile and record the wrong era, for a
-            // server that has not changed. The check time is left alone, so
-            // the next pass asks again.
+            // Failed check ≠ answer. Last recorded version still best guess:
+            // oldest-supported fallback would skip due reconcile and record
+            // wrong era for unchanged server. Check time untouched: next pass
+            // asks again.
             Err(e) => {
                 tracing::warn!(error = %e, "could not check the server version");
                 let recorded = state
@@ -207,25 +185,20 @@ pub async fn sync(
     pull::taxonomy(db, client, generation).await?;
     report.pull = pull::entries(db, client, state.cursor_changed_after, generation).await?;
 
-    // 4. Deletions are invisible to the cursor, so they need their own signal.
+    // 4. Deletions invisible to cursor: need own signal.
     let due = state
         .last_full_reconcile_at
         .is_none_or(|last| now.saturating_sub(last) >= options.reconcile_interval_secs);
-    // The counters request is spent only where its answer can change what
-    // this pass does.
+    // Counters request spent only where answer can change this pass.
     //
-    // It CANNOT be skipped on a quiet pass, and it is worth saying why, since
-    // that is the tempting version of this optimisation and it is wrong: a
-    // server-side deletion is invisible to the cursor by construction (see
-    // `pull`'s "What the cursor cannot see"), so a pass that pulled nothing is
-    // exactly the pass where a count mismatch is the only evidence there is.
-    // Gating on pull activity would quietly disable the deletion backstop.
+    // CANNOT skip on quiet pass (tempting, wrong): server-side deletion
+    // invisible to cursor by construction (`pull`'s "What the cursor cannot
+    // see"); pass that pulled nothing = exactly where count mismatch is only
+    // evidence. Gating on pull activity silently disables deletion backstop.
     //
-    // What it can be skipped on is the two cases where the answer is not read:
-    // a reconcile already due runs whatever the counters say, and a server
-    // with no id listing has nothing that could act on divergence -- there the
-    // request bought a log line and a round trip. Modest: one request a day on
-    // a current server, one per pass on a pre-2.3 one.
+    // Skippable where answer unread: reconcile already due runs regardless;
+    // server without id listing can't act on divergence. Modest: one
+    // request/day on current server, one/pass on pre-2.3.
     let worth_asking = !due && version.has_entry_ids_endpoint();
     let diverging = if worth_asking {
         pull::diverging_feeds(db, client).await.unwrap_or_default()
@@ -235,36 +208,24 @@ pub async fn sync(
     if version.has_entry_ids_endpoint() && (due || !diverging.is_empty()) {
         let outcome = pull::reconcile(db, client).await?;
         report.entries_deleted = outcome.deleted;
-        // Only a reconcile that actually completed counts. Recording an
-        // aborted one would stamp `last_full_reconcile_at` and defer the
-        // deletion backstop for a whole interval on a mirror that was never
-        // checked -- and an abort is not rare: any concurrent write tears the
+        // Only completed reconcile counts. Recording aborted one stamps
+        // `last_full_reconcile_at`, defers backstop a whole interval on
+        // unchecked mirror. Aborts not rare: any concurrent write tears
         // listing.
         report.reconciled = outcome.completed;
     }
-    // There used to be an `else if !diverging.is_empty()` here, logging that an
-    // older server's feeds diverged with no id listing to reconcile against.
-    // It is gone with the request that fed it: `worth_asking` leaves
-    // `diverging` empty on exactly the servers that branch was about, so
-    // keeping it would be a branch that can no longer be taken. The behaviour
-    // it described -- let the periodic refresh handle it, rather than
-    // re-pulling the corpus -- is unchanged, because it never did anything
-    // else.
 
     // 5.
     report.icons_fetched = fetch_icons(db, client, options.icons_per_pass).await?;
 
-    // 6. Retention, last of the mirror-changing steps.
+    // 6. Retention, last mirror-changing step.
     //
-    // After the pull and after the reconcile, not before: pruning first would
-    // delete rows this pass is about to re-write, and pruning before the
-    // reconcile would shrink the local side of a comparison the reconcile is
-    // still making.
+    // After pull and reconcile: pruning first deletes rows pass is about to
+    // re-write; before reconcile shrinks local side of comparison still
+    // running.
     //
-    // Off unless the user turned it on. The mirror holding every article the
-    // phone has ever seen is a disk problem, not a correctness one, and
-    // deleting the reader's articles is not a thing to start doing on their
-    // behalf because they installed an update.
+    // Off unless user enabled. Mirror holding everything = disk problem, not
+    // correctness; don't start deleting reader's articles because of an update.
     if let Some(keep_for) = options.retention_secs.filter(|s| *s > 0) {
         let cutoff = now.saturating_sub(keep_for);
         report.entries_pruned = db.with_tx(|tx| store::prune_entries(tx, cutoff))?;
@@ -276,7 +237,7 @@ pub async fn sync(
         }
     }
 
-    // 7. Only now, with everything above committed.
+    // 7. Only now, everything above committed.
     let next = store::SyncState {
         cursor_changed_after: report.pull.next_cursor.or(state.cursor_changed_after),
         sync_generation: generation,
@@ -294,11 +255,10 @@ pub async fn sync(
     Ok(report)
 }
 
-/// Which deletion regime a server implements.
+/// Which deletion regime server implements.
 ///
-/// Recorded for diagnosis. Miniflux changed regimes at 2.3.0: before it,
-/// deletion was a soft `status=removed` that the API exposed; from 2.3.0 an
-/// entry is hard-deleted with no observable trace at all.
+/// For diagnosis. Miniflux changed at 2.3.0: before, soft `status=removed`
+/// exposed by API; from 2.3.0, hard delete, no observable trace.
 fn era_label(version: &ServerVersion) -> &'static str {
     if version.has_entry_ids_endpoint() {
         "hard-delete-with-id-listing"
@@ -321,9 +281,9 @@ async fn fetch_icons(db: &mut Database, client: &MinifluxClient, limit: i64) -> 
         let wire = match client.feed_icon(feed_id.get()).await {
             Ok(w) => w,
             Err(e) => {
-                // A missing or broken icon is never a reason to fail a sync --
-                // but it IS a reason to stop asking, or this feed starves every
-                // one behind it in the batch on every future sync.
+                // Missing or broken icon never fails sync, but IS reason to
+                // stop asking, else this feed starves every one behind it each
+                // sync.
                 tracing::debug!(feed = %feed_id, error = %e, "could not fetch a feed icon");
                 db.with_tx(|tx| store::record_icon_failure(tx, feed_id))?;
                 continue;

@@ -24,29 +24,26 @@ import Vuo 1.0
 Dialog {
     id: dialog
 
-    /// Raised once the account has been written: the root window fetches.
+    /// Raised once account written: root window fetches.
     ///
-    /// A signal of its own rather than the root window handling `accepted`.
-    /// A QML signal handler is a property, so an `onAccepted` on the
-    /// instantiation would REPLACE the one below rather than run beside it,
-    /// and the account would silently never be saved.
+    /// Own signal, not root window handling `accepted`. QML signal handler =
+    /// property; `onAccepted` on instantiation REPLACES one below, account
+    /// silently never saved.
     signal configured()
 
     allowedOrientations: Orientation.All
 
-    // Trimmed, because the Rust side trims before it stores: a form filled
-    // with spaces would look complete and save nothing.
+    // Trimmed: Rust trims before storing; all-spaces form looks complete, saves
+    // nothing.
     canAccept: serverField.text.trim().length > 0 && keyField.text.trim().length > 0
 
-    // `acceptDestination` is the entry list, set by the root window, which
-    // owns that Component. Replace rather than push: the welcome page put this
-    // dialog in its own place, so the stack is one page deep throughout and
-    // the article list ends up as the app's root, with nothing behind it to
-    // swipe back into.
+    // `acceptDestination` = entry list, set by root window (owns Component).
+    // Replace, not push: welcome page put dialog in own place; stack one deep
+    // throughout, article list ends as root, nothing behind to swipe back to.
     acceptDestinationAction: PageStackAction.Replace
 
-    // Backed by Rust: writes the account file (mode 0600, outside the SQLite
-    // mirror) and hands the account to the sync worker.
+    // Rust-backed: writes account file (mode 0600, outside SQLite mirror),
+    // hands account to sync worker.
     Settings {
         id: settings
         onConnectionTested: {
@@ -56,8 +53,8 @@ Dialog {
         }
     }
 
-    // The worker answers on its own thread, so its result waits in a slot the
-    // UI drains. The same poll the settings page runs, for the same reason.
+    // Worker answers on own thread; result waits in slot UI drains. Same poll
+    // as settings page, same reason.
     Timer {
         id: noticePoll
         interval: 400
@@ -70,17 +67,14 @@ Dialog {
         }
     }
 
-    // The stored defaults -- images, sync interval, when an article counts as
-    // read -- into this object, so that saving carries them rather than
-    // `i32::default()`. Nothing is shown from them here; this screen asks for
-    // the account and nothing else. Without it a first run saved Strict images
-    // and "Manual only" sync, because zero is what an unloaded Rust field
-    // holds and zero is the first entry of both lists.
+    // Stored defaults (images, sync interval, read threshold) into object so
+    // save carries them, not `i32::default()`. Nothing shown; screen asks only
+    // for account. Without it first run saves Strict images + "Manual only"
+    // sync (zero = unloaded Rust field = first entry of both lists).
     Component.onCompleted: settings.reload()
 
-    // One way, on accept: nothing here binds a field back to the object it
-    // writes, which is what made the settings page overwrite what it had just
-    // loaded (see SettingsPage.ready).
+    // One way, on accept: no field bound back to object it writes (see
+    // SettingsPage.ready).
     onAccepted: {
         settings.serverUrl = serverField.text
         settings.apiKey = keyField.text
@@ -124,10 +118,9 @@ Dialog {
                 id: keyField
                 width: parent.width
                 label: qsTr("API key")
-                // Not a password field by accident: an API key is a
-                // credential, and shoulder-surfing is a real threat on a
-                // phone. §4 prefers key auth precisely so it can be revoked
-                // per device.
+                // Password field on purpose: API key = credential,
+                // shoulder-surfing real on phone. §4 prefers key auth:
+                // revocable per device.
                 echoMode: TextInput.Password
                 inputMethodHints: Qt.ImhNoAutoUppercase | Qt.ImhNoPredictiveText
             }
@@ -142,10 +135,9 @@ Dialog {
                 text: qsTr("Create a key in Miniflux under Settings → API Keys.")
             }
 
-            // Optional, and worth offering here rather than only in Settings:
-            // a wrong key typed on a phone keyboard is the likeliest way this
-            // screen goes wrong, and finding out now beats finding out from an
-            // empty article list.
+            // Optional, offered here not only in Settings: mistyped key on
+            // phone keyboard = likeliest failure; find out now, not from empty
+            // list.
             Button {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: qsTr("Test connection")
@@ -167,8 +159,8 @@ Dialog {
                 x: Theme.horizontalPageMargin
                 width: parent.width - Theme.horizontalPageMargin * 2
                 wrapMode: Text.Wrap
-                // `detail` is the server's own text on failure and a username
-                // on success. Foreign either way (§9.3).
+                // `detail` = server text on failure, username on success.
+                // Foreign either way (§9.3).
                 textFormat: Text.PlainText
                 font.pixelSize: Theme.fontSizeExtraSmall
                 color: ok ? Theme.highlightColor : Theme.errorColor

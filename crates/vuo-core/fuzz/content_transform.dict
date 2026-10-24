@@ -1,5 +1,5 @@
-# The tag and attribute shapes the transform branches on. Without these the
-# fuzzer spends its budget discovering that HTML has angle brackets.
+# Tag and attribute shapes transform branches on. Saves fuzzer discovering angle
+# brackets.
 "<p>"
 "</p>"
 "<div>"
@@ -29,7 +29,7 @@
 "<sub>"
 "<figure>"
 "<figcaption>"
-# Elements the transform must drop entirely rather than render.
+# Elements transform must drop entirely.
 "<script>"
 "<style>"
 "<svg>"
@@ -38,7 +38,7 @@
 "<embed>"
 "<meta>"
 "<input>"
-# Attributes and URL shapes: only http(s) may survive into a link or an image.
+# Attributes and URL shapes: only http(s) may survive into link or image.
 "href=\""
 "src=\""
 "alt=\""
@@ -46,7 +46,7 @@
 "http://e.example/"
 "javascript:"
 "data:image/png;base64,"
-# Entities, so escaping paths get exercised.
+# Entities, to exercise escaping paths.
 "&lt;"
 "&gt;"
 "&amp;"

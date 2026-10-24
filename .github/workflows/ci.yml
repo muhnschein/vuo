@@ -1,12 +1,8 @@
-# The host CI gate.
+# Host CI gate.
 #
-# §8: "`make check` runs exactly what CI runs, from a clean checkout, with no
-# phone, no server account, and no network." This workflow is therefore
-# deliberately thin: it installs dependencies and calls `make check`. If a
-# contributor's local `make check` passes, this passes.
-#
-# Device RPM builds need the SailfishOS SDK, which does not run on stock
-# runners, so they stay local or on OBS (§8.1).
+# §8: `make check` = exactly what CI runs, clean checkout, no phone, no server
+# account, no network. So workflow stays thin: install deps, call `make check`.
+# Local `make check` green → this green.
 
 name: CI
 
@@ -16,17 +12,14 @@ on:
   pull_request:
   workflow_dispatch:
 
-# Nothing here writes. Every job checks out, builds and reports through the
-# check run the Actions runtime raises on its own; none of them touch the
-# contents, issues or pull-request APIs. Saying so pins the floor, so a step
-# added later cannot quietly inherit a token that can push.
+# Nothing here writes; no job touches contents, issues or PR APIs. Pins floor so
+# later step can't inherit token that can push.
 permissions:
   contents: read
 
 env:
   CARGO_TERM_COLOR: always
-  # A phone build has no incremental cache either, and this keeps CI closer to
-  # what the device build does.
+  # Phone build has no incremental cache either; keeps CI close to device build.
   CARGO_INCREMENTAL: 0
 
 jobs:
@@ -36,16 +29,15 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
-          # Nothing here pushes with git, so the token is not left behind in
-          # .git/config for a later step to find. Every checkout in this file.
+          # Nothing pushes with git: token not left in .git/config. Every
+          # checkout here.
           persist-credentials: false
 
       - name: Install Qt and packaging tools
         run: |
           sudo apt-get update
-          # The -dev packages omit the QtQuick runtime plugin, which is a
-          # confusing failure if missed (§8.1): QML compiles but nothing can
-          # instantiate a QtQuick item.
+          # -dev packages omit QtQuick runtime plugin (§8.1): QML compiles but
+          # nothing can instantiate QtQuick item.
           sudo apt-get install -y --no-install-recommends \
             qtbase5-dev \
             qtdeclarative5-dev \
@@ -53,9 +45,8 @@ jobs:
             qml-module-qtquick2 \
             desktop-file-utils
 
-      # The toolchain is rust-toolchain.toml's: rustup installs the pinned
-      # release, with rustfmt and clippy, the first time cargo runs. No
-      # action, so there is no pin to keep on someone else's branch.
+      # Toolchain from rust-toolchain.toml: rustup installs pinned release with
+      # rustfmt and clippy on first cargo run. No action, no pin to keep.
       - run: rustc --version && cargo --version
 
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
@@ -65,8 +56,8 @@ jobs:
         with:
           tool: cargo-deny
 
-      # For `make check`'s workflow-lint, which reads these workflows offline.
-      # scheduled.yml runs the same version online.
+      # For `make check` workflow-lint (offline). scheduled.yml runs same
+      # version online.
       - name: Install zizmor
         uses: taiki-e/install-action@f7e5d7c961414b23f5b25b2da9294395d08513ad # v2.87.26
         with:
@@ -75,9 +66,9 @@ jobs:
       - name: make check
         run: make check
 
-      # Needs crates.io, so it is not part of `make check` (docs/scope.md §8).
-      # What it guards is a Harbour rule: third_party/qmetaobject is what keeps
-      # QtWidgets out of the binary. See docs/packaging.md.
+      # Needs crates.io, so not in `make check` (docs/scope.md §8). Guards
+      # Harbour rule: third_party/qmetaobject keeps QtWidgets out of binary. See
+      # docs/packaging.md.
       - name: make vendor-check
         run: make vendor-check
 
@@ -89,9 +80,8 @@ jobs:
         with:
           persist-credentials: false
 
-      # §7: the SDK ships an older Rust than current stable. This job exists so
-      # a dependency bump cannot silently break the device build -- the failure
-      # mode it prevents is discovering it during a release.
+      # §7: SDK ships older Rust than stable. Job stops dependency bump silently
+      # breaking device build.
       - name: Read the pinned MSRV
         id: msrv
         run: |
@@ -99,9 +89,8 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "workspace rust-version is $version"
 
-      # Through the environment, not spliced into the script: a `${{ }}` in
-      # `run:` is pasted in as shell text before the shell reads it, and this
-      # one is whatever Cargo.toml says.
+      # Via env, not spliced into script: `${{ }}` in `run:` becomes shell text,
+      # and value comes from Cargo.toml.
       - name: Install the floor
         env:
           MSRV: ${{ steps.msrv.outputs.version }}
@@ -110,16 +99,11 @@ jobs:
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
 
       - name: cargo check on the floor
-        # `cargo +VERSION`, NOT a bare `cargo`. rust-toolchain.toml pins a
-        # stable release, and a rustup toolchain FILE overrides the
-        # toolchain this job installs -- so the bare `cargo check` that used to
-        # be here ran on stable every single time. The job installed the MSRV,
-        # ignored it, and reported success; the device build was meanwhile
-        # impossible. Verified by reproducing it: with 1.75 as the rustup
-        # default, `cargo --version` in this repo still answers 1.94.
+        # `cargo +VERSION`, not bare `cargo`: rust-toolchain.toml overrides
+        # toolchain this job installs, so bare `cargo check` runs stable.
         #
-        # --locked: the committed lockfile is what OBS builds offline, so the
-        # check has to apply to those exact versions.
+        # --locked: OBS builds committed lockfile offline; check those exact
+        # versions.
         env:
           MSRV: ${{ steps.msrv.outputs.version }}
         run: |
@@ -140,27 +124,23 @@ jobs:
         uses: taiki-e/install-action@f7e5d7c961414b23f5b25b2da9294395d08513ad # v2.87.26
         with:
           tool: cargo-fuzz
-      # §8.3: "Run short in PR CI, long on a schedule." These two targets are
-      # the code paths that eat attacker-influenced bytes.
+      # §8.3: short in PR CI, long on schedule. These two targets eat
+      # attacker-influenced bytes.
       - name: Fuzz the content transform and the JSON deserialiser
         env:
-          # rust-toolchain.toml pins a stable release for everyone, which
-          # OVERRIDES the nightly installed above -- so cargo-fuzz's
-          # -Zsanitizer was being handed to a stable rustc and rejected.
-          # RUSTUP_TOOLCHAIN takes precedence over the toolchain file.
+          # rust-toolchain.toml overrides nightly installed above; stable rustc
+          # rejects cargo-fuzz's -Zsanitizer. RUSTUP_TOOLCHAIN beats toolchain
+          # file.
           RUSTUP_TOOLCHAIN: nightly
         run: |
-          # cargo-fuzz defaults --target to the triple IT was built for, and
-          # the prebuilt binary install-action fetches is musl-static. A
-          # sanitizer cannot be linked against a static libc, so the build
-          # fails with "sanitizer is incompatible with statically linked libc"
-          # and, confusingly, "can't find crate for `core`". Pin the target to
-          # the actual host instead of inheriting the tool's own.
+          # cargo-fuzz defaults --target to its own build triple; install-action
+          # binary is musl-static, and sanitizer can't link static libc
+          # ("sanitizer is incompatible with statically linked libc", "can't
+          # find crate for `core`"). Pin host triple.
           HOST=$(rustc -vV | sed -n 's/^host: //p')
           echo "fuzzing for host target $HOST"
-          # fuzz/corpus/ is gitignored, so without this every run starts from
-          # an empty corpus -- and from empty, 60 seconds never reaches the
-          # assertions these targets exist for. See scripts/fuzz-seed.sh.
+          # fuzz/corpus/ gitignored: without seeds, 60 s from empty never
+          # reaches the assertions. See scripts/fuzz-seed.sh.
           scripts/fuzz-seed.sh content_transform entry_deserialise
           cd crates/vuo-core/fuzz
           for target in content_transform entry_deserialise; do

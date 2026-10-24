@@ -1,19 +1,17 @@
-//! Snapshot tests for the HTML → block transform.
+//! Snapshot tests for HTML → block transform.
 //!
 //! §8.3: *`insta` over a corpus of real article HTML — malformed markup, deep
 //! nesting, tables, `<pre>`, figures. Cheap to write, and the failures are
 //! legible diffs rather than a rendering bug reported months later.*
 //!
-//! The corpus in `tests/corpus/` is hand-written to cover the shapes that
-//! paragraph names, plus a hostile sample. It is a stand-in for samples pulled
-//! from real feeds, not a replacement: when a real article renders wrongly,
-//! the fix is to add it here as a new corpus file, watch the snapshot capture
-//! the bug, and then fix the transform.
+//! `tests/corpus/` hand-written: shapes that paragraph names plus hostile
+//! sample. Stand-in for real feed samples, not replacement: article renders
+//! wrongly → add it as corpus file, watch snapshot capture bug, fix transform.
 //!
-//! Review a diff with `cargo insta review`.
+//! Review diff with `cargo insta review`.
 
-// Test code: see the note in vuo-core's lib.rs. The unwrap/panic denials
-// guard foreign-input paths in production, not assertions in tests.
+// Test code: see note in vuo-core's lib.rs. unwrap/panic denials guard
+// production foreign-input paths, not test assertions.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -27,7 +25,7 @@ use vuo_core::content::{transform, MediaPolicy, TransformContext};
 fn context() -> TransformContext {
     let instance = url::Url::parse("https://miniflux.example/").expect("instance url");
     TransformContext {
-        // Strict, so the snapshots also record which media is refused.
+        // Strict: snapshots also record which media refused.
         media: MediaPolicy::ProxyThroughInstance {
             instance: instance.clone(),
             extra_trusted: Vec::new(),
@@ -38,8 +36,8 @@ fn context() -> TransformContext {
     }
 }
 
-/// Render a document as compact text, so a snapshot diff is readable rather
-/// than being a wall of derived-Debug output.
+/// Render document as compact text: readable snapshot diff, not wall of derived
+/// Debug.
 fn render(document: &vuo_core::content::Document) -> String {
     use std::fmt::Write as _;
     use vuo_core::content::BlockKind;
@@ -85,20 +83,15 @@ fn render(document: &vuo_core::content::Document) -> String {
                 None => format!("img[{fetch:?}] {src} alt={alt:?}"),
             },
             BlockKind::Table { rows } => {
-                // Every cell, not just the row count. `format!("table: {} rows")`
-                // put each cell's text, styling, links and header flag OUTSIDE
-                // the snapshot entirely: tables.html, whose whole point is
-                // <th>Implementation</th> and "1.20 s", recorded as the single
-                // line "table: 3 rows", so truncating every cell to its first
-                // character was a change the corpus could not see.
+                // Every cell, not just row count: cell text, styling, links,
+                // header flag all in snapshot (tables.html's point is
+                // <th>Implementation</th> and "1.20 s").
                 //
-                // What it records is what the transform DOES, warts included:
-                // malformed.snap shows "A cell with no rowTrailing text..."
-                // running together, because an unclosed <table> leaves the
-                // following paragraph's text in the same span run as the
-                // cell's. That is worth seeing rather than hiding; it is
-                // cosmetic, on malformed input, and fixing it belongs with the
-                // span-merge logic rather than here.
+                // Records what transform DOES, warts included: malformed.snap
+                // shows "A cell with no rowTrailing text..." run together;
+                // unclosed <table> leaves following paragraph's text in cell's
+                // span run. Cosmetic, malformed input; fix belongs with
+                // span-merge logic, not here.
                 let mut s = format!("table: {} rows", rows.len());
                 for row in rows {
                     let cells: Vec<String> = row
@@ -153,11 +146,10 @@ fn corpus_renders_stably() {
     }
 }
 
-/// The hostile sample gets assertions as well as a snapshot.
+/// Hostile sample gets assertions and snapshot.
 ///
-/// A snapshot records what the transform *does*; these record what it must
-/// *never* do. A snapshot alone would happily bless a regression the moment
-/// someone ran `cargo insta accept` without reading the diff.
+/// Snapshot records what transform *does*; these record what it must *never*
+/// do. Snapshot alone blesses regression on careless `cargo insta accept`.
 #[test]
 fn the_hostile_corpus_sample_leaks_nothing() {
     let html = std::fs::read_to_string(
@@ -183,7 +175,7 @@ fn the_hostile_corpus_sample_leaks_nothing() {
         );
     }
 
-    // The text that was only ever text must still be readable.
+    // Text that was only text must stay readable.
     assert!(
         rendered.contains("this one is only text"),
         "escaped text should still render as text:\n{rendered}"

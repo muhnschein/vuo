@@ -1,11 +1,10 @@
 import QtQuick 2.6
-// Silica exposes this as a C++ enum, like PageStatus. `Push`, `Replace` and
-// `Pop` are what a Dialog's `acceptDestinationAction` takes; `Animated` and
-// `Immediate` are the operation type `pageStack.push`/`replace` accept.
+// Silica C++ enum, like PageStatus. `Push`, `Replace`, `Pop` = Dialog's
+// `acceptDestinationAction`; `Animated`, `Immediate` = operation type for
+// `pageStack.push`/`replace`.
 //
-// A stub is needed because `acceptDestinationAction: PageStackAction.Replace`
-// is a plain property binding, evaluated the moment the dialog is
-// instantiated -- so without this the QML load test trips on
+// Stub needed: `acceptDestinationAction: PageStackAction.Replace` is plain
+// binding, evaluated on dialog instantiation; without it load test trips on
 // "PageStackAction is not defined".
 QtObject {
     enum Value {

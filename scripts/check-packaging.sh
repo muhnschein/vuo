@@ -1,10 +1,8 @@
 #!/usr/bin/env bash
-# Packaging sanity checks that need no SDK, so they can run in `make check`.
+# Packaging sanity checks needing no SDK; run in `make check`.
 #
-# These catch the packaging mistakes that are otherwise only discovered by a
-# 40-minute SDK build: a file referenced by the spec that does not exist, a
-# desktop entry that fails validation, a version that has drifted between
-# Cargo.toml and the spec.
+# Catch mistakes else found by 40-minute SDK build: spec references missing
+# file, desktop entry fails validation, version drift Cargo.toml vs spec.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -27,16 +25,13 @@ else
     note "version $spec_version matches Cargo.toml"
 fi
 
-# 2. Every file the spec installs must exist -- DERIVED FROM THE SPEC, not from
-#    a list restated here. A hardcoded list only ever re-checks the files
-#    someone remembered to add to it: adding an `install -D` line for a file
-#    that does not exist passed, which is precisely the 40-minute SDK failure
-#    this check exists to pre-empt.
+# 2. Every file spec installs must exist, DERIVED FROM SPEC, not restated list.
+#    Hardcoded list only re-checks remembered files; `install -D` line for
+#    missing file would pass (the 40-minute SDK failure this pre-empts).
 #
-#    The source-side operand of each `install -D...` line, with the spec's own
-#    `for RES in ...` loop expanded. Lines whose source is a build artefact
-#    (%{targetdir}/...) or a glob that may legitimately match nothing
-#    (translations/*.qm, guarded by `if ls` in the spec) are skipped.
+#    Source operand of each `install -D...` line, spec's `for RES in ...` loop
+#    expanded. Skipped: build artefact sources (%{targetdir}/...), globs that may
+#    match nothing (translations/*.qm, guarded by `if ls` in spec).
 installed=$(
     sed 's/#.*//' "$SPEC" \
         | grep -oE 'install -D[m0-9 ]* +[^ ]+' \
@@ -61,14 +56,14 @@ while IFS= read -r f; do
             done
             continue
             ;;
-        # A plain path, checked immediately after this case.
+        # Plain path, checked right after case.
         *) ;;
     esac
     checked=$((checked + 1))
     [[ -e "$f" ]] || bad "the spec installs $f, which does not exist"
 done <<< "$installed"
 
-# desktop-file-install and the `find ./qml` sweep are not `install -D` lines.
+# desktop-file-install and `find ./qml` sweep aren't `install -D` lines.
 for f in harbour-vuo.desktop qml/harbour-vuo.qml LICENSE; do
     checked=$((checked + 1))
     [[ -e "$f" ]] || bad "the spec installs $f, which does not exist"
@@ -85,13 +80,10 @@ else
     note "desktop-file-validate not installed; skipping (CI installs it)"
 fi
 
-# 4. The spec must build the binary explicitly. The workspace's
-#    default-members are the Qt-free set, so a bare `cargo build --release`
-#    would silently produce no installable binary.
-#    Matched on the BUILD LINE, not anywhere in the file. A whole-file grep is
-#    satisfied by a comment, a %description or a changelog entry mentioning the
-#    flag -- so the regression it is named for (a bare `cargo build --release`
-#    that produces no installable binary) could ship with the check green.
+# 4. Spec must build binary explicitly. Workspace default-members = Qt-free set;
+#    bare `cargo build --release` silently yields no installable binary. Matched
+#    on BUILD LINE, not whole file: whole-file grep satisfied by comment,
+#    %description or changelog mentioning flag; regression could ship green.
 build_line=$(
     sed 's/#.*//' "$SPEC" \
         | sed -e :a -e '/\\$/N; s/\\\n//; ta' \
@@ -112,18 +104,15 @@ else
     note "the spec builds the right binary with the right features"
 fi
 
-# 5. Every language ships, and none of them has drifted.
+# 5. Every language ships, none drifted.
 #
-#    A .ts without a .qm is a language that is IN the tree and not on the
-#    phone: the specs install `translations/*.qm` and nothing warns when one is
-#    absent. And a source string added to the QML reaches only the catalogue
-#    someone remembered to run `lupdate` over, so the message counts are
-#    compared against English -- 40 catalogues is far past the number anyone
-#    keeps in their head.
+#    .ts without .qm = language in tree, not on phone: specs install
+#    `translations/*.qm`, nothing warns on absence. New QML source string reaches
+#    only catalogues `lupdate` ran over; message counts compared against English
+#    (40 catalogues, nobody tracks by hand).
 #
-#    Untranslated entries are NOT an error. Qt falls back to the source string,
-#    which is English and correct; a check that failed on them would mean no UI
-#    string could be added without 39 translations in the same commit.
+#    Untranslated entries NOT error: Qt falls back to English source; failing
+#    would mean no UI string without 39 translations in same commit.
 missing_qm=""
 drifted=""
 reference=$(grep -c "<message" translations/harbour-vuo-en.ts 2>/dev/null || echo 0)
@@ -142,7 +131,7 @@ else
     fi
 fi
 
-# 6. Cargo.lock must be committed: OBS builds --locked and offline.
+# 6. Cargo.lock committed: OBS builds --locked, offline.
 [[ -f Cargo.lock ]] || bad "Cargo.lock must be committed for reproducible offline builds"
 note "Cargo.lock is present"
 

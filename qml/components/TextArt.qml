@@ -46,70 +46,57 @@ import Sailfish.Silica 1.0
 Item {
     id: art
 
-    /// The mask to draw, as a URL relative to the file that sets it.
-    /// qml/art/ holds `onboarding.png`, drawn at about a hundred and
-    /// fifteen glyph heights across, and `cover/`, a set drawn at
-    /// sixty-four: one mask per unread count, because on the cover the
-    /// count is the negative space the lines flow around, and the whole
-    /// pattern depends on it.
+    /// Mask to draw, URL relative to setting file. qml/art/: `onboarding.png`
+    /// (~115 glyph heights across) and `cover/` (64): one mask per unread
+    /// count; on cover count = negative space lines flow around, whole pattern
+    /// depends on it.
     property url source
 
-    /// What colour the ink is, and how much of it there is.
+    /// Ink colour and amount.
     property color colour: Theme.primaryColor
     property real ink: 0.55
 
-    /// The band at the top: nothing above `fadeFrom`, full strength from
-    /// `fadeTo` down. Off while `fadeTo <= fadeFrom`.
+    /// Top band: nothing above `fadeFrom`, full from `fadeTo` down. Off while
+    /// `fadeTo <= fadeFrom`.
     property real fadeFrom: 0
     property real fadeTo: 0
 
-    /// The band at the foot: full strength above `fadeOutFrom`, nothing from
-    /// `fadeOutTo` down. Off while `fadeOutTo <= fadeOutFrom`.
+    /// Foot band: full above `fadeOutFrom`, nothing from `fadeOutTo` down. Off
+    /// while `fadeOutTo <= fadeOutFrom`.
     ///
-    /// The ramp is EASED rather than straight -- the mask keeps most of its
-    /// strength through the top of the band and gives the rest up quickly
-    /// near the bottom, which is what a texture running out towards the
-    /// foot looks like. A linear ramp reads as a flat wash laid over the
-    /// pattern instead of the pattern itself going.
+    /// Ramp EASED, not linear: keeps most strength through top of band, drops
+    /// fast near bottom = texture running out. Linear reads as flat wash over
+    /// pattern.
     property real fadeOutFrom: 0
     property real fadeOutTo: 0
 
-    /// The disc: nothing within `clearRadius` of `clearX`, `clearY`, full
-    /// strength `clearFeather` beyond it. Off while `clearRadius` is 0.
+    /// Disc: nothing within `clearRadius` of `clearX`, `clearY`; full
+    /// `clearFeather` beyond. Off while `clearRadius` 0.
     property real clearX: 0
     property real clearY: 0
     property real clearRadius: 0
     property real clearFeather: 0
 
-    /// A second mask laid OVER the first in a colour of its own: the outline
-    /// of the shape the pattern flows around. Empty for none.
+    /// Second mask OVER first, own colour: outline of shape pattern flows
+    /// around. Empty = none.
     ///
-    /// A mask, and not something drawn here from a font, because the shape
-    /// is not the app's to draw. The digits are set in a face the phone does
-    /// not have (tools/textart/ fetches it; Sail Sans Pro is not it), sized
-    /// by a fit the painter resolved once against the master, and then
-    /// cropped along with the pattern. Anything drawn here would have to
-    /// reproduce all three and would miss the silhouette by however much it
-    /// got any one of them wrong. Coming out of the same painter at the same
-    /// size, this cannot miss: it takes the crop below with the pattern,
-    /// texel for texel, and needs nothing lined up by hand.
+    /// Mask, not font-drawn: digits set in face phone lacks (tools/textart/
+    /// fetches it; not Sail Sans Pro), sized by painter's one-off fit against
+    /// master, cropped with pattern. Drawing here must reproduce all three,
+    /// misses silhouette by any error. Same painter, same size: can't miss,
+    /// takes crop below texel for texel.
     ///
-    /// Beside the pattern rather than inside it because the two want
-    /// different colours -- the pattern is the theme's text colour at a
-    /// fraction of an ink, this is the ambience's highlight at full
-    /// strength -- and one coverage channel cannot say both. It costs about
-    /// 2% of a mask's bytes; folding it in as a second channel of the same
-    /// file was measured at 13%, since it breaks the pattern's own
-    /// compression.
+    /// Beside pattern, not inside: different colours (pattern = theme text
+    /// colour at fraction ink; this = ambience highlight full), one coverage
+    /// channel can't say both. ~2% of mask bytes; second channel in same file
+    /// measured 13% (breaks pattern compression).
     property url edgeSource
     property color edgeColour: Theme.highlightColor
     property real edgeInk: 1.0
 
-    /// The mask itself, which is never drawn -- only sampled. Loaded at its
-    /// full size deliberately: capping it would need the master's own
-    /// proportions, which are not known until it has loaded, and a page
-    /// shows this once while a cover keeps it in Qt's pixmap cache between
-    /// covers.
+    /// Mask itself, never drawn, only sampled. Full size on purpose: capping
+    /// needs master proportions (unknown until loaded); page shows once, cover
+    /// keeps it in Qt pixmap cache.
     Image {
         id: mask
 
@@ -118,17 +105,15 @@ Item {
         asynchronous: true
     }
 
-    /// The outline, loaded SYNCHRONOUSLY where the pattern is not.
+    /// Outline loaded SYNCHRONOUSLY; pattern isn't.
     ///
-    /// The two are separate loads, and the shader shows itself as soon as the
-    /// PATTERN is ready while the outline waits on its own `Ready`. Left
-    /// asynchronous, a count change could therefore paint the new pattern
-    /// with no line over it until the second load landed -- the line popping
-    /// in a frame late, every time the count moves. Loading it inline puts it
-    /// there before the pattern it belongs to can arrive.
+    /// Separate loads; shader shows once PATTERN ready, outline waits own
+    /// `Ready`. Async outline = new pattern painted without line until second
+    /// load (line pops in frame late on every count change). Inline puts it
+    /// there first.
     ///
-    /// It can afford to be: an outline is about 1.5 KiB against the pattern's
-    /// 66, and a cover changes when the count does, not every frame.
+    /// Affordable: outline ~1.5 KiB vs pattern's 66; cover changes with count,
+    /// not per frame.
     Image {
         id: edgeMask
 
@@ -139,8 +124,8 @@ Item {
 
     ShaderEffect {
         anchors.fill: parent
-        // Nothing to sample until it is there; a shader over an empty
-        // texture draws a block of colour.
+        // Nothing to sample until loaded; shader over empty texture draws
+        // colour block.
         visible: mask.status === Image.Ready
 
         property variant source: mask
@@ -158,16 +143,15 @@ Item {
         property real clearRadius: art.clearRadius
         property real clearFeather: art.clearFeather
 
-        // A sampler wants a texture whether or not there is an outline, so
-        // with no outline this points at the pattern and `edgeInk` is 0:
-        // sampled and multiplied away, rather than left unbound.
+        // Sampler wants texture regardless; no outline → points at pattern,
+        // `edgeInk` 0: sampled and multiplied away, not unbound.
         property variant edge: edgeMask.status === Image.Ready ? edgeMask : mask
         property color edgeTint: art.edgeColour
         property real edgeInk: edgeMask.status === Image.Ready ? art.edgeInk : 0
 
-        // Fixed text, as every shader in this app is: nothing foreign is
-        // anywhere near it (§9.3). Qt hands `tint` over premultiplied, and
-        // the theme's colours are opaque, so its rgb is the colour itself.
+        // Fixed text, like every shader here: nothing foreign near it (§9.3).
+        // Qt passes `tint` premultiplied; theme colours opaque, so rgb =
+        // colour.
         fragmentShader: "
             varying highp vec2 qt_TexCoord0;
             uniform sampler2D source;
@@ -188,9 +172,8 @@ Item {
             uniform lowp float qt_Opacity;
 
             void main() {
-                // Cover the item with the mask, keeping the mask's own
-                // proportions and centring it, so the pattern is cropped
-                // rather than stretched.
+                // Cover item with mask, keep mask proportions, centred: pattern
+                // cropped, not stretched.
                 highp float itemAspect = size.x / size.y;
                 highp vec2 span = vec2(1.0, 1.0);
                 if (itemAspect > srcAspect) {
@@ -200,14 +183,11 @@ Item {
                 }
                 highp vec2 uv = (qt_TexCoord0 - 0.5) * span + 0.5;
 
-                // The three shapes the app cuts, gathered into one factor
-                // before either layer is drawn. BOTH take it: an outline
-                // that stayed put while the pattern sank away beneath the
-                // status line would be the very seam this is drawn to avoid.
-                // highp, not lowp: the three factors multiply together and
-                // the foot's ramp is a gradient over hundreds of pixels, so
-                // rounding each product to a lowp step would band exactly
-                // where the eye is looking for smoothness.
+                // App's three cut shapes in one factor before either layer
+                // drawn. BOTH take it: outline staying while pattern sinks
+                // under status line = seam this avoids. highp, not lowp:
+                // factors multiply, foot ramp spans hundreds of pixels; lowp
+                // rounding bands where eye wants smoothness.
                 highp vec2 px = qt_TexCoord0 * size;
                 highp float cut = 1.0;
                 if (fadeTo > fadeFrom) {
@@ -226,10 +206,9 @@ Item {
                 lowp float a = texture2D(source, uv).r * ink * cut;
                 lowp float e = texture2D(edge, uv).r * edgeInk * cut;
 
-                // Premultiplied, which is what the scene graph composites.
-                // The line goes OVER the pattern and not beside it: where a
-                // ring runs under the line the line is what shows, so its
-                // colour is the ambience's and not a mixture of the two.
+                // Premultiplied (scene graph composites that). Line OVER
+                // pattern, not beside: where ring runs under line, line shows,
+                // ambience colour unmixed.
                 lowp vec4 line = vec4(edgeTint.rgb, 1.0) * e;
                 lowp vec4 base = vec4(tint.rgb, 1.0) * a;
                 gl_FragColor = (line + base * (1.0 - e)) * qt_Opacity;

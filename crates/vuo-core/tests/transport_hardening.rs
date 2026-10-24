@@ -1,28 +1,21 @@
-//! §9.1 transport hardening, exercised against raw TCP servers.
+//! §9.1 transport hardening against raw TCP servers.
 //!
-//! `wiremock` is a well-behaved HTTP server, which makes it the wrong tool for
-//! these: the cases that matter are the ones a *hostile or broken* server
-//! produces. Each test here hand-writes the bytes on the wire.
+//! `wiremock` well-behaved: wrong tool; cases that matter come from *hostile or
+//! broken* server. Each test hand-writes wire bytes.
 //!
-//! What each protects:
+//! Protects:
 //!
-//! - a `Content-Length` that lies in either direction — the header is foreign
-//!   input and cannot be the only bound, and a declared length past the cap is
-//!   refused before the body is read at all;
-//! - a rendered error after a real transport failure, confirming the URL and
-//!   its query do not travel in the message;
-//! - a chunked response with no length at all, which is how an unbounded body
-//!   actually arrives;
-//! - a gzip bomb, confirming the cap applies to the DECOMPRESSED size (a small
-//!   compressed body that expands past the cap must still be refused);
-//! - a redirect loop, and a protocol-relative `//host` Location, which is the
-//!   shape most likely to slip past an origin check written with string
-//!   comparison;
-//! - a same-origin relative redirect, confirming the token IS still sent where
-//!   it should be — a hardening test that only proves things are refused can
-//!   pass on a client that refuses everything;
-//! - an absolute redirect to a SECOND raw server, confirming that server hears
-//!   nothing at all. That is §9.1's headline rule, and it had no test.
+//! - `Content-Length` lying either direction: header foreign, can't be only
+//!   bound; declared length past cap refused before body read;
+//! - rendered error after real transport failure: URL and query not in message;
+//! - chunked response with no length (how unbounded body really arrives);
+//! - gzip bomb: cap applies to DECOMPRESSED size;
+//! - redirect loop, and protocol-relative `//host` Location (likeliest to slip
+//!   past string-comparison origin check);
+//! - same-origin relative redirect: token IS still sent where it should be
+//!   (test only proving refusals passes on client refusing everything);
+//! - absolute redirect to SECOND raw server: that server hears nothing. §9.1's
+//!   headline rule.
 
 #![allow(
     clippy::unwrap_used,
@@ -51,21 +44,16 @@ fn cfg() -> TransportConfig {
     }
 }
 
-/// Announce on the wire what this harness actually does: one response per
-/// connection, and then the socket is gone.
+/// Announce on wire what harness does: one response per connection, then socket
+/// gone.
 ///
-/// The canned responses say nothing about keep-alive, and HTTP/1.1 reads that
-/// silence as "the connection persists" -- so reqwest hands the socket back to
-/// its pool. On a redirect walk the next hop draws that same socket out again,
-/// after `raw_server` has already dropped it, and the request dies as a
-/// transport error before it ever reaches the code under test.
-/// `redirect_loop_hop_cap` lost that race about once in forty runs of this
-/// suite; the three other redirect tests are built the same way and were only
-/// waiting their turn.
+/// Canned responses silent on keep-alive; HTTP/1.1 reads silence as persistent,
+/// so reqwest pools socket. Redirect walk draws same socket after `raw_server`
+/// dropped it: request dies as transport error before code under test (~1 in 40
+/// runs of `redirect_loop_hop_cap`).
 ///
-/// The header is spliced in here rather than written into each test's bytes so
-/// that a test added later cannot forget it. It is framing, not content: every
-/// response below still declares its own body exactly as its author wrote it.
+/// Spliced here, not in each test's bytes: later test can't forget. Framing,
+/// not content: every response still declares own body as written.
 fn one_shot(resp: &[u8]) -> Vec<u8> {
     const CLOSE: &[u8] = b"Connection: close\r\n";
     let after_status_line = resp
@@ -80,8 +68,8 @@ fn one_shot(resp: &[u8]) -> Vec<u8> {
     out
 }
 
-/// A raw HTTP server that serves the given responses, one per connection, in
-/// order. Each request head it reads is published on the returned channel.
+/// Raw HTTP server serving given responses, one per connection, in order. Each
+/// request head read published on returned channel.
 fn raw_server(
     responses: Vec<Vec<u8>>,
 ) -> (String, mpsc::Receiver<String>, std::thread::JoinHandle<()>) {
@@ -137,16 +125,12 @@ async fn relative_redirect_is_followed_with_token() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn an_absolute_cross_origin_redirect_never_reaches_the_other_host() {
-    // §9.1's headline rule: "Do not follow redirects with the API token
-    // attached." It had NO coverage. The suite held a same-origin relative
-    // redirect, a protocol-relative one asserting only `is_err()`, and a hop
-    // cap -- but nothing that stands up a SECOND host and looks at what it
-    // received. Removing both layers (the off-origin refusal and the
-    // conditional attach) left all eleven test binaries green while the token
-    // went to the attacker in plain text.
+    // §9.1 headline rule: "Do not follow redirects with the API token
+    // attached." Stands up SECOND host and checks what it received: removing
+    // off-origin refusal and conditional attach must fail here.
     //
-    // This is the scenario the module doc opens with: a hostile or compromised
-    // instance answering 302 to somewhere it controls.
+    // Module doc's opening scenario: hostile or compromised instance answering
+    // 302 to somewhere it controls.
     let (attacker, attacker_rx, _ah) = raw_server(vec![
         b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok".to_vec(),
     ]);
@@ -181,8 +165,7 @@ async fn an_absolute_cross_origin_redirect_never_reaches_the_other_host() {
         "a redirect off the configured origin must be refused: {res:?}"
     );
 
-    // And the other host heard nothing at all -- not an unauthenticated
-    // request, not a connection.
+    // Other host heard nothing: no unauthenticated request, no connection.
     match attacker_rx.recv_timeout(Duration::from_millis(500)) {
         Err(_) => {}
         Ok(head) => panic!(
@@ -224,10 +207,10 @@ async fn a_304_is_reported_as_a_protocol_error_not_a_redirect() {
         )
         .await;
     let _ = rx.recv().unwrap();
-    // The point is the CLASSIFICATION, not merely that it failed. Without the
-    // 304..=306 branch a 304 falls into `is_redirection()`, finds no Location
-    // and surfaces as RedirectRefused "redirect without a Location header" --
-    // the confusion that branch exists to avoid.
+    // Point = CLASSIFICATION, not mere failure. Without 304..=306 branch, 304
+    // falls into `is_redirection()`, finds no Location, surfaces as
+    // RedirectRefused "redirect without a Location header": confusion branch
+    // exists to avoid.
     assert!(
         matches!(res, Err(Error::Http { status: 304, .. })),
         "a 304 must be reported as an HTTP status, not as a refused redirect: {res:?}"
@@ -237,10 +220,9 @@ async fn a_304_is_reported_as_a_protocol_error_not_a_redirect() {
 #[tokio::test(flavor = "multi_thread")]
 async fn redirect_loop_hop_cap() {
     let r = b"HTTP/1.1 302 Found\r\nLocation: /loop\r\nContent-Length: 0\r\n\r\n".to_vec();
-    // Deliberately far more canned responses than the cap. With only a handful
-    // the server runs out, the next connect fails, and `is_err()` holds for a
-    // reason that has nothing to do with `max_redirects` -- so the test passed
-    // with the cap raised to 1000.
+    // Far more canned responses than cap on purpose. Few → server runs out,
+    // next connect fails, `is_err()` holds for reason unrelated to
+    // `max_redirects`.
     let (base, rx, _h) = raw_server(vec![r; 32]);
     let t = transport(&base, &cfg());
     let res = t
@@ -261,10 +243,9 @@ async fn redirect_loop_hop_cap() {
         "the hop cap must be what refuses, not the network: {res:?}"
     );
 
-    // And the cap is what stopped it: exactly the original request plus
-    // `max_redirects` follows reached the server, and nothing after. `send`
-    // has already returned, so no further request can be in flight -- counting
-    // with a short poll here would only be measuring the machine's load.
+    // Cap stopped it: exactly original request plus `max_redirects` follows
+    // reached server, nothing after. `send` returned, nothing in flight;
+    // polling would measure machine load.
     let expected = cfg().max_redirects + 1;
     for i in 0..expected {
         rx.recv_timeout(Duration::from_secs(10))
@@ -342,10 +323,9 @@ async fn lying_content_length_small_body_big() {
         )
         .await;
     let _ = rx.recv().unwrap();
-    // The declared length is what framing believes, so the body is the 10
-    // bytes it promised and the remaining 100 KB is never delivered. Asserting
-    // this pins the direction: a change that read to EOF instead would return
-    // 100_000 here.
+    // Declared length = what framing believes: body = promised 10 bytes,
+    // remaining 100 KB never delivered. Pins direction: reading to EOF would
+    // return 100_000.
     let body = res.expect("a short body is not an error").body;
     assert_eq!(
         body.len(),
@@ -356,11 +336,10 @@ async fn lying_content_length_small_body_big() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn content_length_above_the_cap_is_refused_before_the_body() {
-    // The other direction of the same lie, and the one §9.1 wants caught
-    // "before reading a byte": a declared length far past the cap is refused
-    // on the header alone. The incremental cap in `read_bounded` would also
-    // stop this eventually, which is exactly why it needs its own test -- with
-    // the pre-check disabled the streaming cap silently covers for it.
+    // Other direction of same lie, §9.1 wants caught "before reading a byte":
+    // declared length far past cap refused on header alone. Incremental cap in
+    // `read_bounded` would also stop it eventually: needs own test, else
+    // streaming cap silently covers disabled pre-check.
     let mut r = b"HTTP/1.1 200 OK\r\nContent-Length: 4294967296\r\n\r\n".to_vec();
     r.extend(std::iter::repeat_n(b'C', 64));
     let (base, rx, _h) = raw_server(vec![r]);
@@ -388,13 +367,12 @@ async fn content_length_above_the_cap_is_refused_before_the_body() {
 #[tokio::test(flavor = "multi_thread")]
 async fn a_failed_request_renders_without_the_url_or_its_query() {
     // §9.1: "Never log the token or a URL containing it. Redact in error paths
-    // too." The guard is that `classify` uses a fixed string per class rather
-    // than `e.to_string()`, whose Display carries the full URL including the
-    // query. This has to drive a REAL failure through `send`, because an
-    // `Error` built by hand in a unit test can only hold a `SafeUrl` and so
-    // proves the property by construction rather than testing it.
+    // too." Guard: `classify` uses fixed string per class, not `e.to_string()`
+    // (Display carries full URL incl. query). Drives REAL failure through
+    // `send`: hand-built `Error` can only hold `SafeUrl`, proves by
+    // construction, tests nothing.
     //
-    // A closed port: bound, then dropped, so the connect is refused.
+    // Closed port: bound, then dropped; connect refused.
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let addr = listener.local_addr().unwrap();
     drop(listener);

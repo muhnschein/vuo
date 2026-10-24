@@ -1,36 +1,28 @@
-//! The HTML → render-block transform.
+//! HTML → render-block transform.
 //!
-//! # Why a tokenizer and not a DOM
+//! # Tokenizer, not DOM
 //!
-//! This module drives `html5ever`'s **tokenizer** directly and never
-//! constructs a tree. That is a safety decision, not a performance one.
+//! Drives `html5ever` **tokenizer** directly, never builds a tree. Safety
+//! decision, not performance.
 //!
-//! The obvious implementation parses to an `RcDom` and walks it. An `RcDom` is
-//! a tree of `Rc`s, and dropping one is *recursive*: a document nested ten
-//! thousand `<div>`s deep overflows the stack in the destructor, on the cleanup
-//! path, where the crash is hardest to attribute. §9.2 warns about deeply
-//! nested markup against a recursive parser; a recursive destructor is the same
-//! bug wearing a hat. Consuming a flat token stream and assembling a flat
-//! [`Document`] means there is no recursive structure to build *or* to drop.
+//! `RcDom` is tree of `Rc`s; dropping is *recursive*: 10 000 nested `<div>`s
+//! overflow stack in destructor, on cleanup path, hardest to attribute (§9.2).
+//! Flat token stream → flat [`Document`]: nothing recursive to build *or* drop.
 //!
 //! # Allowlist by construction
 //!
-//! §9.2: *allowlist, never blocklist. A blocklist is a promise to have thought
-//! of every tag, which nobody can keep.* Recognised elements map to
-//! [`BlockKind`] variants or to inline styles; everything else falls through to
-//! `Disposition::Flatten`, which drops the tag and keeps its text. There is
-//! no passthrough path, so an element nobody has heard of renders as its text
-//! content and nothing more.
+//! §9.2: allowlist, never blocklist. Recognised elements map to [`BlockKind`]
+//! variants or inline styles; rest falls to `Disposition::Flatten` (drop tag,
+//! keep text). No passthrough: unknown element renders as its text only.
 //!
-//! A small set of elements is `Skip`ped subtree-and-all — `<script>`,
-//! `<style>`, `<iframe>` and friends — because their *text* is not content.
+//! Small set `Skip`ped subtree-and-all (`<script>`, `<style>`, `<iframe>`,
+//! ...): their *text* isn't content.
 //!
-//! # Every loop is bounded
+//! # Every loop bounded
 //!
-//! Input is truncated before parsing, not after (§9.2). Structural depth, block
-//! count, cumulative text size, list indent and quote depth all have caps, and
-//! hitting one records a [`Truncation`] on the output so the UI can say the
-//! article is incomplete rather than silently presenting a fragment as whole.
+//! Input truncated before parsing, not after (§9.2). Depth, block count,
+//! cumulative text, list indent, quote depth all capped; hitting one records a
+//! [`Truncation`] so UI says article incomplete.
 
 use html5ever::tokenizer::states::RawKind;
 use html5ever::tokenizer::{
@@ -45,14 +37,14 @@ use crate::content::block::{
 };
 use crate::content::url::{MediaDecision, MediaPolicy, MediaUrl};
 
-/// Resource caps for the transform. Every one of these exists because the
-/// input is written by strangers (§9).
+/// Resource caps for transform. Each exists because input is written by
+/// strangers (§9).
 #[derive(Debug, Clone, Copy)]
 pub struct Limits {
-    /// Applied to the input string *before* tokenizing.
+    /// Applied to input string *before* tokenizing.
     pub max_input_bytes: usize,
-    /// Maximum element nesting. Beyond this, start tags stop opening new
-    /// structure and their content flattens into the enclosing block.
+    /// Max element nesting. Beyond it, start tags open no new structure;
+    /// content flattens into enclosing block.
     pub max_depth: usize,
     /// Maximum blocks in the output document.
     pub max_blocks: usize,
@@ -62,11 +54,10 @@ pub struct Limits {
     pub max_quote_depth: u8,
     /// Maximum list nesting reflected in `indent`.
     pub max_list_indent: u8,
-    /// Maximum rows in one table.
+    /// Max rows in one table.
     ///
-    /// A table is a SINGLE block, so `max_blocks` does not bound it at all. A
-    /// document of half a million empty `<td>`s built an 80 MB structure while
-    /// reporting one block and no truncation.
+    /// Table = SINGLE block, so `max_blocks` doesn't bound it: half a million
+    /// empty `<td>`s built 80 MB reporting one block.
     pub max_table_rows: usize,
     /// Maximum cells in one table row.
     pub max_table_cells_per_row: usize,
@@ -75,8 +66,8 @@ pub struct Limits {
 impl Default for Limits {
     fn default() -> Self {
         Limits {
-            // A multi-megabyte entry is a frozen UI on a phone (§9.2). Two
-            // megabytes is far past any honest article.
+            // Multi-MB entry = frozen UI on phone (§9.2). 2 MB far past any
+            // honest article.
             max_input_bytes: 2 * 1024 * 1024,
             max_depth: 128,
             max_blocks: 4096,
@@ -101,7 +92,7 @@ pub struct TransformContext {
 }
 
 impl TransformContext {
-    /// The privacy-preserving default for a given instance.
+    /// Privacy-preserving default for an instance.
     #[must_use]
     pub fn new(instance: Url) -> Self {
         TransformContext {
@@ -112,18 +103,15 @@ impl TransformContext {
     }
 }
 
-/// Transform article HTML into a flat block list.
+/// Transform article HTML into flat block list.
 ///
-/// This function is **infallible by design**. §9.5 requires that a malformed
-/// response be a handled error rather than a crash, and the honest handling for
-/// unparseable markup is an empty or partial document, not an `Err` that some
-/// caller will end up unwrapping. Anything the transform could not make sense
-/// of is simply absent from the output; anything it had to cut is recorded in
+/// **Infallible by design.** §9.5: malformed response = handled error, not
+/// crash; honest handling of unparseable markup = empty or partial document,
+/// not an `Err` someone unwraps. Unparsed parts absent; cuts recorded in
 /// [`Document::truncated`].
 #[must_use]
 pub fn transform(html: &str, ctx: &TransformContext) -> Document {
-    // Cap the input BEFORE parsing, not after (§9.2). Slicing on a char
-    // boundary keeps the truncation from splitting a UTF-8 sequence.
+    // Cap input BEFORE parsing (§9.2). Slice on char boundary: no split UTF-8.
     let (input, pre_truncated) = if html.len() > ctx.limits.max_input_bytes {
         (
             clamp_to_char_boundary(html, ctx.limits.max_input_bytes),
@@ -136,12 +124,10 @@ pub fn transform(html: &str, ctx: &TransformContext) -> Document {
     drive(input, ctx, pre_truncated).finish()
 }
 
-/// Tokenize into a [`Builder`] without finishing it.
+/// Tokenize into [`Builder`] without finishing.
 ///
-/// Split out so a test can inspect builder state after the run. The §9.2 depth
-/// cap needs that: inside a SKIPPED subtree it has no observable consequence at
-/// all -- nothing is emitted either way -- so the only way to check the cap
-/// holds is to look at how deep the open-element stack actually got.
+/// Separate so a test can inspect builder state: §9.2 depth cap inside SKIPPED
+/// subtree has no observable output, so test checks open-element stack depth.
 fn drive(input: &str, ctx: &TransformContext, pre_truncated: Option<Truncation>) -> Builder {
     let mut builder = Builder::new(ctx.clone());
     builder.truncated = pre_truncated;
@@ -152,16 +138,15 @@ fn drive(input: &str, ctx: &TransformContext, pre_truncated: Option<Truncation>)
     let mut tok = Tokenizer::new(
         builder,
         TokenizerOpts {
-            // Parse errors are not interesting here: the transform's contract
-            // is best-effort rendering, and collecting error strings from
-            // hostile input is just another unbounded allocation.
+            // Parse errors uninteresting: best-effort rendering; collecting
+            // error strings from hostile input = unbounded allocation.
             exact_errors: false,
             ..TokenizerOpts::default()
         },
     );
 
-    // `feed` returns `Script(handle)` only if the sink asks for script
-    // handling, which this sink never does; looping to `Done` is exhaustive.
+    // `feed` returns `Script(handle)` only if sink asks for scripts (never);
+    // looping to `Done` is exhaustive.
     let fed = tok.feed(&mut queue);
     debug_assert!(
         matches!(fed, TokenizerResult::Done),
@@ -177,7 +162,7 @@ fn drive(input: &str, ctx: &TransformContext, pre_truncated: Option<Truncation>)
 enum Disposition {
     /// Drop the element and everything inside it.
     Skip,
-    /// Drop the tag, keep the contents. The default for anything unrecognised.
+    /// Drop tag, keep contents. Default for anything unrecognised.
     Flatten,
     /// Recognised structure.
     Block(BlockTag),
@@ -218,10 +203,10 @@ enum VoidTag {
     Image,
 }
 
-/// The allowlist. Everything not named here is [`Disposition::Flatten`].
+/// Allowlist. Anything unnamed = [`Disposition::Flatten`].
 fn classify(name: &str) -> Disposition {
     match name {
-        // -- dropped entirely: their text is not article content ------------
+        // -- dropped entirely: text isn't article content ------------------
         "script" | "style" | "noscript" | "iframe" | "object" | "embed" | "applet" | "svg"
         | "math" | "template" | "form" | "button" | "input" | "select" | "option" | "textarea"
         | "canvas" | "map" | "area" | "audio" | "video" | "source" | "track" | "param" | "head"
@@ -245,8 +230,7 @@ fn classify(name: &str) -> Disposition {
         "td" => Disposition::Block(BlockTag::TableCell { header: false }),
         "th" => Disposition::Block(BlockTag::TableCell { header: true }),
 
-        // Block-level containers that carry no styling of their own but do
-        // terminate the current paragraph.
+        // Block containers with no styling that still end current paragraph.
         "div" | "section" | "article" | "aside" | "main" | "header" | "footer" | "nav"
         | "figure" | "figcaption" | "dl" | "dt" | "dd" | "address" | "fieldset" | "details"
         | "summary" | "hgroup" | "thead" | "tbody" | "tfoot" | "caption" | "colgroup" | "col" => {
@@ -278,9 +262,8 @@ struct OpenElement {
     disposition: Disposition,
     /// Inline style to restore when this element closes.
     saved_style: Option<SpanStyle>,
-    /// Link to restore when this element closes. Two levels on purpose: the
-    /// outer `None` is "this element did not touch the link", the inner one
-    /// is "restore no link".
+    /// Link to restore on close. Two levels on purpose: outer `None` = element
+    /// didn't touch link, inner = restore no link.
     #[allow(clippy::option_option)]
     saved_link: Option<Option<MediaUrl>>,
 }
@@ -291,7 +274,7 @@ struct ListState {
     counter: u32,
 }
 
-/// Which kind of block the currently-accumulating spans belong to.
+/// Block kind current spans belong to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Pending {
     Paragraph,
@@ -309,8 +292,8 @@ struct Builder {
     truncated: Option<Truncation>,
 
     open: Vec<OpenElement>,
-    /// Depth at which a `Skip` element was opened. While `Some`, everything is
-    /// discarded until the stack unwinds back past it.
+    /// Depth where `Skip` element opened. While `Some`, discard everything
+    /// until stack unwinds past it.
     skip_from: Option<usize>,
 
     spans: Vec<Span>,
@@ -328,19 +311,18 @@ struct Builder {
 
     /// Table accumulation. `None` when not inside a `<table>`.
     table: Option<TableBuild>,
-    /// `<table>` nesting. Only the outermost close emits a block: a nested
-    /// table is flattened into its parent's cells, and closing the outer table
-    /// on the inner `</table>` would truncate it.
+    /// `<table>` nesting. Only outermost close emits block: nested table
+    /// flattens into parent's cells; closing outer on inner `</table>` would
+    /// truncate it.
     table_depth: u32,
 
     text_bytes: usize,
-    /// The deepest `open` ever got. See [`drive`].
+    /// Deepest `open` ever got. See [`drive`].
     peak_open: usize,
-    /// `text_bytes` as of the last block actually emitted.
+    /// `text_bytes` as of last emitted block.
     ///
-    /// Lets `push_block` tell "this block is the one that reached the cap"
-    /// from "we were already over it and this block adds nothing", which is
-    /// the difference between truncating an article and erasing it.
+    /// Lets `push_block` tell "this block reached cap" from "already over, adds
+    /// nothing": truncate vs erase article.
     text_committed: usize,
 }
 
@@ -391,18 +373,16 @@ impl Builder {
     }
 
     fn record_truncation(&mut self, why: Truncation) {
-        // Keep the first cause: it is the one that explains the rest.
+        // Keep first cause: explains the rest.
         if self.truncated.is_none() {
             self.truncated = Some(why);
         }
     }
 
     fn push_block(&mut self, kind: BlockKind) {
-        // Inside a table, a block-level element (a rule, an image, a code
-        // block) would otherwise be appended to the document directly -- and
-        // since the table itself is only emitted when it closes, that content
-        // appeared BEFORE the table it came from. Fold what text it carries
-        // into the current cell instead, and drop the rest.
+        // Block-level element inside table (rule, image, code) would go
+        // straight to document, BEFORE its table (table emits on close). Fold
+        // its text into current cell; drop rest.
         if self.table.is_some() {
             let text = RenderBlock::new(kind).plain_text();
             if !text.trim().is_empty() {
@@ -426,13 +406,9 @@ impl Builder {
         }
         if self.text_bytes >= self.ctx.limits.max_text_bytes {
             self.record_truncation(Truncation::TooMuchText);
-            // Only DROP the block when it adds no text of its own. The block
-            // that reaches the cap still gets emitted: `push_text` has already
-            // clamped its text to the remaining budget, so it is bounded, and
-            // dropping it discards the very content the cap was meant to
-            // truncate. An article that is a single long <p> -- a shape plenty
-            // of feeds produce -- rendered as ZERO blocks and a blank screen
-            // because of this, while reporting `truncated: TooMuchText`.
+            // DROP block only when it adds no text. Block reaching cap still
+            // emitted: `push_text` already clamped its text. Else single long
+            // `<p>` article renders zero blocks (blank screen).
             if self.text_bytes == self.text_committed {
                 return;
             }
@@ -442,19 +418,18 @@ impl Builder {
             .push(RenderBlock::quoted(kind, self.quote_depth));
     }
 
-    /// Emit whatever inline text has accumulated as the pending block kind.
+    /// Emit accumulated inline text as pending block kind.
     fn flush(&mut self) {
         let spans = std::mem::take(&mut self.spans);
         let spans = trim_spans(spans);
         if spans.is_empty() {
-            // Reset pending even when empty so a stray `</h2>` cannot leak its
-            // heading level onto the next paragraph.
+            // Reset pending even when empty: stray `</h2>` can't leak heading
+            // level onto next paragraph.
             self.pending = self.default_pending();
             return;
         }
 
-        // Inside a table cell, text belongs to the cell rather than the
-        // document body.
+        // Inside table cell: text belongs to cell, not document body.
         if let Some(table) = self.table.as_mut() {
             if let Some(row) = table.current_row.as_mut() {
                 if let Some(cell) = row.last_mut() {
@@ -463,8 +438,8 @@ impl Builder {
                     return;
                 }
             }
-            // Text inside <table> but outside any cell is stray; drop it
-            // rather than inventing a cell for it.
+            // Text in `<table>` outside any cell is stray: drop, don't invent
+            // cell.
             self.pending = self.default_pending();
             return;
         }
@@ -487,12 +462,12 @@ impl Builder {
         self.pending = self.default_pending();
     }
 
-    /// What a fresh block should be, given the enclosing structure.
+    /// What fresh block should be, given enclosing structure.
     fn default_pending(&self) -> Pending {
         if self.lists.is_empty() {
             Pending::Paragraph
         } else {
-            // Continuation text inside a list item stays part of the item.
+            // Continuation text in list item stays part of item.
             match self.lists.last() {
                 Some(list) => Pending::ListItem {
                     ordered: list.ordered,
@@ -532,18 +507,16 @@ impl Builder {
             return;
         }
 
-        // Outside <pre>, collapse whitespace runs. Real feed markup is full of
-        // newlines and indentation that mean nothing.
+        // Outside `<pre>`: collapse whitespace runs; feed markup full of
+        // meaningless newlines and indentation.
         let collapsed = collapse_whitespace(text);
         if collapsed.is_empty() {
             return;
         }
-        // Collapsing has to carry across token boundaries. html5ever splits
-        // character data at arbitrary points, so "a\n\n  \tb" can arrive as
-        // several CharacterTokens; collapsing each in isolation would emit one
-        // space per chunk and render "a   b". Drop a leading space when the
-        // text so far already ends in one -- or when there is no text yet,
-        // since a block must not start with a space.
+        // Collapse across token boundaries: html5ever splits character data
+        // anywhere ("a\n\n  \tb" as several tokens); per-chunk collapse renders
+        // "a   b". Drop leading space when text so far ends in one, or no text
+        // yet (block mustn't start with space).
         let trailing_space = match self.spans.last() {
             Some(prev) => prev.text.ends_with(' '),
             None => true,
@@ -569,8 +542,8 @@ impl Builder {
         let taken = clamp_to_char_boundary(&collapsed, budget).to_owned();
         self.text_bytes = self.text_bytes.saturating_add(taken.len());
 
-        // Merge into the previous span when the styling is identical; this
-        // keeps the span list short for text broken up by ignored tags.
+        // Merge into previous span when styling identical: short span list for
+        // text split by ignored tags.
         match self.spans.last_mut() {
             Some(prev) if prev.style == self.style && prev.link == self.link => {
                 prev.text.push_str(&taken);
@@ -600,16 +573,13 @@ impl Builder {
     fn start_tag(&mut self, tag: &Tag) -> TokenSinkResult<()> {
         let name = tag.name.as_ref().to_ascii_lowercase();
         let disposition = classify(&name);
-        // An element that can never have children or an end tag.
+        // Element that never has children or end tag.
         let childless = is_void(&name) || tag.self_closing;
 
-        // Already discarding a subtree: track the stack so we know when to
-        // stop, but do nothing else. The depth cap applies here too -- without
-        // it a skipped subtree grows the stack without bound, and because an
-        // unmatched end tag is resolved by scanning that stack, the transform
-        // goes quadratic. Measured before this cap was applied: 320 KB of
-        // `<svg>` + 40k `<b>` + 40k `</zz>` took 23 seconds, well inside the
-        // 2 MiB input cap. §9.2's caps exist to prevent exactly that.
+        // Already discarding subtree: track stack to know when to stop, nothing
+        // else. Depth cap applies here too: else skipped subtree grows stack
+        // unbounded and unmatched end tags (stack scan) go quadratic (320 KB
+        // took 23 s, well inside 2 MiB cap). §9.2 caps prevent that.
         if self.skip_from.is_some() {
             if !childless && self.open.len() < self.ctx.limits.max_depth {
                 self.peak_open = self.peak_open.max(self.open.len().saturating_add(1));
@@ -623,23 +593,16 @@ impl Builder {
             return TokenSinkResult::Continue;
         }
 
-        // Skip elements are handled BEFORE the structural depth cap, and that
-        // ordering is load-bearing: with the cap first, a `<script>` opened
-        // beyond the cap returned early without entering skip mode, so the
-        // tokenizer was never put into raw-text mode and the script's body
-        // arrived as ordinary character tokens -- i.e. the article rendered
-        // `alert('pwned')` as text. That is an allowlist breach (§9.2), not a
-        // cosmetic one.
+        // Skip elements BEFORE structural depth cap; order load-bearing. Cap
+        // first: `<script>` past cap returns without skip mode, tokenizer never
+        // enters raw-text, script body renders as text (`alert('pwned')`).
+        // Allowlist breach (§9.2).
         if matches!(disposition, Disposition::Skip) {
             self.flush();
-            // A childless skip element -- `<meta>`, `<link>`, `<input>`,
-            // `<embed>`, `<source>`, `<track>`, `<param>`, `<area>`, or any
-            // self-closing form such as `<svg/>` -- has no content and will
-            // never produce an end tag. Entering skip mode for one would set a
-            // flag that nothing can ever clear, silently discarding the entire
-            // rest of the article. That bug shipped in the first draft of this
-            // function and `<input>` alone is common enough in real feeds to
-            // have hit it.
+            // Childless skip element (`<meta>`, `<link>`, `<input>`, `<embed>`,
+            // `<source>`, `<track>`, `<param>`, `<area>`, self-closing like
+            // `<svg/>`) never gets end tag. Skip mode for one would never
+            // clear, discarding rest of article.
             if childless {
                 return TokenSinkResult::Continue;
             }
@@ -655,10 +618,8 @@ impl Builder {
             return raw;
         }
 
-        // Structural depth cap (§9.2). Past the cap we stop opening structure
-        // entirely; text still flows into the enclosing block. Recorded, so
-        // the UI can say the article is not shown in full rather than
-        // presenting a silently flattened version as complete.
+        // Structural depth cap (§9.2). Past it, open no structure; text flows
+        // into enclosing block. Recorded so UI says article not shown in full.
         if self.open.len() >= self.ctx.limits.max_depth {
             self.record_truncation(Truncation::TooDeep);
             return TokenSinkResult::Continue;
@@ -686,9 +647,8 @@ impl Builder {
                     InlineTag::Subscript => self.style.subscript = true,
                     InlineTag::Anchor => {
                         saved_link = Some(self.link.clone());
-                        // §9.2: only http(s) survives into a rendered link. An
-                        // unparseable or dangerous href yields plain text,
-                        // never a link the user can tap.
+                        // §9.2: only http(s) becomes rendered link. Unparseable
+                        // or dangerous href → plain text, never tappable link.
                         self.link =
                             non_empty_attr(tag, "href").and_then(|href| self.resolve(&href));
                     }
@@ -706,7 +666,7 @@ impl Builder {
                 saved_link,
             });
         } else if let Some(style) = saved_style {
-            // A self-closing inline element styles nothing.
+            // Self-closing inline element styles nothing.
             self.style = style;
             if let Some(link) = saved_link {
                 self.link = link;
@@ -740,8 +700,8 @@ impl Builder {
                         list.counter = list.counter.saturating_add(1);
                         (list.ordered, list.ordered.then_some(list.counter))
                     }
-                    // An `<li>` with no enclosing list: render it as a bullet
-                    // rather than dropping the user's text.
+                    // `<li>` without list: render as bullet, don't drop user's
+                    // text.
                     None => (false, None),
                 };
                 self.pending = Pending::ListItem {
@@ -767,9 +727,9 @@ impl Builder {
             }
             BlockTag::Table => {
                 self.flush();
-                // Nested tables flatten into the enclosing one: allowing real
-                // nesting would reintroduce unbounded depth through the back
-                // door, and Qt 5.6 has no table rendering to nest into anyway.
+                // Nested tables flatten into enclosing one: real nesting
+                // reintroduces unbounded depth; Qt 5.6 has no table rendering
+                // to nest into anyway.
                 self.table_depth = self.table_depth.saturating_add(1);
                 if self.table.is_none() {
                     self.table = Some(TableBuild::default());
@@ -843,9 +803,8 @@ impl Builder {
                 let Some(src) = non_empty_attr(tag, "src").and_then(|s| self.resolve(&s)) else {
                     return;
                 };
-                // §9.3: the decision is made here, before the URL ever
-                // reaches the UI, so a third-party host cannot be contacted by
-                // a QML Image that simply binds to whatever `src` it was given.
+                // §9.3: decided here, before URL reaches UI: QML `Image`
+                // binding to `src` can't contact third-party host.
                 let (src, fetch) = match self.ctx.media.decide(&src) {
                     MediaDecision::Fetch(src) => (src, MediaFetch::Allowed),
                     MediaDecision::NeedsConsent(src) => (src, MediaFetch::NeedsConsent),
@@ -860,21 +819,21 @@ impl Builder {
                     title,
                     fetch,
                     intrinsic: intrinsic_size(tag),
-                    // Read before nothing else touches it: `flush` above ends
-                    // the current text block but leaves the open `<a>` in
-                    // force, which is exactly what an `<a><img></a>` needs.
+                    // Read before anything touches it: `flush` above ends text
+                    // block but leaves open `<a>` in force, as `<a><img></a>`
+                    // needs.
                     link: self.link.clone(),
                 });
             }
         }
     }
 
-    /// Resolve an attribute value into a validated `http(s)` URL.
+    /// Resolve attribute value into validated `http(s)` URL.
     fn resolve(&self, raw: &str) -> Option<MediaUrl> {
         match &self.ctx.base_url {
             Some(base) => MediaUrl::parse_relative(raw, base),
-            // With no base URL a relative reference is unresolvable, and
-            // guessing an origin for it would be worse than dropping it.
+            // No base URL: relative ref unresolvable; guessing origin worse
+            // than dropping.
             None => MediaUrl::parse(raw),
         }
     }
@@ -882,15 +841,13 @@ impl Builder {
     fn end_tag(&mut self, tag: &Tag) {
         let name = tag.name.as_ref().to_ascii_lowercase();
 
-        // Find the matching open element, innermost first. Unmatched end tags
-        // are ignored rather than unwinding the whole stack -- real feed HTML
-        // is full of stray `</div>`s and closing everything would destroy the
-        // document's structure.
+        // Find matching open element, innermost first. Ignore unmatched end
+        // tags, don't unwind whole stack: feed HTML full of stray `</div>`s.
         let Some(index) = self.open.iter().rposition(|el| el.name == name) else {
             return;
         };
 
-        // Close everything from the innermost open element down to the match.
+        // Close innermost open element down to match.
         while self.open.len() > index {
             let Some(element) = self.open.pop() else {
                 break;
@@ -906,7 +863,7 @@ impl Builder {
 
     fn close_element(&mut self, element: &OpenElement) {
         if self.skip_from.is_some() {
-            // Restore nothing: a skipped subtree never applied styling.
+            // Restore nothing: skipped subtree applied no styling.
             return;
         }
 
@@ -942,27 +899,25 @@ impl Builder {
                             text: owned,
                         });
                     }
-                    // Inline spans accumulated before <pre> were already
-                    // flushed on open; discard anything stray.
+                    // Inline spans before `<pre>` flushed on open; discard
+                    // stray ones.
                     self.spans.clear();
                 }
             }
             Disposition::Block(BlockTag::Table) => {
                 self.flush();
                 self.table_depth = self.table_depth.saturating_sub(1);
-                // Only the outermost </table> emits the block. Closing on an
-                // inner one truncated the outer table at the nested table's
-                // position.
+                // Only outermost `</table>` emits block; inner one would
+                // truncate outer table.
                 if self.table_depth == 0 {
                     self.close_table();
                 }
             }
             Disposition::Block(BlockTag::TableRow) => {
                 self.flush();
-                // The cap has to be applied on BOTH paths that commit a row:
-                // this one (`</tr>`) and the one in `start_block` that flushes
-                // the previous row when a new `<tr>` opens. Capping only the
-                // latter left well-formed markup completely unbounded.
+                // Cap on BOTH row-commit paths: here (`</tr>`) and
+                // `start_block` flushing previous row on new `<tr>`. Else
+                // well-formed markup unbounded.
                 let max_rows = self.ctx.limits.max_table_rows;
                 let mut hit_cap = false;
                 if let Some(table) = self.table.as_mut() {
@@ -993,8 +948,8 @@ impl TokenSink for Builder {
     type Handle = ();
 
     fn process_token(&mut self, token: Token, _line: u64) -> TokenSinkResult<()> {
-        // Stop doing work once every cap is spent; the tokenizer still drains,
-        // but nothing further is allocated.
+        // Stop work once every cap spent; tokenizer still drains, nothing
+        // allocated.
         if self.at_capacity() && self.truncated.is_some() {
             return TokenSinkResult::Continue;
         }
@@ -1005,8 +960,8 @@ impl TokenSink for Builder {
                 TagKind::EndTag => self.end_tag(&tag),
             },
             Token::CharacterTokens(text) => self.push_text(&text),
-            // Comments, doctypes, parse errors and stray NULs carry nothing a
-            // reader wants to see.
+            // Comments, doctypes, parse errors, stray NULs: nothing reader
+            // wants.
             Token::CommentToken(_)
             | Token::DoctypeToken(_)
             | Token::NullCharacterToken
@@ -1017,9 +972,8 @@ impl TokenSink for Builder {
     }
 }
 
-/// Ask the tokenizer to treat an element's contents as text rather than
-/// markup, so that `<script>if (a<b) {}</script>` cannot produce a spurious
-/// `<b>` start tag.
+/// Ask tokenizer to treat element contents as text, so `<script>if (a<b)
+/// {}</script>` can't yield spurious `<b>` start tag.
 fn raw_text_kind(name: &str) -> TokenSinkResult<()> {
     match name {
         "script" => TokenSinkResult::RawData(RawKind::ScriptData),
@@ -1028,10 +982,10 @@ fn raw_text_kind(name: &str) -> TokenSinkResult<()> {
     }
 }
 
-/// A branch the match above has already excluded.
+/// Branch match above already excluded.
 ///
-/// `unreachable!()` would be a panic, and §9.5 forbids reachable panics on this
-/// path; this keeps the same "cannot happen" meaning without one.
+/// `unreachable!()` would panic; §9.5 forbids reachable panics here. Same
+/// meaning, no panic.
 fn unreachable_disposition() {}
 
 fn is_void(name: &str) -> bool {
@@ -1054,17 +1008,14 @@ fn is_void(name: &str) -> bool {
     )
 }
 
-/// The `<img>` tag's own `width` and `height`, when both are usable.
+/// `<img>` tag's own `width` and `height`, when both usable.
 ///
-/// Only a plain integer count of pixels is accepted. A percentage, a `calc()`,
-/// a unit suffix or a zero tells us nothing about the aspect ratio, and both
-/// have to be present for a ratio to exist at all.
+/// Plain integer pixel count only: percentage, `calc()`, unit suffix, zero say
+/// nothing about ratio; both needed.
 ///
-/// Capped hard. This is foreign input whose only job is to shape a rectangle
-/// before the image loads: a feed claiming 4 billion pixels must not be able to
-/// turn into an enormous reserved space, or a division that overflows on the
-/// way there. The cap is far beyond any real image and far below anything that
-/// hurts.
+/// Capped hard: foreign input shaping a rectangle; 4-billion-pixel claim
+/// mustn't become huge reserved space or overflowing division. Cap far above
+/// real images, far below harm.
 fn intrinsic_size(tag: &Tag) -> Option<(u32, u32)> {
     const MAX_DIMENSION: u32 = 20_000;
     let dimension = |name: &str| -> Option<u32> {
@@ -1084,12 +1035,10 @@ fn attr(tag: &Tag, wanted: &str) -> Option<String> {
         .map(|a| a.value.to_string())
 }
 
-/// An attribute that is present but empty, treated as absent.
+/// Present-but-empty attribute = absent.
 ///
-/// Real feed markup contains valueless attributes (`<a href>`). Resolving an
-/// empty `href` against the article's own URL yields the article, so the text
-/// would silently become a link back to the page the reader is already on --
-/// worse than no link, because it looks like it goes somewhere.
+/// Feeds contain valueless attributes (`<a href>`). Empty `href` resolves to
+/// article itself: link back to current page, worse than no link.
 fn non_empty_attr(tag: &Tag, wanted: &str) -> Option<String> {
     attr(tag, wanted).filter(|v| !v.trim().is_empty())
 }
@@ -1110,7 +1059,7 @@ fn class_language(tag: &Tag) -> Option<String> {
     })
 }
 
-/// Collapse runs of ASCII whitespace to a single space.
+/// Collapse ASCII whitespace runs to one space.
 fn collapse_whitespace(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     let mut in_space = false;
@@ -1128,12 +1077,12 @@ fn collapse_whitespace(text: &str) -> String {
     out
 }
 
-/// Truncate to at most `budget` bytes without splitting a character.
+/// Truncate to ≤ `budget` bytes without splitting a char.
 fn clamp_to_char_boundary(text: &str, budget: usize) -> &str {
     if text.len() <= budget {
         return text;
     }
-    // A char is at most four bytes, so a boundary is at most three back.
+    // Char ≤ 4 bytes: boundary ≤ 3 back.
     let cut = (0..=budget)
         .rev()
         .find(|&i| text.is_char_boundary(i))
@@ -1141,8 +1090,8 @@ fn clamp_to_char_boundary(text: &str, budget: usize) -> &str {
     text.get(..cut).unwrap_or("")
 }
 
-/// Drop leading/trailing whitespace across a span run, and remove spans that
-/// become empty. Keeps blocks from rendering with stray padding.
+/// Trim leading/trailing whitespace across span run, remove emptied spans: no
+/// stray padding.
 fn trim_spans(mut spans: Vec<Span>) -> Vec<Span> {
     while let Some(first) = spans.first_mut() {
         let trimmed = first.text.trim_start();
@@ -1178,8 +1127,8 @@ mod tests {
         Url::parse("https://miniflux.example/").unwrap()
     }
 
-    /// A context that renders third-party images, so tests about *structure*
-    /// are not silently also testing the media policy.
+    /// Context rendering third-party images, so *structure* tests don't also
+    /// test media policy.
     fn lenient_ctx() -> TransformContext {
         TransformContext {
             base_url: Some(Url::parse("https://blog.example/post/").unwrap()),
@@ -1228,7 +1177,7 @@ mod tests {
     #[test]
     fn entities_are_decoded_once() {
         let doc = transform("<p>a &amp; b &lt;tag&gt; &#8212; end</p>", &lenient_ctx());
-        // The tokenizer decodes references; the transform must not decode again.
+        // Tokenizer decodes references; transform mustn't decode again.
         assert_eq!(text_of(&doc), "a & b <tag> \u{2014} end");
     }
 
@@ -1341,8 +1290,8 @@ mod tests {
 
     #[test]
     fn a_less_than_inside_script_cannot_forge_a_tag() {
-        // Without RawData handling the tokenizer would read `<b>` out of the
-        // script body and the following text would render bold.
+        // Without RawData handling tokenizer reads `<b>` from script body;
+        // following text renders bold.
         let doc = transform("<script>if (a<b) {}</script><p>plain</p>", &lenient_ctx());
         let BlockKind::Paragraph { spans } = doc.blocks.first().map(|b| &b.kind).unwrap() else {
             panic!("expected a paragraph")
@@ -1379,7 +1328,7 @@ mod tests {
                 spans.iter().all(|s| s.link.is_none()),
                 "{href} survived as a tappable link"
             );
-            // The text is kept -- dropping it would lose content the user can read.
+            // Text kept: dropping loses readable content.
             assert_eq!(Span::render_plain_text(spans), "click me");
         }
     }
@@ -1401,12 +1350,9 @@ mod tests {
 
     /// §the `<img>` tag's own dimensions, carried for layout.
     ///
-    /// Reported from a device: an article's content jumped around while
-    /// scrolling. The UI cannot reserve room for an image it knows nothing
-    /// about, so every row was flat until its image decoded and then sprang to
-    /// full size. The ratio is advisory -- it shapes a rectangle and bounds
-    /// nothing -- so the rule is that it is either trustworthy-looking or
-    /// absent, never half-parsed.
+    /// Device: article content jumped while scrolling; UI can't reserve room
+    /// for unknown image. Ratio advisory (shapes rectangle, bounds nothing):
+    /// either trustworthy-looking or absent, never half-parsed.
     #[test]
     fn an_images_own_dimensions_are_carried_when_they_are_usable() {
         let intrinsic_of = |html: &str| -> Option<(u32, u32)> {
@@ -1425,8 +1371,8 @@ mod tests {
             Some((800, 600))
         );
 
-        // Anything that does not describe a ratio in whole pixels is no hint
-        // at all, and must not become a wrong one.
+        // Anything not a whole-pixel ratio is no hint, mustn't become wrong
+        // one.
         for html in [
             r#"<img src="/a.png" width="800">"#,  // height missing
             r#"<img src="/a.png" height="600">"#, // width missing
@@ -1440,8 +1386,8 @@ mod tests {
             assert_eq!(intrinsic_of(html), None, "{html}");
         }
 
-        // Foreign input: a feed can claim any size, and the reserved rectangle
-        // must not follow it anywhere absurd.
+        // Foreign input: any claimed size; reserved rectangle mustn't follow it
+        // anywhere absurd.
         assert_eq!(
             intrinsic_of(r#"<img src="/a.png" width="4294967295" height="4294967295">"#),
             None,
@@ -1456,9 +1402,8 @@ mod tests {
 
     /// §an image inside a link carries the link, and only that one.
     ///
-    /// The article view zooms an image on a tap -- unless the feed made the
-    /// image a link, where a tap has to keep meaning "go there". The block is
-    /// the only place the UI can learn which it is.
+    /// Article view zooms image on tap, unless feed made it a link (tap = "go
+    /// there"). Block is only place UI learns which.
     #[test]
     fn an_image_knows_the_link_it_sits_in() {
         let link_of = |html: &str| -> Option<String> {
@@ -1484,12 +1429,12 @@ mod tests {
         );
         // Not linked at all.
         assert_eq!(link_of(r#"<p><img src="/a.png"></p>"#), None);
-        // A link that CLOSED before the image does not leak onto it.
+        // Link that CLOSED before image doesn't leak onto it.
         assert_eq!(
             link_of(r#"<p><a href="https://site.example/">x</a> <img src="/a.png"></p>"#),
             None
         );
-        // §9.2: a scheme that is never a link is not one here either.
+        // §9.2: never-a-link scheme isn't one here either.
         assert_eq!(
             link_of(r#"<a href="javascript:alert(1)"><img src="/a.png"></a>"#),
             None
@@ -1538,8 +1483,8 @@ mod tests {
 
     #[test]
     fn deeply_nested_markup_does_not_overflow_the_stack() {
-        // This is the case the tokenizer-not-DOM decision exists for: an RcDom
-        // built from this input overflows the stack when it is *dropped*.
+        // Case tokenizer-not-DOM exists for: RcDom of this input overflows
+        // stack on *drop*.
         let depth = 50_000;
         let html = format!("{}deep{}", "<div>".repeat(depth), "</div>".repeat(depth));
         let doc = transform(&html, &lenient_ctx());
@@ -1547,10 +1492,8 @@ mod tests {
             text_of(&doc).contains("deep"),
             "content lost under deep nesting"
         );
-        // And the structural cap fired. Without this the test says only "it
-        // did not crash" -- which the tokenizer-not-DOM design guarantees on
-        // its own, so the whole §9.2 depth cap could be deleted with every
-        // content test still green.
+        // And structural cap fired. Else test only says "didn't crash", which
+        // design guarantees anyway; depth cap could vanish green.
         assert_eq!(
             doc.truncated,
             Some(Truncation::TooDeep),
@@ -1560,7 +1503,7 @@ mod tests {
 
     #[test]
     fn deeply_nested_unclosed_markup_is_also_survivable() {
-        // No closing tags at all: the open-element stack never unwinds.
+        // No closing tags: open-element stack never unwinds.
         let html = format!("{}tail", "<div><span><em>".repeat(20_000));
         let doc = transform(&html, &lenient_ctx());
         assert!(text_of(&doc).contains("tail"));
@@ -1603,11 +1546,8 @@ mod tests {
 
     #[test]
     fn one_oversized_paragraph_is_truncated_not_erased() {
-        // Regression: `push_block` dropped the block that REACHED the text
-        // cap, not just the ones after it. An article that is a single long
-        // <p> -- which plenty of feeds produce -- therefore rendered as zero
-        // blocks and a blank screen, while reporting `truncated: TooMuchText`.
-        // The transform's contract is to truncate, not to erase.
+        // Regression: block REACHING text cap must be emitted. Single long
+        // `<p>` article must truncate, not render zero blocks.
         let ctx = TransformContext {
             limits: Limits {
                 max_text_bytes: 512,
@@ -1642,11 +1582,8 @@ mod tests {
             },
             ..lenient_ctx()
         };
-        // MANY SMALL paragraphs, not one huge one. With a single 50 KB
-        // paragraph the transform drops it wholesale and returns NO blocks, so
-        // the rendered text is "" -- and `"".len() <= 600` holds whether the
-        // cap exists or not. Deleting the per-token byte budget from
-        // `push_text` outright left the old version of this test green.
+        // MANY SMALL paragraphs, not one huge: single 50 KB paragraph gets
+        // dropped whole, rendered text "" passes `<= 600` with or without cap.
         let html = "<p>abcd abcd abcd abcd</p>".repeat(500);
         let doc = transform(&html, &ctx);
         let text = text_of(&doc);
@@ -1702,9 +1639,8 @@ mod tests {
 
     #[test]
     fn malformed_markup_does_not_panic() {
-        // §9.5: a malformed response is a handled error, not a crash. The fuzz
-        // targets in fuzz/ generalise this; these are the shapes seen in real
-        // feeds.
+        // §9.5: malformed response = handled error, not crash. Fuzz targets
+        // generalise; these are real-feed shapes.
         let cases = [
             "",
             "<",
@@ -1727,21 +1663,18 @@ mod tests {
         ];
         for html in cases {
             let doc = transform(html, &lenient_ctx());
-            // The contract is only that it returns; assert something cheap so
-            // the call is not optimised away.
+            // Contract: it returns. Cheap assert so call isn't optimised away.
             let _ = doc.blocks.len();
         }
     }
 
     #[test]
     fn tables_are_bounded_like_everything_else() {
-        // A table is a SINGLE block, so `max_blocks` does not bound it at all.
-        // Half a million empty `<td>`s built an 80 MB structure while
-        // reporting one block and no truncation.
+        // Table = SINGLE block; `max_blocks` doesn't bound it (half a million
+        // empty `<td>`s: 80 MB, one block, no truncation).
         //
-        // Note both commit paths need the cap: `</tr>` and the next `<tr>`.
-        // Capping only the latter left well-formed markup unbounded, which is
-        // the shape real feed HTML actually has.
+        // Both commit paths need cap: `</tr>` and next `<tr>`. Well-formed
+        // markup is real feed shape.
         let limits = Limits::default();
 
         let tall = format!("<table>{}</table>", "<tr><td>x</td></tr>".repeat(50_000));
@@ -1767,10 +1700,9 @@ mod tests {
 
     #[test]
     fn a_childless_skip_element_does_not_truncate_the_article() {
-        // Regression: `<meta>`, `<input>`, `<embed>` and friends are on the
-        // skip list AND are void, so entering skip mode for them set a flag
-        // nothing could ever clear -- silently discarding everything after.
-        // `<input>` alone is common enough in real feed HTML to have hit this.
+        // Regression: `<meta>`, `<input>`, `<embed>` etc. are skip-listed AND
+        // void; skip mode for them never cleared, discarding everything after.
+        // `<input>` common in feeds.
         for tag in [
             "<meta>",
             "<link>",
@@ -1796,11 +1728,9 @@ mod tests {
 
     #[test]
     fn skipped_content_does_not_leak_past_the_depth_cap() {
-        // Regression: with the depth cap checked before skip handling, a
-        // <script> opened beyond the cap never entered skip mode, the
-        // tokenizer was never put into raw-text mode, and the script body
-        // arrived as ordinary text -- so the article rendered alert('pwned')
-        // as readable content. An allowlist breach, not a cosmetic one.
+        // Regression: depth cap before skip handling let `<script>` past cap
+        // skip raw-text mode; body rendered as text (`alert('pwned')`).
+        // Allowlist breach.
         let depth = Limits::default().max_depth + 2;
         let html = format!(
             "{}<script>alert('pwned')</script><style>body{{display:none}}</style>{}",
@@ -1820,7 +1750,7 @@ mod tests {
 
     #[test]
     fn stray_end_tags_do_not_destroy_structure() {
-        // A stray `</div>` must not unwind the whole open-element stack.
+        // Stray `</div>` mustn't unwind whole open-element stack.
         let doc = transform("<p>a</div> b</p>", &lenient_ctx());
         assert_eq!(text_of(&doc), "a b");
     }
@@ -1883,17 +1813,15 @@ mod resource_exhaustion_tests {
     use super::{Limits, TransformContext};
     use std::time::Instant;
 
-    /// A depth-capped stack must stay depth-capped on *every* path.
+    /// Depth-capped stack stays capped on *every* path.
     ///
-    /// Regression test for a quadratic blow-up found by fuzzing the transform:
-    /// a skipped subtree (`<svg>`, `<script>`, …) used to push onto the
-    /// open-element stack before the depth cap was applied, so the stack grew
-    /// without bound and every unmatched end tag scanned all of it.
+    /// Regression (fuzzing): skipped subtree (`<svg>`, `<script>`, …) pushed
+    /// before depth cap; stack unbounded, each unmatched end tag scanned all of
+    /// it.
     #[test]
     fn a_skipped_subtree_cannot_grow_the_element_stack_without_bound() {
-        // Scaling check rather than a wall-clock threshold: an absolute timing
-        // assertion would be flaky on a loaded CI runner, but quadratic growth
-        // shows up as a ratio no matter how slow the machine is.
+        // Scaling ratio, not wall-clock threshold: absolute timing flakes on
+        // loaded CI; quadratic shows as ratio on any machine.
         let small = {
             let html = format!("<svg>{}{}", "<b>".repeat(10_000), "</zz>".repeat(10_000));
             let t = Instant::now();
@@ -1907,8 +1835,8 @@ mod resource_exhaustion_tests {
             t.elapsed()
         };
 
-        // Four times the input. Linear would be ~4x; the bug was ~16x (measured
-        // 1.3s -> 23s). Ten is comfortably clear of both noise and the defect.
+        // 4× input. Linear ~4×, bug ~16× (1.3 s → 23 s). 10 clear of noise and
+        // defect.
         let ratio = large.as_secs_f64() / small.as_secs_f64().max(0.000_001);
         assert!(
             ratio < 10.0,
@@ -1919,12 +1847,11 @@ mod resource_exhaustion_tests {
 
     #[test]
     fn the_depth_cap_holds_through_a_skipped_subtree() {
-        // The same input, checked structurally rather than by timing.
+        // Same input, checked structurally, not by timing.
         //
-        // `assert!(doc.blocks.is_empty())` on its own says nothing about the
-        // cap: every element here is inside a skipped <svg> and carries no
-        // text, so zero blocks come out whether the stack stops at 128 or
-        // grows to 5000. The stack itself has to be the thing observed.
+        // `assert!(doc.blocks.is_empty())` alone says nothing: all inside
+        // skipped `<svg>`, no text, zero blocks either way. Observe stack
+        // itself.
         let limits = Limits {
             max_depth: 8,
             ..Limits::default()

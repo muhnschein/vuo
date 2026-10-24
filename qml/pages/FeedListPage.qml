@@ -4,24 +4,21 @@ import Sailfish.Silica 1.0
 Page {
     id: page
     property var model
-    /// The BROWSE entry model: the one a per-feed view scopes to itself.
+    /// BROWSE entry model: one per-feed view scopes to itself.
     ///
-    /// Never a tab's model. `setScope` overwrites and nothing restores it, so
-    /// a feed view over the Unread tab's model left that tab listing the feed
-    /// until the app was restarted. See harbour-vuo.qml's `browseEntries`.
+    /// Never tab's model. `setScope` overwrites, nothing restores: Unread tab
+    /// would list feed until restart. See harbour-vuo.qml `browseEntries`.
     property var entryModel
-    /// The model that carries refresh failures. Handed straight on; see
+    /// Model carrying refresh failures. Passed straight on; see
     /// EntryListPage.noticeModel.
     property var noticeModel: null
 
-    // Re-read on the way in.
+    // Re-read on way in.
     //
-    // `FeedModel.pollSync` is driven from the app-wide timer and only fires
-    // when the ENTRY models saw a change, so a feed whose settings were
-    // changed elsewhere -- in the web UI, or by the migration that added the
-    // crawler column with a default -- could sit stale in this list until
-    // something unrelated moved. The editor is seeded from these rows, so
-    // stale here means stale there.
+    // `FeedModel.pollSync` driven by app timer, fires only when ENTRY models
+    // changed; feed settings changed elsewhere (web UI, crawler-column
+    // migration default) sit stale until something unrelated moves. Editor
+    // seeded from these rows: stale here = stale there.
     onStatusChanged: if (status === PageStatus.Activating && page.model) {
         page.model.refresh()
     }
@@ -65,10 +62,8 @@ Page {
                         id: unreadBadge
                         anchors.right: parent.right
                         anchors.verticalCenter: feedTitle.verticalCenter
-                        // FeedModel has exposed a per-feed unread count all
-                        // along; this page never read it, so the list showed
-                        // bare names and you had to open a feed to find out
-                        // whether it had anything in it.
+                        // Per-feed unread count: whether feed has anything,
+                        // without opening it.
                         text: unreadCount > 0 ? unreadCount : ""
                         color: Theme.highlightColor
                         font.pixelSize: Theme.fontSizeSmall
@@ -76,8 +71,7 @@ Page {
                     Image {
                         id: favicon
 
-                        // Centred on the title's line box, the same way the
-                        // entry list centres its own -- see
+                        // Centred on title line box, like entry list; see
                         // components/EntryListView.qml.
                         anchors.left: parent.left
                         anchors.verticalCenter: feedTitle.verticalCenter
@@ -86,28 +80,24 @@ Page {
                         sourceSize.width: Theme.fontSizeMedium
                         sourceSize.height: Theme.fontSizeMedium
                         fillMode: Image.PreserveAspectFit
-                        // A `data:` URI built in Rust from bytes already in
-                        // the mirror -- drawing it fetches nothing, so
-                        // scrolling this list cannot leak the device's IP
-                        // (§9.3).
+                        // `data:` URI built in Rust from mirror bytes; drawing
+                        // fetches nothing, scroll can't leak device IP (§9.3).
                         source: feedIcon
                         asynchronous: true
-                        // The mirror stores whatever format the icon arrived
-                        // in and the device ships handlers for only some of
-                        // them. Collapsing on failure keeps a missing handler
-                        // to a missing icon rather than a broken-image glyph.
+                        // Mirror stores icon in arrival format; device has
+                        // handlers for only some. Collapse on failure: missing
+                        // handler = missing icon, not broken-image glyph.
                         visible: feedIcon.length > 0 && status === Image.Ready
                     }
                     Label {
                         id: feedTitle
-                        // The gutter is the same width whether or not this row
-                        // has an icon, so a list mixing the two does not look
-                        // ragged.
+                        // Gutter same width with or without icon: mixed list
+                        // not ragged.
                         anchors.left: parent.left
                         anchors.leftMargin: favicon.width + Theme.paddingMedium
                         anchors.right: unreadBadge.left
                         anchors.rightMargin: unreadBadge.width > 0 ? Theme.paddingMedium : 0
-                        // A feed name is chosen by the feed operator.
+                        // Feed name chosen by feed operator.
                         textFormat: Text.PlainText
                         text: title
                         truncationMode: TruncationMode.Fade
@@ -116,13 +106,12 @@ Page {
                 }
                 Label {
                     visible: errorMessage.length > 0
-                    // Indented to the title, not to the icon gutter: the two
-                    // lines are one row. The width comes off the indent too,
-                    // or a long error would run past the right margin.
+                    // Indented to title, not icon gutter: one row. Width off
+                    // indent too, else long error runs past right margin.
                     x: favicon.width + Theme.paddingMedium
                     width: parent.width - x
-                    // The server's own error text, relayed verbatim from a
-                    // remote site. Plain text.
+                    // Server's own error text, verbatim from remote site. Plain
+                    // text.
                     textFormat: Text.PlainText
                     text: errorMessage
                     wrapMode: Text.Wrap
@@ -133,13 +122,11 @@ Page {
                 }
             }
 
-            // The scope has to be passed as (kind, id) and the model has to
-            // come with it: pushing `feedId` set a property that does not
-            // exist and omitted `model` entirely, so the page opened empty.
+            // Scope as (kind, id), with model; else page opens empty.
             onClicked: pageStack.push(Qt.resolvedUrl("EntryListPage.qml"), {
                 model: page.entryModel,
-                // Passed on so the feed view's own pulley can open Feeds
-                // again, and the feed opened from THERE has a model too.
+                // Passed on: feed view's pulley can open Feeds again, feed
+                // opened THERE has model too.
                 browseModel: page.entryModel,
                 feedModel: page.model,
                 noticeModel: page.noticeModel,
@@ -152,9 +139,8 @@ Page {
             menu: ContextMenu {
                 MenuItem {
                     text: qsTr("Feed settings")
-                    // Seeded from the row rather than re-read on the other
-                    // page: the delegate has the current values in scope, and
-                    // a second query would be a second chance to disagree.
+                    // Seeded from row, not re-read on other page: delegate has
+                    // current values; second query = second chance to disagree.
                     onClicked: pageStack.push(Qt.resolvedUrl("EditFeedPage.qml"), {
                         model: page.model,
                         row: index,

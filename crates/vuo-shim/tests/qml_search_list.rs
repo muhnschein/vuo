@@ -1,17 +1,15 @@
-//! The entry list as a search page draws it.
+//! Entry list as search page draws it.
 //!
-//! The QML load test instantiates the list with no model, so no delegate and
-//! no section header is ever built. This gives it a model shaped like an
-//! `EntryModel` searching -- roles and counts as Rust hands them over -- and
-//! reads back what the reader would see: the groups, the marked title and
-//! feed name, the excerpt, the feeds found, and no pulley. And the same list NOT searching,
-//! which must draw none of it: a feed's title is foreign text, and outside a
-//! search it is rendered plain.
+//! Load test instantiates list without model: no delegate, no section header built. Gives
+//! it model shaped like searching `EntryModel` (roles and counts as Rust hands over), reads
+//! back what reader sees: groups, marked title and feed name, excerpt, found feeds, no
+//! pulley. Same list NOT searching draws none of it: feed title is foreign, plain outside
+//! search.
 //!
 //! Run under `QT_QPA_PLATFORM=offscreen`; `make check` sets it.
 
-// Test code: the panic denials guard foreign-input paths in production, not
-// assertions in tests. `borrow_as_ptr` is the Qt harness's engine pointer.
+// Test code: panic denials guard production foreign-input paths, not test
+// assertions. `borrow_as_ptr` = Qt harness's engine pointer.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -25,8 +23,8 @@ use qmetaobject::{QByteArray, QMetaType, QString, QVariant, QmlEngine};
 const PROBE_QML: &str = r#"
     import QtQuick 2.0
     Item {
-        // An EntryModel as QML sees one: its roles, and the properties and
-        // methods the list reads off it.
+        // EntryModel as QML sees it: roles, plus properties and methods list
+        // reads.
         ListModel {
             id: fake
             property bool ready: true
@@ -61,7 +59,7 @@ const PROBE_QML: &str = r#"
                 feedName: "Daily"; feedNameStyled: "Daily"
                 matchKind: "title"; excerpt: ""; unreadCount: 0
             }
-            // A feed, found by its name: see models::EntryRow::feed_found.
+            // Feed found by name: see models::EntryRow::feed_found.
             ListElement {
                 entryId: -4; feedId: 4; author: ""; unread: true; starred: false
                 published: 0; readingTime: 0; url: ""; feedIcon: ""
@@ -78,7 +76,7 @@ const PROBE_QML: &str = r#"
                 unreadCount: 0
             }
         }
-        // The page the list is on, as far as opening a feed reads it.
+        // Page list is on, as far as opening feed reads it.
         Item {
             id: host
             property int status: 0
@@ -86,8 +84,8 @@ const PROBE_QML: &str = r#"
             property string feedModel: "feeds"
             property string noticeModel: "notices"
         }
-        // Silica's pageStack, found by the list the way a page finds the
-        // window's: by name, up the context chain.
+        // Silica's pageStack, found as page finds window's: by name, up context
+        // chain.
         property QtObject pageStack: QtObject {
             property string pushed: ""
             function push(url, props) {
@@ -135,7 +133,7 @@ const PROBE_QML: &str = r#"
             found[nth].clicked()
             return fake.loadedMoreIn
         }
-        // The nth item of that name, top to bottom as the reader sees them.
+        // nth item of that name, top to bottom as reader sees.
         function get(name, nth, property) {
             var found = findAll(loader.item, name, [])
             found.sort(function(a, b) {
@@ -155,8 +153,7 @@ fn repo_root() -> std::path::PathBuf {
         .to_path_buf()
 }
 
-/// One test, because `QmlEngine::new()` builds a `QApplication` and there may
-/// be only one of those per process.
+/// One test: `QmlEngine::new()` builds `QApplication`; one per process.
 #[test]
 fn a_search_lists_its_results_grouped_and_marked_and_nothing_else_does() {
     let mut engine = QmlEngine::new();
@@ -210,8 +207,7 @@ fn a_search_lists_its_results_grouped_and_marked_and_nothing_else_does() {
     );
     assert_eq!(get!("sectionHeader", 2, "text"), "In article text (1 of 3)");
 
-    // Bold AND the highlight colour: bold alone was hard to make out on a
-    // read row, which is drawn faded.
+    // Bold AND highlight colour: bold alone hard to see on faded read row.
     let mark = |text: &str| format!("<b><font color=\"#80c0ff\">{text}</font></b>");
     assert_eq!(get!("titleLabel", 0, "textFormat"), STYLED);
     assert_eq!(
@@ -237,8 +233,8 @@ fn a_search_lists_its_results_grouped_and_marked_and_nothing_else_does() {
         format!("A walk by the {}.", mark("harbour"))
     );
 
-    // A feed found by its name is drawn as the feed list draws it -- its
-    // name, marked, and its unread count -- and opens as it does there.
+    // Feed found by name drawn as feed list draws it (name marked, unread
+    // count), opens as there.
     assert_eq!(get!("titleLabel", 2, "textFormat"), STYLED);
     assert_eq!(
         get!("titleLabel", 2, "text"),
@@ -274,8 +270,7 @@ fn a_search_lists_its_results_grouped_and_marked_and_nothing_else_does() {
         "and an article opens the article"
     );
 
-    // "Load more" under the last row of a group with more than it shows,
-    // and nowhere else.
+    // "Load more" under last row of group with more than shown; nowhere else.
     assert_eq!(
         get!("loadMore", 0, "visible"),
         "false",
@@ -309,7 +304,7 @@ fn a_search_lists_its_results_grouped_and_marked_and_nothing_else_does() {
     );
     assert_eq!(call!("set", QString::from("textMatches"), 3), "ok");
 
-    // A group showing all of itself has nothing more to load.
+    // Group showing all of itself has nothing more to load.
     assert_eq!(call!("set", QString::from("textShown"), 3), "ok");
     assert_eq!(get!("sectionHeader", 2, "text"), "In article text (3)");
     assert_eq!(get!("loadMore", 3, "visible"), "false");
@@ -317,7 +312,7 @@ fn a_search_lists_its_results_grouped_and_marked_and_nothing_else_does() {
     assert_eq!(get!("sectionHeader", 1, "text"), "Feeds (2)");
     assert_eq!(get!("loadMore", 2, "visible"), "false");
 
-    // An empty search says what is searched, and nothing more.
+    // Empty search says what is searched, nothing more.
     assert_eq!(get!("placeholder", 0, "text"), "");
     assert_eq!(
         get!("placeholder", 0, "hintText"),

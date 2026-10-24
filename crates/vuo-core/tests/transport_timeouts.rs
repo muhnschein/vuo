@@ -2,11 +2,9 @@
 //! request duration. A server that accepts a connection and never speaks must
 //! not wedge a sync forever.*
 //!
-//! Three shapes, all of which a real phone meets on a bad network:
-//! a server that accepts and says nothing, one that sends headers then stalls
-//! mid-body, and one that dribbles a byte at a time forever — the last being
-//! the interesting case, because it never stalls long enough to trip a read
-//! timeout and only a TOTAL deadline stops it.
+//! Three shapes a phone meets on bad network: accepts and says nothing; headers
+//! then mid-body stall; dribbles a byte at a time forever. Last never stalls
+//! long enough for read timeout; only TOTAL deadline stops it.
 
 #![allow(
     clippy::unwrap_used,

@@ -1,69 +1,53 @@
-//! The offline write path.
+//! Offline write path.
 //!
-//! §5: *local mutations go through an outbox. Marking read, starring, and
-//! marking a whole feed read are written locally and enqueued, then replayed
-//! against the server in batches. Replay must be idempotent and survive being
-//! killed mid-flight. This is the part most worth writing tests for first.*
+//! §5: local mutations (mark read, star, mark feed read) written locally, queued,
+//! replayed to server in batches. Replay idempotent, survives kill mid-flight.
 //!
-//! # Why this is a map and not a log
+//! # Map, not log
 //!
-//! The obvious design is an append-only operation log: "user starred 7", "user
-//! unstarred 7", replayed in order. It is the wrong design here, for a reason
-//! that comes from the server rather than from taste.
+//! Obvious design = append-only op log ("starred 7", "unstarred 7"). Wrong here,
+//! because of server:
 //!
-//! Miniflux's `PUT /v1/entries/{id}/star` is implemented as
-//! `SET starred = NOT starred`. It is a **toggle**, so it is not idempotent:
-//! replaying one after an ambiguous timeout flips the value back. An operation
-//! log made of toggles cannot be safely replayed at all.
+//! Miniflux `PUT /v1/entries/{id}/star` = `SET starred = NOT starred`. **Toggle**,
+//! not idempotent: replay after ambiguous timeout flips back. Toggle log can't be
+//! replayed safely.
 //!
-//! The escape is `PUT /v1/entries`, which takes `{entry_ids, status?, starred?}`
-//! and whose SQL is a plain `SET status = $1` / `SET starred = $1` — an
-//! absolute set. To use it, the queue has to hold *desired states* rather than
-//! *operations*. So the outbox is keyed `(entry_id, field)` and queueing
-//! upserts: star, unstar, star again while offline collapses to a single row
-//! holding `true`.
+//! Escape: `PUT /v1/entries` takes `{entry_ids, status?, starred?}`, SQL plain
+//! `SET status = $1` / `SET starred = $1`: absolute set. So queue holds *desired
+//! states*, not *operations*: keyed `(entry_id, field)`, queueing upserts; star,
+//! unstar, star offline → one row holding `true`.
 //!
-//! The `starred` half of that is a **2.3.2 feature**, verified against real
-//! servers on 2026-10-05: older ones know only `status` and answer 400. A 400
-//! is what the replay's discard rule reads as "malformed forever", so on those
-//! servers stars used to be dropped, not queued. The client now refuses
-//! entry-state writes below the floor before sending, which turns a would-be
-//! data loss into an intent that stays queued and visible. See
-//! `api::client::update_entries` and `ServerVersion::supports_entry_state_writes`.
+//! `starred` half is **2.3.2+**: older servers know only `status`, answer 400,
+//! which replay's discard rule reads as "malformed forever". Client refuses
+//! entry-state writes below floor before sending: intent stays queued and visible.
+//! See `api::client::update_entries`,
+//! `ServerVersion::supports_entry_state_writes`.
 //!
-//! Three properties fall out, and they are exactly the ones §5 asks for:
+//! Three properties, exactly §5's:
 //!
-//! - **Idempotent replay.** What goes on the wire is a final value, so
-//!   resending after a timeout cannot double-apply. No request ids, no dedup
-//!   tokens, no server-side idempotency keys.
-//! - **Survives being killed mid-flight.** A row is deleted only after the
-//!   server confirms, so a process killed between send and commit simply
-//!   replays — harmlessly, by the previous point.
-//! - **Bounded.** The queue cannot grow past one row per entry per field
-//!   however long the device stays offline.
+//! - **Idempotent replay.** Wire carries final value: resend after timeout can't
+//!   double-apply. No request ids, dedup tokens, server idempotency keys.
+//! - **Survives kill mid-flight.** Row deleted only after server confirms; kill
+//!   between send and commit = harmless replay.
+//! - **Bounded.** ≤ one row per entry per field, however long offline.
 //!
-//! # Why mark-all-as-read is expanded locally
+//! # Mark-all-read expanded locally
 //!
-//! `PUT /v1/feeds/{id}/mark-all-as-read` looks like the right call for
-//! "mark this feed read", and it must not be queued. It applies a server-side
-//! `published_at < now()` cut-off captured *at request time*. Queued offline at
-//! noon and replayed at six, it also marks everything that arrived in between —
-//! entries the user never saw and never asked to mark. So an offline mark-all
-//! is expanded into the concrete set of entry ids that are unread *now*, which
-//! preserves the user's actual intent and inherits the idempotency above.
+//! `PUT /v1/feeds/{id}/mark-all-as-read` must not be queued: server-side
+//! `published_at < now()` cut-off taken *at request time*. Queued at noon,
+//! replayed at six = also marks everything in between, never seen. So offline
+//! mark-all expands to ids unread *now*: keeps intent, inherits idempotency.
 
 use rusqlite::{Connection, OptionalExtension as _, Transaction};
 
 use crate::error::Result;
 use crate::model::{EntryId, EntryStatus};
 
-/// The largest number of ids Vuo puts in one `PUT /v1/entries` call.
+/// Most ids Vuo puts in one `PUT /v1/entries`.
 ///
-/// The server enforces no cap: the ids travel as a single array bind parameter
-/// so Postgres's parameter limit does not apply, and there is no request-size
-/// guard in the API layer. The chunk size is therefore ours to choose, and it
-/// is chosen for *retry granularity* — a failed chunk is re-sent whole, so it
-/// should be no larger than we are willing to resend.
+/// Server has no cap (ids = single array bind param, no Postgres param limit,
+/// no request-size guard). Chosen for *retry granularity*: failed chunk resent
+/// whole.
 pub const MAX_IDS_PER_REQUEST: usize = 500;
 
 /// Which field of an entry an intent concerns.
@@ -101,8 +85,7 @@ impl DesiredValue {
         }
     }
 
-    /// The stored representation. Kept textual so the table is legible when
-    /// someone is debugging a user's database.
+    /// Stored form. Textual: table legible when debugging user's database.
     fn as_str(self) -> &'static str {
         match self {
             DesiredValue::Status(EntryStatus::Read) => "read",
@@ -130,35 +113,32 @@ pub struct PendingMutation {
     pub entry_id: EntryId,
     /// The value the user wants the server to hold.
     pub value: DesiredValue,
-    /// Failed sends since this value was queued; reset when the user queues a
-    /// new value for the same field.
+    /// Failed sends since value queued; reset when user queues new value for
+    /// same field.
     pub attempts: i64,
 }
 
-/// A group of intents that share a field and a value, ready to be one request.
+/// Intents sharing field and value: one request.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Batch {
     /// The value every entry in the batch should take.
     pub value: DesiredValue,
-    /// The entries, at most [`MAX_IDS_PER_REQUEST`] and never empty.
+    /// Entries: ≤ [`MAX_IDS_PER_REQUEST`], never empty.
     pub entry_ids: Vec<EntryId>,
 }
 
-/// Queue an intent **and apply it locally**.
+/// Queue intent **and apply locally**.
 ///
-/// Both halves matter. The local write is what makes the UI respond instantly
-/// and keeps §5's "the mirror is the source of truth for the UI" true while
-/// offline; the queue row is what eventually tells the server.
+/// Local write: UI responds instantly, mirror stays UI's truth offline (§5).
+/// Queue row: eventually tells server.
 ///
 /// # Errors
 ///
-/// Returns [`Error::Db`](crate::error::Error::Db) if either write fails.
-/// Queueing for an entry that is not in the mirror is not an error: the outbox
-/// row is written and the local update touches nothing.
+/// [`Error::Db`](crate::error::Error::Db) if either write fails. Entry missing
+/// from mirror isn't error: outbox row written, local update touches nothing.
 pub fn queue(tx: &Transaction<'_>, entry_id: EntryId, value: DesiredValue, now: i64) -> Result<()> {
-    // Upsert, not insert: this is what collapses a burst of toggles into one
-    // row and keeps the queue bounded. `attempts` resets because a new value
-    // is a new intent and deserves a fresh retry budget.
+    // Upsert, not insert: burst of toggles → one row, queue bounded. `attempts`
+    // resets: new value = new intent, fresh retry budget.
     tx.execute(
         "INSERT INTO outbox (entry_id, field, value, queued_at, attempts, last_error)
          VALUES (?1, ?2, ?3, ?4, 0, NULL)
@@ -187,17 +167,17 @@ pub fn queue(tx: &Transaction<'_>, entry_id: EntryId, value: DesiredValue, now: 
     Ok(())
 }
 
-/// Mark every currently-unread entry in a feed as read, offline-safely.
+/// Mark every unread entry in feed read, offline-safe.
 ///
-/// Expands to concrete ids rather than queueing the server's bulk endpoint;
-/// see the module docs for why that endpoint is unsafe to replay.
+/// Expands to concrete ids, not server bulk endpoint (unsafe to replay; module
+/// docs).
 ///
-/// Returns how many entries were queued.
+/// Returns count queued.
 ///
 /// # Errors
 ///
-/// Returns [`Error::Db`](crate::error::Error::Db) if reading the unread ids or
-/// queueing any of them fails.
+/// [`Error::Db`](crate::error::Error::Db) if reading unread ids or queueing
+/// fails.
 pub fn queue_mark_feed_read(tx: &Transaction<'_>, feed_id: i64, now: i64) -> Result<usize> {
     let ids: Vec<i64> = {
         let mut stmt =
@@ -216,12 +196,12 @@ pub fn queue_mark_feed_read(tx: &Transaction<'_>, feed_id: i64, now: i64) -> Res
     Ok(ids.len())
 }
 
-/// As [`queue_mark_feed_read`], for a whole category.
+/// As [`queue_mark_feed_read`], for whole category.
 ///
 /// # Errors
 ///
-/// Returns [`Error::Db`](crate::error::Error::Db) if reading the unread ids or
-/// queueing any of them fails.
+/// [`Error::Db`](crate::error::Error::Db) if reading unread ids or queueing
+/// fails.
 pub fn queue_mark_category_read(tx: &Transaction<'_>, category_id: i64, now: i64) -> Result<usize> {
     let ids: Vec<i64> = {
         let mut stmt = tx.prepare(
@@ -245,12 +225,11 @@ pub fn queue_mark_category_read(tx: &Transaction<'_>, category_id: i64, now: i64
 
 /// Every pending intent, oldest first.
 ///
-/// Rows this build cannot parse (queued by a newer Vuo) are skipped, not
-/// returned.
+/// Rows this build can't parse (from newer Vuo) skipped.
 ///
 /// # Errors
 ///
-/// Returns [`Error::Db`](crate::error::Error::Db) if the outbox cannot be read.
+/// [`Error::Db`](crate::error::Error::Db) if outbox can't be read.
 pub fn pending(conn: &Connection) -> Result<Vec<PendingMutation>> {
     let mut stmt = conn.prepare(
         "SELECT entry_id, field, value, attempts FROM outbox ORDER BY queued_at ASC, entry_id ASC",
@@ -267,9 +246,8 @@ pub fn pending(conn: &Connection) -> Result<Vec<PendingMutation>> {
     let mut out = Vec::new();
     for row in rows {
         let (entry_id, field, value, attempts) = row?;
-        // A row whose field/value pair is unrecognised can only come from a
-        // newer Vuo that queued something this build does not understand. Skip
-        // it rather than failing the flush; the newer build will send it.
+        // Unrecognised field/value only from newer Vuo. Skip, don't fail flush;
+        // newer build sends it.
         if let Some(value) = DesiredValue::parse(&field, &value) {
             out.push(PendingMutation {
                 entry_id: EntryId(entry_id),
@@ -281,14 +259,14 @@ pub fn pending(conn: &Connection) -> Result<Vec<PendingMutation>> {
     Ok(out)
 }
 
-/// The pending intent for one entry and field, if any.
+/// Pending intent for one entry and field, if any.
 ///
-/// Used by the pull to resolve conflicts **per field**: a remote read-status
-/// change must not clobber a local pending star.
+/// Pull resolves conflicts **per field**: remote read-status change mustn't
+/// clobber local pending star.
 ///
 /// # Errors
 ///
-/// Returns [`Error::Db`](crate::error::Error::Db) if the outbox cannot be read.
+/// [`Error::Db`](crate::error::Error::Db) if outbox can't be read.
 pub fn pending_for(
     conn: &Connection,
     entry_id: EntryId,
@@ -306,8 +284,7 @@ pub fn pending_for(
 
 /// Group pending intents into requests: one per (field, value), chunked.
 ///
-/// At most four distinct groups exist — read, unread, starred, unstarred —
-/// however many entries are queued.
+/// ≤ four groups (read, unread, starred, unstarred), however many entries.
 #[must_use]
 pub fn batches(pending: &[PendingMutation]) -> Vec<Batch> {
     let mut groups: std::collections::BTreeMap<DesiredValue, Vec<EntryId>> =
@@ -319,9 +296,8 @@ pub fn batches(pending: &[PendingMutation]) -> Vec<Batch> {
     let mut out = Vec::new();
     for (value, ids) in groups {
         for chunk in ids.chunks(MAX_IDS_PER_REQUEST) {
-            // Never emit an empty batch: `PUT /v1/entries` answers 400 for an
-            // empty id list, which the retry classifier would then read as a
-            // permanent client error and drop the work.
+            // Never empty batch: `PUT /v1/entries` 400s on empty ids; retry
+            // classifier reads that as permanent, drops work.
             if chunk.is_empty() {
                 continue;
             }
@@ -334,26 +310,23 @@ pub fn batches(pending: &[PendingMutation]) -> Vec<Batch> {
     out
 }
 
-/// Clear a batch after the server confirmed it.
+/// Clear batch after server confirmed.
 ///
-/// **Compare-and-delete, never blind delete.** If the user re-toggled while the
-/// request was in flight, the row now holds a different value and represents an
-/// intent the server has not seen. Deleting it would silently discard a user
-/// action. The `value = ?` predicate is what makes that impossible.
+/// **Compare-and-delete, never blind.** User re-toggled in flight → row holds
+/// different value, intent server hasn't seen. `value = ?` predicate keeps it.
 ///
-/// Returns how many rows were actually cleared, which is less than the batch
-/// size exactly when something was re-toggled mid-flight.
+/// Returns rows cleared; less than batch size exactly when re-toggled
+/// mid-flight.
 ///
 /// # Errors
 ///
-/// Returns [`Error::Db`](crate::error::Error::Db) if a delete fails.
+/// [`Error::Db`](crate::error::Error::Db) if a delete fails.
 pub fn confirm(tx: &Transaction<'_>, batch: &Batch) -> Result<usize> {
     let field = batch.value.field().as_str();
     let value = batch.value.as_str();
     let mut cleared = 0usize;
-    // One parameterised statement per id rather than a built `IN (...)` list:
-    // §9.4 forbids string-built SQL, and a transaction makes the per-row cost
-    // irrelevant.
+    // One parameterised statement per id, not built `IN (...)`: §9.4 forbids
+    // string-built SQL; transaction makes per-row cost irrelevant.
     let mut stmt =
         tx.prepare("DELETE FROM outbox WHERE entry_id = ?1 AND field = ?2 AND value = ?3")?;
     for id in &batch.entry_ids {
@@ -363,16 +336,15 @@ pub fn confirm(tx: &Transaction<'_>, batch: &Batch) -> Result<usize> {
     Ok(cleared)
 }
 
-/// Record a failed attempt without losing the intent.
+/// Record failed attempt, keep intent.
 ///
-/// Bumps `attempts` and stores `error` on every row in the batch that still
-/// holds the value the batch sent. Matched the way [`confirm`] matches: a row
-/// re-toggled while the request was in flight is a new intent that has not
-/// been tried yet, and the old request's failure is not its failure.
+/// Bumps `attempts`, stores `error` on rows still holding batch's value.
+/// Matched like [`confirm`]: row re-toggled in flight is untried new intent;
+/// old failure isn't its.
 ///
 /// # Errors
 ///
-/// Returns [`Error::Db`](crate::error::Error::Db) if an update fails.
+/// [`Error::Db`](crate::error::Error::Db) if an update fails.
 pub fn record_failure(tx: &Transaction<'_>, batch: &Batch, error: &str) -> Result<()> {
     let field = batch.value.field().as_str();
     let value = batch.value.as_str();
@@ -386,28 +358,28 @@ pub fn record_failure(tx: &Transaction<'_>, batch: &Batch, error: &str) -> Resul
     Ok(())
 }
 
-/// Drop a batch whose failure is permanent.
+/// Drop batch whose failure is permanent.
 ///
-/// Only for genuinely unrecoverable rejections (a 400 means the payload will
-/// be rejected identically forever). Called deliberately, never on a timeout.
+/// Only for unrecoverable rejections (400: rejected identically forever).
+/// Deliberate, never on timeout.
 ///
-/// The same compare-and-delete as [`confirm`], so a row re-toggled since the
-/// batch was built survives. Returns how many rows were dropped.
+/// Same compare-and-delete as [`confirm`]: row re-toggled since batch built
+/// survives. Returns rows dropped.
 ///
 /// # Errors
 ///
-/// Returns [`Error::Db`](crate::error::Error::Db) if a delete fails.
+/// [`Error::Db`](crate::error::Error::Db) if a delete fails.
 pub fn discard(tx: &Transaction<'_>, batch: &Batch) -> Result<usize> {
     confirm(tx, batch)
 }
 
-/// How many intents are waiting.
+/// How many intents waiting.
 ///
-/// Counts every row, including any [`pending`] would skip as unrecognised.
+/// Counts every row, incl. ones [`pending`] skips as unrecognised.
 ///
 /// # Errors
 ///
-/// Returns [`Error::Db`](crate::error::Error::Db) if the count query fails.
+/// [`Error::Db`](crate::error::Error::Db) if count query fails.
 pub fn len(conn: &Connection) -> Result<i64> {
     Ok(conn.query_row("SELECT COUNT(*) FROM outbox", [], |r| r.get(0))?)
 }
@@ -435,8 +407,8 @@ mod tests {
 
     #[test]
     fn queueing_applies_the_change_locally_too() {
-        // The UI reads the mirror, so an offline action has to be visible
-        // there immediately or it looks like nothing happened.
+        // UI reads mirror: offline action must show there at once, else looks
+        // like nothing happened.
         let mut db = db_with_entries(1);
         db.with_tx(|tx| queue(tx, EntryId(1), DesiredValue::Status(EntryStatus::Read), 100))
             .unwrap();
@@ -451,7 +423,7 @@ mod tests {
 
     #[test]
     fn repeated_toggles_collapse_to_one_row() {
-        // The queue must stay bounded however long the device is offline.
+        // Queue stays bounded however long offline.
         let mut db = db_with_entries(1);
         db.with_tx(|tx| {
             for (i, starred) in [true, false, true, false, true].into_iter().enumerate() {
@@ -536,8 +508,8 @@ mod tests {
 
     #[test]
     fn confirm_clears_only_what_was_actually_sent() {
-        // The mid-flight re-toggle case. This is the reason confirm compares
-        // the value instead of deleting by key.
+        // Mid-flight re-toggle: why confirm compares value instead of deleting
+        // by key.
         let mut db = db_with_entries(2);
         db.with_tx(|tx| {
             queue(tx, EntryId(1), DesiredValue::Starred(true), 1)?;
@@ -550,7 +522,7 @@ mod tests {
             entry_ids: vec![EntryId(1), EntryId(2)],
         };
 
-        // While the request is in flight the user unstars entry 2.
+        // User unstars entry 2 while request in flight.
         db.with_tx(|tx| queue(tx, EntryId(2), DesiredValue::Starred(false), 2))
             .unwrap();
 
@@ -570,10 +542,9 @@ mod tests {
 
     #[test]
     fn replay_survives_being_killed_mid_flight() {
-        // Model the crash: the request went out and the server applied it, but
-        // the process died before confirming. The row is still queued, so the
-        // next flush resends -- which is harmless precisely because the
-        // payload is an absolute value rather than a toggle.
+        // Crash model: request sent, server applied, process died before
+        // confirm. Row still queued; next flush resends, harmless because
+        // payload absolute, not toggle.
         let mut db = db_with_entries(1);
         db.with_tx(|tx| queue(tx, EntryId(1), DesiredValue::Starred(true), 1))
             .unwrap();
@@ -586,7 +557,7 @@ mod tests {
             "the intent must still be queued after a crash"
         );
 
-        // Resending is a no-op server-side; confirming afterwards clears it.
+        // Resend is server-side no-op; confirm afterwards clears it.
         db.with_tx(|tx| confirm(tx, first.first().unwrap()))
             .unwrap();
         assert_eq!(len(db.conn()).unwrap(), 0);
@@ -611,9 +582,8 @@ mod tests {
 
     #[test]
     fn a_failure_is_not_charged_to_an_intent_queued_after_the_request() {
-        // The user stars, the flush sends it, the user unstars before the
-        // request fails. The queued unstar has never been sent, so it must not
-        // carry the star's error or count the star's attempt.
+        // User stars, flush sends, user unstars before request fails. Unsent
+        // unstar must not carry star's error or attempt.
         let mut db = db_with_entries(1);
         db.with_tx(|tx| queue(tx, EntryId(1), DesiredValue::Starred(true), 1))
             .unwrap();
@@ -645,11 +615,11 @@ mod tests {
 
     #[test]
     fn an_offline_mark_all_read_expands_to_concrete_ids() {
-        // Queueing the server's bulk endpoint instead would mark everything
-        // published between the tap and the replay.
+        // Server bulk endpoint would mark everything published between tap and
+        // replay.
         let mut db = db_with_entries(5);
         db.with_tx(|tx| {
-            // One entry is already read and must not be re-queued.
+            // One entry already read: not re-queued.
             tx.execute("UPDATE entries SET status = 'read' WHERE id = 3", [])?;
             let n = queue_mark_feed_read(tx, 1, 10)?;
             assert_eq!(n, 4);
@@ -691,7 +661,7 @@ mod tests {
 
     #[test]
     fn an_unrecognised_queued_row_is_skipped_not_fatal() {
-        // A newer Vuo could queue a field this build predates.
+        // Newer Vuo could queue field this build predates.
         let db = db_with_entries(1);
         db.conn()
             .execute(

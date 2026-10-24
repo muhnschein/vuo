@@ -1,33 +1,24 @@
-//! Every member the QML calls must exist on a Rust `QObject`.
+//! Every member QML calls must exist on a Rust `QObject`.
 //!
-//! # Why this test exists
+//! # Why
 //!
-//! The QML load test compiles every page, which catches unknown *types* and
-//! undeclared *properties*. It does not catch a call to a method that does not
-//! exist: QML resolves method calls at **runtime**, so
-//! `model.setRedd(index, true)` compiles perfectly and fails on the device the
-//! moment a user taps.
+//! QML load test compiles every page: catches unknown *types* and undeclared
+//! *properties*, not calls to missing methods. QML resolves method calls at
+//! **runtime**: `model.setRedd(index, true)` compiles fine, fails on device at
+//! first tap. Unimplemented methods otherwise pass every check in the build.
 //!
-//! That is not a hypothetical. The first version of this UI called nine
-//! methods -- `setRead`, `setStarred`, `markAllRead`, `markFeedRead`,
-//! `subscribe`, `unsubscribe`, `load`, `fetchOriginal`, `allowImagesFrom` --
-//! that had never been implemented, and every check in the build passed.
+//! # How
 //!
-//! # How it works
+//! `qmetaobject` emits names verbatim: Rust source *is* QML API. Scans
+//! `qt_property!`/`qt_method!`/`qt_signal!` declarations for usable names,
+//! scans QML for members accessed on a Vuo model, reports anything undeclared.
 //!
-//! `qmetaobject` emits names to the meta-object verbatim, so the Rust source
-//! *is* the QML API. This scans the `qt_property!`/`qt_method!`/`qt_signal!`
-//! declarations for the set of names QML may use, then scans the QML for
-//! members accessed on a Vuo model, and reports anything not declared.
-//!
-//! It deliberately checks the union of members across all Vuo types rather
-//! than per-type: QML passes models around through `property var`, so the
-//! receiver's type is not always recoverable from the source. The union still
-//! catches every typo and every unimplemented method, which is the failure
-//! mode that matters.
+//! Checks union of members across all Vuo types, not per type: QML passes
+//! models via `property var`, receiver type not always recoverable. Union still
+//! catches every typo and unimplemented method (failure mode that matters).
 
-// Test code: the panic denials guard foreign-input paths in production, not
-// assertions in tests. See the note in vuo-core's lib.rs.
+// Test code: panic denials guard production foreign-input paths, not test
+// assertions. See note in vuo-core's lib.rs.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -56,11 +47,10 @@ fn declared_members(root: &Path) -> BTreeSet<String> {
             {
                 continue;
             }
-            // Strip a visibility modifier: `pub blockedImages: qt_property!(...)`
-            // declares the member `blockedImages`, not `pub blockedImages`.
-            // Without this the member silently fails to register and the test
-            // reports the QML that uses it as calling something undeclared --
-            // pointing at the wrong file entirely.
+            // Strip visibility modifier: `pub blockedImages: qt_property!(...)`
+            // declares `blockedImages`, not `pub blockedImages`. Else member
+            // silently unregistered; test blames QML using it, pointing at wrong
+            // file.
             let name = name
                 .trim()
                 .strip_prefix("pub(crate) ")
@@ -71,12 +61,12 @@ fn declared_members(root: &Path) -> BTreeSet<String> {
                 continue;
             }
             names.insert(name.to_owned());
-            // A `qt_signal!` also gives QML an `onName` handler.
+            // `qt_signal!` also gives QML `onName` handler.
             let mut chars = name.chars();
             if let Some(first) = chars.next() {
                 names.insert(format!("on{}{}", first.to_uppercase(), chars.as_str()));
             }
-            // A NOTIFY signal named in a property declaration is usable too.
+            // NOTIFY signal named in property declaration usable too.
             if let Some(idx) = rest.find("NOTIFY ") {
                 if let Some(sig) = rest.get(idx + 7..) {
                     let sig: String = sig
@@ -93,24 +83,20 @@ fn declared_members(root: &Path) -> BTreeSet<String> {
     names
 }
 
-/// The tab strip's titles and its scope kinds must stay the same length.
+/// Tab strip's titles and scope kinds stay same length.
 ///
-/// They are two parallel arrays in EntryListPage.qml -- `titles` on the strip
-/// and `scopeTabKinds` on the page -- and the strip maps one to the other by
-/// index. Adding a fourth title without a fourth kind gives a tab whose tap
-/// resolves `scopeTabKinds[3]` to `undefined`, which `setScope` would then
-/// receive as 0: the tab would silently show Unread. Nothing else in the build
-/// would notice, because it is a runtime array lookup.
+/// Two parallel arrays in EntryListPage.qml (`titles` on strip, `scopeTabKinds`
+/// on page), mapped by index. Fourth title without fourth kind → tap resolves
+/// `scopeTabKinds[3]` to `undefined`, `setScope` gets 0: tab silently shows
+/// Unread. Runtime array lookup; nothing else notices.
 #[test]
 fn every_scope_tab_has_a_scope_kind() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"))
         .ancestors()
         .nth(2)
         .expect("the workspace root");
-    // The kinds live with the page that owns the pager. The strip has moved
-    // between that page and the list's header more than once while its
-    // relationship to the pulley was worked out, so the titles are looked for
-    // in both rather than pinned to whichever file holds them today.
+    // Kinds live with page owning pager. Strip location (page vs list header)
+    // has moved; titles looked for in both, not pinned to today's file.
     let page = std::fs::read_to_string(root.join("qml/pages/EntryListPage.qml"))
         .expect("EntryListPage.qml");
     let view = std::fs::read_to_string(root.join("qml/components/EntryListView.qml"))
@@ -147,15 +133,13 @@ fn every_scope_tab_has_a_scope_kind() {
 
 /// §a pushed feed view never re-scopes a tab's model.
 ///
-/// `setScope` is a plain overwrite and nothing restores what it overwrote, so
-/// the model a feed view is handed shows that feed until something else scopes
-/// it. Handing it a TAB's model is therefore permanent: reported from a device
-/// as "open a feed, swipe back twice, and the list still shows only that
-/// feed's articles, with no way back except killing the app".
+/// `setScope` = plain overwrite, nothing restores: feed view's model shows that
+/// feed until rescoped. Handing it a TAB's model is permanent ("open feed,
+/// swipe back twice, list still shows only that feed, no way back but killing
+/// app").
 ///
-/// Neither qmllint nor the load test can see this -- both models are a
-/// `property var` holding a perfectly valid `EntryModel`, and the wrong one is
-/// wrong only in where else it is bound. So the wiring is asserted here.
+/// qmllint and load test blind: both are `property var` holding valid
+/// `EntryModel`; wrong only in where else bound. Wiring asserted here.
 #[test]
 fn a_feed_view_is_never_given_a_tabs_model() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -169,7 +153,7 @@ fn a_feed_view_is_never_given_a_tabs_model() {
     let feeds =
         std::fs::read_to_string(root.join("qml/pages/FeedListPage.qml")).expect("FeedListPage.qml");
 
-    // The models bound to the three tabs, by the id the window gives them.
+    // Models bound to three tabs, by window's ids.
     let tab_models: Vec<String> = {
         let line = window
             .lines()
@@ -197,7 +181,7 @@ fn a_feed_view_is_never_given_a_tabs_model() {
          opening a feed would leave that tab showing the feed"
     );
 
-    // And the pulley must reach for it rather than for the list it is on.
+    // Pulley must reach for it, not list it's on.
     let push = view
         .split_once("FeedListPage.qml")
         .map(|(_, rest)| rest.split_once("})").map_or(rest, |(args, _)| args))
@@ -208,8 +192,8 @@ fn a_feed_view_is_never_given_a_tabs_model() {
          tab's; it passes: {push}"
     );
 
-    // The feeds page then hands that same model to the page it pushes, and
-    // hands it on again so a feed opened from THAT page has one too.
+    // Feeds page hands same model to page it pushes, and on again: feed opened
+    // from THAT page has one too.
     let opened = feeds
         .split_once("EntryListPage.qml")
         .map(|(_, rest)| rest.split_once("})").map_or(rest, |(args, _)| args))
@@ -226,11 +210,9 @@ fn a_feed_view_is_never_given_a_tabs_model() {
 
 /// §the search page has a model of its own.
 ///
-/// The same trap as a feed view's, one page over: the search page scopes
-/// whatever model it is handed to scope 5, and `setScope` is a plain
-/// overwrite. Handed a tab's model, a search would leave that tab listing the
-/// search's results; handed the browse model, it would re-scope an open feed
-/// view underneath it.
+/// Same trap one page over: search page scopes handed model to scope 5;
+/// `setScope` overwrites. Tab's model → tab lists search results; browse model
+/// → re-scopes open feed view underneath.
 #[test]
 fn a_search_is_never_given_another_lists_model() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -263,7 +245,7 @@ fn a_search_is_never_given_another_lists_model() {
         "the search model is the browse model; a search would re-scope a feed view"
     );
 
-    // The pulley's Search item hands that model over as the page's own.
+    // Pulley's Search item hands that model over as page's own.
     let push = view
         .split_once("searching: true")
         .and_then(|(before, _)| before.rsplit_once("pageStack.push("))
@@ -281,26 +263,20 @@ fn a_search_is_never_given_another_lists_model() {
 
 /// §no property is bound to itself.
 ///
-/// `account: account` inside an `OnboardingPage { }` does not mean "the id
-/// called account". A binding is resolved against the object's OWN properties
-/// first, and `OnboardingPage` declares `property var account` -- so the name on
-/// the right is the name on the left, and Qt reports a binding loop and leaves
-/// the property at its default. Everything that reads it then quietly does
-/// nothing.
+/// `account: account` inside `OnboardingPage { }` ≠ "the id called account".
+/// Binding resolves against object's OWN properties first; `OnboardingPage`
+/// declares `property var account`, so right name = left name: Qt reports
+/// binding loop, leaves default; everything reading it silently does nothing.
 ///
-/// This shipped. It was in a device log as
-/// `QML OnboardingPage: Binding loop detected for property "account"`, and
-/// nothing in the build had seen it: `qml_loads.rs` already fails on that
-/// exact warning, but only for bindings it evaluates, and a `Component { }`
-/// inside a file is not instantiated by creating that file's root object.
-/// Reading the source catches it whether or not anything instantiates it.
+/// Device log showed `QML OnboardingPage: Binding loop detected for property
+/// "account"`. `qml_loads.rs` fails on that warning only for bindings it
+/// evaluates; `Component { }` inside file isn't instantiated by creating root.
+/// Reading source catches it regardless.
 ///
-/// A `key: value` pair inside a call's arguments -- `pageStack.push(url, {
-/// hideGlobally: hideGlobally })` -- is the opposite: there the left name is
-/// the property being set on the pushed page and the right one is a role in
-/// scope, which is exactly right. Those sit inside parentheses; a property
-/// binding in an object declaration does not. That is the whole difference,
-/// and it is what the depth count below is for.
+/// `key: value` inside call arguments (`pageStack.push(url, { hideGlobally:
+/// hideGlobally })`) is opposite: left = pushed page's property, right = role in
+/// scope; correct. Those sit inside parentheses; object-declaration binding
+/// doesn't. Depth count below is for that.
 #[test]
 fn no_property_is_bound_to_itself() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -316,7 +292,7 @@ fn no_property_is_bound_to_itself() {
     let mut found: Vec<String> = Vec::new();
     for file in &files {
         let source = std::fs::read_to_string(file).expect("read qml");
-        // Parens inside a string or a comment are not nesting.
+        // Parens inside string or comment aren't nesting.
         let source = strip_strings_and_comments(&source);
         let mut depth: i32 = 0;
         for (lineno, line) in source.lines().enumerate() {
@@ -351,8 +327,8 @@ fn no_property_is_bound_to_itself() {
     );
 }
 
-/// Role names exposed through `role_names()`, which delegates see as
-/// context properties rather than as members of the model.
+/// Role names exposed via `role_names()`; delegates see them as context
+/// properties, not model members.
 fn declared_roles(root: &Path) -> BTreeSet<String> {
     let mut names = BTreeSet::new();
     for file in ["models.rs", "article.rs"] {
@@ -390,8 +366,8 @@ fn qml_files(dir: &Path, out: &mut Vec<PathBuf>) {
 
 #[test]
 fn every_member_the_qml_uses_is_implemented_in_rust() {
-    // Identifiers that hold a Vuo model in the QML. `model` and `feedModel`
-    // are the `property var` names pages receive them through.
+    // Identifiers holding a Vuo model in QML. `model` and `feedModel` =
+    // `property var` names pages receive them through.
     const RECEIVERS: &[&str] = &[
         "entries",
         "feeds",
@@ -400,17 +376,15 @@ fn every_member_the_qml_uses_is_implemented_in_rust() {
         "account",
         "model",
         "feedModel",
-        // The root window's own ids. `accountSettings` went unchecked until the
-        // notification switch made it something the window reads on every
-        // sync, and `arrivals` is only ever called, never bound, so a typo in
-        // either would fail only on a device, only while Vuo was on its cover.
+        // Root window's own ids. Window reads `accountSettings` every sync;
+        // `arrivals` only called, never bound: typo in either fails only on
+        // device, only on cover.
         "accountSettings",
         "arrivals",
-        // Every other name an EntryModel travels under. `entryModel` is what
-        // EntryListView calls every list action through -- mark read, star,
-        // load more, sync, search -- and it was not on this list, so a typo
-        // in any of them passed: `entryModel.setSerch(...)` was tried, and
-        // nothing in the build noticed.
+        // Every other name EntryModel travels under. `entryModel` = what
+        // EntryListView calls every list action through (mark read, star, load
+        // more, sync, search); typo like `entryModel.setSerch(...)` must fail
+        // here.
         "entryModel",
         "noticeModel",
         "browseModel",
@@ -443,15 +417,15 @@ fn every_member_the_qml_uses_is_implemented_in_rust() {
     for file in &files {
         let source = std::fs::read_to_string(file).expect("read qml");
         for (lineno, line) in source.lines().enumerate() {
-            // Skip comments so a mention in prose is not treated as a call.
+            // Skip comments: mention in prose isn't call.
             let code = line.split("//").next().unwrap_or("");
             for receiver in RECEIVERS {
                 let needle = format!("{receiver}.");
                 let mut from = 0usize;
                 while let Some(idx) = code.get(from..).and_then(|s| s.find(&needle)) {
                     let at = from + idx;
-                    // Require a non-identifier character before the receiver,
-                    // so `page.model.` matches on `model` but `xmodel.` does not.
+                    // Require non-identifier char before receiver: `page.model.`
+                    // matches `model`, `xmodel.` doesn't.
                     let preceded_ok = at == 0
                         || !code
                             .get(..at)
@@ -470,7 +444,7 @@ fn every_member_the_qml_uses_is_implemented_in_rust() {
                     if member.is_empty() || declared.contains(&member) {
                         continue;
                     }
-                    // Qt built-ins available on every QObject.
+                    // Qt built-ins on every QObject.
                     if matches!(member.as_str(), "objectName" | "destroy" | "count") {
                         continue;
                     }
@@ -494,37 +468,31 @@ fn every_member_the_qml_uses_is_implemented_in_rust() {
     );
 }
 
-/// Roles the Rust models expose that no QML page reads.
+/// Roles Rust models expose that no QML page reads.
 ///
-/// The check below is that every *other* declared role is referenced, so
-/// renaming or dropping a role the UI depends on fails here. Adding a name to
-/// this list is therefore a deliberate statement that the UI does not use it,
-/// not a way to quiet the test.
+/// Check below: every *other* declared role referenced, so renaming or dropping
+/// role UI depends on fails. Adding name here = deliberate statement UI doesn't
+/// use it, not way to quiet test.
 const ROLES_QML_DOES_NOT_USE: &[&str] = &[
-    // The article's plain-text rendering, kept for a share/copy action that
-    // does not exist yet.
+    // Article's plain-text rendering, kept for share/copy action not built yet.
     "plainText",
-    // The transform records a code block's language; the UI renders code
-    // blocks unhighlighted, so nothing reads it.
+    // Transform records code block language; UI renders code unhighlighted,
+    // nothing reads it.
     "codeLanguage",
     // List numbering comes from the pre-rendered `marker`.
     "ordered",
-    // The entry list's detail line is feed | age | reading time | star. An
-    // author was there once and was removed on request: it duplicated the
-    // feed name for most feeds and pushed the line that actually identifies
-    // the article off the row. The role stays because the mirror has it and a
-    // future article header is the obvious place for it.
+    // Entry list detail line = feed | age | reading time | star. Author left
+    // out on request: duplicated feed name for most feeds, pushed identifying
+    // line off row. Role stays: mirror has it; future article header is obvious
+    // home.
     "author",
 ];
 
-/// QML and Silica names that legitimately appear as bare camelCase words in a
-/// value position. Everything else bare and camelCase inside a page has to be
-/// a model role.
+/// QML and Silica names legitimately bare camelCase in value position.
+/// Everything else bare and camelCase in page must be model role.
 ///
-/// This list is short on purpose. An earlier version of this test carried
-/// around sixty names, and because it had swallowed real role and method
-/// vocabulary (`entryId`, `unreadCount`, `setRead`, ...) it could no longer
-/// see a typo in any of them.
+/// Short on purpose: a list swallowing role and method vocabulary (`entryId`,
+/// `unreadCount`, `setRead`, ...) can't see typos in them.
 const QML_VALUE_NAMES: &[&str] = &[
     "qsTr",
     "pageStack",
@@ -532,14 +500,14 @@ const QML_VALUE_NAMES: &[&str] = &[
     "currentIndex",
     "defaultAllowedOrientations",
     "implicitHeight",
-    // The pair of it. Both are Item's own, and the article view reads them off
-    // a loaded Image to get its true aspect ratio.
+    // Pair of it. Both Item's own; article view reads them off loaded Image for
+    // true aspect ratio.
     "implicitWidth",
     "sourceSize",
     "textFormat",
-    // What a Repeater or a view calls the entry of a plain JS-array model.
-    // The cover lays its grid out over one, because it repeats the feeds it
-    // is given until the grid is full and a view over rows cannot.
+    // What Repeater or view calls entry of plain JS-array model. Cover lays
+    // grid over one: repeats given feeds until grid full, which view over rows
+    // can't.
     "modelData",
 ];
 
@@ -550,26 +518,20 @@ fn looks_like_a_role(word: &str) -> bool {
         && word.chars().any(char::is_uppercase)
 }
 
-/// The bare identifiers on one line of QML.
+/// Bare identifiers on one QML line (`bare_identifiers`): comments and strings
+/// removed; member accesses (`model.title`) and property sets (`textFormat:`)
+/// excluded. Member accesses = other test's job; name left of colon = property
+/// this QML declares, not value read.
 ///
-/// Comments and string literals are removed; a member access (`model.title`)
-/// and a property being set (`textFormat:`) are both excluded. Member accesses
-/// are the other test's job, and a name on the left of a colon is a property
-/// this QML declares rather than a value it reads.
-/// Blank out the insides of `"..."` and `'...'` literals and every comment,
-/// keeping every newline so line numbers hold.
+/// This function: blank insides of `"..."` and `'...'` literals and every
+/// comment, keeping newlines so line numbers hold.
 ///
-/// One pass over the whole source rather than per line, and strings and
-/// comments together rather than one after the other, because each can
-/// contain the other's delimiter: a `//` comment routinely holds an
-/// apostrophe (`the feed's name`), which read as an opening quote swallowed
-/// the rest of the file, and a `/*` inside a string is text. Per line was
-/// not enough either: `bare_identifiers` blanks a string that opens and
-/// closes on one line, which is every translated string in the app, but the
-/// GLSL shader handed to the cover's `ShaderEffect` is ONE literal spanning
-/// a dozen lines, and the lines inside it read as code full of
-/// `qt_TexCoord0` and `gl_FragColor`. A name inside a string or a comment is
-/// never a role lookup, however many lines it runs to.
+/// One pass over whole source, strings and comments together: each can contain
+/// other's delimiter (`//` comment holding apostrophe like `the feed's name`
+/// read as opening quote swallows rest of file; `/*` in string is text). Per
+/// line not enough: cover's `ShaderEffect` GLSL is ONE literal over a dozen
+/// lines, inner lines read as code full of `qt_TexCoord0` and `gl_FragColor`.
+/// Name inside string or comment never a role lookup, however many lines.
 fn strip_strings_and_comments(source: &str) -> String {
     #[derive(Clone, Copy, PartialEq, Eq)]
     enum In {
@@ -630,7 +592,7 @@ fn strip_strings_and_comments(source: &str) -> String {
 fn bare_identifiers(line: &str) -> Vec<String> {
     let code = line.split("//").next().unwrap_or("");
 
-    // A role name mentioned inside a translated string is not a reference.
+    // Role name inside translated string isn't reference.
     let mut cleaned = String::with_capacity(code.len());
     let mut quote: Option<char> = None;
     for c in code.chars() {
@@ -668,15 +630,12 @@ fn bare_identifiers(line: &str) -> Vec<String> {
         while chars.get(j) == Some(&' ') {
             j += 1;
         }
-        // A colon after an identifier is a property binding -- UNLESS a `?`
-        // came first on the line, in which case it closes a ternary and the
-        // identifier is a value being read.
+        // Colon after identifier = property binding, UNLESS `?` came first on
+        // line: then it closes ternary, identifier is value read.
         //
-        // Without this the check quietly stopped covering every role used in
-        // a conditional: `text: visible ? styledText : ""` scanned as a
-        // binding named `styledText`, so the role counted as unreferenced and
-        // the whole point of the test -- noticing a role nothing reads any
-        // more -- was lost for that binding shape.
+        // Else `text: visible ? styledText : ""` scans as binding named
+        // `styledText`; role counts unreferenced, test loses that binding
+        // shape.
         let ternary_before = chars[..start].contains(&'?');
         let is_binding = chars.get(j) == Some(&':') && !ternary_before;
         if !preceded_by_dot && !is_binding {
@@ -686,8 +645,8 @@ fn bare_identifiers(line: &str) -> Vec<String> {
     out
 }
 
-/// Names the QML itself introduces: `property var x`, `id: x`, `signal x`,
-/// `function x()`. These are legitimately used bare and are not roles.
+/// Names QML introduces itself: `property var x`, `id: x`, `signal x`,
+/// `function x()`. Legitimately bare, not roles.
 fn qml_declared_identifiers(files: &[PathBuf]) -> BTreeSet<String> {
     let mut names = BTreeSet::new();
     for file in files {
@@ -695,10 +654,9 @@ fn qml_declared_identifiers(files: &[PathBuf]) -> BTreeSet<String> {
         for line in source.lines() {
             let code = line.split("//").next().unwrap_or("").trim();
 
-            // `id:` anywhere on the line, not just at its start. The usual
-            // form is `EntryModel { id: entries }`, which this used to miss
-            // entirely -- so every id that happened to look like a role name
-            // was reported as an undefined role.
+            // `id:` anywhere on line, not just start: usual form `EntryModel {
+            // id: entries }`. Else every role-shaped id reported as undefined
+            // role.
             let mut scan = code.split_whitespace().peekable();
             while let Some(word) = scan.next() {
                 if word == "id:" {
@@ -708,20 +666,15 @@ fn qml_declared_identifiers(files: &[PathBuf]) -> BTreeSet<String> {
                 }
             }
 
-            // JavaScript locals inside a handler or a function. `var shortAge
-            // = ...` is not a model role, and reporting it as an undefined one
-            // is noise that trains the reader to ignore this test.
+            // JS locals inside handler or function. `var shortAge = ...` isn't
+            // model role; reporting it = noise training reader to ignore test.
             //
-            // EVERY declarator of a comma-separated `var a = 1, b = 2`, not
-            // just the first. The text art declares a run and the run's width
-            // on one line, and only the second of them was reported -- as a
-            // role no model exposes, from a file that has no model, which is
-            // exactly the noise this branch exists to prevent.
+            // EVERY declarator of comma-separated `var a = 1, b = 2`, not just
+            // first (text art declares run and run width on one line).
             for keyword in ["var ", "let ", "const "] {
                 let mut rest = code;
                 while let Some(idx) = rest.find(keyword) {
-                    // `myvar x` does not declare anything: the keyword has to
-                    // start a word.
+                    // `myvar x` declares nothing: keyword must start word.
                     let starts_word = idx == 0
                         || !rest[..idx].ends_with(|c: char| c.is_alphanumeric() || c == '_');
                     rest = rest.get(idx + keyword.len()..).unwrap_or("");
@@ -734,10 +687,9 @@ fn qml_declared_identifiers(files: &[PathBuf]) -> BTreeSet<String> {
                             .chars()
                             .take_while(|c| c.is_alphanumeric() || *c == '_')
                             .collect();
-                        // A declarator is `name`, `name =` or `name;`.
-                        // Anything else means the comma was inside an
-                        // initialiser -- an argument list, an array -- and
-                        // the declaration ended before it.
+                        // Declarator = `name`, `name =` or `name;`. Else comma
+                        // was inside initialiser (argument list, array);
+                        // declaration ended before it.
                         let after = part.get(name.len()..).unwrap_or("").trim_start();
                         if name.is_empty()
                             || !(after.is_empty()
@@ -770,8 +722,8 @@ fn qml_declared_identifiers(files: &[PathBuf]) -> BTreeSet<String> {
                             names.insert(name);
                         }
                     }
-                    // A function's parameters are JavaScript locals too:
-                    // `function zoomAt(target, viewX, viewY)`.
+                    // Function parameters = JS locals too: `function
+                    // zoomAt(target, viewX, viewY)`.
                     let params = code
                         .split_once('(')
                         .and_then(|(_, rest)| rest.split_once(')'))
@@ -797,13 +749,11 @@ fn qml_declared_identifiers(files: &[PathBuf]) -> BTreeSet<String> {
 
 #[test]
 fn every_role_the_delegates_use_is_exposed_by_a_model() {
-    // Delegates reference roles as bare identifiers, so a typo'd role renders
-    // as `undefined` rather than failing — silently blanking part of the UI.
-    // Neither qmllint nor the QML load test can see it: a role is a runtime
-    // lookup.
+    // Delegates reference roles as bare identifiers: typo'd role renders
+    // `undefined`, no failure, silently blanks part of UI. qmllint and load
+    // test blind: role = runtime lookup.
     //
-    // The check runs in BOTH directions, because each catches a different
-    // mistake and neither catches the other's:
+    // Check runs BOTH directions; each catches what other can't:
     //
     //   Rust side — every declared role must be referenced by some page, so
     //   renaming `needsConsent` in article.rs fails here even though the QML
@@ -822,9 +772,9 @@ fn every_role_the_delegates_use_is_exposed_by_a_model() {
     let roles = declared_roles(&root);
     assert!(!roles.is_empty(), "found no role_names() entries");
 
-    // The scanner must be able to see a role read from inside a ternary, and
-    // must still not mistake a property name for one. Both directions, because
-    // a scanner that reports nothing passes this test by doing nothing.
+    // Scanner must see role read inside ternary, and not mistake property name
+    // for one. Both directions: scanner reporting nothing would pass by doing
+    // nothing.
     assert!(
         bare_identifiers(r#"text: visible ? styledText : """#).contains(&"styledText".to_owned()),
         "the scanner cannot see a role used in a ternary, so it guarantees nothing for one"
@@ -846,9 +796,9 @@ fn every_role_the_delegates_use_is_exposed_by_a_model() {
 
     for file in &files {
         let source = std::fs::read_to_string(file).expect("read qml");
-        // The one place a role is named in a STRING: a view's section
-        // property, `section.property: searching ? "matchKind" : ""`. A typo
-        // there is a list that silently stops grouping.
+        // One place role named in STRING: view's section property,
+        // `section.property: searching ? "matchKind" : ""`. Typo = list
+        // silently stops grouping.
         for (lineno, line) in source.lines().enumerate() {
             let Some((_, value)) = line.trim_start().split_once("section.property:") else {
                 continue;
@@ -868,10 +818,8 @@ fn every_role_the_delegates_use_is_exposed_by_a_model() {
                 }
             }
         }
-        // Comments are prose, and strings are text. Naming a role while
-        // explaining why the code does what it does is not a reference to it.
-        // Blanked rather than removed so the reported line numbers still point
-        // at the real line.
+        // Comments prose, strings text: naming role while explaining code isn't
+        // reference. Blanked, not removed: reported line numbers stay real.
         let source = strip_strings_and_comments(&source);
         for (lineno, line) in source.lines().enumerate() {
             for word in bare_identifiers(line) {

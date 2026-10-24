@@ -1,18 +1,17 @@
 #!/usr/bin/env bash
-# Check one binary's DT_NEEDED entries against Harbour's allowed-libraries list.
+# Check one binary's DT_NEEDED entries against Harbour allowed-libraries list.
 #
 # Usage: scripts/check-linked-libs.sh <binary> [readelf]
 #
-# Harbour refuses a package whose binary links anything not on this list
-# ("Cannot link to shared library"), and it is the one intake rule that cannot
-# be read out of the source tree: it is decided by the link. So this is called
-# from both places a link happens -- `make check` on the host's Qt, and
-# scripts/cross-build.sh on the device's -- with the list written down once.
+# Harbour refuses package linking anything off list ("Cannot link to shared
+# library"); only intake rule not readable from source, decided by link. Called
+# from both link sites (`make check` on host Qt, scripts/cross-build.sh on
+# device's); list written once.
 #
-# The list is transcribed from sailfishos/sdk-harbour-rpmvalidator's
-# allowed_libraries.conf as of 2026-09-06, minus the entries no Qt/Rust app
-# could reach (SDL2, PulseAudio, Wayland, the codecs). `make vendor-check`
-# guards the thing that keeps libQt5Widgets off it; see docs/packaging.md.
+# Transcribed from sailfishos/sdk-harbour-rpmvalidator allowed_libraries.conf as
+# of 2026-09-06, minus entries no Qt/Rust app reaches (SDL2, PulseAudio,
+# Wayland, codecs). `make vendor-check` guards what keeps libQt5Widgets off; see
+# docs/packaging.md.
 set -euo pipefail
 
 BIN="${1:?usage: check-linked-libs.sh <binary> [readelf]}"
@@ -29,8 +28,8 @@ libQt5Sensors.so.5|libQt5Positioning.so.5|libQt5WebSockets.so.5|libQt5Location.s
         libsailfishapp.so.1|libsailfishsilica.so.1|libmdeclarativecache5.so.0) ;;
         libqt5embedwidget.so.1|libsailfishwebengine.so.1) ;;
         libEGL.so.1|libGLESv1_CM.so.1|libGLESv2.so.2) ;;
-        # The device's own loader. A host build names its own instead, which is
-        # not a finding about the package -- see the caller's note.
+        # Device's own loader. Host build names its own; not package finding
+        # (see caller note).
         ld-linux-aarch64.so.1|ld-linux-armhf.so.3|ld-linux.so.2) ;;
         libc.so.6|libm.so.6|libdl.so.2|librt.so.1|libpthread.so.0|libresolv.so.2) ;;
         libstdc++.so.6|libgcc_s.so.1|libz.so.1) ;;
@@ -41,9 +40,9 @@ libQt5Sensors.so.5|libQt5Positioning.so.5|libQt5WebSockets.so.5|libQt5Location.s
     return 0
 }
 
-# A host build links the host's loader, which is neither on the list nor a
-# problem for the package: the device build names one that is. Ignored by name
-# so a host run reports what it can rather than one false finding.
+# Host build links host loader: not on list, not package problem (device build
+# names listed one). Ignored by name; host run reports real findings, no false
+# one.
 host_only() {
     local lib=$1
     case "$lib" in

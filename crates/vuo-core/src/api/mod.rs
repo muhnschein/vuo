@@ -1,7 +1,6 @@
-//! The Miniflux REST client, and the boundary where foreign bytes become
-//! domain values.
+//! Miniflux REST client; boundary where foreign bytes become domain values.
 //!
-//! The layering is deliberate and is what §9.2 asks for:
+//! Layering per §9.2:
 //!
 //! ```text
 //!   socket ──▶ transport ──▶ wire ──▶ convert ──▶ model
@@ -10,10 +9,9 @@
 //!              policed
 //! ```
 //!
-//! Each arrow narrows what the next layer has to worry about. By the time a
-//! value is a [`crate::model`] type it has been size-bounded, deserialised
-//! without assumptions, and validated individually — so a single absurd entry
-//! costs one row rather than the whole sync.
+//! Each arrow narrows next layer's worries. A [`crate::model`] value is
+//! size-bounded, deserialised without assumptions, validated individually: one
+//! absurd entry costs one row, not the sync.
 
 pub mod client;
 pub mod convert;

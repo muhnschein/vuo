@@ -1,24 +1,22 @@
-//! The search field keeps the keyboard while the results change under it.
+//! Search field keeps keyboard while results change under it.
 //!
-//! Reported from a device: pausing while typing a search -- long enough for
-//! the results to load -- closed the keyboard. A `ListView` makes its current
-//! item the focused one inside it, and gives itself a current item whenever
-//! rows arrive and it has none; the search field is in the same view's
-//! header, so every new set of results took the focus off it.
+//! `ListView` makes current item the focused one inside it, and gives itself
+//! current item when rows arrive and it has none; search field is in same
+//! view's header, so new results would take focus (keyboard closes on typing
+//! pause).
 //!
-//! A model RESET does the same, which is why a search model never resets --
-//! see `models::Publish::Search`, and its test there. New results reach this
-//! view the way they do here: rows out, rows in.
+//! Model RESET does same, hence search model never resets
+//! (`models::Publish::Search`, tested there). New results reach view as here:
+//! rows out, rows in.
 //!
-//! Focus is only real in a window, so unlike the other QML tests this one
-//! shows the list in a `QQuickView` (offscreen). The view's root registers
-//! itself with a JavaScript library that the engine's own root -- the one
-//! `invoke_method` reaches -- forwards to.
+//! Focus real only in window: unlike other QML tests, shows list in
+//! `QQuickView` (offscreen). View root registers with JS library engine's root
+//! (reached by `invoke_method`) forwards to.
 //!
 //! Run under `QT_QPA_PLATFORM=offscreen`; `make check` sets it.
 
-// Test code: the panic denials guard foreign-input paths in production, not
-// assertions in tests.
+// Test code: panic denials guard production foreign-input paths, not test
+// assertions.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -37,7 +35,7 @@ const VIEW_QML: &str = r#"
         id: root
         width: 540
         height: 960
-        // An EntryModel searching, as far as the list reads one.
+        // EntryModel searching, as far as list reads one.
         ListModel {
             id: fake
             property bool ready: true
@@ -79,7 +77,7 @@ const VIEW_QML: &str = r#"
             field.forceActiveFocus()
             return '' + field.activeFocus
         }
-        // Results arriving, as a search's do: rows into an empty list.
+        // Results arriving like search's: rows into empty list.
         function results() {
             fake.clear()
             for (var i = 0; i < 3; i++) {
@@ -94,8 +92,8 @@ const VIEW_QML: &str = r#"
         function fieldHasFocus() {
             return '' + findIn(loader.item, 'searchField').activeFocus
         }
-        // What Return and Enter do, short of a key event, which nothing here
-        // can synthesise: the test checks separately that both keys call it.
+        // What Return and Enter do, short of key event (can't synthesise here):
+        // separate test checks both keys call it.
         function submit(text) {
             var field = findIn(loader.item, 'searchField')
             field.text = text
@@ -127,7 +125,7 @@ fn repo_root() -> std::path::PathBuf {
         .to_path_buf()
 }
 
-/// One test, because a `QQuickView` builds the process's one application.
+/// One test: `QQuickView` builds process's one application.
 #[test]
 fn new_results_leave_the_keyboard_with_the_search_field() {
     let dir = tempfile::tempdir().expect("tempdir");
@@ -179,12 +177,12 @@ fn new_results_leave_the_keyboard_with_the_search_field() {
         "results arriving must not take the focus -- and the keyboard -- off \
          the search field"
     );
-    // And again, as each pause in typing brings a new set.
+    // Again, as each typing pause brings new set.
     assert_eq!(call!("results"), "ok");
     assert_eq!(call!("fieldHasFocus"), "true");
 
-    // Return is "done typing": the search goes out now, for what is in the
-    // field, and the keyboard goes away so the results have the screen.
+    // Return = "done typing": search goes out now for field text; keyboard goes
+    // away so results get screen.
     assert_eq!(
         call!("submit", QString::from("harbour")),
         "harbour false",
@@ -193,9 +191,9 @@ fn new_results_leave_the_keyboard_with_the_search_field() {
     );
 }
 
-/// Both of the keyboard's "done" keys submit: Return is what the virtual
-/// keyboard sends, Enter a hardware keypad's. Read from the source because a
-/// QML probe cannot press a key; what `submit` does is checked above.
+/// Both keyboard "done" keys submit: Return from virtual keyboard, Enter from
+/// hardware keypad. Read from source (QML probe can't press key); `submit`
+/// checked above.
 #[test]
 fn return_and_enter_submit_the_search() {
     let source =

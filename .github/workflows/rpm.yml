@@ -1,19 +1,13 @@
-# Builds a device RPM against the Sailfish SDK.
+# Device RPM against Sailfish SDK.
 #
-# Not part of `ci.yml`: it pulls a multi-gigabyte SDK image and cross-compiles
-# the whole workspace, which is minutes of runner time nobody wants on every
-# push. Run it from the Actions tab when a package is wanted, or on a tag.
+# Not in `ci.yml`: multi-GB SDK image, whole-workspace cross-compile. Run from
+# Actions tab, on tag, or on recipe PRs.
 #
-# The SDK is what makes the result runnable on a phone: the app links against
-# the target's Qt 5.6, libsailfishapp and glibc, and a host-built binary has
-# none of them. The skeleton follows muhnschein/postivene's rpm.yml, which
-# builds with `mb2` inside the same image. Vuo cannot: Jolla's repositories
-# install rust and cargo 1.75.0+git2 into the target (measured against the
-# 5.2.0.15 SDK on 2026-09-02), and this lockfile needs 1.88 -- see
-# docs/sdk-build.md, "The blocker". So the SDK's own cross compiler and
-# target sysroot are lifted out of the image and driven by the host's cargo,
-# which is the route that has already produced an aarch64 RPM:
-# scripts/cross-build.sh and scripts/cross-rpm.sh.
+# SDK makes result run on phone: links target's Qt 5.6, libsailfishapp, glibc.
+# Not `mb2` (as postivene's rpm.yml): Jolla repos install rust/cargo 1.75.0+git2
+# into target (5.2.0.15 SDK), lockfile needs 1.88 (docs/sdk-build.md, "The
+# blocker"). So SDK's cross compiler and sysroot get lifted out of image and
+# driven by host cargo: scripts/cross-build.sh, scripts/cross-rpm.sh.
 name: rpm
 
 on:
@@ -50,12 +44,10 @@ on:
         type: string
         default: ""
   push:
-    # `v*` for a release. `build-*` is a throwaway handle for running this
-    # before it reaches the default branch, since workflow_dispatch only
-    # becomes available once a workflow is on main.
+    # `v*` = release. `build-*` = throwaway handle to run before workflow
+    # reaches main (workflow_dispatch needs workflow on main).
     tags: ["v*", "build-*"]
-  # A change to the recipe is proved by running it: the job builds from the
-  # pull request's head, so the recipe is tested before it lands on main.
+  # Recipe change proved by running it: job builds PR head before it lands.
   pull_request:
     paths:
       - ".github/workflows/rpm.yml"
@@ -70,37 +62,32 @@ jobs:
   rpm:
     runs-on: ubuntu-latest
     timeout-minutes: 120
-    # Write, for the one step that publishes a release. Read is the floor for
-    # everything else, which is why it stays on the workflow above: a build
-    # that is not a tag build still runs with the default read-only token.
+    # Write for release publish step only. Read floor stays on workflow above:
+    # non-tag builds keep read-only token.
     permissions:
       contents: write
     env:
       ARCH: ${{ inputs.arch || 'aarch64' }}
       SFOS: ${{ inputs.sfos_version || '5.2.0.15' }}
       ROOTFS: /home/runner/sdk/rootfs
-      # One job, on every run. Builds at any higher count keep stalling, and
-      # a slow build that finishes beats a fast one that has to be restarted.
-      # Cargo reads this for the build in scripts/cross-build.sh, and the cc
-      # crate's C/C++ compiles share cargo's jobserver, so they run one at a
-      # time as well. Set here rather than in the script, so a local cross
-      # build keeps every core.
+      # One job, every run: higher counts stall; slow finish beats restart.
+      # Cargo reads it in scripts/cross-build.sh; cc crate shares cargo's
+      # jobserver, so C/C++ compiles serial too. Here, not in script: local
+      # cross build keeps every core.
       CARGO_BUILD_JOBS: 1
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
-          # The release step publishes through `gh` and GH_TOKEN, not git, so
-          # the token is not left behind in .git/config for the build to find.
+          # Release publishes via `gh` and GH_TOKEN, not git: token not left in
+          # .git/config.
           persist-credentials: false
 
-      # By digest, not tag. The SDK image is a third party's and a tag can
-      # be repointed at any content by whoever owns it. To add an SDK
-      # version: resolve the digest once with
-      # `docker manifest inspect coderus/sailfishos-platform-sdk:<ver>` and
-      # add a line.
+      # By digest, not tag: third-party image, tag repointable. New SDK version:
+      # `docker manifest inspect coderus/sailfishos-platform-sdk:<ver>`, add
+      # line.
       #
-      # The version is also checked for shape first: it is free text from
-      # the dispatch form and is spliced into paths and the artifact name.
+      # Version shape-checked first: free text from dispatch form, spliced into
+      # paths and artifact name.
       - name: Resolve the SDK image
         run: |
           [[ $SFOS =~ ^[0-9]+(\.[0-9]+){3}$ ]] || {
@@ -115,17 +102,13 @@ jobs:
           echo "IMAGE=coderus/sailfishos-platform-sdk@$digest" >> "$GITHUB_ENV"
           echo "TARGET=SailfishOS-$SFOS-$ARCH" >> "$GITHUB_ENV"
 
-      # What this run releases, if anything, decided before anything is built
-      # so a bad tag costs seconds rather than the whole build.
+      # Release decided before build: bad tag costs seconds, not whole build.
       #
-      # The tag is free text from the dispatch form and ends up as a git ref
-      # and a `gh` argument, so it is checked for shape first -- the same
-      # reason sfos_version is, and it is read through the environment rather
-      # than expanded into the script, so a tag cannot be shell.
+      # Tag is free text from form, becomes git ref and `gh` arg: shape-checked,
+      # read via env (not expanded into script), so tag can't be shell.
       #
-      # It must also match the Version the tree actually builds. Otherwise a
-      # typo in the form publishes v1.0.2 whose package says 1.0.1, and the
-      # release page and the RPM disagree about what it is.
+      # Must match tree's Version, else release page and RPM disagree (v1.0.2
+      # tag, 1.0.1 package).
       - name: Resolve the release tag
         env:
           INPUT_RELEASE_TAG: ${{ inputs.release_tag }}
@@ -147,28 +130,25 @@ jobs:
           fi
           echo "RELEASE_TAG=$tag" >> "$GITHUB_ENV"
 
-      # ~13 GB unpacked; a hosted runner has well over that free, and the
-      # image is removed again once its pieces are lifted out below.
+      # ~13 GB unpacked; hosted runner has room, and image removed after lift
+      # below.
       - name: Pull the Sailfish SDK
         run: |
           df -h / | tail -1
           docker pull "$IMAGE"
 
-      # What scripts/cross-build.sh needs from the image, and nothing else:
+      # What scripts/cross-build.sh needs from image, nothing else:
       #
-      #   /opt/cross                  the SDK's own aarch64-meego-linux-gnu
-      #                               GCC, which must match the device's
-      #                               glibc and libstdc++ (docs/sdk-build.md)
-      #   /srv/mer/targets/<target>   the target sysroot: Qt 5.6, sailfishapp,
-      #                               glibc, everything the link resolves
-      #   a few of /usr/lib's         the tooling's i486 libmpc/libmpfr/libgmp
-      #   libraries                   and friends, which cc1 links and the
-      #                               host lacks
+      #   /opt/cross                  SDK's aarch64-meego-linux-gnu GCC; must match
+      #                               device glibc and libstdc++ (docs/sdk-build.md)
+      #   /srv/mer/targets/<target>   target sysroot: Qt 5.6, sailfishapp, glibc,
+      #                               everything link resolves
+      #   a few of /usr/lib's         tooling's i486 libmpc/libmpfr/libgmp etc.;
+      #   libraries                   cc1 links them, host lacks them
       #
-      # Copied out with `docker cp` rather than exporting the whole 13 GB,
-      # then the image is removed to get its space back. The target name is
-      # confirmed against the image's own list first so a version whose
-      # naming differs fails here rather than deep inside the build.
+      # `docker cp`, not 13 GB export; image removed after. Target name checked
+      # against image's own list first: naming change fails here, not deep in
+      # build.
       - name: Lift the cross toolchain and sysroot out of the image
         run: |
           targets=$(docker run --rm "$IMAGE" sb2-config -l 2>/dev/null || true)
@@ -176,26 +156,22 @@ jobs:
           echo "$targets" | grep -qx -- "$TARGET" || {
             echo "::error::no $TARGET in the $SFOS SDK image; see the list above"; exit 1; }
 
-          # The image declares no default command, and `docker create`
-          # refuses without one; the container is never started, so any
-          # command will do.
+          # Image has no default command and `docker create` needs one;
+          # container never starts, any command works.
           c=$(docker create "$IMAGE" true)
           mkdir -p "$ROOTFS/opt" "$ROOTFS/srv/mer/targets" "$ROOTFS/usr"
-          # `docker cp` out of a container extracts in the CLIENT process,
-          # which as the runner user cannot restore root ownership and
-          # fails with "operation not permitted"; sudo, then chown back.
+          # `docker cp` from container extracts in client process; runner user
+          # can't restore root ownership ("operation not permitted"). sudo, then
+          # chown back.
           sudo docker cp "$c:/opt/cross" "$ROOTFS/opt/cross"
           sudo docker cp "$c:/srv/mer/targets/$TARGET" "$ROOTFS/srv/mer/targets/$TARGET"
           docker rm "$c" >/dev/null
 
-          # Not the whole of the tooling's /usr/lib: `docker cp` refuses a
-          # tree containing symlinks that point outside it, and that one
-          # does. Instead the image's own ldd says which libraries the
-          # cross compiler's programs load, and exactly those are copied
-          # (dereferenced, so a `libmpc.so.3` symlink becomes the file).
-          # glibc itself is skipped: the host's i386 libc serves, and a
-          # foreign libc under LD_LIBRARY_PATH would break every 32-bit
-          # program on the runner.
+          # Not all of tooling's /usr/lib: `docker cp` refuses trees with
+          # symlinks pointing outside. Image's own ldd lists libs cross compiler
+          # loads; copy exactly those, dereferenced. Skip glibc: host i386 libc
+          # serves; foreign libc on LD_LIBRARY_PATH breaks every 32-bit program
+          # on runner.
           mkdir -p "$ROOTFS/usr/lib"
           docker run --rm --user root -v "$ROOTFS/usr/lib:/out" "$IMAGE" sh -c '
             set -e
@@ -213,17 +189,16 @@ jobs:
             ls /out/libmpc.so* /out/libmpfr.so* /out/libgmp.so* >/dev/null'
           docker rmi "$IMAGE" >/dev/null || true
           sudo chown -R "$(id -u):$(id -g)" "$ROOTFS"
-          # GCC resolves cc1 and its specs against its absolute install
-          # prefix, so the toolchain has to be reachable at /opt/cross.
+          # GCC resolves cc1 and specs against absolute prefix: toolchain must
+          # be at /opt/cross.
           sudo ln -sfn "$ROOTFS/opt/cross" /opt/cross
           du -sh "$ROOTFS"/opt/cross "$ROOTFS"/srv/mer/targets/* "$ROOTFS"/usr/lib
           df -h / | tail -1
           ls "$ROOTFS/opt/cross/bin" | grep -- "-gcc$"
 
-      # The cross compilers are i386 ELFs (docs/sdk-build.md). rpm packages
-      # the result on the host; qemu runs the target's own lrelease for the
-      # translations, since a .qm from a newer Qt is not guaranteed readable
-      # by the device's 5.6.
+      # Cross compilers are i386 ELFs (docs/sdk-build.md). rpm packages on host;
+      # qemu runs target's own lrelease, since newer Qt's .qm not guaranteed
+      # readable by device's 5.6.
       - name: Install host prerequisites
         run: |
           sudo dpkg --add-architecture i386
@@ -232,33 +207,28 @@ jobs:
             libc6:i386 libstdc++6:i386 zlib1g:i386 \
             rpm qemu-user-static file binutils
 
-      # The host's cargo, new enough for the lockfile, with a prebuilt
-      # aarch64 std. Only C/C++ compiles and the final link go through the
-      # SDK's compiler; rustc itself is the host's -- rust-toolchain.toml's
-      # release, which rustup installs here, the target added to it.
+      # Host cargo, new enough for lockfile, prebuilt aarch64 std. Only C/C++
+      # compiles and final link use SDK compiler; rustc is rust-toolchain.toml's
+      # release.
       - run: rustup target add aarch64-unknown-linux-gnu
 
-      # Not for a release. What a cache holds was written by some earlier
-      # run, and a release is the one build whose binary should come from
-      # nothing but the commit it is tagged on; it pays the cold compile for
-      # that. zizmor cannot read the `if`, which is why its cache-poisoning
-      # finding is ignored here.
+      # Not for release: cache written by earlier run, release binary must come
+      # from tagged commit only; pays cold compile. zizmor can't read the `if`,
+      # hence ignored cache-poisoning finding.
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2  # zizmor: ignore[cache-poisoning]
         if: env.RELEASE_TAG == '' && !inputs.release
         with:
           key: cross-${{ env.TARGET }}
 
-      # Every TEST build would otherwise produce harbour-vuo-0.1.0-1.aarch64.rpm,
-      # the same NEVRA every time, and `pkcon install-local` on a phone that
-      # already has one would do nothing at all while the file said it was new.
-      # The run number is monotonic, so each build supersedes the last.
+      # Test builds: run number as Release, else same NEVRA every time and `pkcon
+      # install-local` silently does nothing. Run number monotonic: each build
+      # supersedes last.
       #
-      # A RELEASE build keeps Release: 1. Harbour's naming rule wants
-      # harbour-NAME-VERSION-RELEASE.ARCHITECTURE.rpm, and a submission should
-      # not carry a CI run number where the release belongs. Tags are releases;
-      # the dispatch form asks. Digits, underscores and periods are all Harbour
-      # allows in RELEASE either way, so a test artifact is identified by the
-      # short SHA in its ARTIFACT name rather than inside the package.
+      # Release build keeps Release: 1 (Harbour naming:
+      # harbour-NAME-VERSION-RELEASE.ARCHITECTURE.rpm, no CI run number). Tags
+      # are releases; dispatch form asks. RELEASE allows only digits,
+      # underscores, periods: test artifact identified by short SHA in ARTIFACT
+      # name.
       - name: Stamp the build so each one is its own package
         run: |
           echo "SHORT_SHA=$(git rev-parse --short HEAD)" >> "$GITHUB_ENV"
@@ -272,10 +242,9 @@ jobs:
             echo "building a TEST package (Release: 1.${GITHUB_RUN_NUMBER})"
           fi
 
-      # scripts/cross-rpm.sh runs scripts/cross-build.sh first, then the
-      # %install/%files half of the spec as rpm/harbour-vuo-cross.spec over
-      # the cross-built binary. Its output is a TEST package, and it says so
-      # in its own comments.
+      # scripts/cross-rpm.sh runs scripts/cross-build.sh, then %install/%files
+      # half of spec as rpm/harbour-vuo-cross.spec over cross-built binary.
+      # Output = TEST package.
       - name: Cross-build and package
         env:
           SDK_VERSION: ${{ env.SFOS }}
@@ -287,11 +256,11 @@ jobs:
             echo "== $f"; rpm -qip "$f"; rpm -qlp "$f"
           done
 
-      # Harbour's file-name rule, which is decided by the stamping above rather
-      # than by anything in the tree, so scripts/check-harbour.sh cannot hold
-      # it: harbour-NAME-VERSION-RELEASE.ARCHITECTURE.rpm, at most 100
-      # characters, VERSION digits and periods, RELEASE digits, underscores and
-      # periods, ARCHITECTURE one of four.
+      # Harbour file-name rule, set by stamping above, so
+      # scripts/check-harbour.sh can't hold it:
+      # harbour-NAME-VERSION-RELEASE.ARCHITECTURE.rpm, ≤ 100 chars, VERSION
+      # digits and periods, RELEASE digits/underscores/periods, ARCHITECTURE one
+      # of four.
       - name: Harbour's file-name rule
         run: |
           f=$(basename dist/*.rpm)
@@ -314,28 +283,22 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      # AFTER the upload, deliberately.
-      #
-      # Which libraries the binary needs is the one Harbour rule that only the
-      # device link can answer, and a package that breaks it still installs and
-      # runs -- so it is exactly the package you want in your hands while you
-      # work out why. The artifact is kept and the job goes red.
+      # After upload, deliberately: allowed-libraries rule only device link
+      # answers, and breaking package still installs and runs, so you want it in
+      # hand to debug. Artifact kept, job red.
       - name: Harbour's allowed-libraries rule
         run: |
           bin=target/aarch64-unknown-linux-gnu/release/harbour-vuo
           readelf=/opt/cross/bin/aarch64-meego-linux-gnu-readelf
           ./scripts/check-linked-libs.sh "$bin" "$readelf"
 
-      # A run that resolved a release tag publishes one, with the package
-      # attached -- whether the tag was pushed or asked for on the form.
+      # Run with release tag publishes, package attached (pushed tag or form).
       #
-      # LAST, deliberately: after both Harbour rules above, so a package that
-      # breaks one never reaches the release page. The allowed-libraries step
-      # fails the job, and a failed job never gets here.
+      # Last: after both Harbour rules, so breaking package never reaches
+      # release page; failed job never gets here.
       #
-      # `gh` rather than a third-party action: the runner already ships it, so
-      # unlike every action pinned by digest in this file there is no tag
-      # somebody else can repoint, and nothing to keep pinned.
+      # `gh`, not third-party action: runner ships it, no tag to repoint,
+      # nothing to pin.
       - name: Publish the release
         if: env.RELEASE_TAG != ''
         env:
@@ -350,9 +313,8 @@ jobs:
             echo
             echo "## Changes"
             echo
-            # The spec's %changelog is the changelog; its top entry is this
-            # release's. Read it from there rather than writing the notes a
-            # second time and letting the two disagree.
+            # Spec's %changelog is changelog; top entry = this release. Read
+            # from there, no second copy to disagree.
             awk '
               /^%changelog/ { in_cl = 1; next }
               !in_cl        { next }
@@ -362,13 +324,13 @@ jobs:
           } > "$notes"
           cat "$notes"
 
-          # Idempotent, so re-running the job after a transient failure
-          # attaches the package rather than dying on "release already exists".
+          # Idempotent: re-run after transient failure attaches package, no
+          # "release already exists".
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             gh release upload "$RELEASE_TAG" dist/*.rpm --clobber
           else
-            # --target is what creates the tag when the form asked for one; on
-            # a tag push the tag is already this commit's and gh ignores it.
+            # --target creates tag when form asked; on tag push tag already this
+            # commit's, gh ignores it.
             gh release create "$RELEASE_TAG" dist/*.rpm \
               --title "Vuo $RELEASE_TAG" \
               --notes-file "$notes" \

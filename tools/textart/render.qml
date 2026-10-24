@@ -35,52 +35,42 @@ Window {
     visible: true
     color: "#101820"
 
-    // The digits' face. Fetched by the script beside this file; see there
-    // for why it is Fira Sans and not the device's own.
+    // Digit face. Fetched by script beside this file; see there for why Fira
+    // Sans, not device's.
     FontLoader { id: digits; source: "FiraSans-ExtraBold.ttf" }
 
-    // The filler's face: the device's own, Sail Sans Pro, when the script
-    // found a copy to put beside this file. It is not redistributable, so
-    // it is never fetched and never committed; without it the filler is
-    // set in whatever the host calls "Sail Sans Pro", in practice its
-    // default sans -- the caveat in docs/packaging.md.
+    // Filler face: device's Sail Sans Pro when script found copy beside this
+    // file. Not redistributable: never fetched or committed. Without it filler
+    // set in host's "Sail Sans Pro" (default sans); caveat in
+    // docs/packaging.md.
     FontLoader { id: filler; source: "SailSansPro-Light.ttf" }
 
-    // A cover is 234x374 at pixel ratio 1 -- an aspect of about 0.626 -- and
-    // at most 1.75 times that (410x655) on the phones Sailfish ships on.
-    // 512x768 is the smallest 2:3 master that still only scales DOWN on a
-    // cover at ratio 2; 480x720 was tried for the disk it saves and looked
-    // grainy on a phone. Being wider than any cover it is always trimmed at
-    // the sides, never the top or bottom, so a height on the master is the
-    // same fraction of the height on every cover.
+    // Cover 234x374 at pixel ratio 1 (aspect ~0.626), at most 1.75x that
+    // (410x655) on Sailfish phones. 512x768 = smallest 2:3 master only scaling
+    // DOWN on ratio-2 cover; 480x720 looked grainy. Wider than any cover:
+    // always trimmed at sides, never top/bottom, so master height fraction =
+    // same on every cover.
     readonly property int coverWidth: 512
     readonly property int coverHeight: 768
 
-    /// Counts whose number is moved across by eye after the painter has
-    /// centred it, as a fraction of the digits' font size; negative is left.
-    /// See TextArtPainter's `obstacleNudge` for why there is a list at all.
+    /// Counts moved sideways by eye after painter centring, fraction of digit font size;
+    /// negative = left. See TextArtPainter `obstacleNudge` for why list exists.
     ///
-    /// Set off device reports, not measured: after the painter's
-    /// half-weight shift the 1 and the 4 still read right of centre, and
-    /// the 3 less left than the rule had put it. Five rounds on a phone
-    /// got here; the first sent the 3 and the 4 right, which overshot the
-    /// 3 and was the wrong way for the 4. Single counts only -- a correction is for a shape,
-    /// and an 13 is not a 1 and a 3 side by side as far as the eye goes.
+    /// From device reports, not measurement: after half-weight shift 1 and 4 still read
+    /// right of centre, 3 less left than rule put it. Single counts only: correction is per
+    /// shape; 13 isn't 1 and 3 side by side to the eye.
     readonly property var coverNudge: ({ "1": -0.039, "3": 0.0105, "4": -0.022 })
 
-    /// One cover master. `key` is the count, "99+", or "none".
+    /// One cover master. `key` = count, "99+", or "none".
     function coverJob(key) {
         if (key === "none") {
-            // Nothing unread, and nothing said about it: no digits, so no
-            // negative space and no outline -- the sweeps alone, at the
-            // cover's density and with its glyphs facing the same way. A
-            // cover with nothing to read is not a cover that reads "0".
+            // Nothing unread, nothing said: no digits, no negative space, no
+            // outline; sweeps alone at cover density, glyphs facing same way.
+            // Empty cover doesn't read "0".
             //
-            // With no digits there is no halo to bake the far lines'
-            // strength into, so it goes in as the painter's own ink
-            // instead: the cover draws every mask at 1.5, and 0.55 / 1.5
-            // of that lands at its usual 0.55, like any other count's far
-            // lines.
+            // No digits = no halo for far-line strength; goes in as painter ink
+            // instead: cover draws every mask at 1.5, 0.55 / 1.5 lands at usual
+            // 0.55 like other counts' far lines.
             return {
                 file: "cover/none.png",
                 width: win.coverWidth, height: win.coverHeight, across: 64,
@@ -91,37 +81,32 @@ Window {
         }
         return {
             file: "cover/" + key + ".png",
-            // The digits' outline, written beside the pattern as a mask of
-            // its own so the cover can draw it in the ambience's colour. See
-            // TextArtPainter's `obstacleEdge`.
+            // Digit outline written beside pattern as own mask; cover draws it
+            // in ambience colour. See TextArtPainter `obstacleEdge`.
             edgeFile: "cover/" + key + "-edge.png",
-            // Thin, and measured on this master rather than on a device: a
-            // cover is at most 410 wide against these 512, so three and a
-            // half pixels here land a shade under three there.
+            // Thin, measured on master not device: cover max 410 wide vs 512,
+            // so 3.5 px here lands just under 3 there.
             obstacleEdge: 3.5,
             width: win.coverWidth, height: win.coverHeight, across: 64,
             obstacle: key,
-            // How much of the cover the digits may take. Less than the
-            // painter's own defaults: the number wants air around it on
-            // a cover, or it reads as pressed against the edges.
+            // Share of cover digits may take. Below painter defaults: number
+            // needs air on cover, else pressed against edges.
             obstacleMaxWidth: 0.72,
             obstacleMaxHeight: 0.56,
             obstacleNudge: win.coverNudge[key] || 0,
-            // The narrowest cover this must survive being cropped to. A
-            // little under the platform's own 0.626, for the digits' sake.
+            // Narrowest cover crop to survive. Bit under platform's 0.626, for
+            // digits.
             fitAspect: 0.60,
-            // The cover-action strip at the bottom: Theme.itemSizeSmall (80
-            // at ratio 1) of a 374-tall cover. Both scale with the ratio,
-            // so the fraction holds; the digits are centred above it.
+            // Cover-action strip at bottom: Theme.itemSizeSmall (80 at ratio 1)
+            // of 374-tall cover. Both scale with ratio; fraction holds. Digits
+            // centred above.
             reservedBottom: Math.round(win.coverHeight * 80 / 374),
             levelOffset: 0.6,
             topsFaceSource: true,
-            // The halo: full strength on the digits, easing down to 0.367
-            // of it six lines out. The cover draws the mask at an ink of
-            // 1.5, so the far lines land at the cover's usual 0.55 and the
-            // lines on the digits are driven PAST full -- the shader's
-            // output saturates, which makes the thin glyphs there bolder
-            // and brighter than the mask alone could.
+            // Halo: full on digits, easing to 0.367 six lines out. Cover draws
+            // mask at ink 1.5: far lines land at usual 0.55, digit lines driven
+            // PAST full; shader saturates, thin glyphs bolder and brighter than
+            // mask alone.
             farInk: 0.55 / 1.5,
             haloReach: 6
         }
@@ -130,13 +115,12 @@ Window {
     readonly property var jobs: {
         var out = []
         if (Selection.sets.indexOf("onboarding") >= 0) {
-            // A phone screen, at the largest width Sailfish devices ship.
+            // Phone screen at largest Sailfish device width.
             out.push({ file: "onboarding.png", width: 1080, height: 2160, across: 115 })
         }
         if (Selection.sets.indexOf("cover") >= 0) {
-            // Every count, unless the script was asked for particular ones
-            // (a dozen renders of one count while adjusting the painter
-            // should not cost a hundred).
+            // Every count unless script asked for some (dozen renders of one
+            // count while tuning shouldn't cost a hundred).
             var keys = Selection.keys
             if (keys.length === 0) {
                 keys.push("none")
@@ -163,8 +147,8 @@ Window {
 
     TextArtPainter {
         id: painter
-        // Parked at nothing until a job is set, so the painter's own first
-        // paint -- at whatever size it has before then -- does no work.
+        // Zero size until job set: painter's first paint at pre-job size does
+        // no work.
         width: win.job ? win.job.width : 0
         height: win.job ? win.job.height : 0
         glyphsAcross: win.job ? win.job.across : 64
@@ -194,13 +178,11 @@ Window {
             if (job.edgeFile) {
                 console.log("wrote", job.edgeFile, saveEdge(job.edgeFile))
             }
-            // Traced a second time, and only to be told off: a ring drawn
-            // twice is the one defect of this pattern anyone notices, and
-            // it has shipped once. The script reads this line and refuses
-            // the master if it is not zero.
+            // Traced again only to check: ring drawn twice = only defect anyone
+            // notices. Script reads this line, refuses master if non-zero.
             console.log("OVERLAPS", job.file, overlaps())
             if (_obstacle) {
-                // Where the digits' ink is, for checking the placement.
+                // Digit ink position, for checking placement.
                 console.log("OBSTACLE", job.file, _obstacle.left, _obstacle.top,
                             _obstacle.right, _obstacle.bottom, "px", _obstacle.px)
             }
@@ -218,9 +200,8 @@ Window {
         win.job = win.jobs[win.done]
     }
 
-    // The font has to be there before the first digit is measured. A
-    // FontLoader reading a local file is ready within the first event loop
-    // turn, and this waits for it rather than assuming so.
+    // Font must exist before first digit measured. Local-file FontLoader ready
+    // within first event loop turn; wait for it, don't assume.
     Timer {
         interval: 50
         repeat: true
@@ -238,8 +219,8 @@ Window {
         }
     }
 
-    // So a painter that never finishes cannot hang a build. Per master, not
-    // per run: a hundred and one of them take longer than five minutes.
+    // Never-finishing painter can't hang build. Per master, not per run: 101
+    // masters take over five minutes.
     Timer {
         id: patience
         interval: 300000

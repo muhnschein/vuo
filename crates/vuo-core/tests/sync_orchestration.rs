@@ -1,13 +1,10 @@
-//! `sync::sync()` — the orchestrator — driven end to end.
+//! `sync::sync()` (orchestrator) driven end to end.
 //!
-//! # Why this file exists
+//! # Why
 //!
-//! Its pieces were well covered and their composition was not. `replay::flush`
-//! and `pull::entries` each have a test binary; `sync()` had only two unit
-//! tests, over `era_label` and the default `SyncOptions` values. The one test
-//! that called it, `icon_fetching.rs`, asserted only icon side-effects.
-//!
-//! Two independent mutations of `sync()` left all eleven test binaries green:
+//! Pieces covered elsewhere (`replay::flush`, `pull::entries` have own
+//! binaries); composition covered here. Mutations this catches, invisible to
+//! other binaries:
 //!
 //!   - dropping `store::set_sync_state(tx, &next)`, so the cursor never
 //!     advances (every sync is a full re-pull, on a phone, forever) and
@@ -16,12 +13,11 @@
 //!   - `if false && !options.skip_replay`, so the user's queued marks and stars
 //!     never leave the device at all.
 //!
-//! Both are silent: no error, no log, nothing a user would report except
-//! "starring doesn't work" months later. This file asserts the PERSISTED STATE
-//! and the SEQUENCE of a pass, which is the only place either shows up.
+//! Both silent: no error, no log, only "starring doesn't work" months later.
+//! Asserts PERSISTED STATE and SEQUENCE of pass: only place either shows.
 
-// Test code: see the note in vuo-core's lib.rs. The unwrap/panic denials guard
-// foreign-input paths in production, not assertions in tests.
+// Test code: see note in vuo-core's lib.rs. unwrap/panic denials guard
+// production foreign-input paths, not test assertions.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -38,11 +34,11 @@ use vuo_core::sync::{self, SyncOptions};
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-/// A server that answers every endpoint one pass touches, at `version`.
+/// Server answering every endpoint one pass touches, at `version`.
 ///
-/// The version is load-bearing: at 2.2.0 the pass takes its legacy branches
-/// (no id listing, no deletion reconcile), and at 2.3.3 its modern ones. The
-/// id listing is mounted either way, so a version bump cannot fail by 404.
+/// Version load-bearing: 2.2.0 takes legacy branches (no id listing, no
+/// deletion reconcile), 2.3.3 modern ones. Id listing mounted either way:
+/// version bump can't fail by 404.
 async fn server_with_version(version: &str) -> MockServer {
     let server = MockServer::start().await;
     mount_version(&server, version).await;
@@ -94,14 +90,14 @@ async fn mount_pass_endpoints(server: &MockServer) {
         .await;
 }
 
-/// The legacy fixture: a pre-2.3.2 server. Vuo refuses entry-state writes
-/// below the floor, so only passes with an empty outbox belong here.
+/// Legacy fixture: pre-2.3.2 server. Vuo refuses entry-state writes below
+/// floor: only empty-outbox passes here.
 async fn quiet_server() -> MockServer {
     server_with_version("2.2.0").await
 }
 
-/// A server Vuo actually writes to: 2.3.2+, where `PUT /v1/entries` honours
-/// absolute sets. Tests that queue user actions use this one.
+/// Server Vuo writes to: 2.3.2+, `PUT /v1/entries` honours absolute sets. Tests
+/// queueing user actions use this.
 async fn modern_server() -> MockServer {
     server_with_version("2.3.3").await
 }
@@ -138,7 +134,7 @@ async fn a_pass_persists_the_cursor_and_bumps_the_generation() {
     );
     assert_eq!(after.server_version.as_deref(), Some("2.2.0"));
 
-    // And a second pass moves it on again rather than starting over.
+    // Second pass moves it on again, doesn't start over.
     sync::sync(&mut db, &client, SyncOptions::default())
         .await
         .expect("second sync");
@@ -148,9 +144,8 @@ async fn a_pass_persists_the_cursor_and_bumps_the_generation() {
 
 #[tokio::test]
 async fn a_pass_sends_the_users_queued_actions_before_pulling() {
-    // Order matters: replaying first means the pull's echo of our own write
-    // arrives with the value we already set, rather than the pull overwriting
-    // an intent we had not sent yet.
+    // Order matters: replay first, so pull's echo of own write carries value
+    // already set; pull can't overwrite unsent intent.
     let server = modern_server().await;
     let client = client_for(&server);
     let mut db = Database::open_in_memory().expect("mirror");
@@ -201,8 +196,8 @@ async fn a_pass_sends_the_users_queued_actions_before_pulling() {
 
 #[tokio::test]
 async fn an_auth_failure_stops_the_pass_rather_than_pulling_anyway() {
-    // Pulling would fail identically, and burying a credential problem under a
-    // network error is what makes "sync does nothing" unreportable.
+    // Pull would fail identically; credential problem buried under network
+    // error makes "sync does nothing" unreportable.
     let server = MockServer::start().await;
     mount_version(&server, "2.3.3").await;
     Mock::given(method("PUT"))
@@ -235,8 +230,7 @@ async fn an_auth_failure_stops_the_pass_rather_than_pulling_anyway() {
         "and must not have dropped the user's action"
     );
 
-    // The mirror's state is untouched, so the next pass starts where this one
-    // would have.
+    // Mirror state untouched: next pass starts where this would have.
     let state = store::sync_state(db.conn()).expect("state");
     assert_eq!(
         state.sync_generation, 0,
@@ -246,15 +240,12 @@ async fn an_auth_failure_stops_the_pass_rather_than_pulling_anyway() {
 
 /// §the retention window is applied by the pass, and only when it is set.
 ///
-/// The mirror is a cache of the server, but nothing ever removed anything from
-/// it: a phone that had read a year of feeds still held every article body it
-/// had ever seen, and the file only grew. This is the step that shrinks it, so
-/// it is also the step that can lose the reader's articles if it runs when it
-/// was not asked to.
+/// Only step shrinking mirror (else file grows forever), so also step that can
+/// lose reader's articles if run unasked.
 #[tokio::test]
 async fn a_pass_prunes_only_when_a_retention_window_is_set() {
-    // Two locally-held articles the server does not list, both published in
-    // January and read long ago. One is a favourite.
+    // Two local articles server doesn't list, published January, read long ago.
+    // One favourite.
     fn seeded() -> Database {
         let mut db = Database::open_in_memory().expect("mirror");
         db.with_tx(|tx| {
@@ -273,8 +264,7 @@ async fn a_pass_prunes_only_when_a_retention_window_is_set() {
     let server = quiet_server().await;
     let client = client_for(&server);
 
-    // Off by default, which is what every version before this did and what an
-    // install that has never opened Settings still means.
+    // Off by default: what install that never opened Settings means.
     let mut db = seeded();
     let report = sync::sync(&mut db, &client, SyncOptions::default())
         .await
@@ -286,7 +276,7 @@ async fn a_pass_prunes_only_when_a_retention_window_is_set() {
         "the two seeded articles and the one the pull brought"
     );
 
-    // And on, with a window that closed months ago.
+    // On, window closed months ago.
     let mut db = seeded();
     let options = SyncOptions {
         retention_secs: Some(30 * 24 * 60 * 60),
@@ -312,11 +302,9 @@ async fn a_pass_prunes_only_when_a_retention_window_is_set() {
 
 /// §the server version is asked for once, not once per pass.
 ///
-/// A version gates two request rules and one endpoint's existence, so the pass
-/// genuinely needs it -- but it changes when someone upgrades their Miniflux,
-/// and on a phone every request re-arms the radio and holds it there for the
-/// tail timer. Asking hourly for an answer that changes yearly is the cheapest
-/// request in the pass to remove.
+/// Version gates two request rules and one endpoint, pass needs it; but changes
+/// on Miniflux upgrade only, and every request re-arms radio for tail timer.
+/// Hourly ask for yearly-changing answer = cheapest request to remove.
 #[tokio::test]
 async fn a_recorded_server_version_is_not_asked_for_again_next_pass() {
     let server = quiet_server().await;
@@ -347,8 +335,8 @@ async fn a_recorded_server_version_is_not_asked_for_again_next_pass() {
         "the second pass must reuse the recorded version rather than asking again"
     );
 
-    // And the cache does expire: a zero TTL is "trust nothing", which is what
-    // an instance upgraded between passes needs.
+    // Cache expires: zero TTL = "trust nothing", what upgrade between passes
+    // needs.
     sync::sync(
         &mut db,
         &client,
@@ -366,11 +354,10 @@ async fn a_recorded_server_version_is_not_asked_for_again_next_pass() {
     );
 }
 
-/// A failed version check keeps the version recorded last time.
+/// Failed version check keeps last recorded version.
 ///
-/// Falling back to the oldest supported version instead would, for one pass,
-/// skip a due reconcile and record a pre-2.3 era for a server that has not
-/// changed -- all because one request failed.
+/// Oldest-supported fallback would, for one pass, skip due reconcile and record
+/// pre-2.3 era for unchanged server, over one failed request.
 #[tokio::test]
 async fn a_failed_version_check_keeps_the_recorded_version() {
     let server = modern_server().await;
@@ -415,17 +402,15 @@ async fn a_failed_version_check_keeps_the_recorded_version() {
 
 /// §the counters request is not spent when nothing could read its answer.
 ///
-/// It is the ONLY evidence a server-side deletion leaves -- the cursor cannot
-/// see one -- so it has to survive a quiet pass. What it does not have to
-/// survive is a pass whose reconcile is due anyway, which happens whatever the
-/// counters say.
+/// ONLY evidence server-side deletion leaves (cursor blind): survives quiet
+/// pass. Needn't survive pass whose reconcile is due anyway.
 #[tokio::test]
 async fn the_counters_request_is_skipped_when_a_reconcile_is_due_anyway() {
     let server = quiet_server().await;
     let client = client_for(&server);
     let mut db = Database::open_in_memory().expect("mirror");
 
-    // A fresh mirror has never reconciled, so the first pass is always due.
+    // Fresh mirror never reconciled: first pass always due.
     sync::sync(&mut db, &client, SyncOptions::default())
         .await
         .expect("sync");

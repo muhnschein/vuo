@@ -9,28 +9,24 @@ publish.workspace = true
 repository.workspace = true
 authors.workspace = true
 
-# NOTE: deliberately not in the workspace's `default-members`. This crate links
-# against Qt, so `cargo build` on a runner without Qt development headers would
-# fail through no fault of the code. `make check` builds it only when qmake is
-# present; `make shim` builds it explicitly.
+# Not in workspace `default-members` on purpose: links Qt; `cargo build` without
+# Qt headers would fail through no fault of code. `make check` builds it only
+# when qmake present; `make shim` builds explicitly.
 
-# §9.5's rule is about unwinding into Qt's C++ frames, which is undefined
-# behaviour -- so it applies MOST to the crates that actually touch Qt, not
-# least. `unsafe_code` stays allowed here (qmetaobject's macros require it and
-# it is reviewed line by line); the panic denials do not.
-# Not `[lints] workspace = true`: this crate needs `unsafe_code` allowed, and
-# the workspace table denies it. `warnings` is restated instead of inherited --
-# it used to come from `RUSTFLAGS` in CI, which the vendored qmetaobject can no
-# longer tolerate. See the workspace manifest.
+# §9.5 rule = unwinding into Qt C++ frames is UB: applies MOST to crates
+# touching Qt. `unsafe_code` allowed (qmetaobject macros need it; reviewed line
+# by line); panic denials stay. Not `[lints] workspace = true`: workspace denies
+# `unsafe_code`. `warnings` restated, not via `RUSTFLAGS` (vendored qmetaobject
+# can't tolerate it). See workspace manifest.
 [lints.rust]
 warnings = "deny"
-# The workspace table says why each of these three is here.
+# Workspace table says why each of these three.
 unused_qualifications = "deny"
 trivial_casts = "deny"
 missing_docs = "deny"
 
 [lints.clippy]
-# See the workspace table, for these three.
+# See workspace table for these three.
 pedantic = { level = "deny", priority = -1 }
 too_many_lines = "allow"
 items_after_statements = "allow"
@@ -40,8 +36,7 @@ panic = "deny"
 indexing_slicing = "deny"
 todo = "deny"
 unimplemented = "deny"
-# The workspace table says why each of these is here, and that the crate
-# root denies the rest.
+# Workspace table says why each; crate root denies rest.
 significant_drop_in_scrutinee = "deny"
 redundant_clone = "deny"
 needless_collect = "deny"
@@ -55,18 +50,17 @@ print_stdout = "deny"
 [dependencies]
 vuo-core = { path = "../vuo-core" }
 
-# Pinned exactly. qmetaobject is only passively maintained upstream (§4 says to
-# budget for carrying a patch or two), so an accidental minor bump is a risk
-# rather than a benefit. 0.2.10's listmodel/future/qtdeclarative sources are
-# byte-identical to the crate's master branch.
+# Pinned exactly. qmetaobject passively maintained upstream (§4: budget for
+# carrying a patch or two): accidental minor bump = risk. 0.2.10's
+# listmodel/future/qtdeclarative sources byte-identical to crate's master.
 qmetaobject = "=0.2.10"
 qttypes = "=0.2.12"
-# `qml_register_type` wants a &'static CStr. Sailfish's Rust floor predates
-# C-string literals (`c"..."`), so the macro earns its place.
+# `qml_register_type` wants &'static CStr. Sailfish's Rust floor predates
+# C-string literals (`c"..."`): macro earns place.
 cstr = "0.2"
-# Favicons reach QML as `data:` URIs. Qt's own network stack decodes those, so
-# a few lines of base64 replace a QQuickImageProvider -- which would mean C++
-# glue, a second thread-affinity story, and a cache to invalidate.
+# Favicons reach QML as `data:` URIs, decoded by Qt's network stack. Few lines
+# of base64 replace QQuickImageProvider (C++ glue, second thread-affinity story,
+# cache to invalidate).
 base64 = "0.22"
 
 tokio = { version = "1", features = ["rt", "sync", "time"] }
@@ -74,11 +68,10 @@ tracing = "0.1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 url = "2.5"
-# Only for the one UPDATE that stores scraped article content; the shim does
-# not otherwise touch SQL.
+# Only for UPDATE storing scraped article content; shim otherwise no SQL.
 rusqlite = { version = "0.32", features = ["bundled"] }
 
 [dev-dependencies]
 tempfile = "3"
-# Only to read the cover's masks back in `qml_cover.rs`; already in the tree.
+# Only to read cover masks back in `qml_cover.rs`; already in tree.
 flate2 = "1"

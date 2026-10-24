@@ -1,23 +1,19 @@
 #!/usr/bin/env bash
-# The Harbour intake rules that can be checked without building for a device.
+# Harbour intake rules checkable without device build.
 #
-# Harbour runs `rpmvalidation.sh` from sailfishos/sdk-harbour-rpmvalidator over
-# the submitted RPM. Most of what it looks at is decided in this repository
-# rather than by the compiler -- which paths the spec installs to, what the
-# .desktop file declares, which QML modules the pages import -- so those can be
-# held here, on every `make check`, instead of being discovered by a rejected
-# submission.
+# Harbour runs `rpmvalidation.sh` (sailfishos/sdk-harbour-rpmvalidator) on
+# submitted RPM. Most of it decided in repo, not compiler (spec install paths,
+# .desktop declarations, QML imports); held here on every `make check`, not
+# found by rejected submission.
 #
-# What it CANNOT check is anything that needs the device link: the shared
-# libraries the binary ends up needing, its glibc symbol versions, whether it
-# is stripped. Those are checked by scripts/cross-build.sh, on the one machine
-# that has the cross toolchain.
+# CAN'T check device-link things: needed shared libraries, glibc symbol
+# versions, stripping. scripts/cross-build.sh checks those (only machine with
+# cross toolchain).
 #
-# The rules below are transcribed from the validator's own configuration as of
-# 2026-09-06 (rpmvalidation.conf, allowed_sailjailkeys.conf,
-# allowed_permissions.conf, disallowed_orgnames.conf, allowed_qmlimports.conf).
-# Transcribed, not fetched: `make check` runs with no network (docs/scope.md
-# §8). Re-read them against upstream when a submission is being prepared.
+# Rules transcribed from validator config as of 2026-09-06 (rpmvalidation.conf,
+# allowed_sailjailkeys.conf, allowed_permissions.conf, disallowed_orgnames.conf,
+# allowed_qmlimports.conf). Transcribed, not fetched: `make check` runs offline
+# (docs/scope.md §8). Re-check against upstream before submission.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -31,10 +27,9 @@ echo "== Harbour rules =="
 
 # ---------------------------------------------------------------- 1. paths
 #
-# rpmvalidation.sh:447-456 rejects every packaged file that is not one of
-# these four, with "Installation not allowed in this location". That includes
-# %{_defaultlicensedir}, which is where rpm's own `%license` puts a file --
-# the reason the licence text is installed into the app's datadir instead.
+# rpmvalidation.sh:447-456 rejects every packaged file outside these four:
+# "Installation not allowed in this location". Includes %{_defaultlicensedir}
+# (rpm `%license` target); why licence text goes in app datadir.
 path_allowed() {
     local path=$1
     case "$path" in
@@ -46,15 +41,14 @@ path_allowed() {
     esac
 }
 
-# Every destination either spec writes to, and every path either %files
-# section claims. Derived from the specs, so a new install line is checked
-# without anyone remembering to add it here.
+# Every destination either spec writes, every path either %files claims. Derived
+# from specs: new install line checked automatically.
 checked=0
 for spec in rpm/harbour-vuo.spec rpm/harbour-vuo-cross.spec; do
     while IFS= read -r raw; do
         [[ -n "$raw" ]] || continue
-        # Expand the macros the specs actually use. `${RES}` is the icon
-        # loop's variable; any size satisfies the icon rule, so one stands in.
+        # Expand macros specs use. `${RES}` = icon loop variable; any size
+        # satisfies icon rule, one stands in.
         p=$raw
         p=${p//%\{buildroot\}/}
         p=${p//%\{_bindir\}/\/usr\/bin}
@@ -65,14 +59,13 @@ for spec in rpm/harbour-vuo.spec rpm/harbour-vuo-cross.spec; do
         p=${p//.\/qml/qml}
         p=${p#/}
         p=${p%/}
-        # `desktop-file-install --dir <dir>` names the DIRECTORY; the file it
-        # writes there is the one named on the same line.
+        # `desktop-file-install --dir <dir>` names DIRECTORY; file written = one
+        # named on same line.
         if [[ "$p" = "usr/share/applications" ]]; then
             p="$p/$(sed 's/#.*//' "$spec" | grep -oE 'desktop-file-install .*' \
                 | grep -oE '[A-Za-z0-9._-]+\.desktop$' | head -1)"
         fi
-        # A trailing directory (translations/, icons/) is fine if the
-        # directory itself is allowed.
+        # Trailing directory (translations/, icons/) fine if directory allowed.
         checked=$((checked + 1))
         path_allowed "$p" \
             || bad "$spec would package /$p, which Harbour does not allow"
@@ -94,7 +87,7 @@ grep -qE "^Exec=$NAME([[:space:]]|$)" "$D" || bad "$D needs Exec=$NAME"
 grep -q "^\[Sailjail\]$" "$D" && bad "$D must use [X-Sailjail], not [Sailjail]"
 grep -q "^\[X-Sailjail\]$" "$D" || bad "$D has no [X-Sailjail] section"
 
-# The section's own body: keys, then the two values with a shape.
+# Section body: keys, then two shaped values.
 sailjail=$(sed '1,/^\[X-Sailjail\]/d;/^\[/,$d' "$D" | grep -E '^[A-Za-z]+=' || true)
 [[ -n "$sailjail" ]] || bad "$D has an empty [X-Sailjail] section"
 while IFS='=' read -r key value; do
@@ -117,7 +110,7 @@ Compatibility|Secrets|Contacts|Accounts) ;;
                 && bad "$D: no OrganizationName component may start with a digit"
             case "$value" in
                 com.jolla|org.sailfishos) bad "$D: OrganizationName '$value' is reserved" ;;
-                # Every other organisation name is the applicant's to choose.
+                # Any other organisation name applicant's choice.
                 *) ;;
             esac
             ;;
@@ -133,18 +126,17 @@ note "the desktop entry's Harbour and Sailjail declarations are allowed"
 
 # --------------------------------------------------------- 3. QML imports
 #
-# An import that is not on Harbour's list makes the app unpublishable, and
-# nothing else in the build would notice: it resolves on the device, where the
-# module is present, and Vuo's own stubs supply it here.
+# Import off Harbour list = unpublishable; nothing else notices (resolves on
+# device, Vuo stubs supply it here).
 #
-# A short allowlist of what Vuo uses rather than a copy of the whole upstream
-# file: the point is to stop a NEW import going in unexamined.
+# Short allowlist of Vuo's imports, not copy of upstream file: stop NEW import
+# going in unexamined.
 while IFS= read -r import; do
     case "$import" in
         '"'*) continue ;;                  # a relative path import; checked below
         'QtQuick 2.6'|'Sailfish.Silica 1.0'|'Sailfish.WebView 1.0') ;;
-        # The new-articles notification. On upstream's list under "Nemo QML
-        # modules" (allowed_qmlimports.conf, checked 2026-09-22).
+        # New-articles notification. On upstream list under "Nemo QML modules"
+        # (allowed_qmlimports.conf, checked 2026-09-22).
         'Nemo.Notifications 1.0') ;;
         'Vuo 1.0') ;;                      # registered by the app itself
         *) bad "qml/ imports '$import', which is not on Harbour's allowed list \
@@ -154,11 +146,11 @@ done < <(grep -rhE '^[[:space:]]*import[[:space:]]' qml/ \
     | sed -e 's/^[[:space:]]*import[[:space:]]*//' -e 's/[[:space:]]\+/ /g' \
           -e 's/ as .*$//' -e 's/;$//' | sort -u)
 
-# Relative imports must stay inside the app's own tree once installed.
+# Relative imports must stay inside app tree once installed.
 while IFS=$'\t' read -r file target; do
     case "$target" in
         /*) bad "$file: absolute path imports are forbidden" ; continue ;;
-        # A relative import is what this rule wants; it is checked below.
+        # Relative import wanted here; checked below.
         *) ;;
     esac
     [[ -d "$(dirname "$file")/$target" ]] \
@@ -175,7 +167,7 @@ for size in 86x86 108x108 128x128 172x172; do
         bad "$icon is missing; Harbour wants all four sizes"
         continue
     fi
-    # The IHDR width and height, big-endian, at offsets 16 and 20.
+    # IHDR width and height, big-endian, offsets 16 and 20.
     dims=$(od -An -tu1 -j16 -N8 "$icon" | tr -s ' ' | sed 's/^ //')
     set -- $dims
     w=$(( ($1<<24) + ($2<<16) + ($3<<8) + $4 ))
@@ -195,10 +187,9 @@ for spec in rpm/harbour-vuo.spec rpm/harbour-vuo-cross.spec; do
     while IFS= read -r banned; do
         [[ -n "$banned" ]] && bad "$spec declares '$banned', which Harbour does not allow"
     done < <(grep -oE '^(Obsoletes|Conflicts|Recommends|Suggests|Supplements|Enhances):' <<< "$body" || true)
-    # `%license` and `%doc` in %files do not name a path -- rpm invents one,
-    # under %{_defaultlicensedir} or %{_defaultdocdir}, and both are outside
-    # what Harbour allows. They therefore slip past the path check above,
-    # which is exactly how the licence text came to be packaged there.
+    # `%license` and `%doc` in %files name no path: rpm invents one under
+    # %{_defaultlicensedir}/%{_defaultdocdir}, both outside Harbour's allowed
+    # set. They slip past path check above; caught here.
     while IFS= read -r banned; do
         [[ -n "$banned" ]] && bad "$spec uses '$banned' in %files; rpm would install it \
 outside /usr/share/harbour-vuo, which Harbour rejects"
@@ -207,9 +198,8 @@ done
 note "neither spec uses a scriptlet, a trigger, or a dependency kind Harbour rejects"
 
 # ------------------------------------------------------- 6. sandbox paths
-# rpmvalidation.sh:1186 greps every shipped file for a hardcoded home
-# directory. The binary is checked where it is linked; these are the files
-# this repository ships verbatim.
+# rpmvalidation.sh:1186 greps every shipped file for hardcoded home dir. Binary
+# checked where linked; these = files repo ships verbatim.
 if grep -rn "/home/nemo\|/home/defaultuser" qml/ "$D" >/dev/null 2>&1; then
     bad "a shipped file hardcodes a home directory; use QStandardPaths instead"
 else

@@ -1,28 +1,27 @@
-# Packaging-only spec for a CROSS-BUILT harbour-vuo.
+# Packaging-only spec for CROSS-BUILT harbour-vuo.
 #
-# rpm/harbour-vuo.spec is the real one and stays the source of truth: it builds
-# under sb2 inside the SDK. This one is its %install/%files half, fed a binary
-# that was already cross-compiled outside sb2 (see docs/sdk-build.md for why
-# the SDK's own cargo cannot do it). Everything installed here, and every path
-# it lands on, is copied from that spec so the two stay comparable.
+# rpm/harbour-vuo.spec = real one, source of truth, builds under sb2 in SDK.
+# This = its %install/%files half, fed binary cross-compiled outside sb2
+# (docs/sdk-build.md: why SDK cargo can't). Every install and path copied from
+# that spec; keep comparable.
 %global _binaries_in_noarch_packages_terminate_build 0
 %global __os_install_post %{nil}
 %global debug_package %{nil}
-# Ubuntu's rpm otherwise packages /usr/lib/.build-id/* symlinks. Sailfish's own
-# rpm does not produce them, they are not in the real spec's %files, and two
-# packages claiming that tree would conflict on the device.
+# Ubuntu rpm otherwise packages /usr/lib/.build-id/* symlinks. Sailfish rpm
+# doesn't, not in real spec's %files; two packages claiming tree conflict on
+# device.
 %define _build_id_links none
 
-# The device runs SailfishOS 4.5+, but xz payloads stay readable by 4.4 and
-# older -- the same reason the real spec defaults to them.
+# Device runs SailfishOS 4.5+, but xz payloads readable by 4.4 and older; same
+# as real spec.
 %define _source_payload w6.xzdio
 %define _binary_payload w6.xzdio
 
 Name:       harbour-vuo
 Summary:    Miniflux feed reader for SailfishOS
 Version:    1.1.1
-# `--define "vuo_release N"` (scripts/cross-rpm.sh, from VUO_RELEASE) stamps a
-# CI build so each one installs as an upgrade of the last; the tree keeps 1.
+# `--define "vuo_release N"` (scripts/cross-rpm.sh, from VUO_RELEASE) stamps CI
+# build so each installs as upgrade; tree keeps 1.
 Release:    %{?vuo_release}%{!?vuo_release:1}
 License:    GPL-3.0-or-later
 Group:      Applications/Internet
@@ -33,18 +32,16 @@ Requires:   sailfishsilica-qt5 >= 0.10.9
 # Sailfish.WebView, for the site page attached to the right of an article.
 Requires:   sailfish-components-webview-qt5
 
-# The two Requires above are PACKAGE-level and deliberately so.
+# Requires above PACKAGE-level on purpose.
 #
-# The binary's real needs are known and checked from its ELF header on every
-# build (scripts/check-linked-libs.sh), and everything it links comes with the
-# two packages named above. Letting a non-Sailfish rpmbuild generate soname
-# requires instead was tried and produces Provides/Requires strings the phone's
-# rpmdb does not recognise -- the install then fails on dependencies that are
-# in fact present, which is a worse failure than having none.
+# Binary's needs checked from ELF header every build
+# (scripts/check-linked-libs.sh); everything it links comes with those two
+# packages. Non-Sailfish rpmbuild soname requires produce Provides/Requires
+# strings phone rpmdb doesn't recognise: install fails on deps actually present
+# (worse than none).
 #
-# rpm/harbour-vuo.spec, which builds under sb2 with Sailfish's own rpm, leaves
-# the generator ON. That is the right arrangement for each: the SDK's rpm gets
-# the strings right, Ubuntu's does not.
+# rpm/harbour-vuo.spec (sb2, Sailfish rpm) keeps generator ON: SDK rpm gets
+# strings right, Ubuntu's doesn't.
 AutoReqProv: no
 
 %description
@@ -67,26 +64,25 @@ for RES in 86x86 108x108 128x128 172x172; do
         %{buildroot}%{_datadir}/icons/hicolor/${RES}/apps/harbour-vuo.png
 done
 
-# `find ./qml` plus install -D reproduces the ./qml/... path under the datadir,
-# which is exactly what SailfishApp::pathTo("qml/...") resolves against.
+# `find ./qml` + install -D reproduces ./qml/... under datadir =
+# SailfishApp::pathTo("qml/...") base.
 cd %{_sourcedir}
 find ./qml -type f -exec \
     install -D -m 644 "{}" "%{buildroot}%{_datadir}/harbour-vuo/{}" \;
 cd -
 
-# The compiled translations. `%{_datadir}/harbour-vuo` is already claimed
-# wholesale by %files, so these need no entry of their own -- but they DO need
-# to land beside qml/, because the app resolves them with
-# SailfishApp::pathTo("translations").
+# Compiled translations. `%{_datadir}/harbour-vuo` claimed wholesale by %files,
+# no own entry; must land beside qml/ (app resolves SailfishApp::pathTo
+# ("translations")).
 if ls %{_sourcedir}/translations/*.qm >/dev/null 2>&1; then
     install -d %{buildroot}%{_datadir}/harbour-vuo/translations
     install -D -m 644 %{_sourcedir}/translations/*.qm \
         %{buildroot}%{_datadir}/harbour-vuo/translations/
 fi
 
-# Inside the app's own datadir: Harbour allows a package to install only
-# /usr/bin/harbour-vuo, /usr/share/harbour-vuo/*, its .desktop file and its
-# icons. %{_datadir}/licenses is not on that list.
+# Inside app datadir: Harbour allows only /usr/bin/harbour-vuo,
+# /usr/share/harbour-vuo/*, .desktop file, icons. %{_datadir}/licenses not on
+# list.
 install -D -m 644 %{_sourcedir}/LICENSE \
     %{buildroot}%{_datadir}/harbour-vuo/LICENSE
 

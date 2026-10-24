@@ -13,23 +13,20 @@ authors.workspace = true
 name = "harbour-vuo"
 path = "src/main.rs"
 
-# §9.5's rule is about unwinding into Qt's C++ frames, which is undefined
-# behaviour -- so it applies MOST to the crates that actually touch Qt, not
-# least. `unsafe_code` stays allowed here (qmetaobject's macros require it and
-# it is reviewed line by line); the panic denials do not.
-# Not `[lints] workspace = true`: this crate needs `unsafe_code` allowed, and
-# the workspace table denies it. `warnings` is restated instead of inherited --
-# it used to come from `RUSTFLAGS` in CI, which the vendored qmetaobject can no
-# longer tolerate. See the workspace manifest.
+# §9.5 (no unwinding into Qt's C++ frames, UB) applies MOST to crates touching
+# Qt. `unsafe_code` allowed here (qmetaobject macros need it, reviewed line by
+# line); panic denials stay. Not `[lints] workspace = true`: needs `unsafe_code`
+# allowed, workspace denies it. `warnings` restated, not via `RUSTFLAGS`
+# (vendored qmetaobject can't take that). See workspace manifest.
 [lints.rust]
 warnings = "deny"
-# The workspace table says why each of these three is here.
+# Workspace table says why each.
 unused_qualifications = "deny"
 trivial_casts = "deny"
 missing_docs = "deny"
 
 [lints.clippy]
-# See the workspace table, for these three.
+# Workspace table says why each.
 pedantic = { level = "deny", priority = -1 }
 too_many_lines = "allow"
 items_after_statements = "allow"
@@ -39,8 +36,7 @@ panic = "deny"
 indexing_slicing = "deny"
 todo = "deny"
 unimplemented = "deny"
-# The workspace table says why each of these is here, and that the crate
-# root denies the rest.
+# Workspace table says why each; crate root denies the rest.
 significant_drop_in_scrutinee = "deny"
 redundant_clone = "deny"
 needless_collect = "deny"
@@ -59,23 +55,20 @@ url = "2.5"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "env-filter"] }
 
-# The `cpp!` macro that writes main.rs's SailfishApp glue. `qmetaobject`
-# depends on this crate but re-exports the macro only privately, so the device
-# build has to name it itself -- see the note in main.rs. Optional and pulled
-# in by `sailfishapp`, so a host build still needs no C++ toolchain.
+# `cpp!` macro for main.rs SailfishApp glue. `qmetaobject` re-exports it only
+# privately, so device build names it itself (see main.rs). Optional, pulled in
+# by `sailfishapp`: host build needs no C++ toolchain.
 cpp = { version = "0.5", optional = true }
 
 [build-dependencies]
 cpp_build = { version = "0.5", optional = true }
 
 [features]
-# Default is the DESKTOP harness: a plain QmlEngine, which needs no SailfishOS
-# SDK and therefore compiles and runs on a developer's machine (and in CI)
-# against the Silica stubs. It is for bring-up and debugging, not for shipping.
+# Default = DESKTOP harness: plain QmlEngine, no SDK, runs on dev machine and CI
+# against Silica stubs. Bring-up and debugging, not shipping.
 default = []
 
-# The device build. Uses SailfishApp::application()/createView() for correct
-# Wayland, booster and theme setup -- QmlEngine's QtWidgets QApplication is
-# wrong for a Silica app. Requires sailfishapp headers, so it only builds
-# inside the SDK; rpm/harbour-vuo.spec passes it.
+# Device build. SailfishApp::application()/createView() for correct Wayland,
+# booster, theme; QmlEngine's QtWidgets QApplication wrong for Silica. Needs
+# sailfishapp headers: SDK only. rpm/harbour-vuo.spec passes it.
 sailfishapp = ["dep:cpp", "dep:cpp_build"]

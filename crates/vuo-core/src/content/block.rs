@@ -1,43 +1,37 @@
-//! The render-block model.
+//! Render-block model.
 //!
-//! §5: *article HTML is transformed into a block list in Rust, not rendered as
-//! one rich-text blob.* Sailfish's Qt vintage supports only a subset of HTML in
-//! `Text`, and a `WebView` is heavy and awkward inside a list.
+//! §5: article HTML becomes a block list in Rust, not one rich-text blob.
+//! Sailfish Qt `Text` supports only HTML subset; `WebView` heavy and awkward in
+//! a list.
 //!
-//! # Why the list is flat
+//! # Why flat
 //!
-//! [`RenderBlock`] contains no `Vec<RenderBlock>`. Nesting would be the
-//! obvious encoding for blockquotes and nested lists, and it is rejected on
-//! purpose for two reasons:
+//! [`RenderBlock`] holds no `Vec<RenderBlock>`. Nesting rejected for
+//! blockquotes and nested lists on purpose:
 //!
-//! 1. **Drop safety.** A recursively nested tree is dropped recursively. §9.2
-//!    warns that deeply nested markup against a recursive parser is a stack
-//!    overflow; a recursive *destructor* has exactly the same failure mode, and
-//!    it fires on the cleanup path where it is hardest to attribute. A flat
-//!    `Vec` cannot overflow on drop however deep the source markup was.
-//! 2. **It is what the UI wants.** The consumer is a Silica `SilicaListView`,
-//!    which wants a flat, indexable model. A tree would have to be flattened
-//!    in QML, which is precisely the logic the scope says to keep out of QML.
+//! 1. **Drop safety.** Recursive tree drops recursively. §9.2: deep markup vs
+//!    recursive parser = stack overflow; recursive *destructor* same, on
+//!    cleanup path, hardest to attribute. Flat `Vec` can't overflow on drop.
+//! 2. **UI wants it.** `SilicaListView` wants flat indexable model; tree would
+//!    need flattening in QML, logic scope keeps out of QML.
 //!
-//! Structure that would have been nesting is carried as *scalars* instead:
-//! [`RenderBlock::quote_depth`] and [`BlockKind::ListItem::indent`].
+//! Would-be nesting carried as *scalars*: [`RenderBlock::quote_depth`],
+//! [`BlockKind::ListItem::indent`].
 //!
-//! # Why inline spans are structured rather than markup
+//! # Why spans, not markup
 //!
-//! §9.3 forbids interpolating foreign strings into a rich-text context. The
-//! transform therefore never emits markup as a string that the UI then trusts.
-//! It produces [`Span`]s, and the single function that renders them into Qt
-//! `StyledText` ([`Span::render_styled_text`]) escapes every character of
-//! foreign text and emits only a fixed, closed tag set. Safety is a property
-//! of that one tested, fuzzed function rather than a convention every call
-//! site has to remember.
+//! §9.3 forbids interpolating foreign strings into rich text. Transform never
+//! emits markup string UI trusts; it emits [`Span`]s. One function renders them
+//! to Qt `StyledText` ([`Span::render_styled_text`]): escapes all foreign text,
+//! emits only fixed closed tag set. Safety = property of that one tested,
+//! fuzzed function, not convention at every call site.
 
 use crate::content::url::MediaUrl;
 
-/// Inline styling. A bitfield rather than a tree, so a `Span` never nests.
+/// Inline styling. Bitfield, not tree: `Span` never nests.
 ///
-/// Independent flags, any combination of which is valid, which is the case
-/// `struct_excessive_bools` exists to question and does not apply to.
+/// Independent flags, any combination valid: `struct_excessive_bools` doesn't
+/// apply.
 #[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SpanStyle {
@@ -45,8 +39,8 @@ pub struct SpanStyle {
     pub bold: bool,
     /// Italic: `<i>`, `<em>` and similar.
     pub italic: bool,
-    /// Monospace: `<code>`, `<kbd>` and similar. Rendered as no tag in
-    /// `StyledText`; the UI chooses the font.
+    /// Monospace: `<code>`, `<kbd>` and similar. No tag in `StyledText`; UI
+    /// picks font.
     pub code: bool,
     /// Struck through: `<s>`, `<del>`, `<strike>`.
     pub strike: bool,
@@ -61,14 +55,13 @@ impl SpanStyle {}
 /// A run of text with uniform styling, optionally hyperlinked.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Span {
-    /// The text. Foreign and unescaped: render it through
-    /// [`Span::render_styled_text`] or as plain text, never as markup.
+    /// Text. Foreign, unescaped: render via [`Span::render_styled_text`] or as
+    /// plain text, never markup.
     pub text: String,
     /// How the text is styled.
     pub style: SpanStyle,
-    /// `None` for non-link text. Always `http`/`https`: other schemes are
-    /// dropped during parsing (§9.2), so a `javascript:` URL can never reach
-    /// this field.
+    /// `None` for non-link text. Always `http`/`https`: other schemes dropped
+    /// while parsing (§9.2); `javascript:` can't reach this field.
     pub link: Option<MediaUrl>,
 }
 
@@ -83,22 +76,20 @@ impl Span {
         }
     }
 
-    /// Render a span sequence as Qt `StyledText`.
+    /// Render span sequence as Qt `StyledText`.
     ///
-    /// This is the *only* place in Vuo that produces markup for a rich-text
-    /// context, and it is the reason §9.3 holds. Every character of foreign
-    /// text is escaped; the emitted tag set is closed and fixed
-    /// (`b`, `i`, `s`, `sup`, `sub`, `a href`); and the `href` is a
-    /// [`MediaUrl`], which by construction is `http` or `https`.
+    /// *Only* place Vuo makes markup for rich-text context; why §9.3 holds. All
+    /// foreign text escaped; tag set closed (`b`, `i`, `s`, `sup`, `sub`, `a
+    /// href`); `href` is [`MediaUrl`], `http`/`https` by construction.
     ///
-    /// The UI must set `textFormat: Text.StyledText` explicitly on whatever
-    /// renders the result -- never leave it at the default (§9.3).
+    /// UI must set `textFormat: Text.StyledText` explicitly on whatever renders
+    /// it, never default (§9.3).
     #[must_use]
     pub fn render_styled_text(spans: &[Span]) -> String {
         let mut out = String::new();
         for span in spans {
-            // Ordering matters only for readability of the output; tags are
-            // balanced by construction because we close in reverse.
+            // Order only for readable output; tags balanced since closed in
+            // reverse.
             let mut open: Vec<&str> = Vec::new();
             if let Some(link) = &span.link {
                 out.push_str("<a href=\"");
@@ -112,9 +103,8 @@ impl Span {
                 (span.style.strike, "s"),
                 (span.style.superscript, "sup"),
                 (span.style.subscript, "sub"),
-                // Qt's StyledText has no <code>; monospace is conveyed by the
-                // delegate choosing a font, so `code` intentionally emits no
-                // tag here and is exposed to QML through the style flags.
+                // Qt `StyledText` has no `<code>`; delegate picks font, so
+                // `code` emits no tag, exposed to QML via style flags.
             ] {
                 if on {
                     out.push('<');
@@ -135,20 +125,19 @@ impl Span {
         out
     }
 
-    /// The concatenated text of a span sequence, with no markup at all.
+    /// Concatenated text of span sequence, no markup.
     ///
-    /// Used for anything rendered as `Text.PlainText` and for accessibility.
+    /// For `Text.PlainText` rendering and accessibility.
     #[must_use]
     pub fn render_plain_text(spans: &[Span]) -> String {
         spans.iter().map(|s| s.text.as_str()).collect()
     }
 }
 
-/// Escape text for inclusion in Qt `StyledText` (an HTML subset).
+/// Escape text for Qt `StyledText` (HTML subset).
 ///
-/// `&` must be escaped first by virtue of being handled in the same pass;
-/// quotes are escaped so the function is equally safe inside an attribute
-/// value, which is how the `href` above uses it.
+/// `&` safe since handled in same pass; quotes escaped so safe inside attribute
+/// value (as `href` above uses it).
 pub(crate) fn escape_into(raw: &str, out: &mut String) {
     for ch in raw.chars() {
         match ch {
@@ -168,8 +157,8 @@ pub(crate) fn escape_into(raw: &str, out: &mut String) {
 pub enum MediaFetch {
     /// Server-proxied or same-origin: no third party learns anything.
     Allowed,
-    /// Third-party and un-proxied. Fetching leaks the device IP, so the user
-    /// decides (per origin) before anything is requested.
+    /// Third-party, un-proxied. Fetch leaks device IP: user decides (per
+    /// origin) before any request.
     NeedsConsent,
 }
 
@@ -182,13 +171,11 @@ pub struct TableCell {
     pub header: bool,
 }
 
-/// The closed set of things Vuo knows how to draw.
+/// Closed set of things Vuo draws.
 ///
-/// This enum *is* the allowlist (§9.2, §3). An element that does not map to a
-/// variant here is dropped or flattened to text -- there is no "unknown block"
-/// variant and no passthrough, so unrecognised markup cannot survive the
-/// transform by default. Adding a rendering capability means adding a variant
-/// here deliberately.
+/// This enum *is* the allowlist (§9.2, §3). Element with no variant is dropped
+/// or flattened to text: no "unknown" variant, no passthrough. New rendering
+/// capability = new variant, deliberately.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 #[non_exhaustive]
@@ -200,8 +187,8 @@ pub enum BlockKind {
         /// The heading text.
         spans: Vec<Span>,
     },
-    /// A paragraph. Block containers with no styling of their own, such as
-    /// `<div>` and `<figure>`, also become paragraphs.
+    /// Paragraph. Unstyled block containers (`<div>`, `<figure>`) become
+    /// paragraphs too.
     Paragraph {
         /// The paragraph text.
         spans: Vec<Span>,
@@ -210,25 +197,24 @@ pub enum BlockKind {
     ListItem {
         /// `true` inside an `<ol>`.
         ordered: bool,
-        /// The marker number on the first block of an ordered item; `None` for
-        /// bullets and for continuation text, which carries no marker.
+        /// Marker number on first block of ordered item; `None` for bullets and
+        /// continuation text.
         number: Option<u32>,
         /// Nesting depth, already clamped to the parser's list-depth cap.
         indent: u8,
         /// The item text.
         spans: Vec<Span>,
     },
-    /// `<pre>` / `<pre><code>`. Text is verbatim and is *not* span-formatted:
-    /// inline markup inside a code block is flattened away rather than honoured.
+    /// `<pre>` / `<pre><code>`. Verbatim, *not* span-formatted: inline markup
+    /// inside flattened away.
     Code {
-        /// A language hint from the `<pre>`'s `class` (`language-rust`,
-        /// `lang-`, `highlight-`, `brush:`), if it had one.
+        /// Language hint from `<pre>`'s `class` (`language-rust`, `lang-`,
+        /// `highlight-`, `brush:`), if any.
         language: Option<String>,
         /// The code, verbatim, with leading and trailing newlines trimmed.
         text: String,
     },
-    /// An `<img>` whose `src` resolved to an `http`/`https` URL that the media
-    /// policy did not drop.
+    /// `<img>` whose `src` resolved to `http`/`https` URL media policy kept.
     Image {
         /// Where to load the image from, as the media policy decided.
         src: MediaUrl,
@@ -236,33 +222,26 @@ pub enum BlockKind {
         alt: String,
         /// The `title` attribute, when non-empty. Foreign text.
         title: Option<String>,
-        /// Whether the UI may load this image immediately.
+        /// Whether UI may load image immediately.
         ///
-        /// Un-proxied third-party media is the common case on a stock Miniflux
-        /// (`MEDIA_PROXY_MODE` defaults to `http-only`), so the transform keeps
-        /// such images in the document as placeholders rather than dropping
-        /// them. Nothing is fetched until the user agrees.
+        /// Un-proxied third-party media is common on stock Miniflux
+        /// (`MEDIA_PROXY_MODE` defaults to `http-only`): kept as placeholders,
+        /// nothing fetched until user agrees.
         fetch: MediaFetch,
-        /// The `width`/`height` attributes off the `<img>` tag, when it gave
-        /// usable ones.
+        /// `width`/`height` attributes from `<img>`, when usable.
         ///
-        /// Carried purely so the UI can reserve the right amount of room
-        /// before the pixels arrive. An image list whose rows have no height
-        /// until each image decodes re-lays-out under the reader's thumb every
-        /// time one lands, which is what an article scrolled on a phone
-        /// actually felt like. Advisory and untrusted: a feed can say
-        /// anything, so it is a ratio hint and never a fetch or decode bound.
+        /// So UI reserves room before pixels arrive; otherwise rows re-lay-out
+        /// under reader's thumb as each image lands. Advisory, untrusted: ratio
+        /// hint only, never fetch or decode bound.
         intrinsic: Option<(u32, u32)>,
-        /// The link the image sits inside, when it is wrapped in an `<a>`.
+        /// Link the image sits inside, when wrapped in `<a>`.
         ///
-        /// A linked image is a button the feed author drew: a tap on it means
-        /// "go there", not "show me this bigger". The UI uses this to choose
-        /// between the two. Always `http`/`https`, for the same reason
-        /// [`Span::link`] is.
+        /// Linked image = author's button: tap means "go there", not "zoom". UI
+        /// picks between the two. Always `http`/`https`, like [`Span::link`].
         link: Option<MediaUrl>,
     },
     /// Fixed three-level nesting: rows of cells of spans. Not self-referential,
-    /// so the drop-recursion argument above does not apply.
+    /// so drop-recursion argument above doesn't apply.
     Table {
         /// The table's rows, each a list of cells.
         rows: Vec<Vec<TableCell>>,
@@ -276,8 +255,8 @@ pub enum BlockKind {
 pub struct RenderBlock {
     /// What to draw.
     pub kind: BlockKind,
-    /// How many `<blockquote>`s enclosed this block, clamped to the depth cap.
-    /// Carried as a scalar so the block list stays flat -- see the module docs.
+    /// `<blockquote>`s enclosing this block, clamped to depth cap. Scalar so
+    /// list stays flat (module docs).
     pub quote_depth: u8,
 }
 
@@ -291,13 +270,13 @@ impl RenderBlock {
         }
     }
 
-    /// A block inside `quote_depth` nested blockquotes. Not clamped here.
+    /// Block inside `quote_depth` nested blockquotes. Not clamped here.
     #[must_use]
     pub fn quoted(kind: BlockKind, quote_depth: u8) -> Self {
         RenderBlock { kind, quote_depth }
     }
 
-    /// The block's text with no markup, for search indexing and previews.
+    /// Block text without markup, for search indexing and previews.
     #[must_use]
     pub fn plain_text(&self) -> String {
         match &self.kind {
@@ -324,14 +303,13 @@ impl RenderBlock {
     }
 }
 
-/// The transform's output: a flat block list plus what it had to throw away.
+/// Transform output: flat block list plus what it had to throw away.
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Document {
     /// The blocks, in document order.
     pub blocks: Vec<RenderBlock>,
-    /// Set when a cap was hit and the document is therefore incomplete. The UI
-    /// should say so rather than silently showing a truncated article -- a
-    /// silent truncation reads as "this is the whole article" when it is not.
+    /// Set when a cap was hit, document incomplete. UI should say so: silent
+    /// truncation reads as whole article.
     pub truncated: Option<Truncation>,
 }
 
@@ -345,8 +323,8 @@ pub enum Truncation {
     TooManyBlocks,
     /// The cumulative text cap was reached.
     TooMuchText,
-    /// Markup nested past the structural depth cap, so some structure (and
-    /// possibly some content inside it) was dropped.
+    /// Markup nested past structural depth cap; some structure (maybe content
+    /// inside) dropped.
     TooDeep,
 }
 
@@ -394,7 +372,7 @@ mod tests {
 
     #[test]
     fn code_style_emits_no_tag() {
-        // Qt StyledText has no <code>; the flag is surfaced to QML instead.
+        // Qt `StyledText` has no `<code>`; flag surfaced to QML instead.
         let spans = vec![Span {
             text: "x".into(),
             style: SpanStyle {

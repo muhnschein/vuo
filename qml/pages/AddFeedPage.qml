@@ -25,10 +25,9 @@ Dialog {
             inputMethodHints: Qt.ImhUrlCharactersOnly | Qt.ImhNoAutoUppercase
             text: dialog.feedUrl
             onTextChanged: dialog.feedUrl = text
-            // Silica's EnterKey is an attached type, which QML cannot stub, so
-            // every file would stop being verifiable off-device for the sake of
-            // one idiom. Keys.onReturnPressed is plain Qt Quick and behaves the
-            // same for the virtual keyboard's return key.
+            // Silica EnterKey = attached type, QML can't stub; would make file
+            // unverifiable off-device. Keys.onReturnPressed = plain Qt Quick,
+            // same for virtual keyboard return.
             Keys.onReturnPressed: dialog.accept()
         }
     }

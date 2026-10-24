@@ -1,22 +1,20 @@
-# Vuo -- SailfishOS RPM spec.
+# Vuo SailfishOS RPM spec.
 #
-# Structure follows Whisperfish, which is the closest prior art for a Rust+QML
-# Sailfish app (§4). Notes on the non-obvious parts are inline; the rationale
-# for the whole approach is in docs/packaging.md.
+# Structure follows Whisperfish (closest Rust+QML Sailfish prior art, §4).
+# Non-obvious parts noted inline; approach rationale in docs/packaging.md.
 
 %bcond_with vendor
 %bcond_with lto
 %bcond_without xz
 
-# OBS and Chum cannot pass --with on the command line, so the flags they need
-# are forced here instead.
+# OBS and Chum can't pass --with on command line; flags forced here.
 %if 0%{?_chum} || 0%{?_obs}
 %define with_lto 1
 %define with_vendor 1
 %endif
 
 %if %{with xz}
-# SailfishOS 4.5+ defaults to Zstd payloads, which 4.4 and older cannot read.
+# SailfishOS 4.5+ defaults to Zstd payloads; 4.4 and older can't read them.
 %define _source_payload w6.xzdio
 %define _binary_payload w6.xzdio
 %endif
@@ -30,22 +28,22 @@ Group:      Applications/Internet
 URL:        https://github.com/muhnschein/vuo
 Source0:    %{name}-%{version}.tar.xz
 %if %{with vendor}
-# Produced by scripts/vendor-crates.sh; not present in the git repository.
+# Made by scripts/vendor-crates.sh; not in git.
 Source1:    vendor.tar.xz
 Source2:    vendor.toml
 %endif
 
 Requires:   sailfishsilica-qt5 >= 0.10.9
-# Sailfish.WebView, for the site page attached to the right of an article.
-# Ships with the OS since 3.1; this only states the dependency.
+# Sailfish.WebView, for site page right of article. Ships with OS since 3.1;
+# only states dependency.
 Requires:   sailfish-components-webview-qt5
 
 BuildRequires:  pkgconfig(sailfishapp) >= 1.0.3
 BuildRequires:  pkgconfig(Qt5Core)
 BuildRequires:  pkgconfig(Qt5Qml)
 BuildRequires:  pkgconfig(Qt5Quick)
-# qttypes links Qt5Widgets unconditionally, even though Vuo never instantiates
-# a QApplication. Without this the link fails late and confusingly.
+# qttypes links Qt5Widgets unconditionally though Vuo never makes QApplication.
+# Without it link fails late, confusingly.
 BuildRequires:  pkgconfig(Qt5Widgets)
 BuildRequires:  rust >= 1.75
 BuildRequires:  rust-std-static >= 1.75
@@ -84,8 +82,7 @@ fi
 cp %SOURCE2 .cargo/config.toml
 %endif
 
-# Scratchbox2 accelerates rustc by running it as x86; this is how it learns
-# what the real target is.
+# Scratchbox2 runs rustc as x86 for speed; this tells it real target.
 %ifarch %arm
 export SB2_RUST_TARGET_TRIPLE=armv7-unknown-linux-gnueabihf
 export CFLAGS_armv7_unknown_linux_gnueabihf="$CFLAGS"
@@ -114,14 +111,13 @@ export CC_aarch64_unknown_linux_gnu=aarch64-meego-linux-gnu-gcc
 export CXX_aarch64_unknown_linux_gnu=aarch64-meego-linux-gnu-g++
 export AR_aarch64_unknown_linux_gnu=aarch64-meego-linux-gnu-ar
 
-# qttypes' build script shells out to `qmake -query` by default, and a Rust
-# build script running under sb2 cannot reliably exec the target's qmake.
-# Setting BOTH of these makes qttypes skip qmake entirely and read the Qt
-# version out of qtcoreversion.h instead (verified against the crate's
-# build.rs). Setting only QMAKE, as this did, leaves it shelling out.
+# qttypes build script runs `qmake -query` by default; build script under sb2
+# can't reliably exec target qmake. BOTH set = qttypes skips qmake, reads Qt
+# version from qtcoreversion.h (checked against crate build.rs). QMAKE alone
+# still shells out.
 #
-# %{_libdir}, not a hardcoded /usr/lib: Qt lives in /usr/lib64 on the aarch64
-# target. Both of these are target-rootfs paths as seen from inside sb2.
+# %{_libdir}, not hardcoded /usr/lib: Qt in /usr/lib64 on aarch64 target. Both =
+# target-rootfs paths seen inside sb2.
 export QT_INCLUDE_PATH=%{_includedir}/qt5
 export QT_LIBRARY_PATH=%{_libdir}
 export PKG_CONFIG_ALLOW_CROSS_i686_unknown_linux_gnu=1
@@ -132,45 +128,37 @@ export PKG_CONFIG_ALLOW_CROSS_aarch64_unknown_linux_gnu=1
 export CARGO_PROFILE_RELEASE_LTO=thin
 %endif
 
-# Works around a Scratchbox bug where /tmp/[...]/symbols.o is not found.
+# Scratchbox bug workaround: /tmp/[...]/symbols.o not found.
 export TMPDIR=${TMPDIR:-"$PWD/.tmp"}
 mkdir -p $TMPDIR
 
-# Build scripts and proc-macros are compiled for the tooling's own
-# architecture, and rustc links them by calling plain `cc` -- which sb2
-# rewrites to the CROSS compiler, so the build dies with
-# "aarch64-meego-linux-gnu-cc: error: unrecognized command-line option '-m32'"
-# before the first crate finishes. scratchbox2 exposes the native compiler as
-# `host-gcc` (SBOX_HOST_GCC_NAME in the target's sb2.config) for exactly this.
-# Pointing at the tooling's gcc by absolute path is NOT enough: sb2 still
-# rewrites the `ld` that gcc invokes and you get "cannot find /lib/libgcc_s.so.1".
-# SBOX_SESSION_DIR is set by sb2 itself, so outside sb2 nothing is overridden.
+# Build scripts and proc-macros compiled for tooling arch; rustc links them via
+# plain `cc`, which sb2 rewrites to CROSS compiler → "aarch64-meego-linux-gnu-cc:
+# error: unrecognized command-line option '-m32'" before first crate. scratchbox2
+# exposes native compiler as `host-gcc` (SBOX_HOST_GCC_NAME in target sb2.config)
+# for this. Tooling gcc by absolute path NOT enough: sb2 still rewrites `ld` gcc
+# calls → "cannot find /lib/libgcc_s.so.1". SBOX_SESSION_DIR set by sb2; outside
+# sb2 nothing overridden.
 if [ -n "${SBOX_SESSION_DIR:-}" ]; then
     host_triple=$(rustc -vV | sed -n 's/^host: //p')
     export "CARGO_TARGET_$(echo "$host_triple" | tr 'a-z-' 'A-Z_')_LINKER"=host-gcc
 fi
 
-# The workspace's default-members are the Qt-free set, so a bare
-# `cargo build --release` would build nothing installable. The bin must be
-# named explicitly.
-# Under scratchbox2, PARALLEL cargo deadlocks: at the default -j it
-# reproducibly futex-waits forever on an unreaped child while qmetaobject's
-# C++ glue compiles. sb2 rust builds are effectively single-threaded anyway,
-# so force -j1 there and let cargo choose for itself on a native OBS worker.
-# (Decided in shell, not with an rpm macro: there is no macro that says
-# "inside sb2", and emitting both forms gives cargo two --jobs and it refuses.)
+# Workspace default-members = Qt-free set; bare `cargo build --release` builds
+# nothing installable. Name bin explicitly. Under scratchbox2 PARALLEL cargo
+# deadlocks: default -j futex-waits forever on unreaped child while qmetaobject
+# C++ glue compiles. sb2 rust builds effectively single-threaded anyway: -j1
+# there, cargo's choice on native OBS worker. (Shell, not rpm macro: no "inside
+# sb2" macro; both forms = two --jobs, cargo refuses.)
 jobs_opt="--jobs %{?_smp_build_ncpus:%{_smp_build_ncpus}}%{!?_smp_build_ncpus:1}"
 if [ -n "${SBOX_SESSION_DIR:-}" ]; then
     jobs_opt="-j1"
 fi
 
-# `--package`, not only `--bin`: `--features` resolves against the SELECTED
-# packages, and the workspace's default-members is just vuo-core, which has no
-# `sailfishapp` feature. Without this the device build dies with "none of the
-# selected packages contains these features: sailfishapp" -- so the spec as
-# written could never have produced the device binary. Found by the first real
-# mb2 build; no host check could have caught it, because no host check builds
-# this package at all.
+# `--package`, not only `--bin`: `--features` resolves against SELECTED
+# packages; default-members is just vuo-core, no `sailfishapp` feature. Without
+# it: "none of the selected packages contains these features: sailfishapp". No
+# host check builds this package; only mb2 build catches it.
 cargo build $jobs_opt \
     --release \
     --package harbour-vuo \
@@ -178,9 +166,8 @@ cargo build $jobs_opt \
     --features sailfishapp \
     $OFFLINE
 
-# NOT -idbased, which the Sailfish app template uses: that keys messages by
-# `qtTrId` ids, and Vuo's strings are `qsTr`, keyed by context and source. With
-# -idbased every lookup misses and the app is English in every locale.
+# NOT -idbased (Sailfish app template's): keys by `qtTrId` ids; Vuo uses `qsTr`
+# (context + source). -idbased = every lookup misses, English in every locale.
 lrelease translations/*.ts || :
 
 %install
@@ -193,8 +180,8 @@ for RES in 86x86 108x108 128x128 172x172; do
         %{buildroot}%{_datadir}/icons/hicolor/${RES}/apps/harbour-vuo.png
 done
 
-# `find ./qml` plus install -D reproduces the ./qml/... path under the datadir,
-# which is exactly what SailfishApp::pathTo("qml/...") resolves against.
+# `find ./qml` + install -D reproduces ./qml/... under datadir =
+# SailfishApp::pathTo("qml/...") base.
 find ./qml -type f -exec \
     install -Dm 644 "{}" "%{buildroot}%{_datadir}/harbour-vuo/{}" \;
 
@@ -203,12 +190,10 @@ if ls translations/*.qm >/dev/null 2>&1; then
     install -Dm 644 translations/*.qm %{buildroot}%{_datadir}/harbour-vuo/translations/
 fi
 
-# The licence text, INSIDE the app's own datadir rather than through
-# `%%license`. GPL-3.0 asks for it to travel with the binary, and rpm's
-# `%%license` would put it in %{_defaultlicensedir} -- which Harbour rejects:
-# a package may install only /usr/bin/harbour-vuo, /usr/share/harbour-vuo/*,
-# its .desktop file and its icons, and everything else is
-# "Installation not allowed in this location".
+# Licence text INSIDE app datadir, not via `%%license`. GPL-3.0 wants it with
+# binary; rpm `%%license` puts it in %{_defaultlicensedir}, Harbour rejects:
+# only /usr/bin/harbour-vuo, /usr/share/harbour-vuo/*, .desktop file, icons;
+# rest = "Installation not allowed in this location".
 install -Dm 644 LICENSE %{buildroot}%{_datadir}/harbour-vuo/LICENSE
 
 %files

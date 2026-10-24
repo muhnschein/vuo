@@ -1,12 +1,10 @@
 #!/usr/bin/env bash
-# Regenerate the texture masks in qml/art/ from tools/textart/.
+# Regenerate qml/art/ texture masks from tools/textart/.
 #
-# The app ships the pattern as an image rather than painting it (see
-# qml/components/TextArt.qml for why), so this is the step that turns the
-# painter into what ships. Run it when the painter, the strokes or the
-# densities change, and COMMIT the result -- like the compiled translations,
-# the masks are generated but tracked, so a build needs neither a GPU nor a
-# display.
+# App ships pattern as image, doesn't paint it (qml/components/TextArt.qml says
+# why); this turns painter into what ships. Run when painter, strokes or
+# densities change; COMMIT result. Like compiled translations, masks generated
+# but tracked: build needs no GPU or display.
 #
 #     scripts/render-textart.sh                 # everything
 #     scripts/render-textart.sh cover           # the cover's set only
@@ -14,17 +12,15 @@
 #     scripts/render-textart.sh cover:none      # the cover with nothing unread
 #     scripts/render-textart.sh onboarding      # the page's one master
 #
-# The cover's set is one mask per unread count, 1 to 99 and "99+", in
-# qml/art/cover/: the count is negative space in the pattern, so the whole
-# background depends on the number. "none" is the cover with nothing unread,
-# which has no number in it at all. A partial run (cover:42) overwrites those
-# masks and leaves the rest; a full cover run replaces the directory.
+# Cover set = one mask per unread count, 1 to 99 and "99+", in qml/art/cover/:
+# count is negative space, whole background depends on number. "none" = cover
+# with nothing unread, no number. Partial run (cover:42) overwrites those,
+# leaves rest; full cover run replaces dir.
 #
-# It needs a QML runtime with a GL context. On a headless machine `xvfb-run`
-# supplies one; the script finds it if it is there and says what to install
-# if it is not. The cover's digits are set in Fira Sans ExtraBold (SIL OFL),
-# fetched once into the gitignored font directory as render-store-cover.sh
-# fetches its two; VUO_FONT_DIR points it elsewhere.
+# Needs GL-context QML runtime. Headless: `xvfb-run` supplies one; script finds
+# it or says what to install. Cover digits in Fira Sans ExtraBold (SIL OFL),
+# fetched once into gitignored font dir like render-store-cover.sh's;
+# VUO_FONT_DIR overrides.
 set -euo pipefail
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
@@ -35,7 +31,7 @@ if [[ -z "$QMLSCENE" ]] || [[ ! -x "$QMLSCENE" ]]; then
     exit 1
 fi
 
-# Which sets to paint, and for the cover which counts.
+# Which sets to paint; for cover which counts.
 sets=()
 keys=()
 if [[ $# -eq 0 ]]; then
@@ -61,12 +57,10 @@ if [[ " ${sets[*]} " == *" cover "* ]] && [[ ${#keys[@]} -eq 0 ]]; then
     full_cover=1
 fi
 
-# The digits' face. Sail Sans Pro ships with SailfishOS and is not
-# redistributable; the digits are only a silhouette, so the face matters
-# less than its weight, and ExtraBold is the heaviest at which the counter
-# of a 4 still holds a line of text. Fetched over TLS only, like the store
-# cover's fonts: -L follows redirects, and --proto-redir keeps the hop
-# nobody chose from walking down to plain http (§9.1).
+# Digit face. Sail Sans Pro not redistributable; digits only silhouette, weight
+# matters more than face. ExtraBold = heaviest where counter of 4 still holds
+# text line. TLS only like store cover fonts: -L follows redirects,
+# --proto-redir keeps unchosen hop off plain http (§9.1).
 FONT_DIR=${VUO_FONT_DIR:-"$ROOT/.fonts"}
 DIGITS="$FONT_DIR/FiraSans-ExtraBold.ttf"
 TLS_ONLY=(--proto '=https' --proto-redir '=https')
@@ -82,20 +76,15 @@ if [[ ! -f "$DIGITS" ]]; then
     curl -sSfL "${TLS_ONLY[@]}" "$url" -o "$DIGITS"
 fi
 
-# The painter reads Theme for the font family, so it needs the Silica stubs
-# the QML tests use.
+# Painter reads Theme for font family; needs QML tests' Silica stubs.
 #
-# THE FONT IS NOT THE DEVICE'S. Sail Sans Pro ships with SailfishOS and is not
-# redistributable, so a machine that is not a phone renders these with
-# whatever its fontconfig calls that name -- in practice the default sans. At
-# the sizes here the letters are texture rather than reading matter, and the
-# pattern is the same either way, but it is the one respect in which the
-# shipped art is not what the device would have drawn for itself.
-# The device's own face for the filler, if a copy is at hand. Sail Sans Pro
-# is not redistributable, so this is never fetched: copy
-# /usr/share/fonts/sail-sans-pro/SailSansPro-Light.ttf off a phone into the
-# font directory by hand, and the masks come out in the font the device
-# would have drawn them in. Without it, the caveat in docs/packaging.md.
+# FONT NOT DEVICE'S. Sail Sans Pro not redistributable; non-phone renders with
+# whatever fontconfig maps name to (default sans). At these sizes letters are
+# texture, pattern same, but only respect shipped art differs from device's own.
+# Device face for filler if copy at hand. Never fetched (not redistributable):
+# copy /usr/share/fonts/sail-sans-pro/SailSansPro-Light.ttf off phone into font
+# dir by hand; masks then in device font. Without it: caveat in
+# docs/packaging.md.
 FILLER="$FONT_DIR/SailSansPro-Light.ttf"
 
 work=$(mktemp -d)
@@ -129,9 +118,8 @@ else
     exit 1
 fi | tee "$work/painted.log"
 
-# A ring traced twice draws text on top of text, which is what a device
-# reported once the art was otherwise right. The painter counts it; refuse
-# the master rather than shipping it.
+# Ring traced twice = text over text. Painter counts it; refuse master, don't
+# ship.
 if grep -q "^qml: OVERLAPS" "$work/painted.log"; then
     if grep "^qml: OVERLAPS" "$work/painted.log" | grep -qv " 0$"; then
         echo "FAIL: the painter drew over itself:" >&2
@@ -153,8 +141,7 @@ if [[ ${#painted[@]} -eq 0 ]]; then
     exit 1
 fi
 if [[ $full_cover -eq 1 ]]; then
-    # A full set replaces the directory, so a count that is no longer
-    # painted cannot linger as a stale mask.
+    # Full set replaces dir: no-longer-painted count can't linger as stale mask.
     rm -f qml/art/cover/*.png
 fi
 mkdir -p qml/art/cover
