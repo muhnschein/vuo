@@ -2,7 +2,8 @@
 
 Written down because the difference matters and is not visible from a green CI
 badge. Everything in the first table is checked by `make check` on every
-change; nothing in the second has ever run on a phone.
+change. Releases run on phones, but device testing is by hand: what below says
+"unproven" has no automated check.
 
 ## Verified on every change
 
@@ -53,27 +54,24 @@ and its evidence are in [docs/sdk-build.md](sdk-build.md).
   rustls for an SDK version number is the wrong way round for an app whose
   §9.1 is about TLS.
 
-**Still true: no part of this has run on a SailfishOS device.** Concretely:
+**Device builds come from CI, not the spec.** What stays unproven or manual:
 
 - **The RPM is produced by CI**, but not by the spec: `.github/workflows/rpm.yml`
   drives `scripts/cross-rpm.sh` over the SDK image (see `docs/packaging.md`).
   `rpm/harbour-vuo.spec` itself still stops at the cargo invocation, for the
   reason above, and the Jolla repositories' rust is 1.75.0+git2 on 5.2.0.15 too.
-- **The cross-compile has run only for the standard library**, not for Vuo's
-  own dependency set. `rusqlite`'s bundled SQLite and `rustls`'s crypto backend
-  remain the two most likely to need attention, on `armv7hl` especially — which
-  has not been attempted at all.
-- **The shim is compiled against Qt 5.15, not Qt 5.6.** The Silica target is
-  5.6. `qmetaobject` sets no `qt_5_*` cfg at all on 5.6, so
-  `qml_register_enum` and friends do not exist there — the code already avoids
-  them, but "avoids them" is not the same as "was compiled there".
+- **Only `aarch64` is built.** `scripts/cross-build.sh` cross-compiles the
+  whole workspace against SDK's Qt 5.6 sysroot; `armv7hl` never attempted.
+- **`make check` compiles shim against host Qt 5.15, not 5.6.** Only RPM build
+  compiles it against 5.6. `qmetaobject` sets no `qt_5_*` cfg on 5.6, so
+  `qml_register_enum` and friends don't exist there; code avoids them.
 - **The Silica stubs are an approximation.** They declare the surface Vuo uses,
   which is enough for the load test to be meaningful, but real Silica has
   geometry, theming and behaviours the stubs do not. Pages that compile here
   can still lay out wrongly on a device.
-- **SailfishApp integration is unrun.** The `cpp!` block in
-  `crates/harbour-vuo/src/main.rs` is behind the `sailfishapp` feature and has
-  never been compiled, because the headers only exist inside the SDK.
+- **SailfishApp integration has no host test.** `cpp!` block in
+  `crates/harbour-vuo/src/main.rs` sits behind `sailfishapp` feature; only RPM
+  build (`scripts/cross-build.sh --features sailfishapp`) compiles it.
 - **Background sync is unproven against a long idle.** It runs in-process,
   on the worker thread, while the app is open or on its cover; whether
   SailfishOS keeps that thread's timer running through hours of a minimised
@@ -129,13 +127,6 @@ every other check in the build.
 Found by review and **not** fixed, so that they are stated rather than
 discovered:
 
-- **The app must be restarted after first-run account setup.** The shared
-  context (database handle plus sync worker) is installed once at start-up
-  from the stored account, so a device with no account configured yet starts
-  without one and does not pick it up when Settings writes the file. Fixing it
-  properly means tearing down and re-installing the worker at runtime, which
-  is exactly the kind of lifetime work that should not be written without a
-  device to test it on.
 - **Model updates are polled, not pushed.** QML owns the list models, so Rust
   holds no handle on a live one; a 1.5-second timer polls a generation counter
   the worker bumps. Correct and simple, but not instant.
@@ -163,9 +154,8 @@ Resolved from Miniflux's source and written up in
 
 ## Still open
 
-- **Async runtime under Qt 5.6** — resolved in design (worker thread plus
-  `queued_callback`, because `reqwest` needs a Tokio reactor), unresolved in
-  practice until it runs on 5.6.
+- **Async runtime under Qt 5.6** — worker thread plus `queued_callback`,
+  because `reqwest` needs Tokio reactor. Runs on device; no automated 5.6 test.
 - **Background execution** — see above.
 - **Sailfish 5.x targets** — the current SDK's target availability and whether
   the Qt and Rust assumptions still hold on the newest release.

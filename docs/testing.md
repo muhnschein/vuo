@@ -4,8 +4,10 @@
 > no server account, and no network.
 
 Anything that cannot be verified under those conditions is either badly layered
-or behind an explicit opt-in gate. There are exactly two gates:
-`make live-test` (needs a Miniflux) and `make rpm` (needs the SDK).
+or behind an explicit opt-in gate. Opt-in gates: `make live-test` (needs
+Miniflux), `make rpm` (needs SDK), `make vendor-check` (needs crates.io),
+`make msrv`, `make fuzz-quick`, `make leak-check`. CI or `scheduled.yml` runs
+all but `live-test` and `rpm`; `miniflux-integration.yml` runs `live-test`.
 
 ## What `make check` does
 
@@ -13,11 +15,14 @@ or behind an explicit opt-in gate. There are exactly two gates:
 | --- | --- |
 | `fmt-check` | formatting drift |
 | `clippy` | including the `unwrap`/`expect`/`panic`/indexing denials on production code |
-| `test` | 263 tests across 17 binaries, the shim's under offscreen Qt |
+| `test` | every test in workspace, shim's under offscreen Qt |
 | `qmllint` | QML syntax |
 | `qml-load` | **every QML file compiled in a real engine** against the Silica stubs |
 | `packaging` | spec/Cargo version drift, missing installed files, desktop entry validity, the Harbour intake rules that need no device (`scripts/check-harbour.sh`), and the libraries the host build actually links (`scripts/check-linked-libs.sh`) |
+| `fuzz-check` | fuzz targets still type-check (plain `cargo check`, no nightly) |
+| `lockfile` | `Cargo.lock` v3 and dependency editions SDK cargo must read (`scripts/check-lockfile.sh`) |
 | `deny` | advisories, licences, banned and duplicated crates |
+| `workflow-lint` | workflow mistakes in `.github/`, via zizmor, offline |
 
 `make vendor-check` is a gate of its own, run by CI and not by `check`: it
 needs crates.io to prove `third_party/qmetaobject` is upstream plus its one
