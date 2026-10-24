@@ -232,9 +232,11 @@ jobs:
 
       # SDK image's build user is uid 100000, past rootless Podman's default
       # 65536 subordinate ids. The step docs/verifying.md gives users.
+      # Range clear of runner's own (165536+): overlap = "write to uid_map
+      # failed".
       - name: Give rootless Podman the SDK image's ids
         run: |
-          sudo usermod --add-subuids 100000-599999 --add-subgids 100000-599999 "$(id -un)"
+          sudo usermod --add-subuids 1000000-1999999 --add-subgids 1000000-1999999 "$(id -un)"
           podman system migrate
 
       - name: Fetch the package the rpm job built

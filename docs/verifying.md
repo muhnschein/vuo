@@ -28,10 +28,11 @@ Releases up to 1.1.1 predate reproducible builds: script refuses them (no
 
 Rootless Podman: SDK image's build user is uid 100000, past the 65536
 subordinate ids a user gets by default. Pull fails with "insufficient UIDs or
-GIDs" until, once:
+GIDs" until, once, a second range clear of the one in `/etc/subuid`
+(overlap: "write to uid_map failed"):
 
 ```
-$ sudo usermod --add-subuids 100000-599999 --add-subgids 100000-599999 $USER
+$ sudo usermod --add-subuids 1000000-1999999 --add-subgids 1000000-1999999 $USER
 $ podman system migrate
 ```
 

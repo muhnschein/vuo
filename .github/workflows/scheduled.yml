@@ -130,9 +130,11 @@ jobs:
           VUO_ENGINE: docker
       # Docker's images dropped: room for Podman's copies.
       - run: docker system prune -af
+      # Range clear of runner's own (165536+): overlap = "write to uid_map
+      # failed".
       - name: Give rootless Podman the SDK image's ids
         run: |
-          sudo usermod --add-subuids 100000-599999 --add-subgids 100000-599999 "$(id -un)"
+          sudo usermod --add-subuids 1000000-1999999 --add-subgids 1000000-1999999 "$(id -un)"
           podman system migrate
       # Own SDK cache: Podman lifts it again, not Docker's copy.
       - name: Rebuild and compare
