@@ -10,9 +10,10 @@
 # vendor-check` (crates.io). None in `check`; CI runs vendor-check as own step.
 
 CARGO ?= cargo
-# The Rust floor the SailfishOS SDK ships. `make msrv` re-checks against it so
-# a dependency bump cannot silently break the device build (§7).
-MSRV ?= 1.75.0
+# The Rust floor: the workspace's `rust-version`, read from Cargo.toml as the
+# CI msrv job reads it, so the two cannot disagree. `make msrv` re-checks
+# against it so a dependency bump cannot silently break the device build (§7).
+MSRV ?= $(shell sed -n 's/^rust-version = "\(.*\)"/\1/p' Cargo.toml | head -1)
 QMLLINT ?= $(shell command -v qmllint 2>/dev/null || echo /usr/lib/qt5/bin/qmllint)
 QMAKE ?= $(shell command -v qmake 2>/dev/null || echo /usr/lib/qt5/bin/qmake)
 ARCH ?= aarch64

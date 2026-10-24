@@ -64,7 +64,7 @@ separate purposes:
 
 | File | What it pins | Why |
 | --- | --- | --- |
-| `Cargo.toml` `rust-version` | the **MSRV** (1.75) | the device build uses the SDK's toolchain; `make msrv` and a CI job re-check against it so a dependency bump cannot silently break it |
+| `Cargo.toml` `rust-version` | the **MSRV** (1.88) | the oldest Rust the locked graph builds with; the device build cross-compiles with a host toolchain at least this new, because the SDK's own 1.75 is too old (see the top of this file); `make msrv` and a CI job re-check against it so a dependency bump cannot silently break it |
 | `rust-toolchain.toml` | the **development** toolchain (a pinned stable release) | so rustfmt and clippy behave identically everywhere; a clippy version drift turns `-D warnings` into a lottery |
 
 `make msrv` installs the floor toolchain if absent and runs `cargo check
