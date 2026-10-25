@@ -65,5 +65,6 @@ rpmbuild -bb "$TOP/SPECS/harbour-vuo-cross.spec" \
 mkdir -p dist
 cp "$TOP"/RPMS/aarch64/*.rpm dist/
 echo
-echo "RPMs:"
-ls -lh dist/*.rpm
+for f in dist/*.rpm; do
+    echo "== $f"; rpm -qip "$f"; rpm -qlp "$f"
+done

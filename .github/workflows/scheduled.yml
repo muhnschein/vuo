@@ -108,3 +108,38 @@ jobs:
       - run: zizmor .github/workflows/
         env:
           GH_TOKEN: ${{ github.token }}
+
+  # Reproducibility drift between releases (rpm.yml's `reproduce` gates only
+  # releases): pinned inputs that stop resolving (snapshot, digest, rustup
+  # archive) or new nondeterminism in tree. Red = main no longer rebuilds byte
+  # for byte; log lists what differs. One Docker build, one Podman rebuild of
+  # fresh clone, as release.
+  repro-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - name: Make room
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet \
+                      "${AGENT_TOOLSDIRECTORY:-/opt/hostedtoolcache}"
+      - run: scripts/build-in-container.sh
+        env:
+          VUO_ENGINE: docker
+      # Docker's images dropped: room for Podman's copies.
+      - run: docker system prune -af
+      # Range clear of runner's own (165536+): overlap = "write to uid_map
+      # failed".
+      - name: Give rootless Podman the SDK image's ids
+        run: |
+          sudo usermod --add-subuids 1000000-1999999 --add-subgids 1000000-1999999 "$(id -un)"
+          podman system migrate
+      # Own SDK cache: Podman lifts it again, not Docker's copy.
+      - name: Rebuild and compare
+        run: |
+          umask 0027
+          VUO_SDK_CACHE="$RUNNER_TEMP/sdk" TZ=Pacific/Kiritimati \
+            scripts/verify-release.sh --podman \
+            --ref "$GITHUB_SHA" --no-download --rpm dist/harbour-vuo-*.rpm

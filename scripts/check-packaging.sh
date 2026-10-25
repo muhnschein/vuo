@@ -135,6 +135,34 @@ fi
 [[ -f Cargo.lock ]] || bad "Cargo.lock must be committed for reproducible offline builds"
 note "Cargo.lock is present"
 
+# 7. Reproducible release (docs/verifying.md). Byte-for-byte proof needs
+#    SDK and network (rpm.yml `reproduce`, scheduled.yml `repro-build`); this
+#    holds pins that, once lost, only fail there, days later.
+CROSS_SPEC=rpm/harbour-vuo-cross.spec
+for m in 'use_source_date_epoch_as_buildtime 1' 'clamp_mtime_to_source_date_epoch 1' '_buildhost [a-z]'; do
+    grep -Eq "^%define $m" "$CROSS_SPEC" ||
+        bad "$CROSS_SPEC must %define $m: else build time or host lands in the RPM"
+done
+CF=rpm/Containerfile
+grep -Eq '^FROM [^ ]+@sha256:[0-9a-f]{64}$' "$CF" ||
+    bad "$CF: base image must be pinned by digest"
+[[ "$(grep -c '^FROM ' "$CF")" -eq 1 ]] || bad "$CF: one FROM, pinned; a second escapes the check above"
+if ! grep -qF "snapshot.ubuntu.com/ubuntu/\${SNAPSHOT}/" "$CF" ||
+    ! grep -Eq '^ARG SNAPSHOT=[0-9]{8}T[0-9]{6}Z$' "$CF"; then
+    bad "$CF: apt must come from snapshot.ubuntu.com at a fixed SNAPSHOT"
+fi
+if ! grep -Eq '^ARG RUSTUP_SHA256=[0-9a-f]{64}$' "$CF" || ! grep -q 'sha256sum -c' "$CF"; then
+    bad "$CF: rustup-init must be checked against RUSTUP_SHA256"
+fi
+bad_pins=$(grep -Ev '^(#|$)' rpm/sdk-images | grep -Ev '^[0-9]+(\.[0-9]+){3} sha256:[0-9a-f]{64}$' || true)
+[[ -z "$bad_pins" ]] || bad "rpm/sdk-images: not 'VERSION sha256:DIGEST': $bad_pins"
+RPM_YML=.github/workflows/rpm.yml
+grep -Eq '^ +run: .*scripts/build-in-container.sh' "$RPM_YML" ||
+    bad "$RPM_YML must build with scripts/build-in-container.sh, the recipe releases are verified with"
+grep -Eq '^    needs: \[rpm, reproduce\]$' "$RPM_YML" ||
+    bad "$RPM_YML: release job must need reproduce; else an unreproduced RPM ships"
+note "release build pins held: rpm dates, build host, base image, apt snapshot, rustup, SDK digests"
+
 if [[ "$fail" -ne 0 ]]; then
     echo "packaging checks FAILED" >&2
     exit 1

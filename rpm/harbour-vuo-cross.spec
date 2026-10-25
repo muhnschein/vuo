@@ -12,6 +12,14 @@
 # device.
 %define _build_id_links none
 
+# Reproducible package (docs/verifying.md). SOURCE_DATE_EPOCH set
+# (scripts/build-in-container.sh: commit time): build time = it, file dates
+# clamped to it. Unset: rpm's defaults. Host name fixed either way (rpm
+# records it).
+%define use_source_date_epoch_as_buildtime 1
+%define clamp_mtime_to_source_date_epoch 1
+%define _buildhost vuo-build
+
 # Device runs SailfishOS 4.5+, but xz payloads readable by 4.4 and older; same
 # as real spec.
 %define _source_payload w6.xzdio

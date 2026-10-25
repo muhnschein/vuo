@@ -69,7 +69,7 @@ User tests RPM on phone; that test judges feel, lag, transitions. Say exactly wh
 
 - Only on user's go. Latest `main` commit green first: check main, not just PR.
 - Strict semver: nothing breaking → minor; fix only → patch.
-- Steps: bump `version` in `Cargo.toml` (lockfiles follow, incl. `crates/vuo-core/fuzz/Cargo.lock`), new `%changelog` entry in both `rpm/harbour-vuo.spec` and `rpm/harbour-vuo-cross.spec` (= release notes), push `v*` tag → `rpm.yml` builds release RPM. `make check` catches spec/Cargo drift. Harbour upload stays with user.
+- Steps: bump `version` in `Cargo.toml` (lockfiles follow, incl. `crates/vuo-core/fuzz/Cargo.lock`), new `%changelog` entry in both `rpm/harbour-vuo.spec` and `rpm/harbour-vuo-cross.spec` (= release notes), push `v*` tag → `rpm.yml` builds release RPM; `reproduce` must rebuild it byte for byte before publish (`docs/verifying.md`). `make check` catches spec/Cargo drift. Harbour upload stays with user.
 
 ## Subagents
 
