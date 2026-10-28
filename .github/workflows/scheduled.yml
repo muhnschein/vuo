@@ -53,10 +53,7 @@ jobs:
           persist-credentials: false
       # Shim and app link Qt; their clippy is most of tree.
       - name: Install Qt
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            qtbase5-dev qtdeclarative5-dev
+        run: scripts/apt-install.sh --no-install-recommends qtbase5-dev qtdeclarative5-dev
       - run: rustup toolchain install stable --profile minimal --component clippy
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
@@ -79,14 +76,10 @@ jobs:
       # Same packages as ci.yml (same tests), plus llvm for llvm-symbolizer:
       # scripts/lsan.supp matches by function name, needs symbolized report.
       - name: Install Qt and llvm
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            qtbase5-dev \
-            qtdeclarative5-dev \
-            qtdeclarative5-dev-tools \
-            qml-module-qtquick2 \
-            llvm
+        run: >-
+          scripts/apt-install.sh --no-install-recommends
+          qtbase5-dev qtdeclarative5-dev qtdeclarative5-dev-tools
+          qml-module-qtquick2 llvm
       # Nightly scripts/leak-check.sh names. No rust-cache: nothing shared with
       # other jobs, week-old cache = GBs to restore for little.
       - run: rustup toolchain install nightly-2026-10-12 --profile minimal --component rust-src

@@ -34,8 +34,8 @@ SKIP_QT ?=
 HAVE_QT := $(shell test -x "$(QMAKE)" && echo yes)
 # Goals bearing on Qt: shim and its clippy, QML tests, aggregates pulling them
 # in. Rest Qt-free on host.
-QT_FREE_GOALS := fmt fmt-check fuzz-check lockfile deny workflow-lint vendor-check \
-                 msrv fuzz-quick live-test icons rpm vendor clean help
+QT_FREE_GOALS := fmt fmt-check fuzz-check lockfile deny workflow-lint ci-scripts \
+                 vendor-check msrv fuzz-quick live-test icons rpm vendor clean help
 QT_GOALS := $(filter-out $(QT_FREE_GOALS),$(if $(MAKECMDGOALS),$(MAKECMDGOALS),all))
 ifneq ($(HAVE_QT),yes)
 ifneq ($(QT_GOALS),)
@@ -48,14 +48,14 @@ endif
 endif
 
 .PHONY: all check fmt fmt-check clippy test qmllint qml-load shim deny \
-        workflow-lint fuzz-check packaging harbour msrv fuzz-quick live-test \
+        workflow-lint ci-scripts fuzz-check packaging harbour msrv fuzz-quick live-test \
         vendor-check leak-check sonar-reports textart icons rpm vendor clean help
 
 all: check
 
 ## check: everything CI runs. No phone, no server, no network.
 check: fmt-check clippy test qmllint qml-load fuzz-check packaging lockfile deny \
-       workflow-lint
+       workflow-lint ci-scripts
 ifeq ($(HAVE_QT),yes)
 	@echo "== make check passed =="
 else
@@ -175,6 +175,13 @@ workflow-lint:
 		echo "CI installs it, so a green local run without it is not a green CI run." >&2; \
 		exit 1; \
 	fi
+
+## ci-scripts: selftests of CI's own helpers. scripts/apt-install.sh wrong =
+## Ubuntu archive dropped; scripts/changes.sh wrong = code PR green untested.
+ci-scripts:
+	@echo "== CI script selftests =="
+	scripts/apt-install-selftest.sh
+	scripts/changes-selftest.sh
 
 ## leak-check: every test under AddressSanitizer + LeakSanitizer, pinned
 ## nightly. Slow, not in `check`; scheduled.yml runs weekly. See

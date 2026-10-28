@@ -23,6 +23,11 @@ all but `live-test` and `rpm`; `miniflux-integration.yml` runs `live-test`.
 | `lockfile` | `Cargo.lock` v3 and dependency editions SDK cargo must read (`scripts/check-lockfile.sh`) |
 | `deny` | advisories, licences, banned and duplicated crates |
 | `workflow-lint` | workflow mistakes in `.github/`, via zizmor, offline |
+| `ci-scripts` | CI helpers' selftests: `scripts/apt-install.sh` keeps Ubuntu's archive and moves off a slow mirror; `scripts/changes.sh` skips nothing but docs |
+
+PR touching only `*.md` (outside `third_party/`, `vendor/`): `ci.yml` and
+`sonar.yml` skip their jobs, skipped job passes as required check
+(`scripts/changes.sh`). Push to `main`, dispatch: everything runs.
 
 `make vendor-check` is a gate of its own, run by CI and not by `check`: it
 needs crates.io to prove `third_party/qmetaobject` is upstream plus its one

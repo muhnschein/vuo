@@ -42,6 +42,7 @@ User tests RPM on phone; that test judges feel, lag, transitions. Say exactly wh
 
 - `make check` = exactly what CI runs: no phone, no server, no network (`docs/testing.md`). Needs Qt (qmake, qmllint); without it fails. `SKIP_QT=1` only when Qt truly unavailable; then shim tests, QML load test, shim clippy didn't run. Say so.
 - Opt-in gates, not in `check`: `make vendor-check` (crates.io, CI runs it), `make msrv`, `make live-test` (real Miniflux, `VUO_LIVE_BASE_URL`, `VUO_LIVE_TOKEN`), `make fuzz-quick`, `make rpm` (SDK). Say which ran, which skipped.
+- Iterating: run touched tests only. Full `make check` before every push.
 - Local failure → rerun on untouched `main` before calling it environment.
 - `make check` gates catch device-only breakage (Rust floor, `Cargo.lock` v3, Qt 5.6 QML, packaging, Harbour rules, cargo-deny); reasons in `docs/packaging.md`, `docs/sdk-build.md`. Gate red → fix code, never loosen gate.
 - Foreign input (server JSON, article HTML, images, URLs): rules in `docs/scope.md` §9. New parser path → test plus fuzz target or seed.

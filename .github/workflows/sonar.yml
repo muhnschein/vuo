@@ -29,14 +29,38 @@ env:
   CARGO_INCREMENTAL: 0
 
 jobs:
+  # Docs-only PR (`*.md` outside vendor/, third_party/): no scan, as ci.yml.
+  # Markdown has no rules here but secrets; GitHub's secret scanning reads it
+  # anyway. Rules: scripts/changes.sh.
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.diff.outputs.code }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+          # Merge commit and its base parent.
+          fetch-depth: 2
+      - id: diff
+        run: scripts/changes.sh >> "$GITHUB_OUTPUT"
+        env:
+          EVENT: ${{ github.event_name }}
+
   sonar:
     name: SonarQube Cloud
+    needs: changes
     runs-on: ubuntu-latest
+    # Hung step stops here, not at GitHub's 6 h.
+    timeout-minutes: 30
     # Fork PRs get no secrets: empty SONAR_TOKEN, auth failure that looks like
     # broken setup. Skip; merge analysed when branch reaches main.
     if: >-
-      github.event_name != 'pull_request' ||
-      github.event.pull_request.head.repo.full_name == github.repository
+      needs.changes.outputs.code == 'true' && (
+        github.event_name != 'pull_request' ||
+        github.event.pull_request.head.repo.full_name == github.repository
+      )
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
@@ -47,16 +71,13 @@ jobs:
           # SONAR_TOKEN.
           persist-credentials: false
 
+      # Same as ci.yml: -dev packages omit QtQuick runtime plugin; shim tests
+      # instantiate QtQuick items.
       - name: Install Qt
-        run: |
-          sudo apt-get update
-          # Same as ci.yml: -dev packages omit QtQuick runtime plugin; shim
-          # tests instantiate QtQuick items.
-          sudo apt-get install -y --no-install-recommends \
-            qtbase5-dev \
-            qtdeclarative5-dev \
-            qtdeclarative5-dev-tools \
-            qml-module-qtquick2
+        run: >-
+          scripts/apt-install.sh --no-install-recommends
+          qtbase5-dev qtdeclarative5-dev qtdeclarative5-dev-tools
+          qml-module-qtquick2
 
       # Every action pinned to full commit SHA, version beside it. Tag is
       # movable by owner or attacker (tj-actions/changed-files, CVE-2025-30066);
