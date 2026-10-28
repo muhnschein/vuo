@@ -32,6 +32,7 @@ User tests RPM on phone; that test judges feel, lag, transitions. Say exactly wh
 - Test phone: OnePlus 6, SFOS 5.1, via `muhnschein-sfos-harness` workflow `do`, shared with other apps' agents. Its `AGENTS.md` rules every phone run (calling `do`, lease, no blind taps, costly ops); Vuo specifics: its `apps/vuo.md`. Test accounts only. Never run fork or others' PR code there: any job can root phone.
 - Tags and leases start with `vuo-` (e.g. tag `vuo-pr50-$(date +%s)`, lease `vuo-pr50`); `do` refuses others.
 - Build in: `install_artifact muhnschein/vuo RUN_ID harbour-vuo` (rpm.yml run on PR branch).
+- Server: `miniflux_up` (real Miniflux on Pi, seeded feeds, fresh copy each run), then `vuo_login`; sign-in under test goes through UI instead. Seed and screen map: harness `apps/vuo.md`.
 - Every run starts from named state, recorded in `state.txt` with RPM name and sha256: `clean` (`wipe harbour-vuo`, then install), `fixture:NAME`, `upgrade:FROM` (release plus fixture, then build over it; required when change touches stored data, schema, settings).
 - Footprint (`fs_mark`, `footprint harbour-vuo`): file outside app dirs → add to reset or fail run.
 - Motion or timing change: launch with `FRAMELOG`, report `frames`. Never measure frames while recording.
