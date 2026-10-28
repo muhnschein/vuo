@@ -12,6 +12,12 @@ on:
   pull_request:
   workflow_dispatch:
 
+# New push supersedes in-flight run. Fallback `github.ref`, not `run_id`:
+# head_ref is PR-only.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
 # Nothing here writes; no job touches contents, issues or PR APIs. Pins floor so
 # later step can't inherit token that can push.
 permissions:
@@ -23,9 +29,30 @@ env:
   CARGO_INCREMENTAL: 0
 
 jobs:
+  # Docs-only PR (`*.md` outside vendor/, third_party/): jobs below skipped. Job
+  # skipped by `if:` passes as required check. Rules: scripts/changes.sh.
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.diff.outputs.code }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+          # Merge commit and its base parent.
+          fetch-depth: 2
+      - id: diff
+        run: scripts/changes.sh >> "$GITHUB_OUTPUT"
+        env:
+          EVENT: ${{ github.event_name }}
+
   check:
     name: host checks
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -33,17 +60,14 @@ jobs:
           # checkout here.
           persist-credentials: false
 
+      # -dev packages omit QtQuick runtime plugin (§8.1): QML compiles but
+      # nothing can instantiate QtQuick item. Script: slow or broken mirror
+      # costs minutes, not job.
       - name: Install Qt and packaging tools
-        run: |
-          sudo apt-get update
-          # -dev packages omit QtQuick runtime plugin (§8.1): QML compiles but
-          # nothing can instantiate QtQuick item.
-          sudo apt-get install -y --no-install-recommends \
-            qtbase5-dev \
-            qtdeclarative5-dev \
-            qtdeclarative5-dev-tools \
-            qml-module-qtquick2 \
-            desktop-file-utils
+        run: >-
+          scripts/apt-install.sh --no-install-recommends
+          qtbase5-dev qtdeclarative5-dev qtdeclarative5-dev-tools
+          qml-module-qtquick2 desktop-file-utils
 
       # Toolchain from rust-toolchain.toml: rustup installs pinned release with
       # rustfmt and clippy on first cargo run. No action, no pin to keep.
@@ -74,7 +98,10 @@ jobs:
 
   msrv:
     name: SailfishOS Rust floor
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -113,7 +140,10 @@ jobs:
 
   fuzz-smoke:
     name: fuzz (short)
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
