@@ -20,12 +20,23 @@ In this order; later step only once earlier ones hold:
 3. Tests proven to bite: each fails with change reverted or mutated. Report how (e.g. "22/22 mutations caught"); name what headless tests can't prove.
 4. `make check` green locally.
 5. PR CI green (`ci.yml`). Sonar (`sonar.yml`) = report, not gate (`docs/testing.md`): still read it, fix new issues and new-code coverage gaps or say why not.
-6. Device RPM: dispatch `.github/workflows/rpm.yml` on PR branch, give user the artifact link.
+6. Device: dispatch `.github/workflows/rpm.yml` on PR branch; run RPM on test phone ("Device tests"); give user artifact link and evidence.
 7. With RPM: outline briefly what merging this PR risks and how you mitigated it.
 
 Feature reachable from several places (feed list, article list, article page, search, cover) → all of them.
 
 User tests RPM on phone; that test judges feel, lag, transitions. Say exactly what to check on device.
+
+## Device tests
+
+- Test phone: OnePlus 6, SFOS 5.1, via `muhnschein-sfos-harness` workflow `do`, shared with other apps' agents. Its `AGENTS.md` rules every phone run (calling `do`, lease, no blind taps, costly ops); Vuo specifics: its `apps/vuo.md`. Test accounts only. Never run fork or others' PR code there: any job can root phone.
+- Tags and leases start with `vuo-` (e.g. tag `vuo-pr50-$(date +%s)`, lease `vuo-pr50`); `do` refuses others.
+- Build in: `install_artifact muhnschein/vuo RUN_ID harbour-vuo` (rpm.yml run on PR branch).
+- Server: `miniflux_up` (real Miniflux on Pi, seeded feeds, fresh copy each run), then `vuo_login`; sign-in under test goes through UI instead. Seed and screen map: harness `apps/vuo.md`.
+- Every run starts from named state, recorded in `state.txt` with RPM name and sha256: `clean` (`wipe harbour-vuo`, then install), `fixture:NAME`, `upgrade:FROM` (release plus fixture, then build over it; required when change touches stored data, schema, settings).
+- Footprint (`fs_mark`, `footprint harbour-vuo`): file outside app dirs → add to reset or fail run.
+- Motion or timing change: launch with `FRAMELOG`, report `frames`. Never measure frames while recording.
+- Harness proves function and frame timing. Feel, lag, transitions stay user's call on device.
 
 ## Local checks
 
