@@ -5,7 +5,9 @@
 **Unattended, on GitHub:** `.github/workflows/rpm.yml` builds one against the
 Sailfish SDK image and uploads it as a workflow artifact. Dispatch it from the
 Actions tab (the SDK version is an input) or push a `v*` or `build-*` tag; it
-also runs on any pull request that changes the recipe. The skeleton follows
+also runs on every push to `main` and on any pull request that changes the
+recipe. Lifted SDK and cross-compiled crates cached between runs; main's push
+keeps the cache every branch starts from current. Releases restore no cache. The skeleton follows
 muhnschein/postivene's `rpm.yml`, but not its `mb2` build: Jolla's
 repositories install `rust`/`cargo` 1.75.0+git2 into the target (measured
 against the 5.2.0.15 SDK), and this lockfile needs 1.88. So the SDK's cross

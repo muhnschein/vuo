@@ -10,8 +10,14 @@
 # driven by pinned cargo in pinned build container:
 # scripts/build-in-container.sh, same as local build.
 #
-# Releases reproducible: `reproduce` rebuilds on other runner, byte for byte,
-# before `release` publishes (docs/verifying.md).
+# Releases reproducible: `reproduce` rebuilds on other runner beside `rpm`;
+# `compare` checks byte for byte before `release` publishes
+# (docs/verifying.md).
+#
+# Kept short by: lifted SDK and cross-compiled crates cached between runs. Push
+# to main builds too: caches every branch starts from (caches: own branch +
+# main only) stay current, each main commit has an RPM. Releases restore no
+# cache.
 name: rpm
 
 on:
@@ -47,10 +53,20 @@ on:
           token is.
         type: string
         default: ""
+      rehearse:
+        description: >
+          Rehearse a release on this branch: build as the release would
+          (Release 1, no cache), rebuild it on a second runner and compare,
+          but tag and publish nothing.
+        type: boolean
+        default: false
   push:
     # `v*` = release. `build-*` = throwaway handle to run before workflow
     # reaches main (workflow_dispatch needs workflow on main).
     tags: ["v*", "build-*"]
+    branches: [main]
+    # Docs only: nothing packaged changes. Tags ignore path filters.
+    paths-ignore: ["docs/**", "*.md"]
   # Recipe change proved by running it: job builds PR head before it lands.
   pull_request:
     paths:
@@ -59,6 +75,7 @@ on:
       - "scripts/container-engine.sh"
       - "scripts/cross-build.sh"
       - "scripts/cross-rpm.sh"
+      - "scripts/verify-release.sh"
       - "rpm/Containerfile"
       - "rpm/sdk-images"
       - "rpm/harbour-vuo-cross.spec"
@@ -67,19 +84,18 @@ permissions:
   contents: read
 
 jobs:
-  rpm:
+  # Inputs checked and release decided before any build: bad tag costs seconds,
+  # and `rpm`, `reproduce` start together on the answer.
+  plan:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 5
     outputs:
       release_tag: ${{ steps.release.outputs.tag }}
+      # yes: Release 1 package, no cache (release, `release` box, rehearsal).
+      release_build: ${{ steps.release.outputs.release_build }}
+      sdk_digest: ${{ steps.sdk.outputs.digest }}
     env:
-      ARCH: ${{ inputs.arch || 'aarch64' }}
       SFOS: ${{ inputs.sfos_version || '5.2.0.15' }}
-      # One job, every run: higher counts stall; slow finish beats restart.
-      # build-in-container.sh passes it to cargo; cc crate shares cargo's
-      # jobserver, so C/C++ compiles serial too. Here, not in script: local
-      # build keeps every core.
-      CARGO_BUILD_JOBS: 1
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -89,14 +105,15 @@ jobs:
       # Free text from dispatch form, spliced into paths and artifact name.
       # Digest per version: rpm/sdk-images.
       - name: Check the SDK version
+        id: sdk
         run: |
           [[ $SFOS =~ ^[0-9]+(\.[0-9]+){3}$ ]] || {
             echo "::error::sfos_version '$SFOS' is not a dotted version"; exit 1; }
-          awk -v v="$SFOS" '$1 == v { f = 1 } END { exit !f }' rpm/sdk-images || {
+          digest=$(awk -v v="$SFOS" '$1 == v { print $2; exit }' rpm/sdk-images)
+          [ -n "$digest" ] || {
             echo "::error::no pinned digest for $SFOS; add one to rpm/sdk-images"; exit 1; }
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
 
-      # Release decided before build: bad tag costs seconds, not whole build.
-      #
       # Tag is free text from form, becomes git ref and `gh` arg: shape-checked,
       # read via env (not expanded into script), so tag can't be shell.
       #
@@ -106,6 +123,8 @@ jobs:
         id: release
         env:
           INPUT_RELEASE_TAG: ${{ inputs.release_tag }}
+          INPUT_RELEASE: ${{ inputs.release }}
+          INPUT_REHEARSE: ${{ inputs.rehearse }}
         run: |
           tag="${INPUT_RELEASE_TAG:-}"
           if [ -n "$tag" ]; then
@@ -119,14 +138,54 @@ jobs:
             [ "$tag" = "v$spec" ] || {
               echo "::error::$tag does not match the spec's Version: $spec"; exit 1; }
             echo "this run releases $tag"
+          elif [ "$INPUT_REHEARSE" = "true" ]; then
+            echo "this run rehearses a release; publishes nothing"
           else
             echo "this run releases nothing; building a package only"
           fi
-          echo "RELEASE_TAG=$tag" >> "$GITHUB_ENV"
+          if [ -n "$tag" ] || [ "$INPUT_RELEASE" = "true" ] || [ "$INPUT_REHEARSE" = "true" ]; then
+            echo "release_build=yes" >> "$GITHUB_OUTPUT"
+          else
+            echo "release_build=no" >> "$GITHUB_OUTPUT"
+          fi
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
-      # SDK image ~13 GB unpacked, until compiler and sysroot lifted out.
+  rpm:
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      ARCH: ${{ inputs.arch || 'aarch64' }}
+      SFOS: ${{ inputs.sfos_version || '5.2.0.15' }}
+      RELEASE_BUILD: ${{ needs.plan.outputs.release_build }}
+      SDK_DIGEST: ${{ needs.plan.outputs.sdk_digest }}
+      # One job, every run: higher counts stall; slow finish beats restart.
+      # build-in-container.sh passes it to cargo; cc crate shares cargo's
+      # jobserver, so C/C++ compiles serial too. Here, not in script: local
+      # build keeps every core.
+      CARGO_BUILD_JOBS: 1
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          # Nothing pushes with git: token not left in .git/config.
+          persist-credentials: false
+
+      # Lifted compiler and sysroot (~2 GB), per pinned digest; key also holds
+      # lift recipe. Not for release builds: they lift from pinned image, as
+      # users' check does. zizmor can't read `if`, hence ignored
+      # cache-poisoning finding.
+      - name: Restore the lifted SDK
+        id: sdk-cache
+        if: env.RELEASE_BUILD != 'yes'  # zizmor: ignore[cache-poisoning]
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/vuo-sdk
+          key: sdk-${{ env.SFOS }}-${{ env.SDK_DIGEST }}-${{ hashFiles('scripts/build-in-container.sh') }}
+
+      # SDK image ~13 GB unpacked, until compiler and sysroot lifted out. Lifted
+      # SDK from cache: no pull, no room needed.
       - name: Make room
+        if: steps.sdk-cache.outputs.cache-hit != 'true'
         run: |
           sudo rm -rf /usr/local/lib/android /usr/share/dotnet \
                       "${AGENT_TOOLSDIRECTORY:-/opt/hostedtoolcache}"
@@ -138,7 +197,7 @@ jobs:
       # ~/.cargo (VUO_CARGO_HOME below) and objects to target/, as runner user:
       # where this caches.
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2  # zizmor: ignore[cache-poisoning]
-        if: env.RELEASE_TAG == '' && !inputs.release
+        if: env.RELEASE_BUILD != 'yes'
         with:
           key: cross-SailfishOS-${{ env.SFOS }}-${{ env.ARCH }}
 
@@ -148,28 +207,28 @@ jobs:
       #
       # Release build keeps Release: 1 (Harbour naming:
       # harbour-NAME-VERSION-RELEASE.ARCHITECTURE.rpm, no CI run number). Tags
-      # are releases; dispatch form asks. RELEASE allows only digits,
-      # underscores, periods: test artifact identified by short SHA in ARTIFACT
-      # name.
+      # are releases; dispatch form asks; rehearsal builds one too. RELEASE
+      # allows only digits, underscores, periods: test artifact identified by
+      # short SHA in ARTIFACT name.
       - name: Stamp the build so each one is its own package
         run: |
           echo "SHORT_SHA=$(git rev-parse --short HEAD)" >> "$GITHUB_ENV"
-          if [ "${{ inputs.release }}" = "true" ] || [ -n "$RELEASE_TAG" ]; then
+          if [ "$RELEASE_BUILD" = "yes" ]; then
             echo "VUO_RELEASE=1"     >> "$GITHUB_ENV"
-            echo "RELEASE_BUILD=yes" >> "$GITHUB_ENV"
             echo "building a RELEASE package (Release: 1)"
           else
             echo "VUO_RELEASE=1.${GITHUB_RUN_NUMBER}" >> "$GITHUB_ENV"
-            echo "RELEASE_BUILD=no"  >> "$GITHUB_ENV"
             echo "building a TEST package (Release: 1.${GITHUB_RUN_NUMBER})"
           fi
 
       # Same script as local build and as `reproduce`, so they can't drift (its
       # comments say why). Docker here; `reproduce` rebuilds with Podman.
+      # Stall hangs, never fails: cut off here, not at job's 120 min.
       - name: Build the RPM
+        timeout-minutes: 60
         env:
           VUO_ENGINE: docker
-        run: VUO_CARGO_HOME=~/.cargo scripts/build-in-container.sh "$SFOS"
+        run: VUO_SDK_CACHE=~/.cache/vuo-sdk VUO_CARGO_HOME=~/.cargo scripts/build-in-container.sh "$SFOS"
 
       # Harbour file-name rule, set by stamping above, so
       # scripts/check-harbour.sh can't hold it:
@@ -208,18 +267,15 @@ jobs:
 
   # Release rebuilt the way docs/verifying.md tells users (verify-release.sh):
   # fresh clone, other runner, Podman not Docker, other time zone and umask.
-  # Not byte-identical: no release. Users' check is then one CI already passed.
+  # Beside `rpm`, not after: needs that package only to compare (`compare`).
+  # Both cold: release takes one build's time, not two.
   reproduce:
-    needs: rpm
-    if: needs.rpm.outputs.release_tag != ''
+    needs: plan
+    if: needs.plan.outputs.release_tag != '' || inputs.rehearse
     runs-on: ubuntu-latest
     timeout-minutes: 120
     permissions:
       contents: read
-      actions: read
-    env:
-      GH_TOKEN: ${{ github.token }}
-      GH_REPO: ${{ github.repository }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -239,20 +295,55 @@ jobs:
           sudo usermod --add-subuids 1000000-1999999 --add-subgids 1000000-1999999 "$(id -un)"
           podman system migrate
 
-      - name: Fetch the package the rpm job built
-        run: gh run download "$GITHUB_RUN_ID" --dir rpms
-
-      - name: Rebuild and compare
+      # Stall cut off, as in `rpm`.
+      - name: Rebuild from a fresh clone
+        timeout-minutes: 60
         run: |
           umask 0027
+          mkdir -p reproduced
           TZ=Pacific/Kiritimati scripts/verify-release.sh --podman \
-            --ref "$GITHUB_SHA" --no-download --rpm rpms/*/harbour-vuo-*.rpm
+            --ref "$GITHUB_SHA" --no-download --save reproduced/reproduced.rpm
 
-  # Publishes only what `reproduce` rebuilt byte for byte. Release notes from
-  # spec's %changelog; SHA256SUMS beside package.
-  release:
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: reproduced
+          path: reproduced/reproduced.rpm
+          if-no-files-found: error
+          retention-days: 30
+
+  # Package against rebuild, verify-release.sh's own comparison: byte for byte,
+  # else what differs inside. Not byte-identical: no release. Own job: holds no
+  # write.
+  compare:
     needs: [rpm, reproduce]
-    if: needs.rpm.outputs.release_tag != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - name: Fetch both packages
+        run: |
+          gh run download "$GITHUB_RUN_ID" --dir rpms --pattern 'harbour-vuo-*'
+          gh run download "$GITHUB_RUN_ID" --dir rpms --name reproduced
+
+      - name: Compare
+        run: |
+          scripts/verify-release.sh --docker --ref "$GITHUB_SHA" --no-download \
+            --rpm rpms/*/harbour-vuo-*.rpm --rebuilt rpms/reproduced.rpm
+
+  # Publishes only what `reproduce` rebuilt byte for byte (`compare`). Release
+  # notes from spec's %changelog; SHA256SUMS beside package.
+  release:
+    needs: [plan, rpm, compare]
+    if: needs.plan.outputs.release_tag != ''
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -261,7 +352,7 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
-      RELEASE_TAG: ${{ needs.rpm.outputs.release_tag }}
+      RELEASE_TAG: ${{ needs.plan.outputs.release_tag }}
       SFOS: ${{ inputs.sfos_version || '5.2.0.15' }}
       ARCH: ${{ inputs.arch || 'aarch64' }}
     steps:
@@ -271,7 +362,7 @@ jobs:
 
       - name: Fetch the package the rpm job built
         run: |
-          gh run download "$GITHUB_RUN_ID" --dir rpms
+          gh run download "$GITHUB_RUN_ID" --dir rpms --pattern 'harbour-vuo-*'
           mkdir dist
           mv rpms/*/harbour-vuo-*.rpm dist/
           (cd dist && sha256sum -- *.rpm > SHA256SUMS && cat SHA256SUMS)

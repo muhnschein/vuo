@@ -122,6 +122,9 @@ else
             esac
         done
         ls /out/usr/lib/libmpc.so* /out/usr/lib/libmpfr.so* /out/usr/lib/libgmp.so* >/dev/null
+        # Owner can read and remove all: rpm.yml caches dir as runner user.
+        # Modes inside sysroot never reach package.
+        chmod -R u+rwX /out
         chown -R "$OWNER" /out'
     touch "$sdk/.complete"
     if [ "$pulled" = 1 ]; then

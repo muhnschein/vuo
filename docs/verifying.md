@@ -66,7 +66,9 @@ this check.
 
 Releases pass this same check in CI before publishing (`reproduce` in
 `.github/workflows/rpm.yml`: fresh clone, Podman, other runner, other time zone
-and umask). `main` weekly (`repro-build` in `.github/workflows/scheduled.yml`).
+and umask, beside the release build; `compare` checks byte for byte). Dispatch
+with `rehearse`: same on any branch, nothing tagged or published. `main` weekly
+(`repro-build` in `.github/workflows/scheduled.yml`).
 
 ## What it doesn't cover
 

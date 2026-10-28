@@ -2,7 +2,8 @@
 # Rebuilds a release from its source, checks it against published RPM.
 #
 #     scripts/verify-release.sh [--podman | --docker] [--rpm <file>]
-#                               [--no-download] [--ref <ref>] [<version>]
+#                               [--no-download] [--ref <ref>] [--save <file>]
+#                               [--rebuilt <file>] [<version>]
 #
 #   <version>       release to check, e.g. 1.2.0; default: latest
 #   --rpm <file>    check this file too (e.g. one copied off a phone); version
@@ -11,6 +12,9 @@
 #   --ref <ref>     build this tag, branch or commit, not v<version> (rpm.yml
 #                   checks a release before it is published)
 #   --podman, --docker  engine to use; default: Docker if running, else Podman
+#   --save <file>   keep rebuilt RPM there; with --no-download and no --rpm,
+#                   only rebuild (rpm.yml: rebuild beside release build)
+#   --rebuilt <file>  don't rebuild: compare against this earlier rebuild
 #
 # Needs git, curl, sha256sum, Podman or Docker. First run: ~5 GB pull, ~30 min
 # build. Builds in fresh clone under VUO_WORKDIR, never in this tree; needs
@@ -33,7 +37,7 @@ github=muhnschein/vuo
 repo=${VUO_REPO:-https://github.com/$github.git}
 
 usage() {
-    sed -n '4,13p' "$0" | sed 's/^# \{0,1\}//' >&2
+    sed -n '4,17p' "$0" | sed 's/^# \{0,1\}//' >&2
     exit 3
 }
 
@@ -41,12 +45,16 @@ rpm=""
 download=1
 ref=""
 version=""
+save=""
+rebuilt=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --podman | --docker) VUO_ENGINE=${1#--}; export VUO_ENGINE ;;
         --rpm) [ $# -ge 2 ] || usage; rpm=$2; shift ;;
         --no-download) download=0 ;;
         --ref) [ $# -ge 2 ] || usage; ref=$2; shift ;;
+        --save) [ $# -ge 2 ] || usage; save=$2; shift ;;
+        --rebuilt) [ $# -ge 2 ] || usage; rebuilt=$2; shift ;;
         -h | --help) usage ;;
         -*) echo "$prog: unknown option $1" >&2; usage ;;
         *) [ -z "$version" ] || usage; version=$1 ;;
@@ -80,8 +88,11 @@ cleanup() {
 trap cleanup EXIT
 mkdir -p "$work/cmp"
 
-# What to check against: GitHub's copy, --rpm's, or both.
-[ "$download" = 1 ] || [ -n "$rpm" ] || fail "--no-download: nothing to check; give --rpm"
+# What to check against: GitHub's copy, --rpm's, or both; none: rebuild only.
+[ "$download" = 1 ] || [ -n "$rpm" ] || [ -n "$save" ] ||
+    fail "--no-download: nothing to check; give --rpm, or --save to only rebuild"
+[ -z "$rebuilt" ] || [ -f "$rebuilt" ] || fail "no such file: $rebuilt"
+[ -z "$rebuilt" ] || [ -z "$save" ] || fail "--rebuilt reuses a rebuild, --save keeps a new one; pick one"
 if [ -n "$rpm" ]; then
     [ -f "$rpm" ] || fail "no such file: $rpm"
     cp "$rpm" "$work/cmp/local.rpm"
@@ -107,30 +118,41 @@ if [ "$download" = 1 ]; then
         fail "release v$version has no $name"
 fi
 ref=${ref:-v$version}
+[ "$ref" != v ] || fail "nothing names what to rebuild; give a version or --ref"
 
-# Fresh clone: nothing uncommitted from anywhere gets in.
-echo ">> cloning $ref"
-src="$work/vuo"
-if printf '%s\n' "$ref" | grep -Eq '^[0-9a-f]{7,40}$'; then
-    git clone --quiet "$repo" "$src"
-    git -C "$src" checkout --quiet --detach "$ref"
+if [ -n "$rebuilt" ]; then
+    echo ">> comparing against the rebuild in $rebuilt"
+    cp "$rebuilt" "$work/cmp/rebuilt.rpm"
+    # Image to unpack in: this tree's pin (rpm.yml: same commit).
+    src=$here
 else
-    git clone --quiet --depth 1 --branch "$ref" "$repo" "$src" 2>/dev/null ||
-        git clone --quiet --branch "$ref" "$repo" "$src" ||
-        fail "can't clone $ref from $repo"
+    # Fresh clone: nothing uncommitted from anywhere gets in.
+    echo ">> cloning $ref"
+    src="$work/vuo"
+    if printf '%s\n' "$ref" | grep -Eq '^[0-9a-f]{7,40}$'; then
+        git clone --quiet "$repo" "$src"
+        git -C "$src" checkout --quiet --detach "$ref"
+    else
+        git clone --quiet --depth 1 --branch "$ref" "$repo" "$src" 2>/dev/null ||
+            git clone --quiet --branch "$ref" "$repo" "$src" ||
+            fail "can't clone $ref from $repo"
+    fi
+    [ -f "$src/scripts/build-in-container.sh" ] ||
+        fail "$ref predates reproducible releases; nothing to rebuild it with"
+
+    # Source's own recipe. Commit time from clone, never caller's; crates into
+    # work dir, not caller's cache.
+    unset SOURCE_DATE_EPOCH
+    VUO_RELEASE=1 VUO_CARGO_HOME="$work/cargo" sh "$src/scripts/build-in-container.sh" ||
+        fail "the build failed"
+
+    built=$(find "$src/dist" -name 'harbour-vuo-*.aarch64.rpm' | head -1)
+    [ -n "$built" ] || fail "the build made no device RPM"
+    cp "$built" "$work/cmp/rebuilt.rpm"
+    if [ -n "$save" ]; then
+        cp "$built" "$save" || fail "can't save the rebuild to $save"
+    fi
 fi
-[ -f "$src/scripts/build-in-container.sh" ] ||
-    fail "$ref predates reproducible releases; nothing to rebuild it with"
-
-# Source's own recipe. Commit time from clone, never caller's; crates into
-# work dir, not caller's cache.
-unset SOURCE_DATE_EPOCH
-VUO_RELEASE=1 VUO_CARGO_HOME="$work/cargo" sh "$src/scripts/build-in-container.sh" ||
-    fail "the build failed"
-
-built=$(find "$src/dist" -name 'harbour-vuo-*.aarch64.rpm' | head -1)
-[ -n "$built" ] || fail "the build made no device RPM"
-cp "$built" "$work/cmp/rebuilt.rpm"
 
 sum() {
     f=$1
@@ -143,12 +165,16 @@ for c in github local; do
 done
 printf '%-8s %s\n' rebuilt "$ours"
 [ -z "$rpm" ] || echo "local    = $rpm"
+if [ ! -f "$work/cmp/github.rpm" ] && [ ! -f "$work/cmp/local.rpm" ]; then
+    echo "rebuilt  = $save; nothing to check it against here"
+    exit 0
+fi
 
 # Inside view from rpm itself, in clone's build image (has rpm; host may not):
 # per file path, size, digest, mode, owner, link target. mtime (field 3) left
 # out: that's packaging.
-build_image=localhost/vuo-build:$(sha256sum "$src/rpm/Containerfile" | cut -c1-12)-rust$(
-    sed -n 's/^channel = "\(.*\)"/\1/p' "$src/rust-toolchain.toml")
+rust=$(sed -n 's/^channel = "\(.*\)"/\1/p' "$src/rust-toolchain.toml")
+build_image=localhost/vuo-build:$(sha256sum "$src/rpm/Containerfile" | cut -c1-12)-rust$rust
 chmod 755 "$work/cmp"
 chmod 644 "$work/cmp"/*.rpm
 
@@ -160,6 +186,11 @@ check() {
         return 0
     }
     echo ">> $copy: file differs; comparing what's inside"
+    # --rebuilt: rebuild ran elsewhere; image may not be here yet.
+    "$engine" image inspect "$build_image" >/dev/null 2>&1 ||
+        "$engine" build -q -t "$build_image" --build-arg RUST_VERSION="$rust" \
+            -f "$src/rpm/Containerfile" "$src/rpm" >/dev/null ||
+        fail "can't build $build_image to compare in"
     rc=0
     # shellcheck disable=SC2016 # expanded by the container's shell.
     ctr_run -v "$work/cmp:/cmp:ro" "$build_image" sh -c '

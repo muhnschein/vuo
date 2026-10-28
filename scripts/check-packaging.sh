@@ -160,7 +160,9 @@ RPM_YML=.github/workflows/rpm.yml
 grep -Eq '^ +run: .*scripts/build-in-container.sh' "$RPM_YML" ||
     bad "$RPM_YML must build with scripts/build-in-container.sh, the recipe releases are verified with"
 grep -Eq '^    needs: \[rpm, reproduce\]$' "$RPM_YML" ||
-    bad "$RPM_YML: release job must need reproduce; else an unreproduced RPM ships"
+    bad "$RPM_YML: compare job must need rpm and reproduce; else nothing compares them"
+grep -Eq '^    needs: \[plan, rpm, compare\]$' "$RPM_YML" ||
+    bad "$RPM_YML: release job must need compare; else an unreproduced RPM ships"
 note "release build pins held: rpm dates, build host, base image, apt snapshot, rustup, SDK digests"
 
 if [[ "$fail" -ne 0 ]]; then
