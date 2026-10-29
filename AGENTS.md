@@ -23,6 +23,8 @@ In this order; later step only once earlier ones hold:
 6. Device: dispatch `.github/workflows/rpm.yml` on PR branch; run RPM on test phone ("Device tests"); give user artifact link and evidence.
 7. With RPM: outline briefly what merging this PR risks and how you mitigated it.
 
+PR opens as draft on first push. Mark ready for review only once steps 1–7 hold and their evidence is in PR body.
+
 Feature reachable from several places (feed list, article list, article page, search, cover) → all of them.
 
 User tests RPM on phone; that test judges feel, lag, transitions. Say exactly what to check on device.
@@ -74,6 +76,12 @@ User tests RPM on phone; that test judges feel, lag, transitions. Say exactly wh
 - Commit and PR titles: Conventional Commits, plain language, say outcome: `fix(article): scroll position survives the image viewer`. Types `feat` `fix` `perf` `refactor` `test` `docs` `ci` `build` `chore`; scope = app area or subsystem (`sync`, `outbox`, `article`, `cover`, `rpm`, …). Body says why, plain prose; brief, to the point.
 - PR body: the problem in a sentence or two, then how you fixed it. End with the model and harness that did the work.
 - Final diff: no debug logging, no leftovers.
+- Evidence shown in PR body, not just described:
+  - UI → before/after device screenshots.
+  - Transitions, motion, feel, lag → before/after GIF (preferred: plays inline; mp4 by URL shows as link only) or mp4. GIF from harness mp4 via `ffmpeg`.
+  - Performance → before/after chart (image), numbers in table beside it. Frame timing from separate `frames` run: recording slows compositor.
+  - Non-visual proof (tests, mutations, logs) → text.
+- Evidence on GitHub, never in tree: push to orphan branch `evidence/pr-N`, embed by URL in PR, delete branch after merge. No PR-only screenshots or assets in `main` or PR branch.
 - Flaky test → find and fix cause. Never add retries. Never re-run CI until green and call it done. Never skip test or loosen assert. One re-run OK only for infra failure before any test ran (runner lost, apt mirror timeout); say so.
 - Merge only on user's explicit go. Merge commit, not squash/rebase.
 
