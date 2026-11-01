@@ -5,7 +5,8 @@ Item {
     width: ListView.view ? ListView.view.width : (parent ? parent.width : 0)
     property real contentHeight: 80
     height: contentHeight
-    property Item menu
+    // Silica: ContextMenu or Component building one on long press.
+    property var menu
     property bool down: false
     property bool highlighted: false
     property bool showMenuOnPressAndHold: true

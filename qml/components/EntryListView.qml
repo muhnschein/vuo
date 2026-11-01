@@ -893,21 +893,24 @@ SilicaListView {
                 }
             }
 
-            menu: ContextMenu {
-                MenuItem {
-                    text: unread ? qsTr("Mark as read") : qsTr("Mark as unread")
-                    onClicked: listView.entryModel.setRead(index, unread)
-                }
-                MenuItem {
-                    text: starred ? qsTr("Remove favourite") : qsTr("Add favourite")
-                    onClicked: listView.entryModel.setStarred(index, !starred)
-                }
-                MenuItem {
-                    text: qsTr("Open in browser")
-                    // Hidden, not disabled: entry without link rare; permanently
-                    // dead row reads as app bug, not feed gap.
-                    visible: url.length > 0
-                    onClicked: Qt.openUrlExternally(url)
+            // Component: menu built on long press, not with every row.
+            menu: Component {
+                ContextMenu {
+                    MenuItem {
+                        text: unread ? qsTr("Mark as read") : qsTr("Mark as unread")
+                        onClicked: listView.entryModel.setRead(index, unread)
+                    }
+                    MenuItem {
+                        text: starred ? qsTr("Remove favourite") : qsTr("Add favourite")
+                        onClicked: listView.entryModel.setStarred(index, !starred)
+                    }
+                    MenuItem {
+                        text: qsTr("Open in browser")
+                        // Hidden, not disabled: entry without link rare; permanently
+                        // dead row reads as app bug, not feed gap.
+                        visible: url.length > 0
+                        onClicked: Qt.openUrlExternally(url)
+                    }
                 }
             }
         }
