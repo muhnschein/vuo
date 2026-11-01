@@ -1,6 +1,7 @@
 import QtQuick 2.6
 Item {
-    property Component initialPage
+    // Silica: Page, Component or URL.
+    property var initialPage
     property var cover
     property int allowedOrientations: 0
     property int defaultAllowedOrientations: 0

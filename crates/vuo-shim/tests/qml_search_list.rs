@@ -280,6 +280,8 @@ fn a_search_lists_its_results_grouped_and_marked_and_nothing_else_does() {
         "and an article opens the article"
     );
 
+    assert_eq!(get!("searchField", 0, "visible"), "true");
+
     // "Load more" under last row of group with more than shown; nowhere else.
     assert_eq!(
         get!("loadMore", 0, "visible"),
@@ -368,6 +370,11 @@ fn a_search_lists_its_results_grouped_and_marked_and_nothing_else_does() {
         "outside a search no row is a feed"
     );
     assert_eq!(get!("detailLabel", 2, "visible"), "true");
+    assert_eq!(
+        get!("searchField", 0, "visible"),
+        "missing:searchField#0",
+        "search field built on search page only"
+    );
     assert_eq!(
         call!("gap", 0),
         "0",

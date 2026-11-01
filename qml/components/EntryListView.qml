@@ -188,7 +188,7 @@ SilicaListView {
         id: head
 
         width: listView.width
-        height: searchField.y + (searchField.visible ? searchField.height : 0)
+        height: searchBox.y + searchBox.height
 
         // Room for tab strip, pinned by PAGE, not scrolled with list: mustn't
         // slide away on scroll or travel sideways on swipe. Reserves its band;
@@ -240,57 +240,64 @@ SilicaListView {
             color: Theme.highlightColor
         }
 
-        SearchField {
-            id: searchField
-            objectName: "searchField"
+        // Search page only. Hidden field on every list cost each start
+        // Silica text-input chain compile + build.
+        Loader {
+            id: searchBox
 
             y: nameLabel.y + (nameLabel.visible ? nameLabel.height : 0)
             width: parent.width
-            visible: listView.searching
-            height: visible ? implicitHeight : 0
-            //: Placeholder in the empty search field.
-            placeholderText: qsTr("Search articles")
-            // Predictive input holds word until committed; search would trail
-            // one word behind screen.
-            inputMethodHints: Qt.ImhNoPredictiveText
-            onTextChanged: listView.searchText = searchField.text
-            // Return = "done typing": search now without waiting pause, hide
-            // keyboard so results get screen. Keys, not Silica EnterKey (as
-            // AddFeedPage.qml): attached type QML can't stub.
-            Keys.onReturnPressed: searchField.submit()
-            Keys.onEnterPressed: searchField.submit()
+            active: listView.searching
 
-            /// Keyboard raised for reader once yet.
-            property bool _focused: false
+            sourceComponent: SearchField {
+                id: searchField
+                objectName: "searchField"
 
-            function submit() {
-                searchDelay.stop()
-                if (listView.entryModel) {
-                    listView.entryModel.setSearch(listView.searchText)
+                width: parent.width
+                //: Placeholder in the empty search field.
+                placeholderText: qsTr("Search articles")
+                // Predictive input holds word until committed; search would trail
+                // one word behind screen.
+                inputMethodHints: Qt.ImhNoPredictiveText
+                onTextChanged: listView.searchText = searchField.text
+                // Return = "done typing": search now without waiting pause, hide
+                // keyboard so results get screen. Keys, not Silica EnterKey (as
+                // AddFeedPage.qml): attached type QML can't stub.
+                Keys.onReturnPressed: searchField.submit()
+                Keys.onEnterPressed: searchField.submit()
+
+                /// Keyboard raised for reader once yet.
+                property bool _focused: false
+
+                function submit() {
+                    searchDelay.stop()
+                    if (listView.entryModel) {
+                        listView.entryModel.setSearch(listView.searchText)
+                    }
+                    searchField.focus = false
                 }
-                searchField.focus = false
-            }
 
-            /// Raise keyboard once page in place and app in front (not mid
-            /// slide-in), first time only: back from article lands on results,
-            /// not keyboard. Both conditions: field focused while app in
-            /// background raises nothing.
-            function raiseKeyboard() {
-                if (listView.searching && !searchField._focused && listView.hostPage
-                        && listView.hostPage.status === PageStatus.Active
-                        && Qt.application.active) {
-                    searchField._focused = true
-                    searchField.forceActiveFocus()
+                /// Raise keyboard once page in place and app in front (not mid
+                /// slide-in), first time only: back from article lands on results,
+                /// not keyboard. Both conditions: field focused while app in
+                /// background raises nothing.
+                function raiseKeyboard() {
+                    if (listView.searching && !searchField._focused && listView.hostPage
+                            && listView.hostPage.status === PageStatus.Active
+                            && Qt.application.active) {
+                        searchField._focused = true
+                        searchField.forceActiveFocus()
+                    }
                 }
-            }
 
-            Connections {
-                target: listView.hostPage
-                onStatusChanged: searchField.raiseKeyboard()
-            }
-            Connections {
-                target: Qt.application
-                onActiveChanged: searchField.raiseKeyboard()
+                Connections {
+                    target: listView.hostPage
+                    onStatusChanged: searchField.raiseKeyboard()
+                }
+                Connections {
+                    target: Qt.application
+                    onActiveChanged: searchField.raiseKeyboard()
+                }
             }
         }
     }

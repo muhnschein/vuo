@@ -261,6 +261,34 @@ fn a_search_is_never_given_another_lists_model() {
     );
 }
 
+/// §start compiles no first-run page.
+///
+/// Type named in root window compiled with it, every start, whether built or
+/// not. Welcome page and setup dialog (with Silica's text-input chain) only
+/// matter on first run: root window builds them from URL. `qml_first_run.rs`
+/// proves flow still works.
+#[test]
+fn start_compiles_no_first_run_page() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(2)
+        .expect("the workspace root");
+    let window = strip_strings_and_comments(
+        &std::fs::read_to_string(root.join("qml/harbour-vuo.qml")).expect("harbour-vuo.qml"),
+    );
+    for page in ["OnboardingPage", "SetupDialog"] {
+        let named = window
+            .split(page)
+            .skip(1)
+            .any(|rest| rest.trim_start().starts_with('{'));
+        assert!(
+            !named,
+            "harbour-vuo.qml declares `{page} {{ }}`: compiled every start; build it \
+             from Qt.resolvedUrl on first run"
+        );
+    }
+}
+
 /// §no property is bound to itself.
 ///
 /// `account: account` inside `OnboardingPage { }` ≠ "the id called account".
