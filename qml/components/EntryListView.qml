@@ -49,8 +49,8 @@ SilicaListView {
         }
         // Search page opens on empty field, so not on last search's results
         // either: model outlives page.
-        if (listView.searching && listView.entryModel) {
-            listView.entryModel.setSearch("")
+        if (listView.searching) {
+            listView.search("")
         }
         // No current row on search page. ListView gives focus to current row,
         // picks row 0 when rows arrive and it has none, unless told -1
@@ -99,13 +99,23 @@ SilicaListView {
     /// (`searchDelay`), not per key: each search reads every article body in
     /// mirror.
     property string searchText: ""
+    /// Text model last searched. Placeholder speaks of this, not field: field
+    /// leads model by `searchDelay`, list meanwhile still old search's rows.
+    property string searchedText: ""
+
+    /// Give model `text` to search.
+    function search(text) {
+        if (listView.entryModel) {
+            listView.searchedText = text
+            listView.entryModel.setSearch(text)
+        }
+    }
 
     Timer {
         id: searchDelay
+        objectName: "searchDelay"
         interval: 300
-        onTriggered: if (listView.entryModel) {
-            listView.entryModel.setSearch(listView.searchText)
-        }
+        onTriggered: listView.search(listView.searchText)
     }
     onSearchTextChanged: searchDelay.restart()
 
@@ -265,9 +275,7 @@ SilicaListView {
 
             function submit() {
                 searchDelay.stop()
-                if (listView.entryModel) {
-                    listView.entryModel.setSearch(listView.searchText)
-                }
+                listView.search(listView.searchText)
                 searchField.focus = false
             }
 
@@ -458,8 +466,8 @@ SilicaListView {
         // search says only what is searched (hint below), under field reader
         // about to type in.
         text: listView.searching
-              ? (listView.searchText.trim().length === 0 ? ""
-                                                         : qsTr("No articles found"))
+              ? (listView.searchedText.trim().length === 0 ? ""
+                                                           : qsTr("No articles found"))
               : (listView.scopeKind === 1 ? qsTr("No favourites")
                                           : qsTr("Nothing to read"))
         hintText: listView.searching
