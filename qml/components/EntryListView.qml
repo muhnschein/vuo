@@ -917,10 +917,11 @@ SilicaListView {
         Loader {
             id: moreButton
 
+            // No `height`: Loader takes loaded item's, 0 while inactive.
+            // (`item` here = ListItem id above, not Loader.item.)
             y: item.height
             width: parent.width
             active: listView.searching
-            height: item ? item.height : 0
 
             sourceComponent: BackgroundItem {
                 id: more
