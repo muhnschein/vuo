@@ -711,7 +711,8 @@ SilicaListView {
                         objectName: "titleLabel"
 
                         width: parent.width
-                               - (feedUnread.visible ? feedUnread.width + Theme.paddingMedium : 0)
+                               - (feedUnread.item && feedUnread.item.visible
+                                  ? feedUnread.width + Theme.paddingMedium : 0)
                         // §9.3: feed title foreign. PlainText explicitly, except
                         // search result (Rust escaped + marked terms): safe as
                         // StyledText.
@@ -833,38 +834,52 @@ SilicaListView {
                                                     : detailLabel.build())
                     }
 
-                    Label {
-                        // Result found in article text: lines around match, shows
-                        // why it's here. StyledText built and escaped in Rust
-                        // (§9.3), terms bold.
-                        objectName: "excerptLabel"
+                    // Search-only parts (excerpt, feed count, "Load more"):
+                    // Loader, built in search only. Every list row built
+                    // them hidden, each binding run, on every row a fling
+                    // brought in.
+                    Loader {
                         width: parent.width
-                        visible: listView.searching && excerpt.length > 0
-                        textFormat: Text.StyledText
-                        text: listView.searching ? listView.marked(excerpt) : ""
-                        wrapMode: Text.Wrap
-                        maximumLineCount: 3
-                        elide: Text.ElideRight
-                        font.pixelSize: Theme.fontSizeExtraSmall
-                        color: item.highlighted ? Theme.secondaryHighlightColor
-                                                : Theme.secondaryColor
+                        active: listView.searching
+
+                        sourceComponent: Label {
+                            // Result found in article text: lines around match,
+                            // shows why it's here. StyledText built and escaped
+                            // in Rust (§9.3), terms bold.
+                            objectName: "excerptLabel"
+                            visible: excerpt.length > 0
+                            height: visible ? implicitHeight : 0
+                            textFormat: Text.StyledText
+                            text: listView.marked(excerpt)
+                            wrapMode: Text.Wrap
+                            maximumLineCount: 3
+                            elide: Text.ElideRight
+                            font.pixelSize: Theme.fontSizeExtraSmall
+                            color: item.highlighted ? Theme.secondaryHighlightColor
+                                                    : Theme.secondaryColor
+                        }
                     }
                 }
             }
 
             // Feed unread count where feed list puts it: end of name's first
             // line.
-            Label {
+            Loader {
                 id: feedUnread
-                objectName: "feedUnread"
 
-                visible: row.isFeed && unreadCount > 0
+                active: listView.searching
                 anchors.right: parent.right
                 anchors.rightMargin: Theme.horizontalPageMargin
                 y: column.y + Math.round((titleMetrics.height - height) / 2)
-                text: visible ? unreadCount : ""
-                color: Theme.highlightColor
-                font.pixelSize: Theme.fontSizeSmall
+
+                sourceComponent: Label {
+                    objectName: "feedUnread"
+
+                    visible: row.isFeed && unreadCount > 0
+                    text: visible ? unreadCount : ""
+                    color: Theme.highlightColor
+                    font.pixelSize: Theme.fontSizeSmall
+                }
             }
 
             onClicked: {
@@ -901,24 +916,31 @@ SilicaListView {
 
         // Under last row of group with more than shown: inserts more under row
         // (ten, then twenty, then rest). See models::SEARCH_LOAD_STEPS.
-        BackgroundItem {
+        Loader {
             id: moreButton
-            objectName: "loadMore"
 
             y: item.height
             width: parent.width
-            visible: row.lastInGroup
-                     && listView.groupShown(matchKind) < listView.groupTotal(matchKind)
-            height: visible ? Theme.itemSizeSmall : 0
+            active: listView.searching
+            height: item ? item.height : 0
 
-            Label {
-                objectName: "loadMoreLabel"
-                anchors.centerIn: parent
-                text: listView.loadMoreText(matchKind)
-                color: moreButton.highlighted ? Theme.highlightColor : Theme.primaryColor
+            sourceComponent: BackgroundItem {
+                id: more
+                objectName: "loadMore"
+
+                visible: row.lastInGroup
+                         && listView.groupShown(matchKind) < listView.groupTotal(matchKind)
+                height: visible ? Theme.itemSizeSmall : 0
+
+                Label {
+                    objectName: "loadMoreLabel"
+                    anchors.centerIn: parent
+                    text: listView.loadMoreText(matchKind)
+                    color: more.highlighted ? Theme.highlightColor : Theme.primaryColor
+                }
+
+                onClicked: listView.entryModel.loadMoreIn(matchKind)
             }
-
-            onClicked: listView.entryModel.loadMoreIn(matchKind)
         }
     }
 

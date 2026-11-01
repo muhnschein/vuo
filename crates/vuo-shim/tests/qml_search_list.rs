@@ -343,11 +343,14 @@ fn a_search_lists_its_results_grouped_and_marked_and_nothing_else_does() {
         get!("detailLabel", 0, "text"),
         "Harbour Gazette  \u{b7}  3 min read"
     );
-    assert_eq!(get!("excerptLabel", 3, "visible"), "false");
-    assert_eq!(get!("loadMore", 1, "visible"), "false");
+    // Search-only parts not even built outside a search: every row of every
+    // list paid for them on each fling.
+    assert_eq!(get!("excerptLabel", 0, "visible"), "missing:excerptLabel#0");
+    assert_eq!(get!("loadMore", 0, "visible"), "missing:loadMore#0");
+    assert_eq!(get!("loadMoreLabel", 0, "text"), "missing:loadMoreLabel#0");
     assert_eq!(
-        get!("feedUnread", 2, "visible"),
-        "false",
+        get!("feedUnread", 0, "visible"),
+        "missing:feedUnread#0",
         "outside a search no row is a feed"
     );
     assert_eq!(get!("detailLabel", 2, "visible"), "true");
