@@ -155,7 +155,10 @@ fn every_block_builds_its_own_kind_only() {
         let parts: Vec<&str> = got.split('|').collect();
         assert_eq!(parts.len(), 4, "row {row}: {got}");
         assert_eq!(parts[1], texts, "row {row} shows its own text only: {got}");
-        assert_eq!(parts[2], images, "row {row} builds an image only if image: {got}");
+        assert_eq!(
+            parts[2], images,
+            "row {row} builds an image only if image: {got}"
+        );
         assert_eq!(parts[3], "true", "row {row} takes room: {got}");
         let items: usize = parts[0].parse().unwrap();
         // Text block: loader, its item, list marker. Image block: column,
