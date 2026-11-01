@@ -128,6 +128,19 @@ const PROBE_QML: &str = r#"
             findAll(loader.item, name, [])[0].triggered()
             return fake.searched
         }
+        // Rows out and back: search that found nothing.
+        property var stashed: []
+        function stash() {
+            for (var i = 0; i < fake.count; i++) { stashed.push(fake.get(i)) }
+            stashed = stashed.map(function(row) { return JSON.parse(JSON.stringify(row)) })
+            fake.clear()
+            return 'ok'
+        }
+        function unstash() {
+            for (var i = 0; i < stashed.length; i++) { fake.append(stashed[i]) }
+            stashed = []
+            return 'ok'
+        }
         function submit() {
             findAll(loader.item, 'searchField', [])[0].submit()
             return fake.searched
@@ -339,8 +352,14 @@ fn a_search_lists_its_results_grouped_and_marked_and_nothing_else_does() {
     assert_eq!(call!("fire", QString::from("searchDelay")), "x");
     assert_eq!(
         get!("placeholder", 0, "text"),
+        "",
+        "results came: placeholder fading out over them says nothing"
+    );
+    assert_eq!(call!("stash"), "ok");
+    assert_eq!(
+        get!("placeholder", 0, "text"),
         "No articles found",
-        "once searched, nothing found is said"
+        "searched, nothing found: said"
     );
     assert_eq!(
         call!("setOnList", QString::from("searchText"), QString::from(" ")),
@@ -357,6 +376,7 @@ fn a_search_lists_its_results_grouped_and_marked_and_nothing_else_does() {
         "",
         "Return searches at once"
     );
+    assert_eq!(call!("unstash"), "ok");
 
     // -------------------------------------------------------- not searching
     assert_eq!(call!("load", QString::from(url.as_str()), false), "ok");

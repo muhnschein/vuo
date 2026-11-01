@@ -464,10 +464,12 @@ SilicaListView {
         // "Nothing to read / Pull down to refresh" = Unread string. Under
         // Favourites reads as refusal; refresh doesn't create favourites. Empty
         // search says only what is searched (hint below), under field reader
-        // about to type in.
+        // about to type in. Rows held → "" too: placeholder fades out over
+        // results, would show text it fades with.
         text: listView.searching
-              ? (listView.searchedText.trim().length === 0 ? ""
-                                                           : qsTr("No articles found"))
+              ? (listView.searchedText.trim().length === 0
+                 || (listView.entryModel && listView.entryModel.count > 0)
+                 ? "" : qsTr("No articles found"))
               : (listView.scopeKind === 1 ? qsTr("No favourites")
                                           : qsTr("Nothing to read"))
         hintText: listView.searching
