@@ -25,7 +25,7 @@ import "cover"
  */
 ApplicationWindow {
     id: app
-    property bool _probe: { console.warn("PROBE root create"); return true }
+    property bool _probe: { console.log("PROBE root create"); return true }
 
     // No app-level `unreadCount: entries.count`: tabs re-scope `entries`, so it
     // would report starred or all-entries row count. Cover binds
@@ -204,7 +204,7 @@ ApplicationWindow {
     }
 
     Component.onCompleted: {
-        console.warn("PROBE root completed")
+        console.log("PROBE root completed")
         // `coverPollMs` from stored account; object holds Rust defaults until
         // told. Without this idle cadence = "Manual only" (no poll) for reader
         // who minimised without visiting Settings, whatever account interval.
@@ -222,7 +222,7 @@ ApplicationWindow {
         for (var i = 0; i < stale.length; i++) {
             stale[i].close()
         }
-        console.warn("PROBE root completed end")
+        console.log("PROBE root completed end")
     }
 
     Component {

@@ -25,8 +25,8 @@ import Sailfish.WebView 1.0
  */
 WebViewPage {
     id: page
-    property bool _probe: { console.warn("PROBE site create"); return true }
-    Component.onCompleted: console.warn("PROBE site completed")
+    property bool _probe: { console.log("PROBE site create"); return true }
+    Component.onCompleted: console.log("PROBE site completed")
 
     /// Article link. http(s) only: core validated before storing; same value
     /// "Open in browser" gives system.
