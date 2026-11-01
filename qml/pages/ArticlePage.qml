@@ -21,7 +21,7 @@ import "../components"
  */
 Page {
     id: page
-    property bool _probe: { console.log("PROBE article create"); return true }
+    property bool _probe: { console.warn("PROBE article create"); return true }
 
     property int entryId: 0
     property string entryTitle: ""
@@ -37,9 +37,9 @@ Page {
     property bool autoMarkArmed: false
 
     Component.onCompleted: {
-        console.log("PROBE article completed")
+        console.warn("PROBE article completed")
         article.load(page.entryId)
-        console.log("PROBE article loaded")
+        console.warn("PROBE article loaded")
         // Arm only for unread. `markRead` idempotent anyway; not arming keeps
         // intent honest.
         page.autoMarkArmed = article.markReadDelayMs >= 0 && !article.isRead
@@ -53,12 +53,12 @@ Page {
     // Site to right for entry with link. Attached once page Active (on stack to
     // attach to). No link = no forward indicator, nothing to swipe to (not
     // "nothing to show" page).
-    onStatusChanged: if ((console.log("PROBE article status " + status) || true) && status === PageStatus.Active && !page._siteAttached
+    onStatusChanged: if ((console.warn("PROBE article status " + status) || true) && status === PageStatus.Active && !page._siteAttached
                          && article.articleUrl.length > 0) {
         page._siteAttached = true
-        console.log("PROBE attach start")
+        console.warn("PROBE attach start")
         pageStack.pushAttached(Qt.resolvedUrl("SitePage.qml"), { url: article.articleUrl })
-        console.log("PROBE attach done")
+        console.warn("PROBE attach done")
     }
 
     // Mark read once open long enough.

@@ -58,8 +58,7 @@ Page {
     /// All report failed refresh.
     property var noticeModel: page.currentModel
 
-    Component.onCompleted: { console.log("PROBE listpage completed"); page.applyScope() }
-    onStatusChanged: console.log("PROBE listpage status " + status)
+    Component.onCompleted: { console.warn("PROBE listpage completed"); page.applyScope() }
 
     // Re-assert scope whenever page becomes visible.
     //
