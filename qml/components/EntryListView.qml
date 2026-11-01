@@ -44,9 +44,11 @@ SilicaListView {
     Component.onCompleted: {
         // Scope tab's own model once. Feed/category view scoped by page
         // instead: scope is push parameter.
+        console.log("PROBE listview " + listView.scopeKind + " completed")
         if (listView.showScopeTabs && listView.entryModel) {
             listView.entryModel.setScope(listView.scopeKind, listView.scopeId)
         }
+        console.log("PROBE listview " + listView.scopeKind + " scoped count=" + listView.count)
         // Search page opens on empty field, so not on last search's results
         // either: model outlives page.
         if (listView.searching && listView.entryModel) {

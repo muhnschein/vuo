@@ -39,6 +39,7 @@ import "../components"
  */
 CoverBackground {
     id: cover
+    property bool _probe: { console.log("PROBE cover create"); return true }
 
     /// Unread across whole mirror, not one scope.
     property int unreadCount: 0

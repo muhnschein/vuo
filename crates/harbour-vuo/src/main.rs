@@ -32,6 +32,7 @@
 use qmetaobject::{QString, QmlEngine};
 
 fn main() {
+    eprintln!("PROBE main {:?}", std::time::Instant::now());
     // `vuo_shim=info` in default on purpose, not only under `VUO_LOG`.
     //
     // Shim logs a handful of lines per session: mirror open, sync worker start,
@@ -49,6 +50,7 @@ fn main() {
         .init();
 
     vuo_shim::register_qml_types();
+    eprintln!("PROBE types {:?}", std::time::Instant::now());
 
     // Sync worker thread first, account or not.
     //
@@ -57,6 +59,7 @@ fn main() {
     // while process is few threads and Wayland/GPU not loaded: parked thread,
     // account sent by channel later. See `vuo_shim::context::start_worker`.
     vuo_shim::context::start_worker();
+    eprintln!("PROBE worker {:?}", std::time::Instant::now());
 
     // Install shared context before QML loads: QML constructs models itself;
     // they find database and worker via Qt-thread global, not constructor.
@@ -66,6 +69,7 @@ fn main() {
         tracing::info!(error = %e, "starting without a configured account");
     }
 
+    eprintln!("PROBE context {:?}", std::time::Instant::now());
     run();
 }
 
@@ -104,6 +108,7 @@ fn run() {
             char name[] = "harbour-vuo";
             char *argv[] = { name, nullptr };
             QGuiApplication *app = SailfishApp::application(argc, argv);
+            qDebug("PROBE app");
 
             // Load UI translation for device locale.
             //
@@ -121,9 +126,13 @@ fn run() {
                 app->installTranslator(translator);
             }
 
+            qDebug("PROBE translator");
             QQuickView *view = SailfishApp::createView();
+            qDebug("PROBE view");
             view->setSource(SailfishApp::pathTo("qml/harbour-vuo.qml"));
+            qDebug("PROBE setSource done");
             view->show();
+            qDebug("PROBE show done");
             app->exec();
         });
     }
