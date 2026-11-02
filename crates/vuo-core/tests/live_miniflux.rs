@@ -37,32 +37,20 @@ use vuo_core::api::{EntriesQuery, EntryMutation, MinifluxClient, Transport, Tran
 use vuo_core::model::{EntryId, EntryStatus};
 use vuo_core::redact::ApiToken;
 
-/// `None` only when opt-in NOT taken.
+/// Client for the instance `VUO_LIVE_BASE_URL` names.
 ///
-/// `VUO_LIVE_BASE_URL` set → unparseable URL or unbuildable transport = config
-/// error, panics. Early return would be reported `ok` by cargo: `make
-/// live-test` passing having contacted nothing = silent skip module doc
-/// forbids.
-fn live_client() -> Option<MinifluxClient> {
-    let base = std::env::var("VUO_LIVE_BASE_URL").ok()?;
+/// Panics without it, never returns early: these run only when asked for
+/// (feature plus `--ignored`), and early `return` = PASS. `make live-test`
+/// passing having contacted nothing = silent skip module doc forbids.
+fn live_client() -> MinifluxClient {
+    let base = std::env::var("VUO_LIVE_BASE_URL")
+        .expect("the live tests need VUO_LIVE_BASE_URL and VUO_LIVE_TOKEN");
     let token = std::env::var("VUO_LIVE_TOKEN")
         .expect("VUO_LIVE_BASE_URL is set, so VUO_LIVE_TOKEN must be too");
     let origin = url::Url::parse(&base).expect("VUO_LIVE_BASE_URL must be a valid URL");
     let transport = Transport::new(origin, ApiToken::new(token), &TransportConfig::default())
         .expect("the live transport must build");
-    Some(MinifluxClient::new(transport))
-}
-
-macro_rules! client_or_skip {
-    () => {
-        match live_client() {
-            Some(c) => c,
-            None => {
-                eprintln!("skipping: set VUO_LIVE_BASE_URL and VUO_LIVE_TOKEN");
-                return;
-            }
-        }
-    };
+    MinifluxClient::new(transport)
 }
 
 /// Fail, don't return, when instance can't exercise contract.
@@ -83,12 +71,37 @@ macro_rules! require_entries {
     };
 }
 
+/// Id and status of the entry a mutating test owns.
+///
+/// Tests run in parallel against ONE instance: two writing the same entry race
+/// (one's restore lands between other's set and read-back). Each mutating test
+/// takes its own slot in the id-ordered listing.
+async fn own_entry(client: &MinifluxClient, slot: usize, what: &str) -> (EntryId, String) {
+    let (page, _) = client
+        .entries(&EntriesQuery::keyset(u32::try_from(slot + 1).unwrap()))
+        .await
+        .expect("the entry listing");
+    let have = page.entries.len();
+    assert!(
+        have > slot,
+        "the live instance has {have} entries; {what} needs at least {}. Seed it \
+         before running: a green run against an empty instance proves nothing.",
+        slot + 1
+    );
+    let entry = &page.entries[slot];
+    (EntryId(entry.id), entry.status.clone())
+}
+
+/// Slots [`own_entry`] hands out, one per mutating test.
+const SLOT_BULK_UPDATES: usize = 0;
+const SLOT_CHANGED_AT: usize = 1;
+
 #[tokio::test]
 #[ignore = "needs a real Miniflux instance"]
 async fn the_server_reports_a_version_we_can_parse() {
     // Vuo gates request construction on this. Unparseable version → oldest
     // supported behaviour: safe, wasteful.
-    let client = client_or_skip!();
+    let client = live_client();
     let version = client.version().await.expect("version");
     eprintln!(
         "server version: {} (parsed {}.{}.{})",
@@ -110,7 +123,7 @@ async fn keyset_pagination_returns_strictly_increasing_ids() {
     // ASSUMPTION: order=id&direction=asc&after_entry_id=N = true keyset cursor,
     // no ties. Gap-free pull rests on it. Future sort change fails here, not
     // via users reporting missing articles.
-    let client = client_or_skip!();
+    let client = live_client();
 
     let (first, _) = client
         .entries(&EntriesQuery::keyset(5))
@@ -144,18 +157,15 @@ async fn keyset_pagination_returns_strictly_increasing_ids() {
 async fn bulk_status_updates_are_absolute_and_idempotent() {
     // ASSUMPTION whole outbox design rests on: PUT /v1/entries sets absolute
     // value; replay = no-op, not toggle.
-    let client = client_or_skip!();
+    let client = live_client();
 
-    let (page, _) = client
-        .entries(&EntriesQuery::keyset(1))
-        .await
-        .expect("an entry");
-    let Some(entry) = page.entries.first() else {
-        eprintln!("skipping: the instance has no entries");
-        return;
-    };
-    let id = EntryId(entry.id);
-    let original = if entry.status == "read" {
+    let (id, status) = own_entry(
+        &client,
+        SLOT_BULK_UPDATES,
+        "bulk_status_updates_are_absolute_and_idempotent",
+    )
+    .await;
+    let original = if status == "read" {
         EntryStatus::Read
     } else {
         EntryStatus::Unread
@@ -216,7 +226,7 @@ async fn bulk_status_updates_are_absolute_and_idempotent() {
 async fn an_empty_id_list_is_refused_locally_not_sent() {
     // Server answers 400. Vuo refuses first: retry classifier never sees
     // self-inflicted client error.
-    let client = client_or_skip!();
+    let client = live_client();
     let err = client
         .update_entries(&[], EntryMutation::Status(EntryStatus::Read))
         .await
@@ -237,17 +247,13 @@ async fn changed_after_is_bumped_by_our_own_writes() {
     // Already-read entry → write is no-op, no sane server bumps timestamp. So
     // set precondition first, then assert; test accepting either answer =
     // server liveness check, not contract.
-    let client = client_or_skip!();
-    let (page, _) = client
-        .entries(&EntriesQuery::keyset(1))
-        .await
-        .expect("an entry");
-    require_entries!(
-        page.entries.len(),
-        1,
-        "changed_after_is_bumped_by_our_own_writes"
-    );
-    let id = EntryId(page.entries[0].id);
+    let client = live_client();
+    let (id, _) = own_entry(
+        &client,
+        SLOT_CHANGED_AT,
+        "changed_after_is_bumped_by_our_own_writes",
+    )
+    .await;
 
     // Force opposite status: mutation below is real change.
     client
@@ -286,12 +292,14 @@ async fn changed_after_is_bumped_by_our_own_writes() {
 async fn the_entry_ids_endpoint_matches_its_declared_total() {
     // Reconcile aborts on mismatch, doesn't delete; checks happy path reachable
     // on quiet instance.
-    let client = client_or_skip!();
+    let client = live_client();
     let version = client.version().await.expect("version");
-    if !version.has_entry_ids_endpoint() {
-        eprintln!("skipping: /v1/entries/ids needs Miniflux 2.3.2+");
-        return;
-    }
+    assert!(
+        version.has_entry_ids_endpoint(),
+        "/v1/entries/ids needs Miniflux 2.3.2+, which Vuo needs anyway; this \
+         instance says {}",
+        version.raw
+    );
     // Claim reconcile's deletion guard rests on: `entry_ids.len()` matches
     // `total`. Server declaring 999 and returning one id = torn listing guard
     // aborts on. Test named for match checks match.
