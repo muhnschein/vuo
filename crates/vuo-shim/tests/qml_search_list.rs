@@ -40,7 +40,8 @@ const PROBE_QML: &str = r#"
             property int textNextLoad: 10
             property string loadedMoreIn: ""
             function loadMoreIn(kind) { loadedMoreIn = kind }
-            function setSearch(text) {}
+            property string searched: ""
+            function setSearch(text) { searched = text }
             function setScope(kind, id) {}
             function requestSync() {}
             ListElement {
@@ -121,6 +122,28 @@ const PROBE_QML: &str = r#"
             var kids = node.data !== undefined ? node.data : node.children
             for (var i = 0; kids && i < kids.length; i++) { findAll(kids[i], name, out) }
             return out
+        }
+        // Timer's tick now, not after interval: no waiting in tests.
+        function fire(name) {
+            findAll(loader.item, name, [])[0].triggered()
+            return fake.searched
+        }
+        // Rows out and back: search that found nothing.
+        property var stashed: []
+        function stash() {
+            for (var i = 0; i < fake.count; i++) { stashed.push(fake.get(i)) }
+            stashed = stashed.map(function(row) { return JSON.parse(JSON.stringify(row)) })
+            fake.clear()
+            return 'ok'
+        }
+        function unstash() {
+            for (var i = 0; i < stashed.length; i++) { fake.append(stashed[i]) }
+            stashed = []
+            return 'ok'
+        }
+        function submit() {
+            findAll(loader.item, 'searchField', [])[0].submit()
+            return fake.searched
         }
         function set(property, value) { fake[property] = value; return 'ok' }
         function setOnList(property, value) { loader.item[property] = value; return 'ok' }
@@ -335,11 +358,41 @@ fn a_search_lists_its_results_grouped_and_marked_and_nothing_else_does() {
         "Vuo searches the title and text of every article on this device, and the \
          names of your feeds."
     );
+    // Typed but not yet searched: list still empty search's, says so. Field
+    // text alone flashed "No articles found" until results came.
     assert_eq!(
         call!("setOnList", QString::from("searchText"), QString::from("x")),
         "ok"
     );
-    assert_eq!(get!("placeholder", 0, "text"), "No articles found");
+    assert_eq!(get!("placeholder", 0, "text"), "");
+    assert_eq!(call!("fire", QString::from("searchDelay")), "x");
+    assert_eq!(
+        get!("placeholder", 0, "text"),
+        "",
+        "results came: placeholder fading out over them says nothing"
+    );
+    assert_eq!(call!("stash"), "ok");
+    assert_eq!(
+        get!("placeholder", 0, "text"),
+        "No articles found",
+        "searched, nothing found: said"
+    );
+    assert_eq!(
+        call!("setOnList", QString::from("searchText"), QString::from(" ")),
+        "ok"
+    );
+    assert_eq!(
+        get!("placeholder", 0, "text"),
+        "No articles found",
+        "still last search's answer until next search runs"
+    );
+    assert_eq!(call!("submit"), " ");
+    assert_eq!(
+        get!("placeholder", 0, "text"),
+        "",
+        "Return searches at once"
+    );
+    assert_eq!(call!("unstash"), "ok");
 
     // -------------------------------------------------------- not searching
     assert_eq!(call!("load", QString::from(url.as_str()), false), "ok");
