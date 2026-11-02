@@ -198,7 +198,7 @@ SilicaListView {
         id: head
 
         width: listView.width
-        height: searchField.y + (searchField.visible ? searchField.height : 0)
+        height: searchBox.y + searchBox.height
 
         // Room for tab strip, pinned by PAGE, not scrolled with list: mustn't
         // slide away on scroll or travel sideways on swipe. Reserves its band;
@@ -250,55 +250,62 @@ SilicaListView {
             color: Theme.highlightColor
         }
 
-        SearchField {
-            id: searchField
-            objectName: "searchField"
+        // Search page only. Hidden field on every list cost each start
+        // Silica text-input chain compile + build.
+        Loader {
+            id: searchBox
 
             y: nameLabel.y + (nameLabel.visible ? nameLabel.height : 0)
             width: parent.width
-            visible: listView.searching
-            height: visible ? implicitHeight : 0
-            //: Placeholder in the empty search field.
-            placeholderText: qsTr("Search articles")
-            // Predictive input holds word until committed; search would trail
-            // one word behind screen.
-            inputMethodHints: Qt.ImhNoPredictiveText
-            onTextChanged: listView.searchText = searchField.text
-            // Return = "done typing": search now without waiting pause, hide
-            // keyboard so results get screen. Keys, not Silica EnterKey (as
-            // AddFeedPage.qml): attached type QML can't stub.
-            Keys.onReturnPressed: searchField.submit()
-            Keys.onEnterPressed: searchField.submit()
+            active: listView.searching
 
-            /// Keyboard raised for reader once yet.
-            property bool _focused: false
+            sourceComponent: SearchField {
+                id: searchField
+                objectName: "searchField"
 
-            function submit() {
-                searchDelay.stop()
-                listView.search(listView.searchText)
-                searchField.focus = false
-            }
+                width: parent.width
+                //: Placeholder in the empty search field.
+                placeholderText: qsTr("Search articles")
+                // Predictive input holds word until committed; search would trail
+                // one word behind screen.
+                inputMethodHints: Qt.ImhNoPredictiveText
+                onTextChanged: listView.searchText = searchField.text
+                // Return = "done typing": search now without waiting pause, hide
+                // keyboard so results get screen. Keys, not Silica EnterKey (as
+                // AddFeedPage.qml): attached type QML can't stub.
+                Keys.onReturnPressed: searchField.submit()
+                Keys.onEnterPressed: searchField.submit()
 
-            /// Raise keyboard once page in place and app in front (not mid
-            /// slide-in), first time only: back from article lands on results,
-            /// not keyboard. Both conditions: field focused while app in
-            /// background raises nothing.
-            function raiseKeyboard() {
-                if (listView.searching && !searchField._focused && listView.hostPage
-                        && listView.hostPage.status === PageStatus.Active
-                        && Qt.application.active) {
-                    searchField._focused = true
-                    searchField.forceActiveFocus()
+                /// Keyboard raised for reader once yet.
+                property bool _focused: false
+
+                function submit() {
+                    searchDelay.stop()
+                    listView.search(listView.searchText)
+                    searchField.focus = false
                 }
-            }
 
-            Connections {
-                target: listView.hostPage
-                onStatusChanged: searchField.raiseKeyboard()
-            }
-            Connections {
-                target: Qt.application
-                onActiveChanged: searchField.raiseKeyboard()
+                /// Raise keyboard once page in place and app in front (not mid
+                /// slide-in), first time only: back from article lands on results,
+                /// not keyboard. Both conditions: field focused while app in
+                /// background raises nothing.
+                function raiseKeyboard() {
+                    if (listView.searching && !searchField._focused && listView.hostPage
+                            && listView.hostPage.status === PageStatus.Active
+                            && Qt.application.active) {
+                        searchField._focused = true
+                        searchField.forceActiveFocus()
+                    }
+                }
+
+                Connections {
+                    target: listView.hostPage
+                    onStatusChanged: searchField.raiseKeyboard()
+                }
+                Connections {
+                    target: Qt.application
+                    onActiveChanged: searchField.raiseKeyboard()
+                }
             }
         }
     }
@@ -719,7 +726,8 @@ SilicaListView {
                         objectName: "titleLabel"
 
                         width: parent.width
-                               - (feedUnread.visible ? feedUnread.width + Theme.paddingMedium : 0)
+                               - (feedUnread.item && feedUnread.item.visible
+                                  ? feedUnread.width + Theme.paddingMedium : 0)
                         // §9.3: feed title foreign. PlainText explicitly, except
                         // search result (Rust escaped + marked terms): safe as
                         // StyledText.
@@ -841,38 +849,52 @@ SilicaListView {
                                                     : detailLabel.build())
                     }
 
-                    Label {
-                        // Result found in article text: lines around match, shows
-                        // why it's here. StyledText built and escaped in Rust
-                        // (§9.3), terms bold.
-                        objectName: "excerptLabel"
+                    // Search-only parts (excerpt, feed count, "Load more"):
+                    // Loader, built in search only. Every list row built
+                    // them hidden, each binding run, on every row a fling
+                    // brought in.
+                    Loader {
                         width: parent.width
-                        visible: listView.searching && excerpt.length > 0
-                        textFormat: Text.StyledText
-                        text: listView.searching ? listView.marked(excerpt) : ""
-                        wrapMode: Text.Wrap
-                        maximumLineCount: 3
-                        elide: Text.ElideRight
-                        font.pixelSize: Theme.fontSizeExtraSmall
-                        color: item.highlighted ? Theme.secondaryHighlightColor
-                                                : Theme.secondaryColor
+                        active: listView.searching
+
+                        sourceComponent: Label {
+                            // Result found in article text: lines around match,
+                            // shows why it's here. StyledText built and escaped
+                            // in Rust (§9.3), terms bold.
+                            objectName: "excerptLabel"
+                            visible: excerpt.length > 0
+                            height: visible ? implicitHeight : 0
+                            textFormat: Text.StyledText
+                            text: listView.marked(excerpt)
+                            wrapMode: Text.Wrap
+                            maximumLineCount: 3
+                            elide: Text.ElideRight
+                            font.pixelSize: Theme.fontSizeExtraSmall
+                            color: item.highlighted ? Theme.secondaryHighlightColor
+                                                    : Theme.secondaryColor
+                        }
                     }
                 }
             }
 
             // Feed unread count where feed list puts it: end of name's first
             // line.
-            Label {
+            Loader {
                 id: feedUnread
-                objectName: "feedUnread"
 
-                visible: row.isFeed && unreadCount > 0
+                active: listView.searching
                 anchors.right: parent.right
                 anchors.rightMargin: Theme.horizontalPageMargin
                 y: column.y + Math.round((titleMetrics.height - height) / 2)
-                text: visible ? unreadCount : ""
-                color: Theme.highlightColor
-                font.pixelSize: Theme.fontSizeSmall
+
+                sourceComponent: Label {
+                    objectName: "feedUnread"
+
+                    visible: row.isFeed && unreadCount > 0
+                    text: visible ? unreadCount : ""
+                    color: Theme.highlightColor
+                    font.pixelSize: Theme.fontSizeSmall
+                }
             }
 
             onClicked: {
@@ -888,45 +910,56 @@ SilicaListView {
                 }
             }
 
-            menu: ContextMenu {
-                MenuItem {
-                    text: unread ? qsTr("Mark as read") : qsTr("Mark as unread")
-                    onClicked: listView.entryModel.setRead(index, unread)
-                }
-                MenuItem {
-                    text: starred ? qsTr("Remove favourite") : qsTr("Add favourite")
-                    onClicked: listView.entryModel.setStarred(index, !starred)
-                }
-                MenuItem {
-                    text: qsTr("Open in browser")
-                    // Hidden, not disabled: entry without link rare; permanently
-                    // dead row reads as app bug, not feed gap.
-                    visible: url.length > 0
-                    onClicked: Qt.openUrlExternally(url)
+            // Component: menu built on long press, not with every row.
+            menu: Component {
+                ContextMenu {
+                    MenuItem {
+                        text: unread ? qsTr("Mark as read") : qsTr("Mark as unread")
+                        onClicked: listView.entryModel.setRead(index, unread)
+                    }
+                    MenuItem {
+                        text: starred ? qsTr("Remove favourite") : qsTr("Add favourite")
+                        onClicked: listView.entryModel.setStarred(index, !starred)
+                    }
+                    MenuItem {
+                        text: qsTr("Open in browser")
+                        // Hidden, not disabled: entry without link rare; permanently
+                        // dead row reads as app bug, not feed gap.
+                        visible: url.length > 0
+                        onClicked: Qt.openUrlExternally(url)
+                    }
                 }
             }
         }
 
         // Under last row of group with more than shown: inserts more under row
         // (ten, then twenty, then rest). See models::SEARCH_LOAD_STEPS.
-        BackgroundItem {
+        Loader {
             id: moreButton
-            objectName: "loadMore"
 
+            // No `height`: Loader takes loaded item's, 0 while inactive.
+            // (`item` here = ListItem id above, not Loader.item.)
             y: item.height
             width: parent.width
-            visible: row.lastInGroup
-                     && listView.groupShown(matchKind) < listView.groupTotal(matchKind)
-            height: visible ? Theme.itemSizeSmall : 0
+            active: listView.searching
 
-            Label {
-                objectName: "loadMoreLabel"
-                anchors.centerIn: parent
-                text: listView.loadMoreText(matchKind)
-                color: moreButton.highlighted ? Theme.highlightColor : Theme.primaryColor
+            sourceComponent: BackgroundItem {
+                id: more
+                objectName: "loadMore"
+
+                visible: row.lastInGroup
+                         && listView.groupShown(matchKind) < listView.groupTotal(matchKind)
+                height: visible ? Theme.itemSizeSmall : 0
+
+                Label {
+                    objectName: "loadMoreLabel"
+                    anchors.centerIn: parent
+                    text: listView.loadMoreText(matchKind)
+                    color: more.highlighted ? Theme.highlightColor : Theme.primaryColor
+                }
+
+                onClicked: listView.entryModel.loadMoreIn(matchKind)
             }
-
-            onClicked: listView.entryModel.loadMoreIn(matchKind)
         }
     }
 

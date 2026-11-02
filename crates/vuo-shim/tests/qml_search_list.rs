@@ -156,6 +156,16 @@ const PROBE_QML: &str = r#"
             found[nth].clicked()
             return fake.loadedMoreIn
         }
+        // Room nth row takes beyond its list item: "Load more" or nothing.
+        function gap(nth) {
+            var found = findAll(loader.item, 'listItem', [])
+            found.sort(function(a, b) {
+                return a.mapToItem(loader.item, 0, 0).y - b.mapToItem(loader.item, 0, 0).y
+            })
+            if (nth >= found.length) { return 'missing' }
+            if (found[nth].height <= 0) { return 'no-height' }
+            return '' + (found[nth].parent.height - found[nth].height)
+        }
         // nth item of that name, top to bottom as reader sees.
         function get(name, nth, property) {
             var found = findAll(loader.item, name, [])
@@ -293,6 +303,8 @@ fn a_search_lists_its_results_grouped_and_marked_and_nothing_else_does() {
         "and an article opens the article"
     );
 
+    assert_eq!(get!("searchField", 0, "visible"), "true");
+
     // "Load more" under last row of group with more than shown; nowhere else.
     assert_eq!(
         get!("loadMore", 0, "visible"),
@@ -302,6 +314,10 @@ fn a_search_lists_its_results_grouped_and_marked_and_nothing_else_does() {
     assert_eq!(get!("loadMore", 1, "visible"), "true");
     assert_eq!(get!("loadMore", 2, "visible"), "true");
     assert_eq!(get!("loadMore", 3, "visible"), "true");
+    // Row = its item plus "Load more" when shown, nothing else: no empty band.
+    assert_eq!(call!("gap", 0), "0", "no Load more, no room for one");
+    assert_eq!(call!("gap", 1), get!("loadMore", 1, "height"));
+    assert_ne!(call!("gap", 1), "0", "Load more takes its room");
     assert_eq!(
         get!("loadMoreLabel", 1, "text"),
         "Load 2 more",
@@ -396,12 +412,25 @@ fn a_search_lists_its_results_grouped_and_marked_and_nothing_else_does() {
         get!("detailLabel", 0, "text"),
         "Harbour Gazette  \u{b7}  3 min read"
     );
-    assert_eq!(get!("excerptLabel", 3, "visible"), "false");
-    assert_eq!(get!("loadMore", 1, "visible"), "false");
+    // Search-only parts not even built outside a search: every row of every
+    // list paid for them on each fling.
+    assert_eq!(get!("excerptLabel", 0, "visible"), "missing:excerptLabel#0");
+    assert_eq!(get!("loadMore", 0, "visible"), "missing:loadMore#0");
+    assert_eq!(get!("loadMoreLabel", 0, "text"), "missing:loadMoreLabel#0");
     assert_eq!(
-        get!("feedUnread", 2, "visible"),
-        "false",
+        get!("feedUnread", 0, "visible"),
+        "missing:feedUnread#0",
         "outside a search no row is a feed"
     );
     assert_eq!(get!("detailLabel", 2, "visible"), "true");
+    assert_eq!(
+        get!("searchField", 0, "visible"),
+        "missing:searchField#0",
+        "search field built on search page only"
+    );
+    assert_eq!(
+        call!("gap", 0),
+        "0",
+        "row as tall as its item: no empty band under each row"
+    );
 }

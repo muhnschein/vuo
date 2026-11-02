@@ -46,6 +46,8 @@ Page {
         }
 
         delegate: ListItem {
+            id: feedRow
+
             contentHeight: col.height + Theme.paddingMedium * 2
 
             Column {
@@ -136,30 +138,33 @@ Page {
                 scopeId: feedId
             })
 
-            menu: ContextMenu {
-                MenuItem {
-                    text: qsTr("Feed settings")
-                    // Seeded from row, not re-read on other page: delegate has
-                    // current values; second query = second chance to disagree.
-                    onClicked: pageStack.push(Qt.resolvedUrl("EditFeedPage.qml"), {
-                        model: page.model,
-                        row: index,
-                        feedTitle: title,
-                        categoryId: categoryId,
-                        crawler: crawler,
-                        feedDisabled: feedDisabled,
-                        hideGlobally: hideGlobally
-                    })
-                }
-                MenuItem {
-                    text: qsTr("Mark feed as read")
-                    onClicked: page.model.markFeedRead(index)
-                }
-                MenuItem {
-                    text: qsTr("Unsubscribe")
-                    onClicked: remorseAction(qsTr("Unsubscribing"), function() {
-                        page.model.unsubscribe(index)
-                    })
+            // Component: menu built on long press, not with every row.
+            menu: Component {
+                ContextMenu {
+                    MenuItem {
+                        text: qsTr("Feed settings")
+                        // Seeded from row, not re-read on other page: delegate has
+                        // current values; second query = second chance to disagree.
+                        onClicked: pageStack.push(Qt.resolvedUrl("EditFeedPage.qml"), {
+                            model: page.model,
+                            row: index,
+                            feedTitle: title,
+                            categoryId: categoryId,
+                            crawler: crawler,
+                            feedDisabled: feedDisabled,
+                            hideGlobally: hideGlobally
+                        })
+                    }
+                    MenuItem {
+                        text: qsTr("Mark feed as read")
+                        onClicked: page.model.markFeedRead(index)
+                    }
+                    MenuItem {
+                        text: qsTr("Unsubscribe")
+                        onClicked: feedRow.remorseAction(qsTr("Unsubscribing"), function() {
+                            page.model.unsubscribe(index)
+                        })
+                    }
                 }
             }
         }

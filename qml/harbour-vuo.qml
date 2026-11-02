@@ -242,28 +242,28 @@ ApplicationWindow {
     // Fresh install opens on onboarding, not empty list, through setup to list.
     // Each step REPLACES previous: stack one deep, article list ends as root
     // (welcome screen underneath = swipe-back target forever).
-    Component {
-        id: onboarding
-
-        OnboardingPage {
-            onContinued: pageStack.replace(setup)
-        }
-    }
-
-    Component {
-        id: setup
-
-        SetupDialog {
-            // Accept navigates here itself; nothing in flow navigates from
-            // signal handler.
-            acceptDestination: entryList
+    //
+    // Both built from URL, first run only: inline `Component { OnboardingPage
+    // {} }` compiles them (and Silica text fields) every start.
+    function firstRun() {
+        // Parent = window: object, not stack's, so stack never frees it; first
+        // session only.
+        var welcome = Qt.createComponent(Qt.resolvedUrl("pages/OnboardingPage.qml"))
+                        .createObject(app)
+        welcome.continued.connect(function() {
+            var setup = pageStack.replace(Qt.resolvedUrl("pages/SetupDialog.qml"), {
+                // Accept navigates here itself; nothing in flow navigates from
+                // signal handler.
+                acceptDestination: entryList
+            })
             // Mirror just given server is empty; Refresh pulley shouldn't be
             // new user's first find.
-            onConfigured: entries.requestSync()
-        }
+            setup.configured.connect(function() { entries.requestSync() })
+        })
+        return welcome
     }
 
-    initialPage: accountSettings.configured ? entryList : onboarding
+    initialPage: accountSettings.configured ? entryList : app.firstRun()
 
     // Cover separate Component so bindings reach models (unread count, feeds);
     // bare URL cover can't.

@@ -97,6 +97,7 @@ Page {
 
     SilicaListView {
         id: blocks
+        objectName: "blocks"
         anchors.fill: parent
         model: article
 
@@ -222,40 +223,41 @@ Page {
             }
         }
 
-        // NOT Loader.
+        // One Loader per block, one Component per kind: block builds only
+        // own kind's items. All kinds built and hidden = every block paid for
+        // six layouts (four StyledText over same text); long article opened
+        // late and held memory.
         //
-        // Loader's sourceComponent instantiated in scope where Component
-        // DECLARED, not where Loader sits: delegate roles (blockKind,
-        // styledText, ...) invisible inside → blank body. Passing roles as
-        // Loader properties via `parent` works but traps next person.
+        // Components declared INSIDE delegate: Loader instantiates in
+        // Component's own scope, so roles (blockKind, styledText, ...) and
+        // `index` resolve. Declared outside delegate = roles invisible, blank
+        // body.
         //
-        // Single delegate, one visible child per block kind, keeps roles in
-        // scope (Qt 5.6-era Silica: no required properties, no Controls 2).
-        //
-        // SO EVERY BLOCK BUILDS ALL OF THEM; `visible: false` only stops
-        // DRAWING. `Text` still parses and lays out its `text` (implicit
-        // sizing). Four Labels each built full StyledText layout over same
-        // `styledText` per block: Jolla, long text-only article, 30 MB
-        // resident, not freed on leaving page. Every `text` below gated on
-        // block kind, not just hidden.
-        //
-        // EVERY `height` too, never on `visible`. `visible` = EFFECTIVE
-        // visibility, false on page stack hid (any push over it, image viewer
-        // included). Gated on `visible`, blocks collapse when viewer opens,
-        // list loses content, reader returns to top. Kind doesn't change while
-        // page hidden.
+        // Kind fixed per block; `sourceComponent` never switches under
+        // reader. Height = loaded item's: never on `visible` (false while
+        // page hidden under image viewer; blocks would collapse, reader lose
+        // place).
         delegate: Item {
             id: block
             width: blocks.width
-            height: content.height
+            height: body.height
 
-            Column {
-                id: content
-                width: parent.width
+            Loader {
+                id: body
+                sourceComponent: blockKind === "heading" ? heading
+                                 : blockKind === "paragraph" ? paragraph
+                                 : blockKind === "list_item" ? listItem
+                                 : (blockKind === "code" || blockKind === "table") ? code
+                                 : blockKind === "image" ? image
+                                 : blockKind === "rule" ? rule
+                                 : null
+            }
+
+            Component {
+                id: heading
 
                 Label {
-                    visible: blockKind === "heading"
-                    height: blockKind === "heading" ? implicitHeight + Theme.paddingLarge : 0
+                    height: implicitHeight + Theme.paddingLarge
                     x: Theme.horizontalPageMargin + quoteDepth * Theme.paddingLarge
                     width: block.width - x - Theme.horizontalPageMargin
                     wrapMode: Text.Wrap
@@ -263,38 +265,42 @@ Page {
                     // StyledText safe here, only for text from that one
                     // function.
                     textFormat: Text.StyledText
-                    // Gated on kind, not `visible`. See note above delegate for
-                    // both reasons.
-                    text: blockKind === "heading" ? styledText : ""
+                    text: styledText
                     color: Theme.highlightColor
                     font.pixelSize: level <= 2 ? Theme.fontSizeLarge : Theme.fontSizeMedium
                     font.bold: true
                 }
+            }
+
+            Component {
+                id: paragraph
 
                 Label {
-                    visible: blockKind === "paragraph"
-                    height: blockKind === "paragraph" ? implicitHeight + Theme.paddingMedium : 0
+                    height: implicitHeight + Theme.paddingMedium
                     x: Theme.horizontalPageMargin + quoteDepth * Theme.paddingLarge
                     width: block.width - x - Theme.horizontalPageMargin
                     wrapMode: Text.Wrap
                     textFormat: Text.StyledText
-                    text: blockKind === "paragraph" ? styledText : ""
+                    text: styledText
                     color: quoteDepth > 0 ? Theme.secondaryColor : Theme.primaryColor
                     font.pixelSize: Theme.fontSizeSmall
                     linkColor: Theme.highlightColor
                     onLinkActivated: Qt.openUrlExternally(link)
                 }
+            }
+
+            Component {
+                id: listItem
 
                 Row {
-                    visible: blockKind === "list_item"
-                    height: blockKind === "list_item" ? itemText.implicitHeight + Theme.paddingSmall : 0
+                    height: itemText.implicitHeight + Theme.paddingSmall
                     x: Theme.horizontalPageMargin + (quoteDepth + indent) * Theme.paddingLarge
                     width: block.width - x - Theme.horizontalPageMargin
                     spacing: Theme.paddingSmall
 
                     Label {
                         textFormat: Text.PlainText
-                        text: blockKind === "list_item" ? marker : ""
+                        text: marker
                         color: Theme.secondaryColor
                         font.pixelSize: Theme.fontSizeSmall
                     }
@@ -303,18 +309,20 @@ Page {
                         width: parent.width - Theme.paddingLarge
                         wrapMode: Text.Wrap
                         textFormat: Text.StyledText
-                        text: blockKind === "list_item" ? styledText : ""
+                        text: styledText
                         color: Theme.primaryColor
                         font.pixelSize: Theme.fontSizeSmall
                         linkColor: Theme.highlightColor
                         onLinkActivated: Qt.openUrlExternally(link)
                     }
                 }
+            }
+
+            Component {
+                id: code
 
                 Rectangle {
-                    visible: blockKind === "code" || blockKind === "table"
-                    height: blockKind === "code" || blockKind === "table"
-                            ? codeText.implicitHeight + Theme.paddingMedium * 2 : 0
+                    height: codeText.implicitHeight + Theme.paddingMedium * 2
                     x: Theme.horizontalPageMargin
                     width: block.width - Theme.horizontalPageMargin * 2
                     color: Theme.rgba(Theme.highlightBackgroundColor, 0.1)
@@ -328,18 +336,19 @@ Page {
                         // Verbatim by definition. As markup: corrupts code,
                         // reintroduces injection.
                         textFormat: Text.PlainText
-                        text: blockKind === "code" || blockKind === "table"
-                              ? styledText : ""
+                        text: styledText
                         wrapMode: Text.WrapAnywhere
                         font.family: "monospace"
                         font.pixelSize: Theme.fontSizeExtraSmall
                         color: Theme.primaryColor
                     }
                 }
+            }
+
+            Component {
+                id: image
 
                 Column {
-                    visible: blockKind === "image"
-                    height: blockKind === "image" ? implicitHeight : 0
                     x: Theme.horizontalPageMargin
                     width: block.width - Theme.horizontalPageMargin * 2
                     spacing: Theme.paddingSmall
@@ -408,8 +417,7 @@ Page {
                         // URL validated http(s) in Rust before QML.
                         sourceSize.width: block.width
                         sourceSize.height: block.width * 4
-                        source: blockKind === "image" && !needsConsent
-                                ? imageSource : ""
+                        source: needsConsent ? "" : imageSource
 
                         // Tap zooms, unless feed made image link: then tap
                         // follows link like linked word. Link validated http(s)
@@ -435,20 +443,23 @@ Page {
                     }
 
                     Label {
-                        visible: blockKind === "image" && imageAlt.length > 0
+                        visible: imageAlt.length > 0
                         width: parent.width
                         horizontalAlignment: Text.AlignHCenter
                         textFormat: Text.PlainText
-                        text: blockKind === "image" ? imageAlt : ""
+                        text: imageAlt
                         wrapMode: Text.Wrap
                         font.pixelSize: Theme.fontSizeExtraSmall
                         color: Theme.secondaryColor
                     }
                 }
+            }
+
+            Component {
+                id: rule
 
                 Separator {
-                    visible: blockKind === "rule"
-                    height: blockKind === "rule" ? Theme.paddingLarge : 0
+                    height: Theme.paddingLarge
                     x: Theme.horizontalPageMargin
                     width: block.width - Theme.horizontalPageMargin * 2
                     color: Theme.secondaryColor
