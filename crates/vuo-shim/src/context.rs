@@ -728,10 +728,10 @@ mod tests {
             &Account {
                 server_url: server.to_owned(),
                 token: "k".to_owned(),
-                // "Manual only", not real default hourly. Tests build REAL
-                // workers against dead address; automatic sync would dial it,
-                // sit out connect timeout before binary exits. §8.1: checks
-                // touch no network.
+                // "Manual only", not real default hourly: no sync of its own.
+                // Tests build REAL workers; Test connection really dials, so
+                // callers pass loopback discard port (§8.1: checks touch no
+                // network).
                 sync_interval_index: 0,
                 ..Account::default()
             },
@@ -747,11 +747,11 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         // Plain http, as WireGuard-only deployment uses. Transport accepts it;
         // nothing here may quietly require TLS.
-        let paths = account_at(&dir, "http://10.77.0.1:8083/");
+        let paths = account_at(&dir, "http://127.0.0.1:9/");
         assert!(current().is_none());
 
         let ctx = refresh(&paths).expect("a stored account must yield a context");
-        assert_eq!(ctx.instance().as_str(), "http://10.77.0.1:8083/");
+        assert_eq!(ctx.instance().as_str(), "http://127.0.0.1:9/");
         assert!(
             ctx.send(Command::TestConnection),
             "the worker must be alive"
@@ -787,10 +787,10 @@ mod tests {
         // later kills process on device (`Worker::spawn`): "user edited server
         // address" must not route back to `thread::Builder::spawn`.
         let dir = tempfile::tempdir().expect("tempdir");
-        let first = refresh(&account_at(&dir, "http://10.77.0.1:8083/")).expect("a context");
+        let first = refresh(&account_at(&dir, "http://127.0.0.1:9/")).expect("a context");
         let worker = shared_worker().expect("a worker");
 
-        let second = refresh(&account_at(&dir, "http://10.77.0.2:8083/")).expect("a context");
+        let second = refresh(&account_at(&dir, "http://127.0.0.2:9/")).expect("a context");
         assert!(
             !Rc::ptr_eq(&first, &second),
             "a changed account is a different context"
