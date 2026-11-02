@@ -17,7 +17,7 @@
     clippy::indexing_slicing
 )]
 
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use vuo_core::db::{outbox, store, Database};
 
@@ -56,11 +56,9 @@ fn a_mark_feed_read_is_not_lost_to_a_concurrent_sync() {
     // Both connections opened BEFORE UI takes lock: opening inside would
     // contend for lock itself, muddling measurement.
     let mut timer = Database::open(&path).expect("timer connection");
-    // Short busy_timeout: regression fails fast, no hang.
-    timer
-        .conn()
-        .busy_timeout(Duration::from_millis(100))
-        .expect("timeout");
+    // No wait: UI holds lock to its COMMIT, so waiting can't change outcome.
+    // DEFERRED regression: timer commits at once, UI write fails.
+    timer.conn().busy_timeout(Duration::ZERO).expect("timeout");
 
     let result = ui.with_tx(|tx| {
         // Read half of "mark feed read".
@@ -72,7 +70,7 @@ fn a_mark_feed_read_is_not_lost_to_a_concurrent_sync() {
         assert_eq!(unread, 5);
 
         // Background sync tries commit here. IMMEDIATE: UI holds write lock,
-        // this side waits and gives up. Correct: background refresh retryable;
+        // this side refused at BEGIN. Correct: background refresh retryable;
         // user action can't be re-invented.
         let _ = timer.with_tx(|t| {
             t.execute("UPDATE entries SET title = 'pulled' WHERE id = 1", [])?;
@@ -130,14 +128,12 @@ fn writers_interleave_without_losing_either_side() {
 }
 
 #[test]
-fn a_second_writer_waits_rather_than_corrupting() {
-    // BEGIN IMMEDIATE: first writer holds lock; second blocks on busy_timeout,
-    // no un-upgradable snapshot.
-
-    // Short: regression fails fast, no hang. Long enough: "it waited"
-    // unambiguous on loaded machine.
-    const BUSY: Duration = Duration::from_millis(300);
-
+fn a_second_writer_queues_at_begin_rather_than_mid_transaction() {
+    // BEGIN IMMEDIATE: first writer holds lock; second refused at BEGIN, where
+    // busy_timeout waits (default pinned by
+    // `an_opened_database_carries_a_busy_timeout`). DEFERRED: second BEGIN
+    // succeeds, reads stale snapshot, write fails mid-transaction: nothing to
+    // wait for. Both error; WHERE tells apart: did the body run?
     let dir = tempfile::tempdir().expect("tempdir");
     let path = dir.path().join("mirror.sqlite");
 
@@ -145,37 +141,33 @@ fn a_second_writer_waits_rather_than_corrupting() {
     let mut timer = Database::open(&path).expect("timer");
     seed(&mut ui, 1);
 
-    timer.conn().busy_timeout(BUSY).expect("timeout");
+    // No wait: lock held to end of test step, waiting can't change outcome.
+    timer.conn().busy_timeout(Duration::ZERO).expect("timeout");
 
     let held = ui
         .conn_mut()
         .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
         .expect("begin");
 
-    let started = Instant::now();
+    let mut body_ran = false;
     let blocked = timer.with_tx(|tx| {
-        // Read first. No read = no snapshot to fail on; DEFERRED would block on
-        // write lock like IMMEDIATE: write-only probe can't tell apart.
-        // Read-then-write = real callers ("mark feed read").
+        body_ran = true;
+        // Read first, like real callers ("mark feed read"): DEFERRED takes
+        // snapshot here.
         let _: i64 = tx.query_row("SELECT COUNT(*) FROM entries", [], |r| r.get(0))?;
         tx.execute("UPDATE entries SET title = 'x' WHERE id = 1", [])?;
         Ok(())
     });
-    let waited = started.elapsed();
 
     assert!(
         blocked.is_err(),
-        "the second writer must wait, not proceed on a stale snapshot"
+        "the second writer must not write while the first holds the lock"
     );
-    // `is_err()` alone doesn't separate fix from bug: BOTH error. IMMEDIATE:
-    // loser blocks on busy_timeout, then gives up. DEFERRED: snapshot, fails on
-    // write with SQLITE_BUSY_SNAPSHOT, returns near-instantly (busy_timeout
-    // doesn't apply). Elapsed time tells apart.
     assert!(
-        waited >= BUSY.checked_sub(Duration::from_millis(50)).unwrap(),
-        "the second writer returned after {waited:?} without waiting out the {BUSY:?} \
-         busy_timeout, which is the SQLITE_BUSY_SNAPSHOT signature of a DEFERRED \
-         transaction rather than a writer politely queueing"
+        !body_ran,
+        "the second writer got into its transaction body while another writer \
+         held the lock: that is BEGIN DEFERRED, which reads a stale snapshot and \
+         fails mid-way with SQLITE_BUSY_SNAPSHOT instead of waiting at BEGIN"
     );
 
     held.execute("UPDATE entries SET status = 'read' WHERE id = 1", [])
