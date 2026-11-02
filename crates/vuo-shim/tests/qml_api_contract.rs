@@ -289,33 +289,25 @@ fn no_property_is_bound_to_itself() {
     files.sort();
     assert!(!files.is_empty(), "no QML found");
 
+    // Scanner must see the shape it exists for, and not the call-argument one.
+    assert_eq!(
+        self_bindings("OnboardingPage {\n    account: account\n}\n"),
+        vec![(2, "account".to_owned())],
+        "the scanner cannot see a property bound to itself, so it guarantees nothing"
+    );
+    assert!(
+        self_bindings("pageStack.push(url, {\n    hideGlobally: hideGlobally\n})\n").is_empty(),
+        "the scanner mistakes a call argument for an object binding"
+    );
+
     let mut found: Vec<String> = Vec::new();
     for file in &files {
         let source = std::fs::read_to_string(file).expect("read qml");
-        // Parens inside string or comment aren't nesting.
-        let source = strip_strings_and_comments(&source);
-        let mut depth: i32 = 0;
-        for (lineno, line) in source.lines().enumerate() {
-            if depth == 0 {
-                if let Some((left, right)) = line.split_once(':') {
-                    let left = left.trim();
-                    let right = right.trim().trim_end_matches(',');
-                    if !left.is_empty()
-                        && left == right
-                        && left.chars().all(|c| c.is_alphanumeric() || c == '_')
-                        && left.chars().next().is_some_and(char::is_alphabetic)
-                    {
-                        found.push(format!(
-                            "{}:{} — `{left}: {right}` binds a property to itself",
-                            file.strip_prefix(root).unwrap_or(file).display(),
-                            lineno + 1
-                        ));
-                    }
-                }
-            }
-            depth += i32::try_from(line.chars().filter(|c| *c == '(').count()).unwrap();
-            depth -= i32::try_from(line.chars().filter(|c| *c == ')').count()).unwrap();
-            depth = depth.max(0);
+        for (lineno, name) in self_bindings(&source) {
+            found.push(format!(
+                "{}:{lineno} — `{name}: {name}` binds a property to itself",
+                file.strip_prefix(root).unwrap_or(file).display(),
+            ));
         }
     }
 
@@ -325,6 +317,34 @@ fn no_property_is_bound_to_itself() {
          an id of that name; rename one of the two:\n{}",
         found.join("\n")
     );
+}
+
+/// `(line, name)` of each object-declaration binding `name: name` in QML
+/// source. Lines count from 1.
+fn self_bindings(source: &str) -> Vec<(usize, String)> {
+    // Parens inside string or comment aren't nesting.
+    let source = strip_strings_and_comments(source);
+    let mut found = Vec::new();
+    let mut depth: i32 = 0;
+    for (lineno, line) in source.lines().enumerate() {
+        if depth == 0 {
+            if let Some((left, right)) = line.split_once(':') {
+                let left = left.trim();
+                let right = right.trim().trim_end_matches(',');
+                if !left.is_empty()
+                    && left == right
+                    && left.chars().all(|c| c.is_alphanumeric() || c == '_')
+                    && left.chars().next().is_some_and(char::is_alphabetic)
+                {
+                    found.push((lineno + 1, left.to_owned()));
+                }
+            }
+        }
+        depth += i32::try_from(line.chars().filter(|c| *c == '(').count()).unwrap();
+        depth -= i32::try_from(line.chars().filter(|c| *c == ')').count()).unwrap();
+        depth = depth.max(0);
+    }
+    found
 }
 
 /// Role names exposed via `role_names()`; delegates see them as context

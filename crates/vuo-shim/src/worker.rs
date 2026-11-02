@@ -88,6 +88,18 @@ pub fn earliest(
     }
 }
 
+/// Flush deadline after the UI asks for a flush at `now`.
+///
+/// Window = MAXIMUM AGE, not idle timeout: first request sets deadline, later
+/// ones leave it. Re-arming per request = steady tapper never flushed.
+#[must_use]
+pub fn arm_flush(
+    flush_due: Option<std::time::Instant>,
+    now: std::time::Instant,
+) -> Option<std::time::Instant> {
+    flush_due.or_else(|| now.checked_add(FLUSH_DEBOUNCE))
+}
+
 /// Next interval sync after `now`, or `None` for "Manual only".
 ///
 /// One-minute floor not policy: `interval` from stored index; corrupt or
@@ -590,13 +602,9 @@ impl Worker {
                     };
 
                     // UI-requested flush only arms window; deadline above
-                    // sends. Re-arming per request = idle timeout; steady
-                    // tapper never reaches end. First request sets deadline,
-                    // later ones leave it.
+                    // sends. See [`arm_flush`].
                     if matches!(command, Command::FlushOutbox) && !flush_fell_due {
-                        if flush_due.is_none() {
-                            flush_due = std::time::Instant::now().checked_add(FLUSH_DEBOUNCE);
-                        }
+                        flush_due = arm_flush(flush_due, std::time::Instant::now());
                         continue;
                     }
                     // Shutdown handled above guard: no spinner to clear;
@@ -1538,9 +1546,14 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let stamp = dir.path().join("last-sync");
         assert_eq!(read_sync_time(&stamp), None, "no stamp yet");
+        let before = chrono_now();
         record_sync_time(&stamp);
+        let after = chrono_now();
         let recorded = read_sync_time(&stamp).expect("a stamp");
-        assert!((chrono_now() - recorded).abs() < 5);
+        assert!(
+            (before..=after).contains(&recorded),
+            "the stamp is the time it was written: {before} <= {recorded} <= {after}"
+        );
     }
 
     #[test]
@@ -1825,28 +1838,18 @@ EQBBQIobIy41+aQiMsM0XBYH3Q==\n\
     /// §a flush the UI asks for arms the debounce rather than sending.
     ///
     /// Window = MAXIMUM AGE, not idle timeout: difference between "session
-    /// costs one request" and "steady tapper never flushed". Rule loop follows:
-    /// request finding deadline set leaves it.
+    /// costs one request" and "steady tapper never flushed".
     #[test]
     fn a_second_flush_request_does_not_push_the_deadline_back() {
         let started = std::time::Instant::now();
-        let mut flush_due: Option<std::time::Instant> = None;
 
-        // First tap arms window.
-        if flush_due.is_none() {
-            flush_due = Some(started + FLUSH_DEBOUNCE);
-        }
-        let armed = flush_due.expect("the first request arms the window");
+        let armed = arm_flush(None, started).expect("the first request arms the window");
+        assert_eq!(armed, started + FLUSH_DEBOUNCE);
 
         // Tap half a window later mustn't move it.
-        let later = started + FLUSH_DEBOUNCE / 2;
-        if flush_due.is_none() {
-            flush_due = Some(later + FLUSH_DEBOUNCE);
-        }
-
         assert_eq!(
-            flush_due.expect("still armed"),
-            armed,
+            arm_flush(Some(armed), started + FLUSH_DEBOUNCE / 2),
+            Some(armed),
             "re-arming on each request would make this an idle timeout, and a \
              reader marking an article every few seconds would never be flushed"
         );

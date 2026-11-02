@@ -239,7 +239,7 @@ mod tests {
 
     #[test]
     fn batching_a_realistic_offline_burst() {
-        // 1200 marks plus few stars queued offline → five requests, not 1200.
+        // 1200 marks plus a star queued offline → four requests, not 1201.
         let mut pending: Vec<_> = (1..=1200)
             .map(|i| outbox::PendingMutation {
                 entry_id: EntryId(i),

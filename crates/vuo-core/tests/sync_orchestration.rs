@@ -404,30 +404,52 @@ async fn a_failed_version_check_keeps_the_recorded_version() {
 ///
 /// ONLY evidence server-side deletion leaves (cursor blind): survives quiet
 /// pass. Needn't survive pass whose reconcile is due anyway.
+///
+/// Server with id listing (2.3.3): there `due` alone decides. Pre-2.3 server
+/// skips counters every pass, so skip there proves nothing about `due`.
 #[tokio::test]
 async fn the_counters_request_is_skipped_when_a_reconcile_is_due_anyway() {
-    let server = quiet_server().await;
+    let server = modern_server().await;
     let client = client_for(&server);
     let mut db = Database::open_in_memory().expect("mirror");
 
     // Fresh mirror never reconciled: first pass always due.
-    sync::sync(&mut db, &client, SyncOptions::default())
+    let report = sync::sync(&mut db, &client, SyncOptions::default())
         .await
         .expect("sync");
+    assert!(
+        report.reconciled,
+        "the first pass is due and must reconcile"
+    );
+    assert_eq!(
+        counters_requests(&server).await,
+        0,
+        "a pass that is going to reconcile regardless has no use for the \
+         counters, and asking anyway is a round trip spent on a question \
+         whose answer is ignored"
+    );
 
-    let counters = server
+    // Just reconciled: next pass not due, counters its only deletion signal.
+    sync::sync(&mut db, &client, SyncOptions::default())
+        .await
+        .expect("second sync");
+    assert_eq!(
+        counters_requests(&server).await,
+        1,
+        "a pass with no reconcile due must still ask: the counters are the \
+         only sign of a server-side deletion"
+    );
+}
+
+/// How many times the mock server was asked for the feed counters.
+async fn counters_requests(server: &MockServer) -> usize {
+    server
         .received_requests()
         .await
         .expect("requests")
         .iter()
         .filter(|r| r.url.path() == "/v1/feeds/counters")
-        .count();
-    assert_eq!(
-        counters, 0,
-        "a pass that is going to reconcile regardless has no use for the \
-         counters, and asking anyway is a round trip spent on a question \
-         whose answer is ignored"
-    );
+        .count()
 }
 
 /// How many times the mock server was asked for its version.

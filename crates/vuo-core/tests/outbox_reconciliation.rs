@@ -273,7 +273,17 @@ async fn the_servers_toggle_endpoints_are_never_called() {
         outbox::queue(tx, EntryId(2), DesiredValue::Starred(false), 1)
     })
     .unwrap();
-    replay::flush(&mut db, &client).await.unwrap();
+    let outcome = replay::flush(&mut db, &client).await.unwrap();
+    assert_eq!(
+        outcome.confirmed, 2,
+        "both stars must have gone out, or there was nothing to call a toggle for"
+    );
+    let bodies = update_bodies(&server.received_requests().await.unwrap());
+    assert_eq!(
+        bodies.len(),
+        2,
+        "one absolute set per value, through PUT /v1/entries"
+    );
 
     for request in server.received_requests().await.unwrap() {
         let path = request.url.path();
