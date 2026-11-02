@@ -17,11 +17,20 @@
 
 use std::io::{Read, Write};
 use std::net::TcpListener;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use url::Url;
 use vuo_core::api::{Transport, TransportConfig};
+use vuo_core::error::TransportKind;
 use vuo_core::redact::ApiToken;
+use vuo_core::Error;
+
+/// Timeout no test reaches: only deadline under test can end request.
+const NEVER: Duration = Duration::from_secs(3600);
+
+/// Turns hang into failure. Not a timing claim: deadlines under test are
+/// 100x shorter; error KIND says which fired.
+const WATCHDOG: Duration = Duration::from_secs(60);
 
 fn transport(origin: &str, c: &TransportConfig) -> Transport {
     Transport::new(Url::parse(origin).unwrap(), ApiToken::new("SECRET"), c).unwrap()
@@ -64,6 +73,30 @@ fn silent_server() -> String {
     format!("http://{addr}")
 }
 
+/// GET `base`/v1/me; fails test if it hangs past [`WATCHDOG`].
+async fn get(
+    t: &Transport,
+    base: &str,
+) -> vuo_core::Result<vuo_core::api::transport::BoundedResponse> {
+    let url = Url::parse(&format!("{base}/v1/me")).unwrap();
+    tokio::time::timeout(WATCHDOG, t.send(reqwest::Method::GET, url, None))
+        .await
+        .unwrap_or_else(|_| panic!("the request hung for {WATCHDOG:?}: no timeout fired"))
+}
+
+fn assert_timed_out<T: std::fmt::Debug>(res: &vuo_core::Result<T>) {
+    assert!(
+        matches!(
+            res,
+            Err(Error::Transport {
+                kind: TransportKind::Timeout,
+                ..
+            })
+        ),
+        "expected a timeout: {res:?}"
+    );
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn read_timeout_on_silent_server() {
     let base = silent_server();
@@ -71,24 +104,11 @@ async fn read_timeout_on_silent_server() {
         &base,
         &TransportConfig {
             read_timeout: Duration::from_millis(400),
-            request_timeout: Duration::from_secs(30),
+            request_timeout: NEVER,
             ..TransportConfig::default()
         },
     );
-    let start = Instant::now();
-    let res = t
-        .send(
-            reqwest::Method::GET,
-            Url::parse(&format!("{base}/v1/me")).unwrap(),
-            None,
-        )
-        .await;
-    eprintln!("silent: {:?} after {:?}", res, start.elapsed());
-    res.unwrap_err();
-    assert!(
-        start.elapsed() < Duration::from_secs(5),
-        "read timeout must fire"
-    );
+    assert_timed_out(&get(&t, &base).await);
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -98,27 +118,13 @@ async fn total_timeout_during_slow_body() {
     let t = transport(
         &base,
         &TransportConfig {
-            read_timeout: Duration::from_secs(10),
+            read_timeout: NEVER,
             request_timeout: Duration::from_millis(800),
             max_response_bytes: 100 * 1024 * 1024,
             ..TransportConfig::default()
         },
     );
-    let start = Instant::now();
-    let res = t
-        .send(
-            reqwest::Method::GET,
-            Url::parse(&format!("{base}/v1/me")).unwrap(),
-            None,
-        )
-        .await;
-    eprintln!("dribble: {:?} after {:?}", res, start.elapsed());
-    assert!(res.is_err(), "total timeout must stop an endless slow body");
-    assert!(
-        start.elapsed() < Duration::from_secs(5),
-        "took {:?}",
-        start.elapsed()
-    );
+    assert_timed_out(&get(&t, &base).await);
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -128,28 +134,10 @@ async fn read_timeout_during_slow_body() {
         &base,
         &TransportConfig {
             read_timeout: Duration::from_millis(300),
-            request_timeout: Duration::from_secs(60),
+            request_timeout: NEVER,
             max_response_bytes: 100 * 1024 * 1024,
             ..TransportConfig::default()
         },
     );
-    let start = Instant::now();
-    let res = t
-        .send(
-            reqwest::Method::GET,
-            Url::parse(&format!("{base}/v1/me")).unwrap(),
-            None,
-        )
-        .await;
-    eprintln!(
-        "slow-body read timeout: {:?} after {:?}",
-        res,
-        start.elapsed()
-    );
-    res.unwrap_err();
-    assert!(
-        start.elapsed() < Duration::from_secs(5),
-        "took {:?}",
-        start.elapsed()
-    );
+    assert_timed_out(&get(&t, &base).await);
 }

@@ -570,6 +570,12 @@ async fn a_server_whose_keyset_never_advances_does_not_advance_the_cursor() {
         .await
         .unwrap();
     assert_eq!(
+        outcome.pages, 2,
+        "the second page repeats the first: the pass must stop there, not run \
+         on to the page cap (which also leaves the cursor alone, so the cursor \
+         alone cannot tell the two exits apart)"
+    );
+    assert_eq!(
         outcome.next_cursor, None,
         "an incomplete pass must leave the cursor alone; advancing it loses entries"
     );

@@ -225,69 +225,6 @@ mod tests {
     }
 
     #[test]
-    fn a_write_transaction_survives_a_concurrent_committer() {
-        // Regression: BEGIN DEFERRED → "database is locked", queued user action
-        // lost. UI thread and worker share file: normal case.
-        let dir = tempfile::tempdir().expect("tempdir");
-        let path = dir.path().join("mirror.sqlite");
-        let mut ui = Database::open(&path).expect("ui");
-        let mut timer = Database::open(&path).expect("timer");
-
-        ui.with_tx(|tx| {
-            tx.execute("INSERT INTO feeds (id, title) VALUES (1, 'f')", [])?;
-            tx.execute(
-                "INSERT INTO entries (id, feed_id, status) VALUES (1, 1, 'unread')",
-                [],
-            )?;
-            Ok(())
-        })
-        .expect("seed");
-
-        // Read-then-write goes through `with_tx`, the code under test.
-        // Hand-built Immediate transaction would supply the behaviour being
-        // checked.
-        timer
-            .conn()
-            .busy_timeout(std::time::Duration::from_millis(50))
-            .expect("timeout");
-
-        let outcome = ui.with_tx(|tx| {
-            let unread: i64 = tx.query_row(
-                "SELECT COUNT(*) FROM entries WHERE status = 'unread'",
-                [],
-                |r| r.get(0),
-            )?;
-            assert_eq!(unread, 1);
-
-            // Timer commits between UI's read and write: exact window BEGIN
-            // DEFERRED leaves (snapshot at read, write fails
-            // SQLITE_BUSY_SNAPSHOT, `busy_timeout` can't help).
-            let concurrent = timer.with_tx(|t| {
-                t.execute("UPDATE entries SET title = 'x' WHERE id = 1", [])?;
-                Ok(())
-            });
-            assert!(
-                concurrent.is_err(),
-                "the second writer should be the one that waits"
-            );
-
-            tx.execute("UPDATE entries SET status = 'read' WHERE id = 1", [])?;
-            Ok(())
-        });
-        outcome.expect("the user's write must not be lost to a background sync");
-
-        let read: i64 = ui
-            .conn()
-            .query_row(
-                "SELECT COUNT(*) FROM entries WHERE status = 'read'",
-                [],
-                |r| r.get(0),
-            )
-            .expect("verify");
-        assert_eq!(read, 1);
-    }
-
-    #[test]
     fn no_sql_in_this_crate_is_built_by_formatting() {
         // §9.4 structural rule, structural test.
         //

@@ -533,9 +533,10 @@ mod tests {
         // written carries whatever object holds (before `reload`, zero for
         // all).
         //
-        // Discard port, not unroutable address: saving builds real worker,
-        // hourly means sync due. Port 9 refuses at once; 10.77.0.1 holds thread
-        // for connect timeout, binary can't exit until released.
+        // Loopback discard port, as every test here that builds a worker:
+        // saving builds real worker, hourly means sync due. Port 9 refuses at
+        // once; routable address would put test traffic on someone's network
+        // (§8.1: checks touch no network).
         s.serverUrl = QString::from("http://127.0.0.1:9/");
         s.apiKey = QString::from("k");
         s.save_to(&paths);
@@ -738,10 +739,10 @@ mod tests {
             "a first run starts with no context; that is the whole premise"
         );
 
-        // Exactly what user types for that setup: plain http to WireGuard
-        // address, no TLS.
+        // Plain http, no TLS, as WireGuard setup types it. Loopback discard
+        // port: test connection really dials (see first test).
         let mut s = Settings {
-            serverUrl: QString::from("http://10.77.0.1:8083/"),
+            serverUrl: QString::from("http://127.0.0.1:9/"),
             apiKey: QString::from("k"),
             ..Settings::default()
         };
@@ -749,7 +750,7 @@ mod tests {
 
         let ctx = crate::context::current()
             .expect("configuring an account must make the app usable without a restart");
-        assert_eq!(ctx.instance().as_str(), "http://10.77.0.1:8083/");
+        assert_eq!(ctx.instance().as_str(), "http://127.0.0.1:9/");
         assert!(
             ctx.send(Command::TestConnection),
             "and there must be a worker listening for the command"
@@ -772,7 +773,7 @@ mod tests {
         let paths = temp_paths(&dir);
 
         let mut s = Settings {
-            serverUrl: QString::from("http://10.77.0.1:8083/"),
+            serverUrl: QString::from("http://127.0.0.1:9/"),
             apiKey: QString::from("k"),
             ..Settings::default()
         };
@@ -790,17 +791,14 @@ mod tests {
         );
 
         // Changed address must.
-        s.serverUrl = QString::from("http://10.77.0.2:8083/");
+        s.serverUrl = QString::from("http://127.0.0.2:9/");
         s.save_to(&paths);
         let after_new_server = crate::context::current().expect("a context");
         assert!(
             !Rc::ptr_eq(&first, &after_new_server),
             "a changed server must not keep answering through the old worker"
         );
-        assert_eq!(
-            after_new_server.instance().as_str(),
-            "http://10.77.0.2:8083/"
-        );
+        assert_eq!(after_new_server.instance().as_str(), "http://127.0.0.2:9/");
 
         // So must changed key (not visible in origin).
         s.apiKey = QString::from("k2");
@@ -860,7 +858,7 @@ mod tests {
         let paths = temp_paths(&dir);
 
         let mut written = Settings {
-            serverUrl: QString::from("http://10.77.0.1:8083/"),
+            serverUrl: QString::from("http://127.0.0.1:9/"),
             apiKey: QString::from("secretkey"),
             mediaPolicy: MEDIA_ALLOW,
             syncIntervalIndex: 3,
@@ -878,7 +876,7 @@ mod tests {
         );
         reopened.load_from(&paths);
 
-        assert_eq!(reopened.serverUrl.to_string(), "http://10.77.0.1:8083/");
+        assert_eq!(reopened.serverUrl.to_string(), "http://127.0.0.1:9/");
         assert_eq!(reopened.apiKey.to_string(), "secretkey");
         assert_eq!(reopened.mediaPolicy, MEDIA_ALLOW);
         assert_eq!(reopened.syncIntervalIndex, 3);

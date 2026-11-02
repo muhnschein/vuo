@@ -1752,43 +1752,67 @@ mod tests {
     use super::*;
     use crate::context::{Notice, SyncSignal};
 
+    /// Model on an empty mirror whose worker has no account.
+    ///
+    /// Worker without account drops `Sync` without touching spinner: flag stays
+    /// where `requestSync` put it until test plays worker's part. No race.
+    fn attached() -> (tempfile::TempDir, std::rc::Rc<AppContext>, EntryModel) {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let db = vuo_core::db::Database::open(&dir.path().join("m.sqlite")).expect("mirror");
+        let ctx = crate::context::context_for_test(
+            db,
+            url::Url::parse("https://unreachable.invalid/").expect("url"),
+        );
+        let mut model = EntryModel::default();
+        model.attach(std::rc::Rc::clone(&ctx));
+        model.setScope(0, 0);
+        (dir, ctx, model)
+    }
+
     /// §a failed refresh reaches the screen, and stops the spinner.
     ///
     /// Timed-out refresh must stop spinning AND say something. `syncing` is
-    /// READ + NOTIFY; `syncingChanged` must fire above generation early-return,
-    /// else failure clearing running flag without changing mirror never reaches
-    /// binding.
+    /// READ + NOTIFY; both must be handled above `pollSync`'s generation
+    /// early-return: failure clears running flag without changing mirror.
     #[test]
     fn a_failure_that_changed_nothing_still_repaints_and_still_speaks() {
-        let signal = SyncSignal::default();
-        let mut model = EntryModel::default();
+        let (_dir, ctx, mut model) = attached();
 
-        // As Qt thread does on pull to refresh.
-        signal.set_running(true);
-        model.seen_running = true;
+        model.requestSync();
+        assert!(model.seen_running, "the pull raised the spinner");
 
         // As worker guard does on failed refresh: mirror unchanged, generation
         // stays.
-        let before = signal.generation();
-        signal.set_running(false);
-        signal.post(Notice::SyncFailed {
+        let before = ctx.signal().generation();
+        ctx.signal().set_running(false);
+        ctx.signal().post(Notice::SyncFailed {
             auth: false,
             message: "could not reach the server".to_owned(),
         });
-        assert_eq!(signal.generation(), before, "nothing changed the mirror");
+        assert_eq!(
+            ctx.signal().generation(),
+            before,
+            "nothing changed the mirror"
+        );
 
-        // Poll notices transition anyway.
-        model.drain_notice(&signal);
+        assert!(
+            !model.pollSync(),
+            "the mirror did not move, so the lists have nothing to reload"
+        );
+        assert!(
+            !model.seen_running,
+            "but the poll must report the spinner stopping"
+        );
         assert_eq!(model.syncError.to_string(), "could not reach the server");
         assert!(!model.syncErrorIsAuth);
 
         // Rejected key reported as such, no server text: page supplies own
         // translated line.
-        signal.post(Notice::SyncFailed {
+        ctx.signal().post(Notice::SyncFailed {
             auth: true,
             message: String::new(),
         });
-        model.drain_notice(&signal);
+        assert!(!model.pollSync());
         assert!(model.syncErrorIsAuth);
         assert_eq!(model.syncError.to_string(), "");
     }
@@ -1800,22 +1824,22 @@ mod tests {
     /// stops only if poll lands mid-sync.
     #[test]
     fn the_spinner_stops_even_when_no_poll_lands_mid_sync() {
-        let signal = SyncSignal::default();
-        let mut model = EntryModel::default();
+        let (_dir, ctx, mut model) = attached();
 
-        // What `requestSync` does, minus worker (no context).
-        signal.set_running(true);
-        model.seen_running = signal.is_running();
+        model.requestSync();
+        assert!(ctx.signal().is_running(), "the pull raised the spinner");
 
         // Worker finishes before any poll runs.
-        signal.set_running(false);
+        ctx.signal().set_running(false);
 
-        let running = signal.is_running();
         assert_ne!(
-            running, model.seen_running,
+            model.seen_running,
+            ctx.signal().is_running(),
             "the poll must see a transition it can report, or `syncing` keeps \
              the last value QML was told"
         );
+        model.pollSync();
+        assert!(!model.seen_running, "and it reports it");
     }
 
     /// A notice this model does not own is left for the page that does.

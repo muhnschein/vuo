@@ -317,10 +317,23 @@ mod tests {
     /// §an interface name from a kernel file cannot walk out of /sys.
     #[test]
     fn an_interface_name_is_never_a_path() {
-        let dir = fake_root(None, None, &[]);
+        // Marker planted where each name would lead: without the guard every
+        // one reads as wireless.
+        let dir = fake_root(None, None, &["wlan0"]);
+        for escaped_to in ["etc", "sys", "sys/class/net"] {
+            std::fs::create_dir_all(dir.path().join(escaped_to).join("wireless"))
+                .expect("mkdir marker");
+        }
         assert!(!is_wireless(dir.path(), "../../../etc"));
         assert!(!is_wireless(dir.path(), "wlan0/../../.."));
         assert!(!is_wireless(dir.path(), ""));
+        // Absolute name: `join` replaces whole path.
+        let absolute = dir.path().join("etc");
+        assert!(!is_wireless(dir.path(), &absolute.to_string_lossy()));
+        assert!(
+            is_wireless(dir.path(), "wlan0"),
+            "the fixture's real interface still reads as wireless"
+        );
     }
 
     /// §what each reading allows, and that Unknown allows everything.

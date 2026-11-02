@@ -91,6 +91,34 @@ fn raw_server(
     (format!("http://{addr}"), rx, h)
 }
 
+/// Listener standing in for another origin. Accepts nothing: a connection
+/// waits in its backlog, where [`assert_never_contacted`] finds it.
+fn other_origin() -> (TcpListener, String) {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let addr = listener.local_addr().unwrap();
+    (listener, addr.to_string())
+}
+
+/// No connection reached `listener`. Call after `send` returned: client is
+/// done, kernel completed any connect before `connect()` returned.
+fn assert_never_contacted(listener: &TcpListener) {
+    match listener.accept() {
+        Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
+        Err(e) => panic!("could not inspect the other origin: {e}"),
+        Ok((mut sock, _)) => {
+            let mut head = [0u8; 4096];
+            let _ = sock.set_read_timeout(Some(Duration::from_secs(1)));
+            let n = sock.read(&mut head).unwrap_or(0);
+            panic!(
+                "the redirect was followed to another origin. It received:\n{}\n\
+                 (a connection at all is a failure; one carrying the token is a key leak)",
+                String::from_utf8_lossy(&head[..n])
+            );
+        }
+    }
+}
+
 fn transport(origin: &str, config: &TransportConfig) -> Transport {
     Transport::new(
         Url::parse(origin).unwrap(),
@@ -113,10 +141,17 @@ async fn relative_redirect_is_followed_with_token() {
             None,
         )
         .await;
-    eprintln!("result: {res:?}");
-    let req1 = rx.recv().unwrap();
-    let req2 = rx.recv_timeout(Duration::from_secs(5)).unwrap();
-    eprintln!("--- req1 ---\n{req1}\n--- req2 ---\n{req2}");
+    let body = res.expect("a same-origin redirect must be followed").body;
+    assert_eq!(
+        body, b"ok",
+        "the answer must come from the redirect's target"
+    );
+    // `send` returned: both requests already published (server publishes
+    // before it answers).
+    let req1 = rx.try_recv().expect("the first request reached the server");
+    let req2 = rx.try_recv().expect("the redirect was followed");
+    assert!(req1.contains("GET /v1/me "), "{req1}");
+    assert!(req2.contains("GET /v1/other "), "{req2}");
     assert!(
         req2.contains("SECRET-TOKEN"),
         "token should be re-attached same-origin"
@@ -131,11 +166,10 @@ async fn an_absolute_cross_origin_redirect_never_reaches_the_other_host() {
     //
     // Module doc's opening scenario: hostile or compromised instance answering
     // 302 to somewhere it controls.
-    let (attacker, attacker_rx, _ah) = raw_server(vec![
-        b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok".to_vec(),
-    ]);
-    let redirect =
-        format!("HTTP/1.1 302 Found\r\nLocation: {attacker}/collect\r\nContent-Length: 0\r\n\r\n");
+    let (attacker, attacker_addr) = other_origin();
+    let redirect = format!(
+        "HTTP/1.1 302 Found\r\nLocation: http://{attacker_addr}/collect\r\nContent-Length: 0\r\n\r\n"
+    );
     let (base, rx, _h) = raw_server(vec![redirect.into_bytes()]);
 
     let t = transport(&base, &cfg());
@@ -166,20 +200,19 @@ async fn an_absolute_cross_origin_redirect_never_reaches_the_other_host() {
     );
 
     // Other host heard nothing: no unauthenticated request, no connection.
-    match attacker_rx.recv_timeout(Duration::from_millis(500)) {
-        Err(_) => {}
-        Ok(head) => panic!(
-            "the redirect was followed to another origin. It received:\n{head}\n\
-             (a request at all is a failure; one carrying the token is a key leak)"
-        ),
-    }
+    assert_never_contacted(&attacker);
 }
 
 #[tokio::test(flavor = "multi_thread")]
 async fn protocol_relative_redirect() {
-    // Location: //evil.invalid/x  -> should be refused
-    let r1 = b"HTTP/1.1 302 Found\r\nLocation: //evil.invalid/steal\r\nContent-Length: 0\r\n\r\n"
-        .to_vec();
+    // `Location: //host/x` keeps scheme, swaps host: refused like any other
+    // origin. Host is a live local listener: following it would CONNECT, not
+    // fail on DNS (which would look like a refusal).
+    let (attacker, attacker_addr) = other_origin();
+    let r1 = format!(
+        "HTTP/1.1 302 Found\r\nLocation: //{attacker_addr}/steal\r\nContent-Length: 0\r\n\r\n"
+    )
+    .into_bytes();
     let (base, rx, _h) = raw_server(vec![r1]);
     let t = transport(&base, &cfg());
     let res = t
@@ -189,9 +222,18 @@ async fn protocol_relative_redirect() {
             None,
         )
         .await;
-    eprintln!("protocol-relative result: {res:?}");
     let _ = rx.recv().unwrap();
-    res.unwrap_err();
+    assert!(
+        matches!(
+            res,
+            Err(Error::Transport {
+                kind: TransportKind::RedirectRefused,
+                ..
+            })
+        ),
+        "a protocol-relative redirect to another host must be refused: {res:?}"
+    );
+    assert_never_contacted(&attacker);
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -276,10 +318,17 @@ async fn chunked_no_content_length_over_cap() {
             None,
         )
         .await;
-    eprintln!("chunked result: {:?}", res.as_ref().map(|r| r.body.len()));
-    eprintln!("chunked err: {res:?}");
     let _ = rx.recv().unwrap();
-    assert!(res.is_err(), "chunked body over cap must be refused");
+    assert!(
+        matches!(
+            res,
+            Err(Error::Transport {
+                kind: TransportKind::BodyTooLarge,
+                ..
+            })
+        ),
+        "chunked body over cap must be refused for its size: {res:?}"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -300,12 +349,16 @@ async fn gzip_bomb() {
             None,
         )
         .await;
-    eprintln!("gzip result len: {:?}", res.as_ref().map(|r| r.body.len()));
-    eprintln!("gzip err: {res:?}");
     let _ = rx.recv().unwrap();
     assert!(
-        res.is_err(),
-        "8MB decompressed from 8KB must trip the 4096-byte cap"
+        matches!(
+            res,
+            Err(Error::Transport {
+                kind: TransportKind::BodyTooLarge,
+                ..
+            })
+        ),
+        "8MB decompressed from 8KB must trip the 4096-byte cap: {res:?}"
     );
 }
 

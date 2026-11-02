@@ -1811,43 +1811,13 @@ mod tests_support {
 mod resource_exhaustion_tests {
     use super::tests_support::ctx;
     use super::{Limits, TransformContext};
-    use std::time::Instant;
-
-    /// Depth-capped stack stays capped on *every* path.
-    ///
-    /// Regression (fuzzing): skipped subtree (`<svg>`, `<script>`, …) pushed
-    /// before depth cap; stack unbounded, each unmatched end tag scanned all of
-    /// it.
-    #[test]
-    fn a_skipped_subtree_cannot_grow_the_element_stack_without_bound() {
-        // Scaling ratio, not wall-clock threshold: absolute timing flakes on
-        // loaded CI; quadratic shows as ratio on any machine.
-        let small = {
-            let html = format!("<svg>{}{}", "<b>".repeat(10_000), "</zz>".repeat(10_000));
-            let t = Instant::now();
-            let _ = super::transform(&html, &ctx());
-            t.elapsed()
-        };
-        let large = {
-            let html = format!("<svg>{}{}", "<b>".repeat(40_000), "</zz>".repeat(40_000));
-            let t = Instant::now();
-            let _ = super::transform(&html, &ctx());
-            t.elapsed()
-        };
-
-        // 4× input. Linear ~4×, bug ~16× (1.3 s → 23 s). 10 clear of noise and
-        // defect.
-        let ratio = large.as_secs_f64() / small.as_secs_f64().max(0.000_001);
-        assert!(
-            ratio < 10.0,
-            "transform scales super-linearly on skipped subtrees: \
-             10k took {small:?}, 40k took {large:?} (ratio {ratio:.1}x)"
-        );
-    }
 
     #[test]
     fn the_depth_cap_holds_through_a_skipped_subtree() {
-        // Same input, checked structurally, not by timing.
+        // Skipped subtree (`<svg>`, `<script>`, …) counts against depth cap
+        // too: else stack unbounded, each unmatched end tag scans all of it
+        // (quadratic). Checked on stack size, not wall clock: timing flakes
+        // under load, stack size doesn't.
         //
         // `assert!(doc.blocks.is_empty())` alone says nothing: all inside
         // skipped `<svg>`, no text, zero blocks either way. Observe stack

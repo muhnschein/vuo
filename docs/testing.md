@@ -184,12 +184,11 @@ The property that matters is that a migration never drops the outbox: the
 mirror can be re-fetched from the server, but pending user actions exist *only*
 on the device.
 
-Only one schema version has shipped, so there is no older on-disk format to
-restore from yet. The machinery is tested with a synthetic second migration in
-`db::migrations`' unit tests, which proves ordering, atomicity, and data
-survival for real. When migration 2 lands, commit a database file produced by
-the *previous release* into `tests/fixtures/` and
-`fixtures_upgrade_without_data_loss` will pick it up automatically.
+Every schema version that shipped before the current one has a frozen database
+in `tests/fixtures/schema/`; `fixtures_upgrade_without_data_loss` migrates each
+and fails if one is missing. New migration: commit a database produced by the
+*previous release* there (`scripts/make-schema-fixture.py`). `db::migrations`'
+unit tests cover ordering and atomicity with synthetic migrations.
 
 ### The live tests
 
