@@ -108,7 +108,7 @@ intake rejects. Its rules are **transcribed** from the validator's own
 configuration -- `make check` has no network -- so re-read them against
 upstream when a submission is being prepared.
 
-Two rules are decided by the link rather than by the tree:
+Three rules are decided by the link rather than by the tree:
 
 - **The shared libraries the binary needs.** `scripts/check-linked-libs.sh`
   holds the allowed list and is run over both links: the host build, by
@@ -119,6 +119,12 @@ Two rules are decided by the link rather than by the tree:
   build reports rather than stops, and the `rpm` workflow fails the job *after*
   uploading the package: a package that breaks this rule still installs and
   runs, and is exactly the one you want in your hands while working out why.
+- **`main` in `.dynsym`.** Booster `dlopen()`s binary and `dlsym()`s `main`;
+  validator refuses Silica app without it. Rust bin keeps `main` only in
+  `.symtab`, gone after `strip = true`. `crates/harbour-vuo/build.rs` links
+  `main.dynlist` via `--dynamic-list` (only `main`, not `-rdynamic`).
+  `scripts/check-main-export.sh` reads `.dynsym` at same three places as
+  linked-libs check.
 - **The glibc symbol versions.** `scripts/cross-build.sh` prints the highest
   ones required; the validator wants `__libc_start_main@GLIBC_2.34`, which
   means building against a current SDK target. Measured on 5.2.0.15: `GLIBC_2.34`.

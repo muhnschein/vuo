@@ -146,6 +146,7 @@ ifeq ($(HAVE_QT),yes)
 	# app object; device entry point uses SailfishApp's.
 	$(CARGO) build -p harbour-vuo --bin harbour-vuo
 	scripts/check-linked-libs.sh target/debug/harbour-vuo
+	scripts/check-main-export.sh target/debug/harbour-vuo
 else
 	@echo "== linked libraries SKIPPED: no qmake found at $(QMAKE) =="
 endif

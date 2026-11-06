@@ -1,0 +1,4 @@
+/* Symbols put in .dynsym: booster dlsym()s `main`. See build.rs. */
+{
+    main;
+};
