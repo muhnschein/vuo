@@ -18,7 +18,7 @@ members = ["crates/vuo-core", "crates/vuo-shim", "crates/harbour-vuo"]
 default-members = ["crates/vuo-core"]
 
 [workspace.package]
-version = "1.1.1"
+version = "1.1.2"
 edition = "2021"
 # Floor the dependency graph actually needs, measured: `url` → `idna` → `icu_*`
 # declare 1.88. Every crate pins it; `make msrv` and CI msrv job check it.
