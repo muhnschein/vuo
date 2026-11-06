@@ -118,3 +118,10 @@ if "$ROOT/scripts/check-linked-libs.sh" "$BIN" "$BINDIR/readelf"; then
 else
     echo "WARNING: the package is being built anyway; Harbour would refuse it." >&2
 fi
+
+echo "-- main exported for booster --"
+if "$ROOT/scripts/check-main-export.sh" "$BIN" "$BINDIR/readelf"; then
+    :
+else
+    echo "WARNING: the package is being built anyway; Harbour would refuse it." >&2
+fi

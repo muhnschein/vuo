@@ -44,6 +44,16 @@ fn main() {
     // Prunes ONLY unneeded libs; can't hide a real dependency.
     println!("cargo:rustc-link-arg-bins=-Wl,--as-needed");
 
+    // Export `main` in .dynsym. Booster (mapplauncherd, `silica-qt5` in .desktop)
+    // dlopen()s binary, dlsym()s `main`; Harbour rejects binary without it
+    // (rpmvalidation.sh "must export main() symbol"). Rust bin keeps `main` only
+    // in .symtab, which `strip = true` drops. `--dynamic-list`: any GNU ld and
+    // lld take it; `--export-dynamic-symbol` needs binutils >= 2.35. Not
+    // `-rdynamic`: exports every symbol. scripts/check-main-export.sh guards.
+    let dir = std::env::var("CARGO_MANIFEST_DIR").unwrap_or_default();
+    println!("cargo:rustc-link-arg-bins=-Wl,--dynamic-list={dir}/main.dynlist");
+    println!("cargo:rerun-if-changed=main.dynlist");
+
     println!("cargo:rerun-if-changed=src/main.rs");
     println!("cargo:rerun-if-env-changed=VUO_SYSROOT");
     println!("cargo:rerun-if-env-changed=QT_INCLUDE_PATH");

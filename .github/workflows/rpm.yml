@@ -265,6 +265,10 @@ jobs:
       - name: Harbour's allowed-libraries rule
         run: ./scripts/check-linked-libs.sh target/aarch64-unknown-linux-gnu/release/harbour-vuo
 
+      # Same reason: decided by device link (strip drops .symtab).
+      - name: Harbour's main() export rule
+        run: ./scripts/check-main-export.sh target/aarch64-unknown-linux-gnu/release/harbour-vuo
+
   # Release rebuilt the way docs/verifying.md tells users (verify-release.sh):
   # fresh clone, other runner, Podman not Docker, other time zone and umask.
   # Beside `rpm`, not after: needs that package only to compare (`compare`).
