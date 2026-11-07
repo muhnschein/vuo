@@ -136,3 +136,22 @@ jobs:
           VUO_SDK_CACHE="$RUNNER_TEMP/sdk" TZ=Pacific/Kiritimati \
             scripts/verify-release.sh --podman \
             --ref "$GITHUB_SHA" --no-download --rpm dist/harbour-vuo-*.rpm
+
+  # scripts/harbour-validate.sh pins Jolla's validator; Harbour QA runs its
+  # latest. Red = upstream moved: read its diff, bump VALIDATOR_REV, dispatch
+  # rpm.yml so new rules meet package before next submission does.
+  harbour-validator-pin:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - name: Compare the pin with upstream master
+        run: |
+          pinned=$(sed -n 's/^VALIDATOR_REV=//p' scripts/harbour-validate.sh)
+          upstream=$(git ls-remote https://github.com/sailfishos/sdk-harbour-rpmvalidator.git refs/heads/master | cut -f1)
+          echo "pinned $pinned, upstream master $upstream"
+          [ -n "$upstream" ] || { echo "::error::could not read upstream master"; exit 1; }
+          [ "$pinned" = "$upstream" ] || {
+            echo "::error::Harbour validator moved: https://github.com/sailfishos/sdk-harbour-rpmvalidator/compare/$pinned...$upstream"; exit 1; }

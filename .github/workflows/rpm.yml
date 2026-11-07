@@ -75,6 +75,7 @@ on:
       - "scripts/container-engine.sh"
       - "scripts/cross-build.sh"
       - "scripts/cross-rpm.sh"
+      - "scripts/harbour-validate.sh"
       - "scripts/verify-release.sh"
       - "rpm/Containerfile"
       - "rpm/sdk-images"
@@ -268,6 +269,30 @@ jobs:
       # Same reason: decided by device link (strip drops .symtab).
       - name: Harbour's main() export rule
         run: ./scripts/check-main-export.sh target/aarch64-unknown-linux-gnu/release/harbour-vuo
+
+      # Jolla's own validator, the one Harbour QA runs, over the package itself:
+      # catches rules the checks above never transcribed. Red blocks `release`.
+      - name: Install the validator's tools
+        run: scripts/apt-install.sh --no-install-recommends rpm cpio
+
+      - name: Harbour's validator
+        run: scripts/harbour-validate.sh dist/*.rpm
+
+      # Gate alive: 1.1.1, which Harbour rejected for missing main() export,
+      # must still fail. Tool missing or validator pin gone quiet = passes = red.
+      - name: Harbour's validator still rejects 1.1.1
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release download v1.1.1 --pattern 'harbour-vuo-1.1.1-1.aarch64.rpm' --dir canary
+          if scripts/harbour-validate.sh canary/*.rpm > canary.log 2>&1; then
+            cat canary.log
+            echo "::error::the validator passed 1.1.1, which Harbour rejected"; exit 1
+          fi
+          grep -F 'Binary must export main() symbol' canary.log || {
+            cat canary.log
+            echo "::error::the validator failed 1.1.1, but not for the main() export"; exit 1; }
 
   # Release rebuilt the way docs/verifying.md tells users (verify-release.sh):
   # fresh clone, other runner, Podman not Docker, other time zone and umask.

@@ -108,6 +108,15 @@ intake rejects. Its rules are **transcribed** from the validator's own
 configuration -- `make check` has no network -- so re-read them against
 upstream when a submission is being prepared.
 
+Transcription misses rules, so the `rpm` workflow also runs the validator
+itself over every package it builds: `scripts/harbour-validate.sh` fetches it
+at a pinned commit and fails on any `ERROR`, which Harbour rejects
+automatically. Red here blocks `release`. The step after re-runs
+it over 1.1.1, which Harbour rejected for the missing `main` export, and must
+see that rejection: proves gate still bites. Run it locally over
+`dist/*.rpm` before submitting. Bump the pin when upstream changes; read its
+diff first, the script runs in CI.
+
 Three rules are decided by the link rather than by the tree:
 
 - **The shared libraries the binary needs.** `scripts/check-linked-libs.sh`
